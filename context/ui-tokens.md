@@ -4,6 +4,8 @@ Design tokens for Sortie (formerly JobPilot). All colors, typography, spacing, a
 
 **Rebrand note (2026-07-18):** the app was renamed from JobPilot to Sortie and the palette moved from a generic purple/white SaaS look to a deliberate "mission console" identity — dark ink chrome, warm amber signal accent, and a teal "agent" accent reserved exclusively for AI-generated content. The token *names* below are unchanged from v1 (`--color-accent`, `--color-success`, etc.) so existing components didn't need to be touched — only their values changed, plus one new semantic role (`--color-agent`) was added. See `context/RESUME.md` for current build status.
 
+**Dark mode + a serious pre-existing bug found while building it (2026-07-18):** a light/dark theme toggle was added (`next-themes`, `components/layout/ThemeToggle.tsx`, rendered in `Navbar.tsx`). While verifying it live, `--color-accent`/`--color-background`/`--color-border`/`--font-sans`/`--radius-sm through --radius-xl` were found to have been silently resolving to shadcn's generic scaffold values (`var(--accent)`, `var(--background)`, etc. — pale oklch grays and a fallback font stack), **not this app's real design tokens**, since the original rebrand. Cause: `app/globals.css`'s leftover shadcn `@theme inline { }` block redeclared those same theme keys, and Tailwind v4 keeps only one `:root` declaration per key when a name exists in both a plain `@theme` block and an `@theme inline` block — the inline one wins outright, it is not a normal CSS cascade you can out-specificity. This was invisible in light mode purely by coincidence (shadcn's default oklch grays and this app's actual paper/border hex are both pale neutrals, and shadcn's default accent gray vs. this app's amber look different but nobody had directly compared `text-accent`'s rendered color against the intended hex — the diamond wordmark mark, "Start for free" button, and all `border-border` usage across the *entire app* were rendering shadcn defaults, not Sortie's palette). Dark mode made it obvious immediately (accent turned pale gray instead of amber, background stayed white instead of going dark). Fixed by removing the colliding key redeclarations from `@theme inline`, keeping only the genuinely non-colliding shadcn primitive tokens (sidebar, chart, ring, input, destructive, muted, secondary, primary, popover, card, foreground) that this app's components don't otherwise use. See the `@theme inline` block's own comment in `globals.css` for the full explanation — treat it as load-bearing documentation, not a comment to tidy away.
+
 ---
 
 ## How to Use
@@ -35,8 +37,9 @@ className="bg-purple-500 text-gray-600"
 
 ```css
 @theme {
-  --font-sans: "IBM Plex Sans", sans-serif;
-  --font-mono: "IBM Plex Mono", monospace;
+  --font-sans: -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  --font-display: "Avenir Next", "Century Gothic", "Segoe UI Semibold", ui-sans-serif, sans-serif;
 
   /* Page and surface backgrounds — cool-neutral "paper", not warm cream */
   --color-background: #f3f4f2;
@@ -111,9 +114,12 @@ className="bg-purple-500 text-gray-600"
   --color-linkedin-light: #dce6f1;
   --color-linkedin-foreground: #ffffff;
 
-  /* Ink — dark chrome (nav frame, "mission console" hero backgrounds) */
+  /* Ink — dark chrome (nav frame, "mission console" hero backgrounds).
+     This chrome stays dark in BOTH light and dark app themes, so its
+     content color is a fixed token, not a themed one. */
   --color-overlay: #15181d;
   --color-overlay-dark: #0d0f12;
+  --color-overlay-foreground: #ffffff;
 
   /* Border radius */
   --radius-sm: 4px;
@@ -233,7 +239,7 @@ Unchanged tiering from v1, new hex values:
 | Timestamp / muted     | 12px | 400    | 16px        | `text-text-muted`     |
 | Chart axis labels     | 12px | 400    | 15px        | `#8a8f89`               |
 
-Font family: **IBM Plex Sans** for headings/body — imported via `next/font/google` in `app/layout.tsx` (weights 400/500/600/700), never a fallback system font. **IBM Plex Mono** for scores, timestamps, status, and agent-content labels (weights 400/500/600) — this is a deliberate, structural typographic choice tied to the "mission console / instrument panel" identity, not decoration; use it anywhere a number or status needs to read as data rather than prose.
+**Correction (2026-07-18, same day as the rebrand):** the rebrand pass had switched fonts to IBM Plex Sans/Mono via `next/font/google` — this was never actually part of the approved concept mockup (`context/RESUME.md` links the published artifact), which used a system-font stack throughout. Reverted to match the mockup: `--font-sans` (body/UI) is a system stack (`-apple-system`, `Segoe UI`, `Roboto`), `--font-mono` (scores, timestamps, status, agent-content labels) is a system mono stack (`ui-monospace`, `SF Mono`, `Cascadia Code`, `Consolas`), and a new `--font-display` token (`Avenir Next`, `Century Gothic`, `Segoe UI Semibold`) was added for the wordmark and hero heading only — the one place the mockup used a distinct display face. No `next/font/google` import needed since these are all system-available fallback stacks.
 
 ---
 
@@ -342,19 +348,50 @@ body: text-sm text-agent-foreground
 
 ### Logo / Wordmark
 
-Text-based, not an image (the v1 `public/logo.png` PNG asset is retired):
+Text-based, not an image (the v1 `public/logo.png` PNG asset is retired). Matches the approved concept mockup: all-caps wordmark in the display font, plus a muted mono "callsign" tag.
 
 ```tsx
 <span className="text-accent">&#9670;</span>
-<span className="text-[19px] font-bold tracking-tight">Sortie</span>
+<span className="font-display text-[19px] font-bold uppercase tracking-wide">Sortie</span>
+<span className="font-mono text-[11px] uppercase tracking-widest text-text-muted">SRT · 01</span>
 ```
+
+`Logo` takes a `variant="dark" | "light"` prop — `"dark"` (default) for light surfaces (`text-text-primary` wordmark, `text-text-muted` tag), `"light"` for the dark ink navbar chrome (`text-overlay-foreground` wordmark, `text-overlay-foreground/50` tag — not `text-surface`, see Dark Mode section below). The mark glyph stays `text-accent` in both variants.
+
+---
+
+## Dark Mode
+
+Added 2026-07-18 via `next-themes` (`attribute="class"`, `defaultTheme="system"`) — `components/layout/ThemeToggle.tsx`, rendered in `Navbar.tsx`. Every `--color-*` token gets a dark-mode override in a `.dark { }` block in `app/globals.css`, sourced from the approved concept mockup's own dark palette where a token maps 1:1, derived elsewhere. This block **must stay unlayered plain CSS** — do not wrap it in `@layer`, for the same cascade-layer reason described in Invariants below.
+
+| Token | Light | Dark |
+|---|---|---|
+| background | `#f3f4f2` | `#14171b` |
+| surface | `#ffffff` | `#1b1f24` |
+| border | `#d8dbd6` | `#2c3138` |
+| text-primary | `#15181d` | `#eceeec` |
+| text-secondary | `#565c56` | `#a3aaa3` |
+| accent (signal) | `#c9711f` | `#e0913f` |
+| agent (radar) | `#2e7d82` | `#4fa8ad` |
+| success | `#3f7a4f` | `#6bb47c` |
+| info | `#4472a8` | `#6f96c9` |
+| warning | `#b5502e` | `#d97e56` |
+| error (danger) | `#a8402f` | `#d17263` |
+| overlay (ink chrome) | `#15181d` | `#0d0f12` |
+| overlay-foreground | `#ffffff` | `#ffffff` (fixed) |
+
+Full table (every surface/text/accent/agent/success/info tier) is in `app/globals.css`'s `.dark { }` block directly — treat that as the source of truth, this table is a quick-reference subset.
+
+**`--color-overlay-foreground` exists because `bg-overlay` (the navbar/hero chrome) stays dark in *both* themes** — it's fixed branding, not something that flips to a light chrome in light mode. Content sitting on it (`Navbar.tsx` nav links/icons, `Logo.tsx`'s `variant="light"`, `FindJobsForm.tsx`'s mission-console panel) must use `text-overlay-foreground` / `border-overlay-foreground` / `bg-overlay-foreground`, never `text-surface` / `border-surface` / `bg-surface` — those now have a real, different dark-mode value (a dark surface color, correct for actual cards) and would go dark-on-dark and disappear on the permanently-dark chrome once dark mode is active. This exact bug shipped once during development and was caught in live verification before release — don't reintroduce it.
+
+`components/ui/button.tsx` and `components/ui/input.tsx` had their leftover shadcn `dark:*` utility classes (`dark:bg-input/30`, `dark:border-input`, `dark:aria-invalid:border-destructive/50`, etc.) removed — those referenced shadcn's own raw tokens, not this app's design system, and `tailwind-merge` does not strip a `dark:`-scoped class as a conflict against a plain same-property override at a call site (different conflict group), so they would have activated uncoordinated generic shadcn styling the moment `.dark` was toggled. If shadcn scaffolding is ever added back to either file, re-check for this.
 
 ---
 
 ## Invariants
 
 - Never use hex values directly in components — always use CSS variables via Tailwind tokens
-- Font is IBM Plex Sans (body/headings) and IBM Plex Mono (data) — always import via `next/font/google`, never a fallback system font
+- Font is a system stack — `--font-sans` (body/UI), `--font-mono` (data), `--font-display` (wordmark/hero heading only) — matching the approved concept mockup; no `next/font/google` import
 - Never use raw Tailwind color classes like `bg-purple-500` or `text-gray-600` — use project tokens only
 - `--accent` (#C9711F) is the signal color — reserved for primary actions and the wordmark, never for AI-generated content
 - `--agent` (#2E7D82) is reserved *exclusively* for AI-generated content — never use it for anything else, and never use another color for AI-generated content
@@ -362,3 +399,7 @@ Text-based, not an image (the v1 `public/logo.png` PNG asset is retired):
 - LinkedIn badge always uses `--linkedin` (#0A66C2) — never generic blue
 - All borders default to `--border` (#D8DBD6) — never use `border-gray-*`
 - Numbers that represent scores, timestamps, or status always render in `font-mono` with `tabular-nums`
+- Tailwind v4 only auto-generates `font-*` utilities for the canonical `sans`/`serif`/`mono` theme keys — a custom key like `--font-display` needs a hand-written `.font-display { font-family: var(--font-display); }` class (see `app/globals.css`); it will NOT get a utility class for free the way `--color-*` keys do
+- Never re-declare a theme key in `app/globals.css`'s `@theme inline { }` block (the shadcn scaffold bridge) that this app's own `@theme { }` block already defines — Tailwind v4 keeps only one `:root` declaration per key across the two, and the inline one wins outright, silently discarding the app's real token. This exact bug shipped (accent/background/border/font-sans/radius-sm through xl all silently resolved to shadcn defaults for a full day, invisible in light mode) before being caught during dark-mode verification. `@theme inline` in this file has a comment explaining exactly which keys are safe to add there — read it before adding anything new to that block.
+- Global element selectors and any new theme-override blocks (like `.dark { }`) in `app/globals.css` must stay inside `@layer base` or stay unlayered plain CSS to consistently beat `@theme`'s layered output — never wrap a theme-override block in `@layer utilities` or `@layer components`, which would put it at the wrong precedence
+- Global element selectors in `app/globals.css` (`a`, `button`/`input`/etc., `::selection`) must stay inside `@layer base` — CSS cascade layers mean *any* unlayered rule beats *any* layered rule regardless of specificity, so an unlayered `a { color: inherit }` silently wins over a Tailwind utility class like `text-surface` applied to the same anchor. This caused the navbar wordmark to render invisible (dark-on-dark) until fixed 2026-07-18.

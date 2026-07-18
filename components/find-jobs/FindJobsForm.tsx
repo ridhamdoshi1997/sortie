@@ -86,11 +86,11 @@ export function FindJobsForm({ userId, initialJobs = [] }: Props) {
             {/* Mission console — dark ink chrome, matches the app-wide brand frame */}
             <div className="rounded-2xl border border-overlay bg-overlay p-8 shadow-card md:p-12">
                 <div className="mb-8 max-w-2xl">
-                    <h2 className="mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-surface md:text-4xl">
+                    <h2 className="mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
                         <span className="text-accent">&#9670;</span>
                         Run a sortie
                     </h2>
-                    <p className="text-lg text-surface/60">
+                    <p className="text-lg text-overlay-foreground/60">
                         Scan the field and score every result against your profile before you spend a click on it.
                     </p>
                 </div>
@@ -98,13 +98,13 @@ export function FindJobsForm({ userId, initialJobs = [] }: Props) {
                 <div className="mb-6 grid w-full grid-cols-1 gap-4 md:grid-cols-2">
                     {Object.entries(filters).map(([key, value]) => (
                         <div key={key} className="flex flex-col gap-1">
-                            <label className="font-mono text-xs font-semibold uppercase tracking-wider text-surface/50">
+                            <label className="font-mono text-xs font-semibold uppercase tracking-wider text-overlay-foreground/50">
                                 {key.replace("_", " ")}
                             </label>
                             <Input
                                 value={value}
                                 onChange={(e) => updateFilter(key, e.target.value)}
-                                className="rounded-lg border-surface/15 bg-surface/8 text-surface placeholder:text-surface/40"
+                                className="rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 text-overlay-foreground placeholder:text-overlay-foreground/40"
                                 placeholder={
                                     key === "visa_sponsorship"
                                         ? "e.g. Must support TN Visa for Canadian citizens"
@@ -119,24 +119,24 @@ export function FindJobsForm({ userId, initialJobs = [] }: Props) {
 
                 <form
                     onSubmit={handleSearch}
-                    className="flex flex-col gap-4 rounded-xl border border-surface/10 bg-overlay-dark/50 p-4 shadow-inner backdrop-blur-md md:flex-row"
+                    className="flex flex-col gap-4 rounded-xl border border-overlay-foreground/10 bg-overlay-dark/50 p-4 shadow-inner backdrop-blur-md md:flex-row"
                 >
                     <div className="relative flex-1">
-                        <Briefcase className="absolute top-3.5 left-4 h-5 w-5 text-surface/40" />
+                        <Briefcase className="absolute top-3.5 left-4 h-5 w-5 text-overlay-foreground/40" />
                         <Input
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="h-12 rounded-lg border-surface/15 bg-surface/8 pl-12 text-lg text-surface placeholder:text-surface/40"
+                            className="h-12 rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 pl-12 text-lg text-overlay-foreground placeholder:text-overlay-foreground/40"
                             placeholder="Target role"
                             required
                         />
                     </div>
                     <div className="relative flex-1">
-                        <MapPin className="absolute top-3.5 left-4 h-5 w-5 text-surface/40" />
+                        <MapPin className="absolute top-3.5 left-4 h-5 w-5 text-overlay-foreground/40" />
                         <Input
                             value={location}
                             onChange={(e) => setLocation(e.target.value)}
-                            className="h-12 rounded-lg border-surface/15 bg-surface/8 pl-12 text-lg text-surface placeholder:text-surface/40"
+                            className="h-12 rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 pl-12 text-lg text-overlay-foreground placeholder:text-overlay-foreground/40"
                             placeholder="Target location"
                             required
                         />

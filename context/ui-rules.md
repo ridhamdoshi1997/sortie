@@ -6,15 +6,9 @@ Concise rules for building JobPilot UI. Design assets are available — use them
 
 ## Font
 
-Always import IBM Plex Sans and IBM Plex Mono via `next/font/google` in the root layout — this changed with the Sortie rebrand (2026-07-18), was Inter-only before.
+System font stack, per the approved Sortie concept mockup (corrected 2026-07-18 — a same-day rebrand pass had briefly switched to IBM Plex Sans/Mono via `next/font/google`, which was never actually part of the approved design; reverted).
 
-```typescript
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
-const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400","500","600","700"], variable: "--font-sans" });
-const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400","500","600"], variable: "--font-mono" });
-```
-
-The `--font-sans` and `--font-mono` variables are declared in `@theme` in globals.css. Apply both font variable classes to the `<html>` tag in root layout. Never use system fonts as the primary font. Use `font-mono` deliberately, not decoratively — it's reserved for scores, timestamps, status, and agent-content labels (see Agent Content below), not general UI text.
+`--font-sans` (body/UI), `--font-mono` (data), and `--font-display` (wordmark + hero heading only) are declared directly in `@theme` in `globals.css` as system-font stacks — no `next/font/google` import needed. `html` picks up `--font-sans` via `@apply font-sans` in the base layer. Use `font-mono` deliberately, not decoratively — it's reserved for scores, timestamps, status, and agent-content labels (see Agent Content below), not general UI text. Use `font-display` only for the wordmark and the hero `<h1>` — never general headings or body text.
 
 ---
 
@@ -30,12 +24,13 @@ The `--font-sans` and `--font-mono` variables are declared in `@theme` in global
 
 ## Navbar
 
-Three nav items: Dashboard, Find Jobs, Profile.
+Three nav items: Dashboard, Find Jobs, Profile. Dark ink chrome (`bg-overlay`), per the approved concept mockup — corrected 2026-07-18 (was a plain white bar, which was never actually the approved design).
 
-- Active item: `color: #7C5CFC`, font-weight 500, 14px
-- Inactive item: `color: #4A5565`, font-weight 500, 14px
+- Active item: `text-accent`, font-weight 500, 14px
+- Inactive item: `text-surface/60`, hover `text-surface`, font-weight 500, 14px
 - No underline — active state is color change only
-- Navbar always white background, full viewport width
+- `Logo` renders with `variant="light"` inside the navbar (see ui-tokens.md)
+- Unauthenticated CTA ("Start for free") uses the standard primary button pattern (`bg-accent text-accent-foreground`), not `landing-button-primary` — that class is for light-surface hero/CTA sections, not the dark chrome
 
 ---
 

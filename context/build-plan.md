@@ -501,6 +501,10 @@ Before Phase 7 started, a full rebrand from "JobPilot" to **"Sortie"** was imple
 - Border radius scale was deliberately left untouched (existing `rounded-2xl`/`rounded-xl` usage across v1 components) — only color and typography changed. Revisit if the "generic SaaS" feel persists after the color/type change settles in.
 - No dark-mode toggle exists in the app (the Sortie concept artifact supports both themes, but that was for the mockup only) — this is a separate feature if wanted, not implied by the rebrand.
 
+**Correction — 2026-07-18, same day:** the pass above had actually diverged from the approved concept artifact in three places, caught by direct comparison against the published mockup rather than assumed complete: fonts had been switched to IBM Plex Sans/Mono (mockup uses a system-font stack, with a separate display face reserved for the wordmark/hero only), the wordmark was mixed-case with no "SRT · 01" tag, and the navbar was a plain white bar instead of the mockup's dark ink chrome. Fixed — see `progress-tracker.md`'s "Rebrand correction" entry for the full file list. Colors were re-verified against the mockup's CSS variables at this time too and match exactly (hex-for-hex); only typography and the navbar/wordmark treatment had drifted.
+
+**Addendum — Light/Dark Theme Toggle, 2026-07-18, later same day:** not a career-ops or Phase 6/7 item — an unplanned feature you requested after seeing the corrected rebrand live and finding the "dark chrome only" mockup design (accurate to the artifact, but not what you wanted) too inconsistent against the rest of the still-light app. Resolves the "No dark-mode toggle exists" gap listed above. Full detail, the dark palette table, and a serious pre-existing token-collision bug found and fixed along the way: `progress-tracker.md`'s "Light/dark theme toggle" entry and `ui-tokens.md`'s "Dark Mode" section. Sequenced before Phase 7 at your explicit choice.
+
 ---
 
 ## Phase 6 — Foundation Consolidation

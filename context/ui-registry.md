@@ -21,17 +21,18 @@ After building any component — update this file with the component name, file 
 ### Logo / Wordmark
 
 File: components/layout/Logo.tsx
-Last updated: 2026-07-18 (rebuilt for the Sortie rebrand — was an `<Image>` of `public/logo.png`, a "JobPilot" PNG asset now retired)
+Last updated: 2026-07-18 (corrected same-day to actually match the approved concept mockup — the first rebuild used mixed-case IBM Plex text with no tag; see ui-tokens.md's Font correction note)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | Text — mark      | `text-lg text-accent` (◆ glyph, `aria-hidden`)                                        |
-| Text — wordmark  | `text-[19px] font-bold leading-7 tracking-tight text-text-primary`                    |
-| Spacing          | `inline-flex items-baseline gap-1.5`                                                  |
-| Accent usage     | Mark glyph only — the wordmark text itself stays `text-text-primary`, not accent      |
+| Text — wordmark  | `font-display text-[19px] font-bold uppercase leading-7 tracking-wide` — `text-text-primary` (`variant="dark"`, default) or `text-overlay-foreground` (`variant="light"`) |
+| Text — tag       | `font-mono text-[11px] font-normal uppercase leading-none tracking-widest` — "SRT · 01", `text-text-muted` (dark variant) or `text-overlay-foreground/50` (light variant), `aria-hidden` |
+| Spacing          | `inline-flex items-baseline gap-2.5`                                                  |
+| Accent usage     | Mark glyph only — the wordmark text itself stays on the primary/surface token, not accent |
 
 **Pattern notes:**
-Text-based wordmark, not an image — no new logo asset was generated as part of this rebrand. `public/logo.png` and the homepage hero/features preview images still show the old "JobPilot" branding baked into static screenshots; those are a separate asset-regeneration task, not a code fix. `priority` prop is still accepted for backward compatibility with existing callers but is unused (no `<Image>` left to prioritize).
+Text-based wordmark, not an image — no new logo asset was generated as part of this rebrand. `public/logo.png` and the homepage hero/features preview images still show the old "JobPilot" branding baked into static screenshots; those are a separate asset-regeneration task, not a code fix. `priority` prop is still accepted for backward compatibility with existing callers but is unused (no `<Image>` left to prioritize). New `variant` prop (`"dark" | "light"`) makes the wordmark theme-aware for use on both light surfaces (footer) and the dark ink navbar chrome — see the Navbar entry below.
 
 ### Login Card
 
@@ -53,25 +54,41 @@ Last updated: 2026-06-03
 **Pattern notes:**
 Auth screens use a two-panel shell: a left explanatory panel with the established landing glow treatment and a right focused action panel. Provider actions are token-driven bordered form buttons with lucide icons and no hardcoded provider colors.
 
-### Landing Navbar
+### Navbar
 
 File: components/layout/Navbar.tsx
-Last updated: 2026-06-03
+Last updated: 2026-07-18 (added `ThemeToggle`; swapped `surface` tokens for `overlay-foreground` ahead of dark mode shipping — see below)
+
+Global — rendered on both public pages (homepage, login) and authenticated pages (dashboard, find-jobs detail, profile) via the `isAuthenticated` prop, not landing-only despite the old entry name.
 
 | Property         | Class                                                                                                    |
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
-| Background       | `bg-surface`                                                                                             |
-| Border           | `border-b border-border`                                                                                 |
+| Background       | `bg-overlay` (dark ink chrome — fixed dark in both light and dark app themes)                            |
+| Border           | `none` — contrast against the page below provides separation                                             |
 | Border radius    | `rounded-md` on CTA only                                                                                 |
-| Text — primary   | `text-sm font-medium text-text-dark`                                                                     |
-| Text — secondary | `landing-button-primary` on CTA                                                                         |
+| Text — primary   | `text-sm font-medium text-overlay-foreground/60` (inactive), `text-accent` (active)                       |
+| Text — secondary | `bg-accent text-accent-foreground` primary-button pattern on CTA (not `landing-button-primary`, which is for light-surface sections) |
 | Spacing          | `mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8`             |
-| Hover state      | `hover:text-text-primary` on nav links, shared hover from `landing-button-primary` on CTA               |
+| Hover state      | `hover:text-overlay-foreground` on nav links, `hover:opacity-90` on CTA                                   |
 | Shadow           | `none`                                                                                                   |
-| Accent usage     | `landing-button-primary` for the top-right CTA                                                          |
+| Accent usage     | Active nav item, mark glyph on `Logo variant="light"`, CTA background                                    |
 
 **Pattern notes:**
-Top navigation is always a full-width white bar with a single bottom border and restrained typography. The only high-contrast element is the dark CTA on the right.
+Top navigation is always a full-width dark ink bar (`bg-overlay`), matching the wordmark/hero-chrome treatment used elsewhere (e.g. `FindJobsForm.tsx`'s hero) — and stays that way in both light and dark app theme, since it's fixed branding, not something that should flip to a light bar. `Logo` renders with `variant="light"` here so the wordmark and tag stay legible against the dark background. Authenticated-state icon/link colors use opacity-modified `overlay-foreground` tokens (`text-overlay-foreground/50`, `text-overlay-foreground/70`), **not `surface`** — `surface` now has a real, different dark-mode value and would go invisible on this permanently-dark chrome once dark mode ships (see ui-tokens.md's Dark Mode section). `ThemeToggle` renders here (both branches, next to sign-out / the CTA) — see its own entry below.
+
+### ThemeToggle
+
+File: components/layout/ThemeToggle.tsx
+Last updated: 2026-07-18 (new)
+
+| Property      | Class                                                                                     |
+| ------------- | ------------------------------------------------------------------------------------------- |
+| Icon color    | `text-overlay-foreground/60`, `hover:text-overlay-foreground`                              |
+| Icon size     | `h-4 w-4` (lucide `Sun`/`Moon`), `h-5 w-5` clickable hit area                              |
+| Spacing       | Rendered inline in `Navbar.tsx`'s right-side action group, `gap-6` from neighboring items  |
+
+**Pattern notes:**
+Client component using `useTheme()` from `next-themes`. Renders a `Moon` icon when the resolved theme is light (click to go dark) and a `Sun` icon when dark (click to go light). Guards against hydration mismatch with a `mounted` state flag — renders an empty `h-5 w-5` placeholder until mounted, since `next-themes` only knows the real theme client-side (localStorage/system preference). Only ever lives on the dark `bg-overlay` chrome, so it always uses `overlay-foreground` tokens, never `surface`.
 
 ### Landing Hero
 
@@ -335,22 +352,22 @@ Form labels use `text-xs font-medium uppercase tracking-wide` — all caps with 
 ### FindJobsForm
 
 File: components/find-jobs/FindJobsForm.tsx
-Last updated: 2026-07-18 (rebuilt on the token system as part of the Sortie rebrand — previously used hardcoded slate/blue/green Tailwind classes matching nothing else in the app)
+Last updated: 2026-07-18 (swapped `surface` tokens for `overlay-foreground` on the dark hero panel ahead of dark mode shipping — see ui-tokens.md's Dark Mode section)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| Background       | Hero: `bg-overlay` (ink chrome); results: `bg-surface` cards                          |
-| Border           | Hero: `border-overlay`; inputs on hero: `border-surface/15`; cards: `border-border`, `hover:border-accent` |
+| Background       | Hero: `bg-overlay` (ink chrome, fixed dark in both app themes); results: `bg-surface` cards |
+| Border           | Hero: `border-overlay`; inputs on hero: `border-overlay-foreground/15`; cards: `border-border`, `hover:border-accent` |
 | Border radius    | `rounded-2xl` hero and cards, `rounded-lg` inputs/button, `rounded-r-lg` agent callout |
-| Text — primary   | Hero heading `text-surface`; card title `text-text-primary`                           |
-| Text — secondary | Hero subtext `text-surface/60`; card body `text-text-secondary`                       |
+| Text — primary   | Hero heading `text-overlay-foreground`; card title `text-text-primary`                |
+| Text — secondary | Hero subtext `text-overlay-foreground/60`; card body `text-text-secondary`            |
 | Spacing          | `p-8 md:p-12` hero, `p-6` cards (via shadcn `Card`)                                   |
 | Hover state      | `hover:opacity-90` submit button; `hover:border-accent hover:shadow-md` job cards     |
 | Shadow           | `shadow-card` hero                                                                    |
 | Accent usage     | `bg-accent text-accent-foreground` submit button; `text-accent` company name and wordmark mark; match score number tiered success/info/warning in `font-mono`; match reason uses the Agent Content treatment (see `ui-rules.md`) |
 
 **Pattern notes:**
-The hero is intentionally dark ink chrome (`bg-overlay`), matching the wordmark/nav frame treatment rather than a light card — this is the one place in the app a full-bleed dark surface is correct. Inputs on that dark surface use opacity-modified surface tokens (`bg-surface/8 border-surface/15 placeholder:text-surface/40`) rather than new colors, so they stay token-derived. Job result cards are the standard light card pattern used everywhere else. Match score renders as a plain `font-mono tabular-nums` number (no bar) next to the title, tiered by the same success/info/warning thresholds as everywhere else in the app.
+The hero is intentionally dark ink chrome (`bg-overlay`), matching the wordmark/nav frame treatment rather than a light card — this is the one place in the app a full-bleed dark surface is correct, and it stays dark in both light and dark app theme. Inputs on that dark surface use opacity-modified `overlay-foreground` tokens (`bg-overlay-foreground/8 border-overlay-foreground/15 placeholder:text-overlay-foreground/40`), **not `surface`** — `surface` has a real dark-mode value now and would go invisible here once dark mode is active. Job result cards are the standard light card pattern used everywhere else. Match score renders as a plain `font-mono tabular-nums` number (no bar) next to the title, tiered by the same success/info/warning thresholds as everywhere else in the app.
 
 ---
 
