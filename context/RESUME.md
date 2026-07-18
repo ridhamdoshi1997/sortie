@@ -12,7 +12,9 @@ Last updated: 2026-07-18
 
 The plan is to port the real feature set of `santifer/career-ops` (a CLI tool — 6-block evaluation, portal scanner, negotiation scripts, contact discovery, interview story bank, pipeline dedup) into this app as native web features, plus custom additions (model router, 10-dimension evaluator, AI co-pilot chat editor, Kanban tracking). Nothing from the original JobPilot v1 gets removed — this is additive.
 
-v1 (17 features) is complete. v2 Phase 6 (Foundation Consolidation) is complete. The rebrand pass is complete. **Phase 7 (Model Router) is next**, nothing blocking it.
+v1 (17 features) is complete. v2 Phase 6 (Foundation Consolidation) is complete. The rebrand pass is complete. Everything is committed and pushed. **Phase 7 (Model Router) is next**, nothing blocking it.
+
+**Repo state:** `origin` no longer points to the original template (`adrianhajdin/job_pilot`) — it was repointed to a new private repo, `github.com/ridhamdoshi1997/sortie`, created this session. Working tree is clean as of the last push (commit `dbffb8d`). `.env` was found to be un-gitignored (never actually committed, but unprotected) and fixed before the first push — `.gitignore` now correctly excludes it. Repo-local `git config user.name`/`user.email` were set to match the GitHub account (noreply email, not a real one) since none existed before.
 
 **Not yet done, worth knowing before touching related work:** `CompanyResearch.tsx` (company dossier) is AI-generated content but hasn't gotten the Agent Content treatment yet. `public/logo.png` and the homepage hero/features screenshot images still show old "JobPilot" branding (static assets, not code). No dark-mode toggle exists.
 
