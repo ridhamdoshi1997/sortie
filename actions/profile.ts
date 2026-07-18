@@ -254,10 +254,13 @@ export async function extractProfile(): Promise<{
       };
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+      const openai = new OpenAI({
+          apiKey: process.env.GEMINI_API_KEY!,
+          baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
+      });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      const response = await openai.chat.completions.create({
+          model: "gemini-3.1-flash-lite",
       response_format: { type: "json_object" },
       temperature: 0.3,
       max_tokens: 800,

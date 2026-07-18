@@ -23,7 +23,7 @@ function isTruncatedPreview(description: string | null): boolean {
 }
 
 function BulletList({ section }: { section: BulletSection }) {
-  if (section.items.length === 0) return null;
+    if (!section.items || section.items.length === 0) return null;
 
   return (
     <div className="mt-6">

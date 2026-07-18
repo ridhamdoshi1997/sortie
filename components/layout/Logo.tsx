@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 
 type Props = {
@@ -6,17 +5,17 @@ type Props = {
   priority?: boolean;
 };
 
-export function Logo({ href = "/", priority = false }: Props) {
+export function Logo({ href = "/" }: Props) {
   return (
-    <Link href={href} aria-label="JobPilot home" className="inline-flex items-center">
-      <Image
-        src="/logo.png"
-        alt="JobPilot"
-        width={112}
-        height={38}
-        priority={priority}
-        className="h-9 w-auto"
-      />
+    <Link
+      href={href}
+      aria-label="Sortie home"
+      className="inline-flex items-baseline gap-1.5 text-text-primary"
+    >
+      <span className="text-lg leading-none text-accent" aria-hidden="true">
+        &#9670;
+      </span>
+      <span className="text-[19px] font-bold leading-7 tracking-tight">Sortie</span>
     </Link>
   );
 }

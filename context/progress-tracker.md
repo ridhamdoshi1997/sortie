@@ -6,9 +6,18 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ## Current Status
 
-**Phase:** Phase 5 — Dashboard
-**Last completed:** 16 Recent Activity — Real Data
-**Next:** 17 Analytics Charts — PostHog Data
+**Phase:** Rebrand pass complete (JobPilot → **Sortie**). Next up: Phase 7 — Model Router.
+**Last completed:** Full visual identity implementation — see "Rebrand pass" in `build-plan.md`'s v2 Status section for the complete list.
+**Next:** Phase 7 — Model Router.
+
+App name is now **Sortie** everywhere user-visible in code (wordmark, page title, login card). v2 roadmap (career-ops feature port + custom additions) lives in `build-plan.md` under "v2 — Career-Ops Roadmap". All 5 Phase 6 items (17-21) are done, all open decisions resolved, and the rebrand/GUI pass that was blocking Phase 7 is now also done. Nothing blocking Phase 7 onward.
+
+- **Rebrand:** new token palette (ink/paper/signal-amber/agent-teal) in `app/globals.css`, IBM Plex Sans + IBM Plex Mono fonts in `app/layout.tsx`, text wordmark in `Logo.tsx`, `FindJobsForm.tsx` fully rebuilt on tokens (was hardcoded slate/blue/green — the original complaint), new "Agent Content" UI pattern applied to `MatchScore.tsx` and `FindJobsForm.tsx` job cards. Verified live (homepage/login/footer), zero console errors. Not yet applied: `CompanyResearch.tsx` dossier (same AI-content pattern, not yet touched), static logo/screenshot image assets (still show old branding, need regeneration not code), no dark-mode toggle exists. Full detail in `build-plan.md`.
+
+- Item 17: charts were already querying the DB directly instead of PostHog's API (found, not introduced) — kept as-is since PostHog isn't even configured (`NEXT_PUBLIC_POSTHOG_KEY` blank) and the DB data is equivalent with less complexity; flagged as a deviation from the literal v1 spec. What was actually missing — empty states for zero-data charts — is now added.
+- Item 18: deleted the whole orphaned pipeline, including two files not on the original list (`JobsTable.tsx`, `/api/jobs/route.ts`) that became newly-orphaned once their only caller was removed. Full project type-check passes clean.
+- Item 20: `agent_logs` table didn't actually exist in the live database (migration file present, never applied) — created and applied via a new tracked migration. Real `agent_runs` schema also differs from `architecture.md` (no `completed_at`; has `updated_at`/`error_message`/`total_time_ms`/`is_successful` instead) — code now matches the real schema, verified via a full simulated lifecycle.
+- Found an existing, undocumented `applications` table that closely matches Phase 11's planned `documents` table — reuse it when building Phase 11 instead of creating a new one.
 
 ---
 

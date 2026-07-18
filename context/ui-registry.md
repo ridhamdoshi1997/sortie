@@ -18,6 +18,21 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Logo / Wordmark
+
+File: components/layout/Logo.tsx
+Last updated: 2026-07-18 (rebuilt for the Sortie rebrand — was an `<Image>` of `public/logo.png`, a "JobPilot" PNG asset now retired)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Text — mark      | `text-lg text-accent` (◆ glyph, `aria-hidden`)                                        |
+| Text — wordmark  | `text-[19px] font-bold leading-7 tracking-tight text-text-primary`                    |
+| Spacing          | `inline-flex items-baseline gap-1.5`                                                  |
+| Accent usage     | Mark glyph only — the wordmark text itself stays `text-text-primary`, not accent      |
+
+**Pattern notes:**
+Text-based wordmark, not an image — no new logo asset was generated as part of this rebrand. `public/logo.png` and the homepage hero/features preview images still show the old "JobPilot" branding baked into static screenshots; those are a separate asset-regeneration task, not a code fix. `priority` prop is still accepted for backward compatibility with existing callers but is unused (no `<Image>` left to prioritize).
+
 ### Login Card
 
 File: components/auth/LoginCard.tsx
@@ -315,91 +330,27 @@ Form labels use `text-xs font-medium uppercase tracking-wide` — all caps with 
 
 ---
 
-### SearchControls
+*(`SearchControls`, `JobFilters`, `JobsTable`, `JobsPagination` were deleted 2026-07-18 along with the rest of the orphaned Adzuna pipeline — see `context/build-plan.md` Phase 6 item 18. Removed from this registry since the files no longer exist.)*
 
-File: components/find-jobs/SearchControls.tsx
-Last updated: 2026-06-05
+### FindJobsForm
 
-| Property         | Class                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Background       | `bg-surface`                                                                          |
-| Border           | `border border-border`                                                                |
-| Border radius    | `rounded-2xl` card, `rounded-lg` inputs and button                                   |
-| Text — primary   | `text-sm text-text-primary`                                                           |
-| Text — secondary | `text-xs font-medium uppercase tracking-wide text-text-secondary` labels              |
-| Spacing          | `p-6` card, `gap-4` grid                                                              |
-| Hover state      | `hover:opacity-90` Find Jobs button                                                   |
-| Shadow           | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]`             |
-| Accent usage     | `bg-accent text-accent-foreground` button; `focus:ring-accent` inputs; `bg-success-lightest border-success-light text-success-foreground` success banner |
-
-**Pattern notes:**
-Three-column grid at `sm:` breakpoint — job title (with search icon), location, Find Jobs button aligned to bottom. Success banner uses `✨` emoji + green pill. Button disabled when job title empty or search in progress.
-
----
-
-### JobFilters
-
-File: components/find-jobs/JobFilters.tsx
-Last updated: 2026-06-05
+File: components/find-jobs/FindJobsForm.tsx
+Last updated: 2026-07-18 (rebuilt on the token system as part of the Sortie rebrand — previously used hardcoded slate/blue/green Tailwind classes matching nothing else in the app)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| Background       | `bg-surface`                                                                          |
-| Border           | `border border-border` on inputs and selects                                          |
-| Border radius    | `rounded-lg`                                                                          |
-| Text — primary   | `text-sm font-medium text-text-primary`                                               |
-| Text — secondary | `text-text-muted` placeholder and chevron icons                                       |
-| Spacing          | `gap-3` layout, `gap-2` dropdown row                                                  |
-| Hover state      | `none`                                                                                |
-| Shadow           | `none`                                                                                |
-| Accent usage     | `focus:ring-accent focus:border-accent`                                               |
+| Background       | Hero: `bg-overlay` (ink chrome); results: `bg-surface` cards                          |
+| Border           | Hero: `border-overlay`; inputs on hero: `border-surface/15`; cards: `border-border`, `hover:border-accent` |
+| Border radius    | `rounded-2xl` hero and cards, `rounded-lg` inputs/button, `rounded-r-lg` agent callout |
+| Text — primary   | Hero heading `text-surface`; card title `text-text-primary`                           |
+| Text — secondary | Hero subtext `text-surface/60`; card body `text-text-secondary`                       |
+| Spacing          | `p-8 md:p-12` hero, `p-6` cards (via shadcn `Card`)                                   |
+| Hover state      | `hover:opacity-90` submit button; `hover:border-accent hover:shadow-md` job cards     |
+| Shadow           | `shadow-card` hero                                                                    |
+| Accent usage     | `bg-accent text-accent-foreground` submit button; `text-accent` company name and wordmark mark; match score number tiered success/info/warning in `font-mono`; match reason uses the Agent Content treatment (see `ui-rules.md`) |
 
 **Pattern notes:**
-`appearance-none` on `<select>` with absolute `ChevronDown` icon overlay. Filter/sort dropdowns sit in a flex row on the right; text search stretches to fill the left. All filter/sort changes reset pagination to page 1 (handled by parent).
-
----
-
-### JobsTable
-
-File: components/find-jobs/JobsTable.tsx
-Last updated: 2026-06-05
-
-| Property         | Class                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Background       | `bg-surface`, `hover:bg-surface-secondary` rows                                       |
-| Border           | `border border-border` card, `border-b border-border` row separators                 |
-| Border radius    | `rounded-2xl` card, `rounded-full` score bar, `rounded-lg` company icon box          |
-| Text — primary   | `text-sm font-medium text-text-primary` company; `text-sm text-text-primary` role    |
-| Text — secondary | `text-xs font-medium uppercase tracking-wide text-text-secondary` column headers; `text-sm text-text-muted` date |
-| Spacing          | `px-6 py-3` headers, `px-6 py-4` cells                                               |
-| Hover state      | `hover:bg-surface-secondary` on `<tr>`                                                |
-| Shadow           | `shadow-[0px_1px_3px_rgba(0,0,0,0.1),0px_1px_2px_-1px_rgba(0,0,0,0.1)]`             |
-| Accent usage     | Score bar fill: `bg-success` (≥80), `bg-info` (60-79), `bg-warning` (<60); source badge `bg-accent-light text-accent` for Search |
-
-**Pattern notes:**
-Each cell wraps its content in `<Link href="/find-jobs/{id}">` for full-row clickability. Score bar is `h-1 w-24 bg-border-light` track with colored fill div driven by `style={{ width: \`${score}%\` }}`. Company icon uses `Building2` from lucide as a placeholder. Source badge is pill-shaped. Accepts optional `isLoading` prop — dims table with `opacity-60 transition-opacity` during server fetch and skips empty-state when loading.
-
----
-
-### JobsPagination
-
-File: components/find-jobs/JobsPagination.tsx
-Last updated: 2026-06-05
-
-| Property         | Class                                                                                 |
-| ---------------- | ------------------------------------------------------------------------------------- |
-| Background       | `bg-surface` on page number and Previous/Next buttons                                 |
-| Border           | `border border-border`                                                                |
-| Border radius    | `rounded-lg`                                                                          |
-| Text — primary   | `text-sm font-medium text-text-primary`                                               |
-| Text — secondary | `text-sm text-text-muted` "Showing X to Y of Z" label                                |
-| Spacing          | `gap-1` between page buttons, `h-8 w-8` page number buttons                          |
-| Hover state      | `hover:bg-surface-secondary` on Previous/Next and inactive page numbers               |
-| Shadow           | `none`                                                                                |
-| Accent usage     | `bg-accent text-accent-foreground` active page button                                 |
-
-**Pattern notes:**
-`getPageNumbers()` returns ellipsis items as `"..."` strings alongside page numbers. Always shows first/last page; ellipsis collapses middle range. `disabled:opacity-40` on Previous/Next at boundaries. Returns `null` when `totalCount === 0`.
+The hero is intentionally dark ink chrome (`bg-overlay`), matching the wordmark/nav frame treatment rather than a light card — this is the one place in the app a full-bleed dark surface is correct. Inputs on that dark surface use opacity-modified surface tokens (`bg-surface/8 border-surface/15 placeholder:text-surface/40`) rather than new colors, so they stay token-derived. Job result cards are the standard light card pattern used everywhere else. Match score renders as a plain `font-mono tabular-nums` number (no bar) next to the title, tiered by the same success/info/warning thresholds as everywhere else in the app.
 
 ---
 
@@ -421,6 +372,8 @@ Last updated: 2026-06-05
 
 **Pattern notes:**
 Job detail pages use a narrow centered column rather than the full dashboard width. Job descriptions render the complete stored text with `whitespace-pre-line`, append any populated structured bullet sections, and show a bordered `View Full Job Post` notice when the saved Adzuna preview ends with `…` or `...`. Company research now renders a saved 9-field dossier read-only; once research exists, the generate action is hidden. Authenticated app pages pass `isAuthenticated` to `Navbar` so the top-right user icon and sign-out action match the signed-in designs.
+
+**Update 2026-07-18:** `MatchScore.tsx`'s "AI Match Reasoning" section now uses the Agent Content treatment (`border-agent`, `bg-agent-muted`, `text-agent` mono label reading "Agent read") instead of a generic `bg-success-lightest` sparkle icon — see `ui-rules.md`'s Agent Content section. The Company Research dossier (`CompanyResearch.tsx`) has not been updated yet and still uses its original neutral card treatment despite also being AI-generated content — apply the same treatment there next time that component is touched.
 
 ### Company Research Dossier
 

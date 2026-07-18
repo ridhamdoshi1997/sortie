@@ -16,6 +16,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 Read in this exact order before any implementation:
 
+0. **context/RESUME.md — read this one first, always.** Fast-orientation layer: current state, reorientation steps, known gotchas. The rest of this list is the full detail underneath it.
 1. context/project-overview.md
 2. context/architecture.md
 3. context/ui-tokens.md
@@ -182,7 +183,7 @@ Payments currently has TypeScript SDK docs only. Use the Payments API reference 
 
 This project uses [InsForge](https://insforge.dev): an all-in-one, open-source Postgres-based backend (BaaS) that gives this app a database, authentication, file storage, edge functions, realtime, an AI model gateway, and payments through one platform.
 
-- **Project:** **JSM_JobPilot** (API base `https://2zu6ipjr.eu-central.insforge.app`)
+- **Project:** **Job search** (API base `https://umhshbx9.us-east.insforge.app`)
 - **Skills:** these InsForge skills are installed for supported coding agents. Reach for them before implementing any InsForge feature instead of guessing the API:
   - `insforge`: app code with the `@insforge/sdk` client (database CRUD, auth, storage, edge functions, realtime, AI, email, and Stripe payments).
   - `insforge-cli`: backend and infrastructure via the `insforge` CLI (projects, SQL, migrations, RLS policies, storage buckets, functions, secrets, payment setup, schedules, deploys).

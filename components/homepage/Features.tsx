@@ -26,7 +26,7 @@ export function Features() {
           <div className="mx-auto max-w-[590px] overflow-hidden rounded-[28px] border border-border bg-surface">
             <Image
               src="/images/agnet-log.png"
-              alt="JobPilot agent log output"
+              alt="Sortie agent log output"
               width={2144}
               height={1656}
               className="h-auto w-full"

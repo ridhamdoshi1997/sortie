@@ -17,6 +17,18 @@ type MatchBucket = { range: string; count: number };
 
 const AXIS_STYLE = { fill: "#9CA3AF", fontSize: 12 };
 
+function isEmpty(data: { count: number }[]) {
+  return data.every((d) => d.count === 0);
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex h-full items-center justify-center">
+      <p className="text-sm text-text-muted">{message}</p>
+    </div>
+  );
+}
+
 export function CompanyResearchChart({ data }: { data: DayCount[] }) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
@@ -24,6 +36,9 @@ export function CompanyResearchChart({ data }: { data: DayCount[] }) {
         Company Research Activity
       </h2>
       <div className="mt-6 h-55">
+        {isEmpty(data) ? (
+          <EmptyState message="No companies researched yet." />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
@@ -62,6 +77,7 @@ export function CompanyResearchChart({ data }: { data: DayCount[] }) {
             />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -74,6 +90,9 @@ export function JobsOverTimeChart({ data }: { data: DayCount[] }) {
         Jobs Found Over Time
       </h2>
       <div className="mt-6 h-55">
+        {isEmpty(data) ? (
+          <EmptyState message="No jobs found yet — run a search to see activity here." />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart
             data={data}
@@ -128,6 +147,7 @@ export function JobsOverTimeChart({ data }: { data: DayCount[] }) {
             />
           </AreaChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );
@@ -140,6 +160,9 @@ export function MatchDistributionChart({ data }: { data: MatchBucket[] }) {
         Match Score Distribution
       </h2>
       <div className="mt-6 h-55">
+        {isEmpty(data) ? (
+          <EmptyState message="No scored matches yet." />
+        ) : (
         <ResponsiveContainer width="100%" height="100%">
           <BarChart
             data={data}
@@ -178,6 +201,7 @@ export function MatchDistributionChart({ data }: { data: MatchBucket[] }) {
             />
           </BarChart>
         </ResponsiveContainer>
+        )}
       </div>
     </div>
   );

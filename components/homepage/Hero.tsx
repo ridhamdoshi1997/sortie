@@ -38,7 +38,7 @@ export function Hero() {
           <div className="landing-browser-frame landing-browser-shadow mx-auto max-w-[1114px] overflow-hidden rounded-[26px] bg-surface">
             <Image
               src="/images/dashboard-demo.png"
-              alt="JobPilot dashboard preview"
+              alt="Sortie dashboard preview"
               width={4788}
               height={2416}
               priority

@@ -40,7 +40,7 @@ export function LoginCard({ error }: Props) {
           <div>
             <p className="text-sm font-medium text-text-secondary">Welcome to</p>
             <h2 className="mt-2 text-3xl font-semibold leading-9 text-text-primary">
-              JobPilot
+              Sortie
             </h2>
             <p className="mt-3 text-sm leading-6 text-text-secondary">
               Choose your preferred provider to continue.

@@ -21,21 +21,18 @@ export default async function JobDetailsPage({ params }: Props) {
   const user = await requireUser();
   const { id } = await params;
   const insforge = await createInsforgeServer();
+    const { data: job, error } = await insforge.database
+        .from("jobs")
+        .select("*")
+        .eq("id", id)
+        .eq("user_id", user.id)
+        .maybeSingle();
 
-  const { data: job, error } = await insforge.database
-    .from("jobs")
-    .select("*")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .maybeSingle<Job>();
+    if (error) console.error("DB Error:", error);
 
-  if (error) {
-    console.error("[find-jobs/id]", error);
-  }
-
-  if (error || !job) {
-    notFound();
-  }
+    if (!job) {
+        notFound();
+    }
 
   const company = job.company ?? "this company";
   const applyUrl = job.external_apply_url ?? job.source_url;
@@ -52,14 +49,14 @@ export default async function JobDetailsPage({ params }: Props) {
           matchedSkills={job.matched_skills}
           missingSkills={job.missing_skills}
         />
-        <JobDescription
-          aboutRole={job.about_role}
-          responsibilities={job.responsibilities}
-          requirements={job.requirements}
-          niceToHave={job.nice_to_have}
-          benefits={job.benefits}
-          sourceUrl={applyUrl}
-        />
+              <JobDescription
+                  aboutRole={job.about_role || job.description}
+                  responsibilities={job.responsibilities}
+                  requirements={job.requirements}
+                  niceToHave={job.nice_to_have}
+                  benefits={job.benefits}
+                  sourceUrl={applyUrl}
+              />
         <CompanyResearch
           company={company}
           jobId={job.id}

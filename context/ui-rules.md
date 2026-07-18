@@ -6,14 +6,15 @@ Concise rules for building JobPilot UI. Design assets are available — use them
 
 ## Font
 
-Always import Inter via `next/font/google` in the root layout.
+Always import IBM Plex Sans and IBM Plex Mono via `next/font/google` in the root layout — this changed with the Sortie rebrand (2026-07-18), was Inter-only before.
 
 ```typescript
-import { Inter } from "next/font/google";
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
+import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+const plexSans = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400","500","600","700"], variable: "--font-sans" });
+const plexMono = IBM_Plex_Mono({ subsets: ["latin"], weight: ["400","500","600"], variable: "--font-mono" });
 ```
 
-The `--font-sans` variable is already declared in `@theme` in globals.css. Apply the font variable class to the `<html>` tag in root layout. Never use system fonts as the primary font.
+The `--font-sans` and `--font-mono` variables are declared in `@theme` in globals.css. Apply both font variable classes to the `<html>` tag in root layout. Never use system fonts as the primary font. Use `font-mono` deliberately, not decoratively — it's reserved for scores, timestamps, status, and agent-content labels (see Agent Content below), not general UI text.
 
 ---
 
@@ -165,9 +166,28 @@ background track: #E7EAF3
 
 Fill color by score:
 
-- 80-100%: `#10B981` (green)
-- 60-79%: `#61A8FF` (blue)
-- Below 60%: `#FF8904` (orange)
+- 80-100%: `#3F7A4F` (green, `--color-success`)
+- 60-79%: `#4472A8` (steel blue, `--color-info`)
+- Below 60%: `#B5502E` (red-orange, `--color-warning`)
+
+Score numbers themselves (not the bar) render in `font-mono font-semibold tabular-nums`, colored the same tier — see `FindJobsForm.tsx` job cards for the reference implementation.
+
+---
+
+## Agent Content
+
+Added with the Sortie rebrand (2026-07-18). Any content the AI agent generated — match reasoning, research findings, generated document drafts, interview prep — gets this exact treatment, and nothing else in the app ever does:
+
+```
+border-left: 2px solid var(--color-agent)
+border-radius: 0 8px 8px 0 (rounded only on the non-border side)
+background: bg-agent-muted
+padding: px-4 py-3
+label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent, reading "Agent read"
+body: text-sm text-agent-foreground
+```
+
+The point is reliability, not decoration: a user should be able to tell "the AI said this" from the shape alone, without reading a label. That only holds if the treatment is never reused for anything else — don't reach for `border-agent` or `bg-agent-muted` for a regular info callout, warning, or tip. Reference implementations: `MatchScore.tsx` (job details page), `FindJobsForm.tsx` (job cards).
 
 ---
 
