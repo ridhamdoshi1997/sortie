@@ -14,8 +14,6 @@ export function JobActions({
   showBackLink = false,
   showApplyButton = false,
 }: Props) {
-  const resolvedUrl = applyUrl ?? "/find-jobs";
-
   return (
     <>
       {showBackLink && (
@@ -28,16 +26,24 @@ export function JobActions({
         </Link>
       )}
 
-      {showApplyButton && (
-        <Link
-          href={resolvedUrl}
-          target={applyUrl ? "_blank" : undefined}
-          rel={applyUrl ? "noreferrer" : undefined}
-          className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
-        >
-          Apply Now at {company}
-        </Link>
-      )}
+      {showApplyButton &&
+        (applyUrl ? (
+          <Link
+            href={applyUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex min-h-12 w-full items-center justify-center rounded-lg bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          >
+            Apply Now at {company}
+          </Link>
+        ) : (
+          <div
+            className="inline-flex min-h-12 w-full cursor-not-allowed items-center justify-center rounded-lg border border-border bg-surface-secondary px-4 py-3 text-sm font-medium text-text-muted"
+            title="No application link was saved for this job"
+          >
+            No application link available
+          </div>
+        ))}
     </>
   );
 }

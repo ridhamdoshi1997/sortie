@@ -60,11 +60,14 @@ function InfoCard({ item }: { item: InfoItem }) {
 export function JobInfo({ job }: Props) {
   const company = job.company ?? "Unknown company";
   const matchScore = job.match_score ?? 0;
-  const applyUrl = job.external_apply_url ?? job.source_url ?? "/find-jobs";
+  // Same fallback chain as app/find-jobs/[id]/page.tsx's JobActions apply
+  // link — external_apply_url/source_url are never actually written by the
+  // scraper, `url` is where the real link lives for every saved job today.
+  const applyUrl = job.external_apply_url ?? job.source_url ?? job.url;
   const infoItems: InfoItem[] = [
     {
       label: "Salary Est.",
-      value: job.salary ?? "—",
+      value: job.salary || "Not disclosed",
       icon: DollarSign,
       iconClassName: "text-success",
       iconBackgroundClassName: "bg-success-lightest",
@@ -116,15 +119,25 @@ export function JobInfo({ job }: Props) {
             </div>
           </div>
 
-          <Link
-            href={applyUrl}
-            target={applyUrl === "/find-jobs" ? undefined : "_blank"}
-            rel={applyUrl === "/find-jobs" ? undefined : "noreferrer"}
-            className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface-secondary"
-          >
-            <ExternalLink className="h-4 w-4" />
-            View Job Post
-          </Link>
+          {applyUrl ? (
+            <Link
+              href={applyUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:bg-surface-secondary"
+            >
+              <ExternalLink className="h-4 w-4" />
+              View Job Post
+            </Link>
+          ) : (
+            <div
+              className="inline-flex min-h-10 cursor-not-allowed items-center justify-center gap-2 rounded-lg border border-border bg-surface-secondary px-4 py-2 text-sm font-semibold text-text-muted"
+              title="No job post link was saved for this job"
+            >
+              <ExternalLink className="h-4 w-4" />
+              No link available
+            </div>
+          )}
         </div>
       </section>
 

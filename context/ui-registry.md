@@ -352,22 +352,24 @@ Form labels use `text-xs font-medium uppercase tracking-wide` — all caps with 
 ### FindJobsForm
 
 File: components/find-jobs/FindJobsForm.tsx
-Last updated: 2026-07-18 (swapped `surface` tokens for `overlay-foreground` on the dark hero panel ahead of dark mode shipping — see ui-tokens.md's Dark Mode section)
+Last updated: 2026-07-18 (job cards rebuilt to match the approved concept mockup's card design exactly, after you flagged the gap; hero/dark-mode-token work happened earlier same day)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
 | Background       | Hero: `bg-overlay` (ink chrome, fixed dark in both app themes); results: `bg-surface` cards |
 | Border           | Hero: `border-overlay`; inputs on hero: `border-overlay-foreground/15`; cards: `border-border`, `hover:border-accent` |
-| Border radius    | `rounded-2xl` hero and cards, `rounded-lg` inputs/button, `rounded-r-lg` agent callout |
+| Border radius    | `rounded-2xl` hero and cards, `rounded-lg` inputs/button, `rounded-[5px]` tag pills, `rounded-r-lg` agent callout |
 | Text — primary   | Hero heading `text-overlay-foreground`; card title `text-text-primary`                |
 | Text — secondary | Hero subtext `text-overlay-foreground/60`; card body `text-text-secondary`            |
-| Spacing          | `p-8 md:p-12` hero, `p-6` cards (via shadcn `Card`)                                   |
+| Spacing          | `p-8 md:p-12` hero, `p-5` cards (via shadcn `Card`), single-column list (`flex flex-col gap-4`), not a multi-column grid |
 | Hover state      | `hover:opacity-90` submit button; `hover:border-accent hover:shadow-md` job cards     |
 | Shadow           | `shadow-card` hero                                                                    |
-| Accent usage     | `bg-accent text-accent-foreground` submit button; `text-accent` company name and wordmark mark; match score number tiered success/info/warning in `font-mono`; match reason uses the Agent Content treatment (see `ui-rules.md`) |
+| Accent usage     | `bg-accent text-accent-foreground` submit button; match score number tiered success/info/warning in `font-mono`; match reason uses the Agent Content treatment (see `ui-rules.md`) |
 
 **Pattern notes:**
-The hero is intentionally dark ink chrome (`bg-overlay`), matching the wordmark/nav frame treatment rather than a light card — this is the one place in the app a full-bleed dark surface is correct, and it stays dark in both light and dark app theme. Inputs on that dark surface use opacity-modified `overlay-foreground` tokens (`bg-overlay-foreground/8 border-overlay-foreground/15 placeholder:text-overlay-foreground/40`), **not `surface`** — `surface` has a real dark-mode value now and would go invisible here once dark mode is active. Job result cards are the standard light card pattern used everywhere else. Match score renders as a plain `font-mono tabular-nums` number (no bar) next to the title, tiered by the same success/info/warning thresholds as everywhere else in the app.
+The hero is intentionally dark ink chrome (`bg-overlay`), matching the wordmark/nav frame treatment rather than a light card — this is the one place in the app a full-bleed dark surface is correct (alongside the navbar), and it stays dark in both light and dark app theme. Inputs on that dark surface use opacity-modified `overlay-foreground` tokens (`bg-overlay-foreground/8 border-overlay-foreground/15 placeholder:text-overlay-foreground/40`), **not `surface`** — `surface` has a real dark-mode value now and would go invisible here.
+
+Job result cards are a two-column CSS grid (`grid-cols-[1fr_auto]`): left column is title/company·location/tag pills, right column is the match score (`font-mono text-2xl`, tiered) with a `Match` mono sub-label beneath it. Tag pills are built from real job fields only (`job_type`, a `Remote` tag inferred from `location`, up to 2 of `matched_skills`) via the `jobTags()` helper — never fabricated placeholder tags. The Agent Read box spans both grid columns (`col-span-2`) below the tags row, using `bg-agent-light`/`text-agent-dark` (not `bg-agent-muted`/`text-agent-foreground` — see the Agent Content correction in `ui-tokens.md`). Below the results list, a real "Last sortie · Xm ago" stamp (green `bg-success` dot + `formatTimeAgo()` from `lib/utils.ts`) reflects the most recent completed `agent_runs` row, server-fetched in `app/find-jobs/page.tsx` — no decorative action buttons were added since there was no real, non-contrived action for them at the list level.
 
 ---
 
@@ -390,7 +392,45 @@ Last updated: 2026-06-05
 **Pattern notes:**
 Job detail pages use a narrow centered column rather than the full dashboard width. Job descriptions render the complete stored text with `whitespace-pre-line`, append any populated structured bullet sections, and show a bordered `View Full Job Post` notice when the saved Adzuna preview ends with `…` or `...`. Company research now renders a saved 9-field dossier read-only; once research exists, the generate action is hidden. Authenticated app pages pass `isAuthenticated` to `Navbar` so the top-right user icon and sign-out action match the signed-in designs.
 
-**Update 2026-07-18:** `MatchScore.tsx`'s "AI Match Reasoning" section now uses the Agent Content treatment (`border-agent`, `bg-agent-muted`, `text-agent` mono label reading "Agent read") instead of a generic `bg-success-lightest` sparkle icon — see `ui-rules.md`'s Agent Content section. The Company Research dossier (`CompanyResearch.tsx`) has not been updated yet and still uses its original neutral card treatment despite also being AI-generated content — apply the same treatment there next time that component is touched.
+**Update 2026-07-18:** `MatchScore.tsx`'s "AI Match Reasoning" section now uses the Agent Content treatment (`border-agent`, `bg-agent-light`, `text-agent-dark` mono label reading "Agent read") instead of a generic `bg-success-lightest` sparkle icon — see `ui-rules.md`'s Agent Content section. (Corrected same day from `bg-agent-muted`/`text-agent-foreground` to `bg-agent-light`/`text-agent-dark`, matching the approved mockup's exact tint/ink pair — see the Agent Content correction note in `ui-tokens.md`.) The Company Research dossier (`CompanyResearch.tsx`) has not been updated yet and still uses its original neutral card treatment despite also being AI-generated content — apply the same (corrected) treatment there next time that component is touched.
+
+### Document Generator
+
+File: components/job-details/DocumentGenerator.tsx
+Last updated: 2026-07-18 (new — Phase 11 Feature 30, shipped ahead of its numbered place; see `build-plan.md`)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Background       | Outer `bg-surface`; each action panel `bg-surface-secondary`                          |
+| Border            | `border-border` outer card and border-b header divider; `border-border` action panels |
+| Border radius    | `rounded-2xl` outer, `rounded-xl` action panels, `rounded-lg` buttons                 |
+| Text — primary   | `text-base font-semibold text-text-primary` card heading; `text-sm font-semibold text-text-primary` action labels |
+| Spacing          | Header `p-6`, body `p-6` with `gap-4` (row on `sm:`, column below), action panel `p-4` |
+| Hover state      | `hover:opacity-90` generate button; `hover:underline` view link                       |
+| Shadow           | `shadow-card` on outer card only                                                      |
+| Accent usage     | Header icon `bg-accent-muted text-accent` (matches Company Research's header, **not** the Agent Content teal — that treatment is reserved for the generated content callout itself, not section chrome); Generate button `bg-accent text-accent-foreground`; View link `text-accent` |
+
+**Pattern notes:**
+Two independent `DocumentAction` panels (Tailored Resume, Cover Letter) inside one card, matching the two-column layout of `ResumeSection.tsx`'s action rows. Each panel owns its own `useTransition`/error state and calls `POST /api/documents/generate` with `{ jobId, kind }`; on success calls `router.refresh()` (same pattern as `ResearchCompanyButton.tsx`) rather than managing the PDF URL in local state, so a reload always reflects the real saved state. "View" link only renders once a document exists, and points at `GET /api/documents/download?jobId=&kind=`, which streams the stored PDF — mirrors the existing `/api/resume/download` route rather than exposing a raw storage URL. Each panel also renders a `DocumentChatEditor` once a document exists — see below.
+
+### Document Chat Editor
+
+File: components/job-details/DocumentChatEditor.tsx
+Last updated: 2026-07-18 (new — Phase 11 Feature 32, shipped ahead of its numbered place; see `build-plan.md`)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Background       | `bg-surface` outer panel; user bubble `bg-accent-muted`; AI bubble `bg-agent-light`   |
+| Border            | `border-border` outer panel; AI bubble `border-l-2 border-agent` (Agent Content treatment, not decorative) |
+| Border radius    | `rounded-lg` outer panel and both bubble types except AI's `rounded-r-lg` (never rounded on the accent side, per `ui-rules.md`) |
+| Text — primary   | User bubble `text-text-primary`; AI bubble `text-agent-dark`; label `font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted` reading "Refine with AI" |
+| Spacing          | `p-3` outer panel, `gap-2` message list (`max-h-48 overflow-y-auto`), input row `gap-2` |
+| Hover state      | `hover:opacity-90` send button                                                        |
+| Shadow           | `none`                                                                                |
+| Accent usage     | Send button `bg-accent text-accent-foreground`; input focus ring `ring-accent`        |
+
+**Pattern notes:**
+Nested inside each `DocumentGenerator.tsx` action panel, one instance per document (`resume` / `cover_letter`), only rendered once that document exists. Message history is local `useState`, in-memory only — not persisted, resets on navigation away. User messages are plain neutral bubbles (right-aligned); AI replies use the Agent Content color pair (`border-agent`/`bg-agent-light`/`text-agent-dark`) since they're genuinely agent-generated text — this is the same rule everywhere else in the app, just applied at chat-bubble scale rather than a full callout block, and deliberately doesn't repeat the "Agent read" mono label per-bubble (turn-taking position already establishes which side is the AI, unlike a standalone card). Sends the full accumulated message list to `POST /api/documents/chat` on every turn (server re-derives the current document content itself rather than trusting the client) and calls `router.refresh()` on success so the "View" link in the parent `DocumentAction` reflects the newly revised PDF.
 
 ### Company Research Dossier
 

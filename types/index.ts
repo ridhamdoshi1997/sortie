@@ -72,6 +72,9 @@ export interface Job {
   source: "search" | "url";
   source_url: string | null;
   external_apply_url: string | null;
+  // Not part of the original migration's schema — this is what the actual
+  // scraper (lib/actions/scraper.actions.ts) writes the job link to.
+  url: string | null;
   title: string | null;
   company: string | null;
   location: string | null;

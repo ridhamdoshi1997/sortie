@@ -4,13 +4,17 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Search, MapPin, Briefcase, Loader2, Building2 } from "lucide-react";
+import { Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
+import { formatTimeAgo } from "@/lib/utils";
 import Link from "next/link";
 
 type Props = {
     userId: string;
     initialJobs?: any[];
+    lastRunAt?: string | null;
+    initialTitle?: string | null;
+    initialLocation?: string | null;
 };
 
 function scoreTierClass(score: number) {
@@ -19,9 +23,24 @@ function scoreTierClass(score: number) {
     return "text-warning";
 }
 
-export function FindJobsForm({ userId, initialJobs = [] }: Props) {
-    const [title, setTitle] = useState("");
-    const [location, setLocation] = useState("");
+// Real tag pills from actual job fields — never fabricated placeholder tags.
+function jobTags(job: any): string[] {
+    const tags: string[] = [];
+    if (job.job_type) tags.push(job.job_type);
+    if (job.location && /remote/i.test(job.location)) tags.push("Remote");
+    if (Array.isArray(job.matched_skills)) tags.push(...job.matched_skills.slice(0, 2));
+    return tags.slice(0, 3);
+}
+
+export function FindJobsForm({
+    userId,
+    initialJobs = [],
+    lastRunAt = null,
+    initialTitle = "",
+    initialLocation = "",
+}: Props) {
+    const [title, setTitle] = useState(initialTitle ?? "");
+    const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
     const [jobs, setJobs] = useState<any[]>(initialJobs);
     // Only poll for jobs that haven't been scored yet — a page load with
@@ -50,7 +69,20 @@ export function FindJobsForm({ userId, initialJobs = [] }: Props) {
                     const updatedJobs = await getJobsByIds(jobIds);
 
                     if (updatedJobs && updatedJobs.length > 0) {
-                        setJobs(updatedJobs);
+                        // Merge into the full list rather than replacing it —
+                        // getJobsByIds only returns the polled (still-unscored)
+                        // subset, and setJobs(updatedJobs) was wiping out every
+                        // other already-scored job from view each tick.
+                        setJobs((prev) =>
+                            prev.map(
+                                (job) => updatedJobs.find((updated: any) => updated.id === job.id) ?? job
+                            )
+                        );
+
+                        // Stop polling once every job we're watching has a score.
+                        if (updatedJobs.every((job: any) => job.match_score !== null)) {
+                            clearInterval(interval);
+                        }
                     }
                 } catch (error) {
                     console.error("Polling failed:", error);
@@ -162,55 +194,81 @@ export function FindJobsForm({ userId, initialJobs = [] }: Props) {
             {/* Results */}
             {jobs.length > 0 && (
                 <div className="border-t border-border pt-6">
-                    <h3 className="mb-6 flex items-center gap-2 text-xl font-semibold text-text-primary">
-                        <Building2 className="h-5 w-5 text-text-muted" />
-                        Targets acquired ({jobs.length})
-                    </h3>
-                    <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                        {jobs.map((job) => (
-                            <Link href={`/find-jobs/${job.id}`} key={job.id}>
-                                <Card className="flex cursor-pointer flex-col border-border bg-surface transition-all hover:border-accent hover:shadow-md">
-                                    <CardHeader className="pb-4">
-                                        <div className="flex items-start justify-between gap-3">
-                                            <CardTitle className="text-lg font-bold text-text-primary">
+                    <p className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                        Active targets — {jobs.length}
+                    </p>
+                    <div className="flex flex-col gap-4">
+                        {jobs.map((job) => {
+                            const tags = jobTags(job);
+                            return (
+                                <Link href={`/find-jobs/${job.id}`} key={job.id}>
+                                    <Card className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-4 border-border bg-surface p-5 transition-all hover:border-accent hover:shadow-md">
+                                        <div>
+                                            <p className="text-[15px] font-semibold leading-tight text-text-primary">
                                                 {job.title}
-                                            </CardTitle>
-                                            {job.match_score !== undefined && job.match_score !== null && (
-                                                <span
-                                                    className={`shrink-0 font-mono text-lg font-semibold tabular-nums ${scoreTierClass(job.match_score)}`}
-                                                >
-                                                    {job.match_score}
-                                                </span>
+                                            </p>
+                                            <p className="mt-1 flex items-center gap-1 text-sm text-text-secondary">
+                                                {job.company}
+                                                {job.location && (
+                                                    <>
+                                                        <span aria-hidden="true">·</span>
+                                                        <span className="flex items-center gap-1 text-accent">
+                                                            <MapPin className="h-3.5 w-3.5" /> {job.location}
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </p>
+                                            {tags.length > 0 && (
+                                                <div className="mt-2.5 flex flex-wrap gap-1.5">
+                                                    {tags.map((tag) => (
+                                                        <span
+                                                            key={tag}
+                                                            className="rounded-[5px] border border-border px-2 py-0.5 text-[11px] text-text-secondary"
+                                                        >
+                                                            {tag}
+                                                        </span>
+                                                    ))}
+                                                </div>
                                             )}
                                         </div>
-                                        <p className="text-sm font-medium text-accent">{job.company}</p>
-                                        <p className="mt-2 flex items-center gap-1 text-sm text-text-secondary">
-                                            <MapPin className="h-4 w-4" /> {job.location || "Location N/A"}
-                                        </p>
-                                    </CardHeader>
 
-                                    <CardContent className="pb-6">
-                                        <p className="line-clamp-3 text-sm text-text-secondary">{job.description}</p>
-                                    </CardContent>
+                                        {job.match_score !== undefined && job.match_score !== null && (
+                                            <div className="text-right">
+                                                <div
+                                                    className={`font-mono text-2xl font-semibold tabular-nums ${scoreTierClass(job.match_score)}`}
+                                                >
+                                                    {job.match_score}
+                                                </div>
+                                                <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                                                    Match
+                                                </div>
+                                            </div>
+                                        )}
 
-                                    {/* Agent read — reserved teal treatment for AI-generated content,
-                                        never used for anything else in the app */}
-                                    {job.match_reason && (
-                                        <CardFooter className="pt-0">
-                                            <div className="w-full rounded-r-lg border-l-2 border-agent bg-agent-muted px-3 py-2">
-                                                <p className="mb-1 font-mono text-[10px] font-semibold tracking-wide text-agent uppercase">
+                                        {/* Agent read — reserved teal treatment for AI-generated
+                                            content, never used for anything else in the app */}
+                                        {job.match_reason && (
+                                            <div className="col-span-2 rounded-r-lg border-l-2 border-agent bg-agent-light px-3.5 py-2.5">
+                                                <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-agent-dark">
                                                     Agent read
                                                 </p>
-                                                <p className="line-clamp-2 text-xs text-agent-foreground">
+                                                <p className="text-xs leading-5 text-agent-dark">
                                                     {job.match_reason}
                                                 </p>
                                             </div>
-                                        </CardFooter>
-                                    )}
-                                </Card>
-                            </Link>
-                        ))}
+                                        )}
+                                    </Card>
+                                </Link>
+                            );
+                        })}
                     </div>
+
+                    {lastRunAt && (
+                        <div className="mt-6 flex items-center gap-2 font-mono text-xs text-text-muted">
+                            <span className="h-1.5 w-1.5 rounded-full bg-success" />
+                            Last sortie · {formatTimeAgo(lastRunAt)}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

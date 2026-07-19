@@ -652,16 +652,19 @@ Confirmed against your actual career-ops plugin list — this is the full real p
 
 ## Phase 11 — Document Generation Suite
 
-### 30 ATS PDF Resume + Cover Letter Generator
+### 30 ATS PDF Resume + Cover Letter Generator — ✅ done (2026-07-18), shipped ahead of Phase 7/9 with deliberate scope cuts
 
-**Logic:**
+Built ahead of its numbered place in the roadmap, same as Phase 7 items that jumped the queue earlier — you asked for it directly after Company Research (Feature 13) was fixed, since the two are related (this feature *depends on* Company Research's dossier as its "deep research" input).
 
-- Extends the existing `@react-pdf/renderer` pattern (v1 Feature 08 already generates a base resume PDF) to produce a **tailored** resume per job, grounded in profile + job + the Phase 9 evaluation gaps.
-- Cover letter generator prompts for career-ops's **four interactive angle choices** before generating (e.g. mission-driven / technical-depth / culture-fit / growth-story — exact wording TBD with you), then produces a keyword-mirrored draft.
-- New `documents` table: `id, job_id, user_id, kind ('resume'|'cover_letter'), content_markdown, pdf_url, created_at`.
-- Runs through the Phase 7 model router.
+**Shipped, differs from the original spec above in three deliberate ways:**
 
-**UI:** "Generate Documents" action on job details; angle picker modal before cover letter generation.
+- **Storage:** reuses the existing, previously-unused `applications` table (`generated_resume`, `generated_cover_letter`, new `resume_pdf_url`/`cover_letter_pdf_url` columns) instead of creating a new `documents` table — `applications` already matched this shape almost exactly (flagged in an earlier session, see Phase 6 notes). **Found and fixed in the same pass: `applications` had RLS disabled and zero policies** despite existing since the original schema — closed with the same four-policy pattern every other user-owned table uses, before any real data was written to it.
+- **Cover letter:** no angle-picker UI — the model chooses its own angle (mission/technical/culture/growth) based on what `agent/research.ts`'s dossier actually supports, rather than asking the user to pick first. Simpler v1; the angle picker is still a reasonable follow-up if you want more control later.
+- **Model:** hardcoded to the same Gemini-via-OpenAI-compat pattern now used everywhere else in this codebase (`agent/documents.ts`), not routed through a Phase 7 model router that doesn't exist yet. Swapping providers later is a one-place change once Phase 7 ships.
+
+**Logic (as built):** `agent/documents.ts` — `generateTailoredResume` reuses the exact `GeneratedContent` shape and `ResumePDF.tsx` component from v1 Feature 08, but grounds the prompt in the job posting + company research dossier instead of just the profile, explicitly instructed to mirror real job-posting keywords for ATS matching without fabricating skills. `generateCoverLetter` produces a plain-text letter body rendered via a new `CoverLetterPDF.tsx` (same plain, ATS-safe `@react-pdf/renderer` style as `ResumePDF.tsx`). `POST /api/documents/generate` auto-runs Company Research first if a job hasn't been researched yet, so "Generate" is one click start to finish. `GET /api/documents/download?jobId=&kind=` streams the stored PDF, mirroring the existing `/api/resume/download` pattern.
+
+**UI:** `components/job-details/DocumentGenerator.tsx` — a card on the job details page (between Company Research and the Apply button) with two independent Generate/Regenerate buttons and a "View" link once a document exists, matching `ResumeSection.tsx`'s existing button/transition pattern.
 
 ### 31 Application Email Drafts
 
@@ -670,18 +673,19 @@ Confirmed against your actual career-ops plugin list — this is the full real p
 - Drafts formal recruiter/referral/cold-application emails from the job + profile, with subject line and an attachment checklist.
 - **Draft-only — this generates text for you to review and send yourself. No send capability is built, matching career-ops's own explicit design and this app's existing "no auto-apply" invariant.**
 
-### 32 AI Co-Pilot (Chat Editor)
+### 32 AI Co-Pilot (Chat Editor) — ✅ done (2026-07-18), shipped as a simpler feedback loop
 
-**Not a career-ops feature — your own addition.**
+**Not a career-ops feature — your own addition.** Built ahead of its numbered place immediately after Feature 30 (this is its natural follow-on: refining what Feature 30 generates), same session.
 
-**UI:**
+**Shipped, differs from the original spec above in two deliberate ways** (both from an unanswered clarifying question — proceeding on the recommended defaults, flag if this isn't what was wanted):
 
-- Vercel AI SDK `useChat` panel next to the rendered resume/cover letter. Highlight a section, type an instruction ("rewrite this to sound more senior"), see the edit streamed back and applied to the markdown in place.
+- **No highlight-to-edit streaming.** A conversational feedback loop instead: type an instruction, the AI revises the *whole* document (grounded in the current content + the instruction + the conversation so far), the stored resume/cover letter and its PDF get replaced. No Vercel AI SDK/`useChat` — plain `fetch` + `useTransition`, matching the rest of this codebase's convention; no streaming needed since a full-document revision isn't token-by-token UX.
+- **Chat history is in-memory only**, not persisted — resets if you leave the page. Each revision still overwrites the saved document in `applications` (reusing Feature 30's table decision, not a new `documents` table), so the end result survives; the back-and-forth that produced it doesn't.
+- **Model:** same hardcoded Gemini-via-OpenAI-compat pattern as Feature 30, not the Phase 7 router (still doesn't exist).
 
-**Logic:**
+**Logic (as built):** `agent/documents.ts` gained `reviseTailoredResume`/`reviseCoverLetter`, same grounding as the Feature 30 generators plus the current stored content and conversation history, returning `{ reply, content }` — `reply` is a short conversational confirmation shown in the chat thread, `content` is the full revised document. `POST /api/documents/chat` re-fetches the current document server-side (never trusts client-sent content), 404s clearly if nothing's been generated yet. Persistence logic shared with Feature 30's generate route via a new `lib/documentPersistence.ts` helper (extracted to avoid duplicating the render/upload/upsert block).
 
-- `POST /api/documents/chat` — streaming edit endpoint, routed through the Phase 7 model router, operating on the highlighted range plus full document context so edits stay consistent with the rest of the document.
-- Edits are saved back to the `documents` row on accept; user can reject/undo before saving.
+**UI:** `components/job-details/DocumentChatEditor.tsx` — small chat panel nested inside each `DocumentGenerator.tsx` action panel, visible once that document exists. User messages get plain neutral bubbles; AI replies use the Agent Content teal treatment (`border-agent`/`bg-agent-light`/`text-agent-dark`) since they're genuinely agent-generated text, consistent with the rule everywhere else in the app.
 
 ---
 

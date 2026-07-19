@@ -43,8 +43,8 @@ export function MatchScore({ matchReason, matchedSkills, missingSkills }: Props)
                         Agent read
                     </h2>
                 </div>
-                <div className="rounded-r-lg border-l-2 border-agent bg-agent-muted px-4 py-3">
-                    <p className="text-sm font-medium leading-6 text-agent-foreground">
+                <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
+                    <p className="text-sm font-medium leading-6 text-agent-dark">
                         {matchReason ?? "No match reasoning is available for this role yet."}
                     </p>
                 </div>

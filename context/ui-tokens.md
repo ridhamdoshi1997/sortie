@@ -171,23 +171,25 @@ Used for: primary buttons, active nav items, the wordmark mark, "tailored" badge
 
 New role, added with the Sortie rebrand. Applied wherever the app is showing the user something the AI produced — match reasoning, research findings, generated document drafts, interview prep. The rule is strict: if it came from the agent, it gets this treatment; if it didn't, it never does. That consistency is what makes it legible as "the AI said this" without a label.
 
-Standard pattern (see `MatchScore.tsx` or `FindJobsForm.tsx` job cards for reference implementations):
+Standard pattern (see `MatchScore.tsx` or `FindJobsForm.tsx` job cards for reference implementations) — **corrected 2026-07-18** to use `bg-agent-light`/`text-agent-dark` (previously `bg-agent-muted`/`text-agent-foreground`), matching the mockup's `radar-tint`/`radar-ink` exactly rather than a paler app-only derived pair:
 
 ```tsx
-<div className="rounded-r-lg border-l-2 border-agent bg-agent-muted px-4 py-3">
-  <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent">
+<div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
+  <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
     Agent read
   </p>
-  <p className="text-sm text-agent-foreground">{content}</p>
+  <p className="text-sm text-agent-dark">{content}</p>
 </div>
 ```
 
 | Element                | Token             |
 | ------------------------ | -------------------- |
 | Left accent border     | `border-agent`    |
-| Tinted background      | `bg-agent-muted` / `bg-agent-light` |
-| Label text             | `text-agent` (paired with `font-mono uppercase tracking-wide`) |
-| Body text on tint      | `text-agent-foreground` |
+| Tinted background      | `bg-agent-light`  |
+| Label text             | `text-agent-dark` (paired with `font-mono uppercase tracking-wide`) |
+| Body text on tint      | `text-agent-dark` |
+
+`--color-agent-muted`/`--color-agent-foreground` still exist as tokens (a paler, app-only pair) but are no longer part of the canonical Agent Content pattern — don't use them for new Agent Content instances.
 
 ### Match Score Colors
 
@@ -339,11 +341,11 @@ border-radius: rounded-full
 
 ```
 border-left: 2px solid var(--color-agent)
-background: bg-agent-muted
+background: bg-agent-light
 border-radius: 0 8px 8px 0 (rounded-r-lg — never rounded on the accent side, see ui-rules.md)
 padding: px-4 py-3
-label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent
-body: text-sm text-agent-foreground
+label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark
+body: text-sm text-agent-dark
 ```
 
 ### Logo / Wordmark

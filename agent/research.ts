@@ -279,12 +279,14 @@ async function collectBrowserResearch(
 
   const apiKey = process.env.BROWSERBASE_API_KEY;
   const projectId = process.env.BROWSERBASE_PROJECT_ID;
-  const openaiKey = process.env.OPENAI_API_KEY;
+  // Not OPENAI_API_KEY — that env var in this project is actually the
+  // Gemini key under a misleading name (see synthesizeDossier below).
+  const geminiKey = process.env.GEMINI_API_KEY;
 
-  if (!apiKey || !projectId || !openaiKey) {
+  if (!apiKey || !projectId || !geminiKey) {
     await log(
       logger,
-      "Browser research skipped because Browserbase or OpenAI browser credentials are not configured.",
+      "Browser research skipped because Browserbase or Gemini browser credentials are not configured.",
       "warning",
     );
     return emptyResearch;
@@ -304,8 +306,8 @@ async function collectBrowserResearch(
       projectId,
       browserbaseSessionID: session.id,
       model: {
-        modelName: "openai/gpt-4o",
-        apiKey: openaiKey,
+        modelName: "google/gemini-3.1-flash-lite",
+        apiKey: geminiKey,
       },
       disablePino: true,
     });
@@ -469,7 +471,14 @@ async function synthesizeDossier(
   profile: ResearchProfile,
   browserResearch: BrowserResearch,
 ): Promise<CompanyResearchDossier> {
-  const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+  // OPENAI_API_KEY in this project is not a real OpenAI key — it's the
+  // same Gemini key as GEMINI_API_KEY, routed through Google's
+  // OpenAI-compatibility endpoint (see actions/profile.ts for the same
+  // pattern). Calling OpenAI's real endpoint with it would 401.
+  const openai = new OpenAI({
+    apiKey: process.env.GEMINI_API_KEY!,
+    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+  });
 
   const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
 
@@ -510,7 +519,7 @@ Skills: ${profile.skills.join(", ") || "None saved"}
 Work history: ${getWorkHistory(profile.work_experience)}`;
 
   const response = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: "gemini-3.1-flash-lite",
     response_format: { type: "json_object" },
     temperature: 0.4,
     max_tokens: 1200,
@@ -578,10 +587,10 @@ export async function researchCompany({
   log: logger,
 }: ResearchInput): Promise<ResearchResult> {
   try {
-    if (!process.env.OPENAI_API_KEY) {
+    if (!process.env.GEMINI_API_KEY) {
       return {
         success: false,
-        error: "OpenAI is not configured for company research.",
+        error: "Gemini is not configured for company research.",
       };
     }
 

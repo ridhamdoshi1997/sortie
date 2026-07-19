@@ -176,11 +176,13 @@ Added with the Sortie rebrand (2026-07-18). Any content the AI agent generated �
 ```
 border-left: 2px solid var(--color-agent)
 border-radius: 0 8px 8px 0 (rounded only on the non-border side)
-background: bg-agent-muted
+background: bg-agent-light
 padding: px-4 py-3
-label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent, reading "Agent read"
-body: text-sm text-agent-foreground
+label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark, reading "Agent read"
+body: text-sm text-agent-dark
 ```
+
+(Corrected 2026-07-18 from `bg-agent-muted`/`text-agent-foreground` — those tokens still exist but are a paler, app-only pair; `bg-agent-light`/`text-agent-dark` match the approved mockup's `radar-tint`/`radar-ink` exactly.)
 
 The point is reliability, not decoration: a user should be able to tell "the AI said this" from the shape alone, without reading a label. That only holds if the treatment is never reused for anything else — don't reach for `border-agent` or `bg-agent-muted` for a regular info callout, warning, or tip. Reference implementations: `MatchScore.tsx` (job details page), `FindJobsForm.tsx` (job cards).
 

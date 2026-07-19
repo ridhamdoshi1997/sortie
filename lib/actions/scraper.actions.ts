@@ -65,6 +65,11 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         salary: job.salary || null,
         job_type: job.type || null,
         url: job.url || null,
+        external_apply_url: job.applyUrl || null,
+        // Never actually set anywhere before — needed so a later page load
+        // can scope "my last search" to exactly this batch instead of
+        // showing the user's entire saved-job history.
+        run_id: runId,
     }));
 
     const { data: savedJobs, error } = await insforge.database

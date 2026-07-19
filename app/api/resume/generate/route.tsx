@@ -45,8 +45,13 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Generate polished resume content with GPT-4o
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+    // Generate polished resume content. Not OPENAI_API_KEY — that env var
+    // in this project is actually the Gemini key under a misleading name
+    // (see agent/research.ts for the same fix and fuller explanation).
+    const openai = new OpenAI({
+      apiKey: process.env.GEMINI_API_KEY!,
+      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    });
 
     const profileContext = JSON.stringify({
       full_name: profile.full_name,
@@ -61,7 +66,7 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
     });
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gemini-3.1-flash-lite",
       response_format: { type: "json_object" },
       temperature: 0.7,
       max_tokens: 1000,

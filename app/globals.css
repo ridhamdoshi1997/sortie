@@ -446,7 +446,7 @@ body {
   --color-success-lightest: #172520;
   --color-success-foreground: #a8dab8;
 
-  --color-info: #6f96c9;
+  --color-info: #7fa3d2;
   --color-info-dark: #a9c3e0;
   --color-info-medium: #86a8d1;
   --color-info-light: #1c2733;
@@ -454,7 +454,7 @@ body {
   --color-info-foreground: #a9c3e0;
   --color-info-muted: #7c8bb3;
 
-  --color-warning: #d97e56;
+  --color-warning: #e08f68;
   --color-warning-foreground: #2e1c0f;
 
   --color-error: #d17263;

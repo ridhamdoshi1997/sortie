@@ -5,10 +5,35 @@ export type NormalizedJob = {
     location: string;
     description: string;
     url: string;
+    applyUrl?: string;
     salary?: string;
     type?: string;
     source: string;
 };
+
+// Google Jobs listings via SerpApi carry a `share_link` (a google.com/search
+// deep link back into the Google Jobs UI, not a real application page) plus
+// an `apply_options` array of real destinations — the employer's own ATS
+// posting when one exists, plus third-party boards (LinkedIn, Indeed, etc).
+// Prefer the employer's own portal over a generic aggregator when both are
+// present, since that's what "apply link" actually means to a candidate.
+const AGGREGATOR_HOSTS = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com", "google.com"];
+
+function pickApplyUrl(applyOptions: Array<{ link?: string }> | undefined): string | undefined {
+    if (!applyOptions || applyOptions.length === 0) return undefined;
+
+    const isAggregator = (link: string) => {
+        try {
+            const host = new URL(link).hostname.replace(/^www\./, "");
+            return AGGREGATOR_HOSTS.some((aggregator) => host.endsWith(aggregator));
+        } catch {
+            return false;
+        }
+    };
+
+    const direct = applyOptions.find((option) => option.link && !isAggregator(option.link));
+    return direct?.link ?? applyOptions[0]?.link;
+}
 
 export interface JobScraperProvider {
     search(jobTitle: string, location: string, countryCode: string): Promise<NormalizedJob[]>;
@@ -106,6 +131,7 @@ async function fetchSerpApiPages(
                 location: job.location,
                 description: job.description,
                 url: job.share_link,
+                applyUrl: pickApplyUrl(job.apply_options),
                 salary: job.detected_extensions?.salary,
                 type: job.detected_extensions?.schedule_type,
                 source: "SerpApi"
