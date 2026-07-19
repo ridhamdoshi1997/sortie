@@ -557,7 +557,8 @@ Before Phase 7 started, a full rebrand from "JobPilot" to **"Sortie"** was imple
 **Logic:**
 
 - `lib/models.ts` — `getModel(provider: "gemini" | "openai" | "anthropic", tier?: "fast" | "smart")` returning a Vercel AI SDK model instance (`ai`, `@ai-sdk/openai`, `@ai-sdk/google`, `@ai-sdk/anthropic`).
-- Requires real, separate API keys per provider. `.env` currently has `OPENAI_API_KEY` set to your Gemini key as a compatibility hack for the old GPT-4o-compat pipeline — that hack goes away once this lands; you'll need an actual OpenAI key and a new `ANTHROPIC_API_KEY` for the selector to mean anything for those two options.
+- **Real, separate API keys per provider — resolved 2026-07-19.** All three are now in `.env`: `GEMINI_API_KEY` (already working), `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` (both real now — the old Gemini-key-under-OPENAI_API_KEY hack is gone, overwritten with a genuine OpenAI key). Nothing left blocking this item.
+- **Open architecture question for whoever builds this:** none of the existing AI call sites (`agent/research.ts`, `agent/documents.ts`, `actions/profile.ts`) use the Vercel AI SDK this spec calls for — they all use the raw `openai` npm package with a custom `baseURL` override to reach Gemini's OpenAI-compat endpoint. Decide whether Phase 7 introduces the Vercel AI SDK as originally spec'd (adds `ai`/`@ai-sdk/*` as new dependencies, is the "correct" multi-provider abstraction) or keeps the existing raw-`openai`-client-per-provider pattern already proven working three times in this codebase (`getModel` returns a configured `OpenAI` client per provider instead of an AI SDK model instance) — don't silently pick one, ask.
 - Every AI call site (evaluator, research synthesis, document generation, interview prep, chat co-pilot) takes a `provider` argument instead of a hardcoded SDK client.
 
 ### 23 Model Selector UI

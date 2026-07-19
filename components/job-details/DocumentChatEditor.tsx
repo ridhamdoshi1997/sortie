@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Send } from "lucide-react";
+import { Send, CheckCircle2 } from "lucide-react";
 
 type ChatMessage = { role: "user" | "assistant"; content: string };
 
@@ -16,6 +16,7 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [justUpdated, setJustUpdated] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   function handleSend(e: React.FormEvent): void {
@@ -27,6 +28,7 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
     setMessages(nextMessages);
     setInput("");
     setError(null);
+    setJustUpdated(false);
 
     startTransition(async () => {
       try {
@@ -47,6 +49,7 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
         }
 
         setMessages((prev) => [...prev, { role: "assistant", content: json.data!.reply }]);
+        setJustUpdated(true);
         router.refresh();
       } catch {
         setError("Network error. Please check your connection and try again.");
@@ -100,6 +103,12 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
       </form>
 
       {isPending && <p className="text-xs text-text-muted">Revising...</p>}
+      {!isPending && justUpdated && (
+        <p className="flex items-center gap-1.5 rounded-md bg-success-lightest px-2.5 py-1.5 text-xs font-medium text-success-foreground">
+          <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+          New PDF generated with these changes — click "View" above to see it.
+        </p>
+      )}
       {error && <p className="text-xs text-error">{error}</p>}
     </div>
   );

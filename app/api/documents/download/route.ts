@@ -51,6 +51,11 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `inline; filename="${filename}"`,
+        // This URL is identical before and after a chat revision (same
+        // jobId/kind) — without this, the browser serves its cached copy
+        // of the PDF instead of the freshly revised bytes this route
+        // always fetches from storage.
+        "Cache-Control": "no-store, must-revalidate",
       },
     });
   } catch (error) {
