@@ -481,7 +481,7 @@ v1 (Phases 1–5) is 16/17 complete — only **17 Analytics Charts** remains. Ph
 3. **LinkedIn / Indeed** — explicitly requested, then declined after investigation: SerpApi's Google Jobs results already surface LinkedIn and Indeed as apply sources on most listings (confirmed live — most scraped jobs list them in `apply_options`), so that coverage already exists through a legitimate path. Direct LinkedIn scraping carries real ToS/legal risk (LinkedIn has pursued litigation over scraping, e.g. the hiQ Labs case) and was already explicitly out of scope in v1 for that reason — decision is to not build direct scrapers for either platform.
 4. **Portal Scanner's target company list** — starts empty; you add specific companies through the UI as you go, rather than a pre-seeded list.
 
-Nothing left blocking Phase 7 onward.
+Nothing left blocking Phase 8 onward. Phase 7 (Model Router) and Phase 9 (10-Dimension Evaluator) are both done — Phase 9 was pulled ahead of Phase 8 at your request since it directly builds on Phase 7. Phase 8 (Portal Scanner) remains the next unbuilt phase.
 
 ## Rebrand pass — ✅ done (2026-07-18)
 
@@ -568,6 +568,7 @@ Before Phase 7 started, a full rebrand from "JobPilot" to **"Sortie"** was imple
 **What shipped:** `components/shared/ModelSelector.tsx` (client component, plain `<select>` styled on existing tokens, optimistic update with rollback on failure) + `actions/profile.ts`'s `setPreferredModel()` server action, persisting to `profiles.preferred_model` (new nullable `text` column with a `CHECK` constraint restricting it to the three provider values — migration `20260719060900_add-profiles-preferred-model.sql`, applied live via `db query` since this project's `migrations up` bookkeeping is untracked for the `profiles` table, same pre-existing pattern noted elsewhere in this doc). Wired into the job details page (`app/find-jobs/[id]/page.tsx`) above the Company Research / Document Generator section — since both of those AI actions read `profile.preferred_model` fresh per request, one selector per page is sufficient; it doesn't need to be duplicated per AI card.
 
 **Scope cut, flagged not assumed:** **not** wired into the Find Jobs search bar as the original spec called for. That search bar's match-scoring goes through `lib/evaluator.ts`, which (see Feature 22 above) was deliberately not migrated to the router — wiring a selector there would control a preference that has no real effect yet, which conflicts with this codebase's established honest-UI-state precedent (e.g. the Apply-button/View-Job-Post fixes earlier in this doc). Revisit once Phase 9's evaluator rewrite actually routes through `lib/models.ts`.
+**Update (2026-07-20):** Phase 9 shipped — `lib/evaluator.ts` now routes through `lib/models.ts`, so this scope cut's blocking condition is resolved. A `ModelSelector` on the Find Jobs search bar would now control a real preference. Not added yet since it wasn't explicitly requested when Phase 9 was built — a small, cheap follow-up whenever it's wanted.
 
 **Not yet verified live** — same reason as every other authenticated-page feature in this doc: requires a real login this environment can't perform. Ask to be tested: change the selector on a job details page, then trigger Company Research or a document generation/revision and confirm the reply is noticeably different in style between Gemini and Claude.
 
@@ -604,15 +605,15 @@ Confirmed against your actual career-ops plugin list — this is the full real p
 
 ---
 
-## Phase 9 — 10-Dimension AI Evaluator
+## Phase 9 — 10-Dimension AI Evaluator — ✅ done (2026-07-20)
 
 **Resolved:** generic 10-dimension A-F rubric, not tied to career-ops's 6 named blocks. Replaces both existing scorers (`lib/evaluator.ts` Gemini 0-100, and the retired `scoreJobsBatch` GPT-4o 0-100).
 
-### 27 Ten-Dimension Scoring
+### 27 Ten-Dimension Scoring — ✅ done
 
-**Logic:**
+**What shipped:**
 
-- New `lib/evaluator.ts` grades each job A-F across 10 fixed dimensions, each with a one-line justification:
+- `lib/evaluator.ts` fully rewritten. Grades each job A-F across the 10 fixed dimensions (unchanged from spec, listed below), each with a one-line justification, via `lib/models.ts`'s `getModel`/`complete` — the Phase 7 router, as specced:
   1. Skills/tech match
   2. Seniority/level fit
   3. Compensation fit
@@ -622,14 +623,21 @@ Confirmed against your actual career-ops plugin list — this is the full real p
   7. Culture/values signal
   8. Visa/work-authorization fit
   9. Application effort-to-value
-  10. Legitimacy (ghost-listing/scam signals — vague comp, generic descriptions, suspiciously broad requirements)
-- Rolls up to an overall letter grade and a 1-5 recommendation score (kept alongside the existing `match_score` 0-100 for backward compatibility with current sort/filter UI — `match_score = recommendation * 20`).
-- Runs through the Phase 7 model router.
-- **Human-in-the-loop threshold**: jobs scoring below 4.0/5.0 overall are visually flagged as "below recommended threshold" — never hidden, never auto-actioned.
+  10. Legitimacy (ghost-listing/scam signals — vague comp, generic descriptions, suspiciously broad requirements), graded harshly per explicit prompt instruction
+- Rolls up to an overall letter grade and a 1-5 recommendation score. `match_score = round(recommendationScore * 20)`, kept for backward compatibility with the existing 0-100 sort/filter UI and `lib/utils.ts`'s `MATCH_THRESHOLD = 70` cutoff.
+- **Human-in-the-loop threshold**: jobs scoring below 4.0/5.0 are visually flagged "below recommended threshold" in the UI — never hidden, never auto-actioned, exactly as specced.
+- **Real bug fixed during the rewrite, not part of the original spec:** the old evaluator graded every job against a **hardcoded fake candidate bio written directly in the code**, never the user's actual saved profile — it "worked" only because that hardcoded bio happened to describe this app's one real user. Several of the new dimensions (compensation, visa/work-auth, location fit) are meaningless without the candidate's real `salary_expectation`/`work_authorization`/`remote_preference`/`location` fields, which the fake bio never had. Fixed at the root: `lib/inngest/functions.ts`'s `evaluateJobsAsync` now fetches the real `profiles` row for the run's `userId` and passes it through, using `profile.preferred_model` (defaulting to `"gemini"`) to pick the provider — same pattern as every other AI call site since Phase 7.
+- **A second real bug found live during verification, fixed same pass:** the candidate-context builder omitted `profile.location` entirely — every job's "Location/remote fit" dimension came back "candidate location is not specified" regardless of the real value. Caught by actually reading the model's own output during live testing, not by code review. Fixed by adding it to the prompt context; re-verified live and the location-mismatch grading changed correctly (a job requiring Colombia residency dropped from a partial-credit grade to a hard F once the model could see the candidate is Toronto-based).
+- Zod-validated response schema (`responseSchema`/`jobEvaluationSchema`/`dimensionResultSchema`) with a per-job `fallbackEvaluation()` — a malformed or missing entry for one job in a batch degrades to a neutral C-grade placeholder rather than crashing the whole chunk, consistent with this codebase's established fallback pattern (`agent/research.ts`'s `buildFallbackDossier`).
+- **Deliberately not changed:** Inngest chunk size (still 10 jobs per `step.run`) and the 3-second inter-chunk delay — the spec didn't call for changing pipeline shape, only the scoring content, and the existing rate-limit-tuned pacing has no reason to change.
 
-**Schema:** new `jobs.evaluation` jsonb (array of `{dimension, grade, note}`, 10 entries) and `jobs.recommendation_score` numeric (1-5).
+**Schema:** `jobs.evaluation` jsonb (array of `{dimension, grade, note}`, 10 entries) and `jobs.recommendation_score` numeric — migration `20260720030000_add-jobs-evaluation-columns.sql`, applied live via `db query` (same untracked-migrations caveat as every other schema change this project, see Phase 7's entry), verified via `information_schema.columns`.
 
-**UI:** Match Score section on job details gains the 10-dimension breakdown (grade + note per row) plus a legitimacy warning badge when that dimension grades poorly.
+**UI:** `MatchScore.tsx` gains the 10-dimension breakdown (grade badge + note per row, `A`/`B` in success green, `C` neutral, `D`/`F` in error red) plus a legitimacy warning callout when that dimension grades D/F, and a separate "below recommended threshold" callout when `recommendation_score < 4.0`. Both callouts are additive, not replacements — the existing "Agent read" reasoning and "Required Skills vs Your Profile" sections are unchanged and still render.
+
+**Verified live, not just compiled:** ran the real `evaluateJobCompatibility()` against the real saved profile and two real scraped jobs, once per `gemini` and `anthropic` — both produced correctly differentiated 10-dimension grades grounded in the actual job postings (e.g. correctly flagging an explicit Colombia-residency requirement as a hard location/visa fail, correctly crediting Canada-based postings as a strong match once the location bug above was fixed; Anthropic additionally caught a React-vs-Angular front-end mismatch Gemini's run missed). UI verified separately via a temporary route rendering `MatchScore` with real captured evaluation output, including a synthetic D/F legitimacy case to confirm that specific warning path renders (no real test job happened to grade poorly on legitimacy). `npx tsc --noEmit` and `npm run build` both clean. Temporary verification route, script, and scratch data all removed afterward.
+
+**Not yet verified live in-browser end-to-end** — same login limitation as every other authenticated-page feature in this project. The `evaluateJobCompatibility()` function itself and the `MatchScore` UI are both independently verified live (above); what's not yet confirmed is a real Find Jobs search actually triggering the full Inngest pipeline (`jobs/evaluate` event → `evaluateJobsAsync` → this evaluator → DB write → page render) end-to-end. Ask to be tested: run a new Find Jobs search, wait for scoring to complete (needs the separate `inngest-cli dev` process running — see `RESUME.md`'s known gotcha), then open a job's details page and confirm the 10-dimension breakdown renders with real grades.
 
 ---
 

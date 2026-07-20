@@ -1,10 +1,18 @@
-import { Check, X } from "lucide-react";
+import { AlertTriangle, Check, X } from "lucide-react";
+
+import type { JobEvaluationDimension } from "@/types";
 
 type Props = {
     matchReason: string | null;
     matchedSkills: string[] | null; // Updated to allow null
     missingSkills: string[] | null; // Updated to allow null
+    evaluation?: JobEvaluationDimension[] | null;
+    recommendationScore?: number | null;
 };
+
+// Below this, Phase 9's spec calls it out visually — never hidden, never
+// auto-actioned, just flagged so the candidate can still choose to apply.
+const RECOMMENDATION_THRESHOLD = 4.0;
 
 function SkillBadge({
     skill,
@@ -29,10 +37,40 @@ function SkillBadge({
     );
 }
 
-export function MatchScore({ matchReason, matchedSkills, missingSkills }: Props) {
+function GradeBadge({ grade }: { grade: JobEvaluationDimension["grade"] }) {
+    const className =
+        grade === "A" || grade === "B"
+            ? "bg-success-lightest text-success-foreground"
+            : grade === "C"
+              ? "bg-surface-secondary text-text-secondary"
+              : "bg-error/10 text-error";
+
+    return (
+        <span
+            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${className}`}
+        >
+            {grade}
+        </span>
+    );
+}
+
+export function MatchScore({
+    matchReason,
+    matchedSkills,
+    missingSkills,
+    evaluation,
+    recommendationScore,
+}: Props) {
     // 1. Create safe arrays. If the DB returns null, treat it as an empty list []
     const safeMatchedSkills = matchedSkills || [];
     const safeMissingSkills = missingSkills || [];
+    const safeEvaluation = evaluation ?? [];
+
+    const legitimacyDimension = safeEvaluation.find((d) => d.dimension === "Legitimacy");
+    const legitimacyFlag =
+        legitimacyDimension && (legitimacyDimension.grade === "D" || legitimacyDimension.grade === "F");
+    const belowThreshold =
+        recommendationScore != null && recommendationScore < RECOMMENDATION_THRESHOLD;
 
     return (
         <>
@@ -48,7 +86,51 @@ export function MatchScore({ matchReason, matchedSkills, missingSkills }: Props)
                         {matchReason ?? "No match reasoning is available for this role yet."}
                     </p>
                 </div>
+
+                {(legitimacyFlag || belowThreshold) && (
+                    <div className="mt-4 flex flex-col gap-2">
+                        {legitimacyFlag && (
+                            <div className="flex items-start gap-2 rounded-lg bg-error/10 px-4 py-3">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+                                <p className="text-sm font-medium leading-6 text-error">
+                                    Possible ghost listing — this posting graded poorly on legitimacy signals
+                                    (vague compensation, generic requirements, or similar red flags).
+                                </p>
+                            </div>
+                        )}
+                        {belowThreshold && (
+                            <div className="flex items-start gap-2 rounded-lg bg-error/10 px-4 py-3">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+                                <p className="text-sm font-medium leading-6 text-error">
+                                    Below recommended threshold ({recommendationScore!.toFixed(1)}/5) — still
+                                    worth a look if the role interests you, just not a strong overall fit.
+                                </p>
+                            </div>
+                        )}
+                    </div>
+                )}
             </section>
+
+            {safeEvaluation.length > 0 && (
+                <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+                    <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+                        10-Dimension Evaluation
+                    </h2>
+                    <div className="mt-4 flex flex-col divide-y divide-border">
+                        {safeEvaluation.map((dim) => (
+                            <div key={dim.dimension} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
+                                <GradeBadge grade={dim.grade} />
+                                <div className="flex flex-col gap-0.5">
+                                    <p className="text-sm font-medium leading-5 text-text-primary">
+                                        {dim.dimension}
+                                    </p>
+                                    <p className="text-xs leading-5 text-text-muted">{dim.note}</p>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </section>
+            )}
 
             <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
                 <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">

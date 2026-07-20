@@ -2,20 +2,13 @@ import { inngest } from "./client";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { evaluateJobCompatibility } from "@/lib/evaluator";
 import { createAdminClient } from '@insforge/sdk';
+import type { Profile } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
     return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
         arr.slice(i * size, i * size + size)
     );
 }
-
-type EvaluationResult = {
-    id: string;
-    score?: number;
-    reasoning?: string;
-    matchedSkills?: string[];
-    missingSkills?: string[];
-};
 
 export const evaluateJobsAsync = inngest.createFunction(
     {
@@ -76,24 +69,44 @@ export const evaluateJobsAsync = inngest.createFunction(
             return { message: `Successfully evaluated 0 jobs. (Received ${jobIds?.length || 0} IDs, DB returned 0)` };
         }
 
+        // Evaluation now grades against the candidate's real saved profile
+        // (skills, salary expectation, work authorization, etc.) instead of
+        // a hardcoded placeholder bio — several of the 10 dimensions
+        // (compensation, visa, location fit) are meaningless without it.
+        const { data: profile, error: profileError } = await insforge.database
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle<Profile>();
+
+        if (profileError || !profile) {
+            const message = `Failed to load profile for user ${userId}: ${profileError?.message ?? "not found"}`;
+            console.error("🔍 [Inngest]", message);
+            await markRunFailed(message);
+            throw new Error(message);
+        }
+
+        const provider = profile.preferred_model ?? "gemini";
         const jobChunks = chunkArray(rawJobs, 10);
 
         try {
             for (const chunk of jobChunks) {
                 await step.run(`Evaluate Chunk of ${chunk.length}`, async () => {
-                    const evaluations = await evaluateJobCompatibility(chunk, filters);
+                    const evaluations = await evaluateJobCompatibility(chunk, filters, profile, provider);
 
                     for (const job of chunk) {
-                        const evalResult = evaluations.find((e: any) => e.id === job.id) || {};
+                        const evalResult = evaluations.find((e) => e.id === job.id);
 
                         // Capture the error from the database update
                         const { error: updateError } = await admin.database
                             .from("jobs")
                             .update({
-                                match_score: evalResult.score ?? 0,
-                                match_reason: evalResult.reasoning || null,
-                                matched_skills: evalResult.matchedSkills || [],
-                                missing_skills: evalResult.missingSkills || [],
+                                match_score: evalResult?.matchScore ?? 0,
+                                match_reason: evalResult?.reasoning || null,
+                                matched_skills: evalResult?.matchedSkills || [],
+                                missing_skills: evalResult?.missingSkills || [],
+                                evaluation: evalResult?.dimensions ?? null,
+                                recommendation_score: evalResult?.recommendationScore ?? null,
                             })
                             .eq("id", job.id);
 

@@ -68,6 +68,8 @@ export default async function JobDetailsPage({ params }: Props) {
           matchReason={job.match_reason}
           matchedSkills={job.matched_skills}
           missingSkills={job.missing_skills}
+          evaluation={job.evaluation}
+          recommendationScore={job.recommendation_score}
         />
               <JobDescription
                   aboutRole={job.about_role || job.description}

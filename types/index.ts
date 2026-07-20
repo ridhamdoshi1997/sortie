@@ -92,12 +92,20 @@ export interface Job {
   match_reason: string | null;
   matched_skills: string[];
   missing_skills: string[];
+  evaluation: JobEvaluationDimension[] | null;
+  recommendation_score: number | null;
   cover_letter: string | null;
   tailored_resume_url: string | null;
   tailored_match_score: number | null;
   is_tailored: boolean;
   company_research: CompanyResearchDossier | null;
   found_at: string;
+}
+
+export interface JobEvaluationDimension {
+  dimension: string;
+  grade: "A" | "B" | "C" | "D" | "F";
+  note: string;
 }
 
 export interface CompanyResearchDossier {
