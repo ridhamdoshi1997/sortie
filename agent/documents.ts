@@ -1,5 +1,4 @@
-import OpenAI from "openai";
-
+import { complete, getModel, type ModelProvider } from "@/lib/models";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
 import type { GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
 
@@ -12,6 +11,7 @@ type DocumentInput = {
   job: DocumentJob;
   profile: Profile;
   dossier: CompanyResearchDossier;
+  provider: ModelProvider;
 };
 
 export type ChatMessage = {
@@ -27,14 +27,6 @@ function buildConversationContext(messages: ChatMessage[]): string {
   return messages
     .map((message) => `${message.role === "user" ? "Candidate" : "You"}: ${message.content}`)
     .join("\n");
-}
-
-// GEMINI_API_KEY, not OPENAI_API_KEY — see agent/research.ts for why.
-function getModelClient(): OpenAI {
-  return new OpenAI({
-    apiKey: process.env.GEMINI_API_KEY!,
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  });
 }
 
 function buildProfileContext(profile: Profile): string {
@@ -71,23 +63,12 @@ export async function generateTailoredResume({
   job,
   profile,
   dossier,
+  provider,
 }: DocumentInput): Promise<GeneratedContent> {
-  const openai = getModelClient();
-
-  const response = await openai.chat.completions.create({
-    model: "gemini-3.1-flash-lite",
-    response_format: { type: "json_object" },
-    temperature: 0.6,
-    max_tokens: 1200,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a professional resume writer tailoring a resume for one specific job application. Given the candidate's profile, the target job posting, and research about the target company, produce a 2-3 sentence professional summary and rewrite each work experience entry's responsibilities as 3-5 concise, achievement-focused bullet points starting with strong action verbs. Mirror the exact terminology and keywords from the job posting and its required skills wherever the candidate's real experience genuinely supports it — this is for ATS keyword matching. Never claim a skill or a piece of experience the candidate does not actually have. Return only valid JSON.",
-      },
-      {
-        role: "user",
-        content: `Generate a tailored resume and return JSON matching this exact shape:
+  const raw = await complete(getModel(provider, "smart"), {
+    systemPrompt:
+      "You are an expert resume writer producing a polished, ATS-optimized resume for one specific job application. Given the candidate's profile, the target job posting, and research about the target company, produce a professional summary and rewrite each work experience entry's responsibilities as achievement-focused bullet points.\n\nRules:\n- Summary: 2-3 sentences, specific to this candidate and role. Never open with generic resume clichés like 'results-oriented', 'proven track record', 'dynamic professional', or similar boilerplate — state concretely what the candidate does and their strongest strength for this specific role.\n- Bullets: 3-5 per role, each a single tight line (roughly 15-22 words), starting with a strong action verb. Never repeat the same opening verb across bullets in the resume. Quantify impact (scale, time saved, performance gain, team size) whenever the candidate's real experience supports a number — never invent a metric that isn't grounded in their profile.\n- Mirror the exact terminology and keywords from the job posting and its required skills wherever the candidate's real experience genuinely supports it — this is for ATS keyword matching.\n- Use only standard characters and punctuation (no special symbols, emoji, or unusual unicode) so the text extracts cleanly in ATS parsers.\n- Keep total content tight enough to fit cleanly on one page for a typical candidate — favor the most relevant, highest-impact bullets over exhaustive coverage of every responsibility.\n- Never claim a skill or a piece of experience the candidate does not actually have.\n\nReturn only valid JSON.",
+    userPrompt: `Generate a tailored resume and return JSON matching this exact shape:
 {
   "summary": "string — 2-3 sentence professional summary tailored to this role",
   "work_experience": [
@@ -110,14 +91,10 @@ ${buildJobContext(job)}
 
 COMPANY RESEARCH:
 ${buildResearchContext(dossier)}`,
-      },
-    ],
+    temperature: 0.6,
+    maxTokens: 1200,
+    jsonResponse: true,
   });
-
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    throw new Error("AI returned an empty response");
-  }
 
   return JSON.parse(raw) as GeneratedContent;
 }
@@ -126,22 +103,12 @@ export async function generateCoverLetter({
   job,
   profile,
   dossier,
+  provider,
 }: DocumentInput): Promise<string> {
-  const openai = getModelClient();
-
-  const response = await openai.chat.completions.create({
-    model: "gemini-3.1-flash-lite",
-    temperature: 0.6,
-    max_tokens: 700,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a career strategist writing a cover letter for one specific candidate applying to one specific role. Ground every claim about the company in the provided research — never invent funding, customers, headcount, or facts. Choose whichever angle (mission-driven, technical-depth, culture-fit, or growth-story) best fits what the research actually supports, rather than forcing one. Structure: an opening hook connecting the candidate to something specific and real about the company or role, one to two body paragraphs connecting the candidate's actual experience to the role's needs (address a real gap honestly if one matters, don't ignore it), and a closing paragraph with a clear call to action. Keep it under 350 words, no generic filler phrases. Return only the letter body — start with \"Dear Hiring Team,\" and sign off with the candidate's full name. No markdown, no JSON, no placeholder brackets.",
-      },
-      {
-        role: "user",
-        content: `CANDIDATE PROFILE:
+  const raw = await complete(getModel(provider, "smart"), {
+    systemPrompt:
+      "You are a career strategist writing a cover letter for one specific candidate applying to one specific role. Ground every claim about the company in the provided research — never invent funding, customers, headcount, or facts. Choose whichever angle (mission-driven, technical-depth, culture-fit, or growth-story) best fits what the research actually supports, rather than forcing one. Structure: an opening hook connecting the candidate to something specific and real about the company or role, one to two body paragraphs connecting the candidate's actual experience to the role's needs (address a real gap honestly if one matters, don't ignore it), and a closing paragraph with a clear call to action. Keep it under 350 words, no generic filler phrases. Return only the letter body — start with \"Dear Hiring Team,\" and sign off with the candidate's full name. No markdown, no JSON, no placeholder brackets.",
+    userPrompt: `CANDIDATE PROFILE:
 ${buildProfileContext(profile)}
 
 TARGET JOB POSTING:
@@ -149,14 +116,9 @@ ${buildJobContext(job)}
 
 COMPANY RESEARCH:
 ${buildResearchContext(dossier)}`,
-      },
-    ],
+    temperature: 0.6,
+    maxTokens: 700,
   });
-
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    throw new Error("AI returned an empty response");
-  }
 
   return raw.trim();
 }
@@ -165,28 +127,17 @@ export async function reviseTailoredResume({
   job,
   profile,
   dossier,
+  provider,
   messages,
   currentContent,
 }: ReviseInput & { currentContent: GeneratedContent }): Promise<{
   reply: string;
   content: GeneratedContent;
 }> {
-  const openai = getModelClient();
-
-  const response = await openai.chat.completions.create({
-    model: "gemini-3.1-flash-lite",
-    response_format: { type: "json_object" },
-    temperature: 0.5,
-    max_tokens: 1300,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a professional resume writer revising an already-generated resume based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current resume content, preserving everything they didn't ask to change. Keep mirroring the real job posting's terminology for ATS matching, and never claim a skill or experience the candidate does not have. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised 'content' in the same shape as the current content.",
-      },
-      {
-        role: "user",
-        content: `Return JSON matching this exact shape:
+  const raw = await complete(getModel(provider, "smart"), {
+    systemPrompt:
+      "You are a professional resume writer revising an already-generated resume based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current resume content, preserving everything they didn't ask to change. Keep mirroring the real job posting's terminology for ATS matching, and never claim a skill or experience the candidate does not have. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised 'content' in the same shape as the current content.",
+    userPrompt: `Return JSON matching this exact shape:
 {
   "reply": "string — one or two sentences confirming what you changed",
   "content": {
@@ -218,14 +169,10 @@ ${JSON.stringify(currentContent)}
 
 CONVERSATION SO FAR (apply the latest Candidate instruction):
 ${buildConversationContext(messages)}`,
-      },
-    ],
+    temperature: 0.5,
+    maxTokens: 1300,
+    jsonResponse: true,
   });
-
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    throw new Error("AI returned an empty response");
-  }
 
   return JSON.parse(raw) as { reply: string; content: GeneratedContent };
 }
@@ -234,28 +181,17 @@ export async function reviseCoverLetter({
   job,
   profile,
   dossier,
+  provider,
   messages,
   currentContent,
 }: ReviseInput & { currentContent: string }): Promise<{
   reply: string;
   content: string;
 }> {
-  const openai = getModelClient();
-
-  const response = await openai.chat.completions.create({
-    model: "gemini-3.1-flash-lite",
-    response_format: { type: "json_object" },
-    temperature: 0.5,
-    max_tokens: 900,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a career strategist revising an already-written cover letter based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current letter, preserving everything they didn't ask to change. Keep every company claim grounded in the provided research — never invent facts. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised letter body as 'content' (same format as before — starts with 'Dear Hiring Team,', signs off with the candidate's full name, no markdown).",
-      },
-      {
-        role: "user",
-        content: `Return JSON matching this exact shape:
+  const raw = await complete(getModel(provider, "smart"), {
+    systemPrompt:
+      "You are a career strategist revising an already-written cover letter based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current letter, preserving everything they didn't ask to change. Keep every company claim grounded in the provided research — never invent facts. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised letter body as 'content' (same format as before — starts with 'Dear Hiring Team,', signs off with the candidate's full name, no markdown).",
+    userPrompt: `Return JSON matching this exact shape:
 {
   "reply": "string — one or two sentences confirming what you changed",
   "content": "string — the full revised letter body"
@@ -275,14 +211,10 @@ ${currentContent}
 
 CONVERSATION SO FAR (apply the latest Candidate instruction):
 ${buildConversationContext(messages)}`,
-      },
-    ],
+    temperature: 0.5,
+    maxTokens: 900,
+    jsonResponse: true,
   });
-
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    throw new Error("AI returned an empty response");
-  }
 
   return JSON.parse(raw) as { reply: string; content: string };
 }

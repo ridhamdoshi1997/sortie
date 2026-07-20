@@ -1,22 +1,23 @@
 import React from "react";
 import { NextRequest, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
-import OpenAI from "openai";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { complete, getModel } from "@/lib/models";
 import type { Profile } from "@/types";
-import { ResumePDF, type GeneratedContent } from "./ResumePDF";
+import { ResumePDF, type GeneratedContent, type ResumeTheme } from "./ResumePDF";
 
 function createResumeDocument(
   profile: Profile,
   generated: GeneratedContent,
+  theme: ResumeTheme,
 ): React.ReactElement<DocumentProps> {
   // ResumePDF renders a @react-pdf <Document>; the cast bridges React's component
   // prop inference to the renderer's document element type.
   return (
-    <ResumePDF profile={profile} generated={generated} />
+    <ResumePDF profile={profile} generated={generated} theme={theme} />
   ) as unknown as React.ReactElement<DocumentProps>;
 }
 
@@ -45,14 +46,6 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    // Generate polished resume content. Not OPENAI_API_KEY — that env var
-    // in this project is actually the Gemini key under a misleading name
-    // (see agent/research.ts for the same fix and fuller explanation).
-    const openai = new OpenAI({
-      apiKey: process.env.GEMINI_API_KEY!,
-      baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-    });
-
     const profileContext = JSON.stringify({
       full_name: profile.full_name,
       current_title: profile.current_title,
@@ -65,20 +58,12 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
       job_titles_seeking: profile.job_titles_seeking,
     });
 
-    const response = await openai.chat.completions.create({
-      model: "gemini-3.1-flash-lite",
-      response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 1000,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a professional resume writer. Given a candidate's profile data, produce a 2-3 sentence professional summary paragraph and rewrite each work experience entry's responsibilities as 3-5 concise, achievement-focused bullet points starting with strong action verbs. Return only valid JSON.",
-        },
-        {
-          role: "user",
-          content: `Generate polished resume content for this candidate and return JSON matching this exact shape:
+    let raw: string;
+    try {
+      raw = await complete(getModel(profile.preferred_model ?? "gemini", "smart"), {
+        systemPrompt:
+          "You are an expert resume writer producing a polished, ATS-optimized resume. Given a candidate's profile data, produce a professional summary and rewrite each work experience entry's responsibilities as achievement-focused bullet points.\n\nRules:\n- Summary: 2-3 sentences, specific to this candidate. Never open with generic resume clichés like 'results-oriented', 'proven track record', 'dynamic professional', or similar boilerplate — state concretely what the candidate does and their strongest strength.\n- Bullets: 3-5 per role, each a single tight line (roughly 15-22 words), starting with a strong action verb. Never repeat the same opening verb across bullets in the resume. Quantify impact (scale, time saved, performance gain, team size) whenever the candidate's real experience supports a number — never invent a metric that isn't grounded in their profile.\n- Use only standard characters and punctuation (no special symbols, emoji, or unusual unicode) so the text extracts cleanly in ATS parsers.\n- Keep total content tight enough to fit cleanly on one page for a typical candidate — favor the most relevant, highest-impact bullets over exhaustive coverage of every responsibility.\n- Never claim a skill or a piece of experience the candidate does not actually have.\n\nReturn only valid JSON.",
+        userPrompt: `Generate polished resume content for this candidate and return JSON matching this exact shape:
 {
   "summary": "string — 2-3 sentence professional summary",
   "work_experience": [
@@ -95,12 +80,12 @@ export async function POST(_req: NextRequest): Promise<NextResponse> {
 
 Candidate profile:
 ${profileContext}`,
-        },
-      ],
-    });
-
-    const raw = response.choices[0].message.content;
-    if (!raw) {
+        temperature: 0.7,
+        maxTokens: 1000,
+        jsonResponse: true,
+      });
+    } catch (error) {
+      console.error("[api/resume/generate] AI completion failed", error);
       return NextResponse.json(
         { success: false, error: "AI returned an empty response" },
         { status: 500 },
@@ -119,7 +104,8 @@ ${profileContext}`,
     }
 
     // Render PDF buffer server-side
-    const buffer = await renderToBuffer(createResumeDocument(profile, generated));
+    const theme = profile.preferred_resume_theme ?? "modern";
+    const buffer = await renderToBuffer(createResumeDocument(profile, generated, theme));
 
     // Remove existing file then upload fresh (SDK has no upsert — matches actions/profile.ts pattern)
     const path = `${user.id}/resume.pdf`;

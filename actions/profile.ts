@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import OpenAI from "openai";
 // Import from lib directly to avoid pdf-parse's index.js debug mode, which reads
 // a test file on every require() call and crashes when module.parent is null
 // (always the case under Next.js/Turbopack).
@@ -12,9 +11,65 @@ const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { complete, getModel, type ModelProvider } from "@/lib/models";
+import type { ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
-import type { Education, WorkExperience } from "@/types";
+import type { Education, Profile, WorkExperience } from "@/types";
+
+export async function setPreferredModel(
+  provider: ModelProvider,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("profiles")
+      .update({ preferred_model: provider })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("[actions/profile] setPreferredModel", error);
+      return { success: false, error: "Failed to save model preference" };
+    }
+
+    revalidatePath("/find-jobs");
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/profile] setPreferredModel", error);
+    return { success: false, error: "Failed to save model preference" };
+  }
+}
+
+export async function setPreferredResumeTheme(
+  theme: ResumeTheme,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("profiles")
+      .update({ preferred_resume_theme: theme })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("[actions/profile] setPreferredResumeTheme", error);
+      return { success: false, error: "Failed to save theme preference" };
+    }
+
+    revalidatePath("/find-jobs");
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/profile] setPreferredResumeTheme", error);
+    return { success: false, error: "Failed to save theme preference" };
+  }
+}
 
 type WorkExperienceEntry = {
   company: string;
@@ -254,25 +309,18 @@ export async function extractProfile(): Promise<{
       };
     }
 
-      const openai = new OpenAI({
-          apiKey: process.env.GEMINI_API_KEY!,
-          baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/"
-      });
+    const { data: existingProfile } = await insforge.database
+      .from("profiles")
+      .select("preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model">>();
 
-      const response = await openai.chat.completions.create({
-          model: "gemini-3.1-flash-lite",
-      response_format: { type: "json_object" },
-      temperature: 0.3,
-      max_tokens: 800,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a resume parser. Extract structured profile data from the resume text and return only valid JSON matching the exact schema provided. Use null for missing fields. Arrays must always be arrays (never null). experience_level must be one of: Junior, Mid-Level, Senior, Lead, Manager, Director, Executive — pick the closest match or null.",
-        },
-        {
-          role: "user",
-          content: `Extract profile data from this resume and return JSON with this exact shape:
+    const raw = await complete(
+      getModel(existingProfile?.preferred_model ?? "gemini", "smart"),
+      {
+        systemPrompt:
+          "You are a resume parser. Extract structured profile data from the resume text and return only valid JSON matching the exact schema provided. Use null for missing fields. Arrays must always be arrays (never null). experience_level must be one of: Junior, Mid-Level, Senior, Lead, Manager, Director, Executive — pick the closest match or null.",
+        userPrompt: `Extract profile data from this resume and return JSON with this exact shape:
 {
   "full_name": string | null,
   "phone": string | null,
@@ -291,14 +339,11 @@ export async function extractProfile(): Promise<{
 
 Resume text:
 ${extractedText.slice(0, 6000)}`,
-        },
-      ],
-    });
-
-    const raw = response.choices[0].message.content;
-    if (!raw) {
-      return { success: false, error: "AI returned an empty response." };
-    }
+        temperature: 0.3,
+        maxTokens: 800,
+        jsonResponse: true,
+      },
+    );
 
     const extracted = JSON.parse(raw) as ExtractedProfile;
 

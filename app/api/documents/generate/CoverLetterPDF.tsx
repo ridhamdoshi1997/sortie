@@ -2,50 +2,55 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
 import { formatDate } from "@/lib/utils";
+import { RESUME_THEMES, type ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
 import type { Profile } from "@/types";
 
 type Props = {
   profile: Profile;
   company: string | null;
   letterBody: string;
+  theme?: ResumeTheme;
 };
 
-const styles = StyleSheet.create({
-  page: {
-    padding: 48,
-    fontFamily: "Helvetica",
-    fontSize: 10.5,
-    color: "#1a1a1a",
-  },
-  name: {
-    fontSize: 16,
-    fontWeight: "bold",
-    color: "#111111",
-  },
-  contact: {
-    fontSize: 9,
-    color: "#666666",
-    marginTop: 3,
-  },
-  date: {
-    fontSize: 10,
-    color: "#444444",
-    marginTop: 28,
-  },
-  recipient: {
-    fontSize: 10,
-    color: "#444444",
-    marginTop: 4,
-  },
-  paragraph: {
-    fontSize: 10.5,
-    color: "#333333",
-    marginTop: 14,
-    lineHeight: 1.6,
-  },
-});
+function createStyles(t: (typeof RESUME_THEMES)[ResumeTheme]) {
+  return StyleSheet.create({
+    page: {
+      padding: 48,
+      fontFamily: t.fontFamily,
+      fontSize: 10.5,
+      color: t.ink,
+    },
+    name: {
+      fontSize: 16,
+      fontFamily: t.fontFamilyBold,
+      color: t.ink,
+    },
+    contact: {
+      fontSize: 9,
+      color: t.textMuted,
+      marginTop: 3,
+    },
+    date: {
+      fontSize: 10,
+      color: t.textMuted,
+      marginTop: 28,
+    },
+    recipient: {
+      fontSize: 10,
+      color: t.textMuted,
+      marginTop: 4,
+    },
+    paragraph: {
+      fontSize: 10.5,
+      color: t.textSecondary,
+      marginTop: 14,
+      lineHeight: 1.6,
+    },
+  });
+}
 
-export function CoverLetterPDF({ profile, company, letterBody }: Props) {
+export function CoverLetterPDF({ profile, company, letterBody, theme = "modern" }: Props) {
+  const styles = createStyles(RESUME_THEMES[theme]);
   const contactParts = [profile.email, profile.phone].filter(Boolean);
   const paragraphs = letterBody
     .split(/\n{2,}/)

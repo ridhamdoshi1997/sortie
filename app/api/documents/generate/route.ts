@@ -8,6 +8,7 @@ import { generateCoverLetter, generateTailoredResume } from "@/agent/documents";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
+import { getModel } from "@/lib/models";
 import { ResumePDF } from "@/app/api/resume/generate/ResumePDF";
 import { CoverLetterPDF } from "./CoverLetterPDF";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
@@ -112,11 +113,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const provider = profile.preferred_model ?? "gemini";
+
     // "Generate" is one click start to finish — research the company first
     // if it hasn't been researched yet, same logic as /api/agent/research.
     let dossier: CompanyResearchDossier | null = job.company_research;
     if (!dossier) {
-      const researchResult = await researchCompany({ job, profile });
+      const researchResult = await researchCompany({ job, profile, provider });
       if (!researchResult.success) {
         return NextResponse.json(
           { success: false, error: "Company research failed, needed before generating" },
@@ -139,23 +142,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
+    const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;
 
     if (kind === "resume") {
-      const generated = await generateTailoredResume({ job, profile, dossier });
+      const generated = await generateTailoredResume({ job, profile, dossier, provider });
       generatedContentText = JSON.stringify(generated);
       pdfBuffer = await renderToBuffer(
-        React.createElement(ResumePDF, { profile, generated }) as unknown as React.ReactElement<DocumentProps>,
+        React.createElement(ResumePDF, { profile, generated, theme }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
-      const letterBody = await generateCoverLetter({ job, profile, dossier });
+      const letterBody = await generateCoverLetter({ job, profile, dossier, provider });
       generatedContentText = letterBody;
       pdfBuffer = await renderToBuffer(
         React.createElement(CoverLetterPDF, {
           profile,
           company: job.company,
           letterBody,
+          theme,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     }
@@ -167,6 +172,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       kind,
       pdfBuffer,
       contentText: generatedContentText,
+      modelUsed: getModel(provider, "smart").model,
     });
 
     if (!persistResult.success) {

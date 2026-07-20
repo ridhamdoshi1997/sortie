@@ -10,6 +10,7 @@ type PersistInput = {
   kind: DocumentKind;
   pdfBuffer: Buffer;
   contentText: string;
+  modelUsed: string;
 };
 
 type PersistResult =
@@ -23,6 +24,7 @@ export async function persistGeneratedDocument({
   kind,
   pdfBuffer,
   contentText,
+  modelUsed,
 }: PersistInput): Promise<PersistResult> {
   const storagePath = `${userId}/${jobId}/${kind === "resume" ? "resume" : "cover-letter"}.pdf`;
 
@@ -53,7 +55,7 @@ export async function persistGeneratedDocument({
   const applicationPatch = {
     [documentColumn]: contentText,
     [urlColumn]: storagePath,
-    ai_model_used: "gemini-3.1-flash-lite",
+    ai_model_used: modelUsed,
     status: "generated",
   };
 

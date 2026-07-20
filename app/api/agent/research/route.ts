@@ -33,6 +33,7 @@ type ResearchProfileRow = Pick<
   | "years_experience"
   | "skills"
   | "work_experience"
+  | "preferred_model"
 >;
 
 function isUuid(value: string): boolean {
@@ -126,7 +127,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const { data: profile, error: profileError } = await insforge.database
       .from("profiles")
       .select(
-        "id,current_title,experience_level,years_experience,skills,work_experience",
+        "id,current_title,experience_level,years_experience,skills,work_experience,preferred_model",
       )
       .eq("id", userId)
       .maybeSingle<ResearchProfileRow>();
@@ -155,6 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       job,
       profile,
       log: logAgentMessage,
+      provider: profile.preferred_model ?? "gemini",
     });
 
     if (!result.success) {

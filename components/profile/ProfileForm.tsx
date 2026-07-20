@@ -98,12 +98,12 @@ function FormSelect({
       className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
     >
       {placeholder && (
-        <option value="" disabled>
+        <option value="" disabled className="bg-surface text-text-primary">
           {placeholder}
         </option>
       )}
       {options.map((opt) => (
-        <option key={opt} value={opt}>
+        <option key={opt} value={opt} className="bg-surface text-text-primary">
           {opt}
         </option>
       ))}
@@ -215,9 +215,9 @@ function MonthYearSelect({
         onChange={(e) => update(e.target.value, year)}
         className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
       >
-        <option value="">{placeholder ?? "Month"}</option>
+        <option value="" className="bg-surface text-text-primary">{placeholder ?? "Month"}</option>
         {MONTHS.map((m) => (
-          <option key={m} value={m}>
+          <option key={m} value={m} className="bg-surface text-text-primary">
             {m}
           </option>
         ))}
@@ -227,9 +227,9 @@ function MonthYearSelect({
         onChange={(e) => update(month, e.target.value)}
         className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
       >
-        <option value="">Year</option>
+        <option value="" className="bg-surface text-text-primary">Year</option>
         {YEARS.map((y) => (
-          <option key={y} value={y}>
+          <option key={y} value={y} className="bg-surface text-text-primary">
             {y}
           </option>
         ))}

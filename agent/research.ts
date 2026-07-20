@@ -1,8 +1,8 @@
 import { Stagehand } from "@browserbasehq/stagehand";
-import OpenAI from "openai";
 import { z } from "zod";
 
 import { bb } from "@/lib/browserbase";
+import { complete, getModel, type ModelProvider } from "@/lib/models";
 import type {
   CompanyResearchDossier,
   Job,
@@ -42,6 +42,7 @@ type ResearchInput = {
   job: ResearchJob;
   profile: ResearchProfile;
   log?: ResearchLogger;
+  provider?: ModelProvider;
 };
 
 type ResearchResult =
@@ -470,16 +471,8 @@ async function synthesizeDossier(
   job: ResearchJob,
   profile: ResearchProfile,
   browserResearch: BrowserResearch,
+  provider: ModelProvider,
 ): Promise<CompanyResearchDossier> {
-  // OPENAI_API_KEY in this project is not a real OpenAI key — it's the
-  // same Gemini key as GEMINI_API_KEY, routed through Google's
-  // OpenAI-compatibility endpoint (see actions/profile.ts for the same
-  // pattern). Calling OpenAI's real endpoint with it would 401.
-  const openai = new OpenAI({
-    apiKey: process.env.GEMINI_API_KEY!,
-    baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
-  });
-
   const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
 
 Rules:
@@ -518,21 +511,13 @@ Experience: ${profile.years_experience ?? "Unknown"} years, level ${profile.expe
 Skills: ${profile.skills.join(", ") || "None saved"}
 Work history: ${getWorkHistory(profile.work_experience)}`;
 
-  const response = await openai.chat.completions.create({
-    model: "gemini-3.1-flash-lite",
-    response_format: { type: "json_object" },
+  const raw = await complete(getModel(provider, "smart"), {
+    systemPrompt,
+    userPrompt,
     temperature: 0.4,
-    max_tokens: 1200,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
+    maxTokens: 1200,
+    jsonResponse: true,
   });
-
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    return buildFallbackDossier(job, profile);
-  }
 
   try {
     const parsed: unknown = JSON.parse(raw);
@@ -581,12 +566,21 @@ Work history: ${getWorkHistory(profile.work_experience)}`;
   }
 }
 
+const PROVIDER_ENV_KEYS: Record<ModelProvider, string> = {
+  gemini: "GEMINI_API_KEY",
+  openai: "OPENAI_API_KEY",
+  anthropic: "ANTHROPIC_API_KEY",
+};
+
 export async function researchCompany({
   job,
   profile,
   log: logger,
+  provider = "gemini",
 }: ResearchInput): Promise<ResearchResult> {
   try {
+    // Browser-based homepage/sub-page extraction always runs through Stagehand's
+    // Gemini model regardless of the synthesis provider chosen below.
     if (!process.env.GEMINI_API_KEY) {
       return {
         success: false,
@@ -594,8 +588,15 @@ export async function researchCompany({
       };
     }
 
+    if (!process.env[PROVIDER_ENV_KEYS[provider]]) {
+      return {
+        success: false,
+        error: `${provider} is not configured for dossier synthesis.`,
+      };
+    }
+
     const browserResearch = await collectBrowserResearch(job, logger);
-    const dossier = await synthesizeDossier(job, profile, browserResearch);
+    const dossier = await synthesizeDossier(job, profile, browserResearch, provider);
 
     await log(logger, "Company research dossier generated.", "success");
     return { success: true, dossier };

@@ -7,6 +7,7 @@ import { reviseCoverLetter, reviseTailoredResume, type ChatMessage } from "@/age
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
+import { getModel } from "@/lib/models";
 import { ResumePDF, type GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
 import { CoverLetterPDF } from "@/app/api/documents/generate/CoverLetterPDF";
 import type { Job, Profile } from "@/types";
@@ -153,6 +154,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const dossier = job.company_research;
+    const provider = profile.preferred_model ?? "gemini";
+    const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;
@@ -163,6 +166,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         job,
         profile,
         dossier,
+        provider,
         messages,
         currentContent,
       });
@@ -172,6 +176,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         React.createElement(ResumePDF, {
           profile,
           generated: revised.content,
+          theme,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
@@ -179,6 +184,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         job,
         profile,
         dossier,
+        provider,
         messages,
         currentContent: currentContentText,
       });
@@ -189,6 +195,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           profile,
           company: job.company,
           letterBody: revised.content,
+          theme,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     }
@@ -200,6 +207,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       kind,
       pdfBuffer,
       contentText: generatedContentText,
+      modelUsed: getModel(provider, "smart").model,
     });
 
     if (!persistResult.success) {

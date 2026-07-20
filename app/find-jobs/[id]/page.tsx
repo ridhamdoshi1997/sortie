@@ -10,9 +10,11 @@ import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
 import { MatchScore } from "@/components/job-details/MatchScore";
 import { Navbar } from "@/components/layout/Navbar";
+import { ModelSelector } from "@/components/shared/ModelSelector";
+import { ThemeSelector } from "@/components/shared/ThemeSelector";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import type { Job } from "@/types";
+import type { Job, Profile } from "@/types";
 
 type Props = {
   params: Promise<{ id: string }>;
@@ -49,6 +51,12 @@ export default async function JobDetailsPage({ params }: Props) {
     .eq("job_id", job.id)
     .maybeSingle<{ resume_pdf_url: string | null; cover_letter_pdf_url: string | null }>();
 
+  const { data: profile } = await insforge.database
+    .from("profiles")
+    .select("preferred_model,preferred_resume_theme")
+    .eq("id", user.id)
+    .maybeSingle<Pick<Profile, "preferred_model" | "preferred_resume_theme">>();
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -69,6 +77,10 @@ export default async function JobDetailsPage({ params }: Props) {
                   benefits={job.benefits}
                   sourceUrl={applyUrl}
               />
+        <div className="flex flex-wrap justify-end gap-4">
+          <ModelSelector value={profile?.preferred_model ?? "gemini"} />
+          <ThemeSelector value={profile?.preferred_resume_theme ?? "modern"} />
+        </div>
         <CompanyResearch
           company={company}
           jobId={job.id}

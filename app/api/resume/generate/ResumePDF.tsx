@@ -15,154 +15,223 @@ export type GeneratedContent = {
   }>;
 };
 
+export type ResumeTheme = "classic" | "modern" | "minimal";
+
 type Props = {
   profile: Profile;
   generated: GeneratedContent;
+  theme?: ResumeTheme;
 };
 
-// Echoes the app's own light-mode accent (--color-accent / --color-accent-dark
-// in app/globals.css) so a generated resume feels on-brand — hardcoded here
-// deliberately, since react-pdf styles are plain JS objects, not CSS, and
-// can't read the app's Tailwind theme variables.
-const ACCENT = "#c9711f";
-const ACCENT_DARK = "#7a4713";
-const INK = "#17181a";
-const TEXT_SECONDARY = "#4b4f4c";
-const TEXT_MUTED = "#7a7f7c";
-const RULE = "#e4e2dc";
+// All three themes stay strictly ATS-safe regardless of choice: single
+// column, no tables/images, and only the PDF standard-14 fonts (Helvetica /
+// Times-Roman families) so nothing needs embedding or trips an ATS parser.
+// Only color, font family, and a couple of structural touches (header rule,
+// skill chips vs. plain list) vary between themes.
+export type ThemeTokens = {
+  fontFamily: string;
+  fontFamilyBold: string;
+  accent: string;
+  accentDark: string;
+  ink: string;
+  textSecondary: string;
+  textMuted: string;
+  rule: string;
+  showHeaderRule: boolean;
+  skillStyle: "chip" | "plain";
+  nameLetterSpacing: number;
+};
 
-const styles = StyleSheet.create({
-  page: {
-    paddingTop: 44,
-    paddingBottom: 44,
-    paddingHorizontal: 46,
+export const RESUME_THEMES: Record<ResumeTheme, ThemeTokens> = {
+  // Echoes the app's own light-mode accent (--color-accent / --color-accent-dark
+  // in app/globals.css) so this default feels on-brand.
+  modern: {
     fontFamily: "Helvetica",
-    fontSize: 10,
-    color: INK,
+    fontFamilyBold: "Helvetica-Bold",
+    accent: "#c9711f",
+    accentDark: "#7a4713",
+    ink: "#17181a",
+    textSecondary: "#4b4f4c",
+    textMuted: "#7a7f7c",
+    rule: "#e4e2dc",
+    showHeaderRule: true,
+    skillStyle: "chip",
+    nameLetterSpacing: 0.3,
   },
-  header: {
-    marginBottom: 14,
+  // Traditional serif treatment for conservative industries (finance, legal,
+  // academia) — plain skill list instead of chips reads less "startup."
+  classic: {
+    fontFamily: "Times-Roman",
+    fontFamilyBold: "Times-Bold",
+    accent: "#1f3a5f",
+    accentDark: "#13253d",
+    ink: "#1a1a1a",
+    textSecondary: "#3a3a3a",
+    textMuted: "#6b6b6b",
+    rule: "#c7c7c7",
+    showHeaderRule: true,
+    skillStyle: "plain",
+    nameLetterSpacing: 0.5,
   },
-  name: {
-    fontSize: 25,
-    fontFamily: "Helvetica-Bold",
-    color: INK,
-    letterSpacing: 0.3,
+  // Pure grayscale — no color at all, for the most conservative ATS/print
+  // scenarios or anyone who wants zero visual risk.
+  minimal: {
+    fontFamily: "Helvetica",
+    fontFamilyBold: "Helvetica-Bold",
+    accent: "#1a1a1a",
+    accentDark: "#000000",
+    ink: "#1a1a1a",
+    textSecondary: "#3a3a3a",
+    textMuted: "#7a7a7a",
+    rule: "#dcdcdc",
+    showHeaderRule: false,
+    skillStyle: "plain",
+    nameLetterSpacing: 1.2,
   },
-  headerRule: {
-    marginTop: 10,
-    borderBottomWidth: 2,
-    borderBottomColor: ACCENT,
-    width: 46,
-  },
-  subtitle: {
-    fontSize: 11.5,
-    fontFamily: "Helvetica-Bold",
-    color: ACCENT_DARK,
-    marginTop: 8,
-  },
-  contactRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    marginTop: 5,
-  },
-  contact: {
-    fontSize: 9,
-    color: TEXT_MUTED,
-  },
-  contactDivider: {
-    fontSize: 9,
-    color: RULE,
-    marginHorizontal: 6,
-  },
-  section: {
-    marginTop: 16,
-  },
-  sectionTitle: {
-    fontSize: 10.5,
-    fontFamily: "Helvetica-Bold",
-    color: ACCENT_DARK,
-    letterSpacing: 1.4,
-    textTransform: "uppercase",
-    paddingBottom: 5,
-    marginBottom: 9,
-    borderBottomWidth: 1,
-    borderBottomColor: RULE,
-  },
-  summaryText: {
-    fontSize: 10,
-    color: TEXT_SECONDARY,
-    lineHeight: 1.55,
-  },
-  skillsRow: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  skillChip: {
-    fontSize: 8.5,
-    color: ACCENT_DARK,
-    borderWidth: 0.75,
-    borderColor: ACCENT,
-    borderRadius: 3,
-    paddingVertical: 3,
-    paddingHorizontal: 7,
-    marginRight: 6,
-    marginBottom: 6,
-  },
-  jobEntry: {
-    marginBottom: 11,
-  },
-  jobHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-end",
-    marginBottom: 1,
-  },
-  jobTitle: {
-    fontSize: 10.5,
-    fontFamily: "Helvetica-Bold",
-    color: INK,
-  },
-  jobDates: {
-    fontSize: 8.5,
-    color: TEXT_MUTED,
-    letterSpacing: 0.3,
-    textTransform: "uppercase",
-  },
-  jobCompany: {
-    fontSize: 9.5,
-    fontFamily: "Helvetica-Bold",
-    color: ACCENT_DARK,
-    marginBottom: 4,
-  },
-  bulletRow: {
-    flexDirection: "row",
-    marginBottom: 3,
-  },
-  bulletMark: {
-    fontSize: 9,
-    color: ACCENT,
-    width: 10,
-  },
-  bulletText: {
-    flex: 1,
-    fontSize: 9.5,
-    color: TEXT_SECONDARY,
-    lineHeight: 1.45,
-  },
-  eduDegree: {
-    fontSize: 10.5,
-    fontFamily: "Helvetica-Bold",
-    color: INK,
-  },
-  eduDetails: {
-    fontSize: 9,
-    color: TEXT_MUTED,
-    marginTop: 2,
-  },
-});
+};
 
-export function ResumePDF({ profile, generated }: Props) {
+function createStyles(t: ThemeTokens) {
+  return StyleSheet.create({
+    page: {
+      paddingTop: 44,
+      paddingBottom: 44,
+      paddingHorizontal: 46,
+      fontFamily: t.fontFamily,
+      fontSize: 10,
+      color: t.ink,
+    },
+    header: {
+      marginBottom: 14,
+    },
+    name: {
+      fontSize: 25,
+      fontFamily: t.fontFamilyBold,
+      color: t.ink,
+      letterSpacing: t.nameLetterSpacing,
+    },
+    headerRule: {
+      marginTop: 10,
+      borderBottomWidth: 2,
+      borderBottomColor: t.accent,
+      width: 46,
+    },
+    subtitle: {
+      fontSize: 11.5,
+      fontFamily: t.fontFamilyBold,
+      color: t.accentDark,
+      marginTop: 8,
+    },
+    contactRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginTop: 5,
+    },
+    contact: {
+      fontSize: 9,
+      color: t.textMuted,
+    },
+    contactDivider: {
+      fontSize: 9,
+      color: t.rule,
+      marginHorizontal: 6,
+    },
+    section: {
+      marginTop: 16,
+    },
+    sectionTitle: {
+      fontSize: 10.5,
+      fontFamily: t.fontFamilyBold,
+      color: t.accentDark,
+      letterSpacing: 1.4,
+      textTransform: "uppercase",
+      paddingBottom: 5,
+      marginBottom: 9,
+      borderBottomWidth: 1,
+      borderBottomColor: t.rule,
+    },
+    summaryText: {
+      fontSize: 10,
+      color: t.textSecondary,
+      lineHeight: 1.55,
+    },
+    skillsRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+    },
+    skillChip: {
+      fontSize: 8.5,
+      color: t.accentDark,
+      borderWidth: 0.75,
+      borderColor: t.accent,
+      borderRadius: 3,
+      paddingVertical: 3,
+      paddingHorizontal: 7,
+      marginRight: 6,
+      marginBottom: 6,
+    },
+    skillPlainText: {
+      fontSize: 9.5,
+      color: t.textSecondary,
+      lineHeight: 1.55,
+    },
+    jobEntry: {
+      marginBottom: 11,
+    },
+    jobHeader: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-end",
+      marginBottom: 1,
+    },
+    jobTitle: {
+      fontSize: 10.5,
+      fontFamily: t.fontFamilyBold,
+      color: t.ink,
+    },
+    jobDates: {
+      fontSize: 8.5,
+      color: t.textMuted,
+      letterSpacing: 0.3,
+      textTransform: "uppercase",
+    },
+    jobCompany: {
+      fontSize: 9.5,
+      fontFamily: t.fontFamilyBold,
+      color: t.accentDark,
+      marginBottom: 4,
+    },
+    bulletRow: {
+      flexDirection: "row",
+      marginBottom: 3,
+    },
+    bulletMark: {
+      fontSize: 9,
+      color: t.accent,
+      width: 10,
+    },
+    bulletText: {
+      flex: 1,
+      fontSize: 9.5,
+      color: t.textSecondary,
+      lineHeight: 1.45,
+    },
+    eduDegree: {
+      fontSize: 10.5,
+      fontFamily: t.fontFamilyBold,
+      color: t.ink,
+    },
+    eduDetails: {
+      fontSize: 9,
+      color: t.textMuted,
+      marginTop: 2,
+    },
+  });
+}
+
+export function ResumePDF({ profile, generated, theme = "modern" }: Props) {
+  const tokens = RESUME_THEMES[theme];
+  const styles = createStyles(tokens);
+
   const contactParts = [profile.email, profile.phone].filter(Boolean);
   const linkParts = [profile.linkedin_url, profile.portfolio_url].filter(Boolean);
   const allContactParts = [...contactParts, ...linkParts];
@@ -174,7 +243,7 @@ export function ResumePDF({ profile, generated }: Props) {
         {/* Header */}
         <View style={styles.header}>
           <Text style={styles.name}>{profile.full_name ?? ""}</Text>
-          <View style={styles.headerRule} />
+          {tokens.showHeaderRule && <View style={styles.headerRule} />}
           {subtitleParts.length > 0 && (
             <Text style={styles.subtitle}>{subtitleParts.join("   |   ")}</Text>
           )}
@@ -202,13 +271,17 @@ export function ResumePDF({ profile, generated }: Props) {
         {profile.skills?.length > 0 ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Skills</Text>
-            <View style={styles.skillsRow}>
-              {profile.skills.map((skill) => (
-                <Text key={skill} style={styles.skillChip}>
-                  {skill}
-                </Text>
-              ))}
-            </View>
+            {tokens.skillStyle === "chip" ? (
+              <View style={styles.skillsRow}>
+                {profile.skills.map((skill) => (
+                  <Text key={skill} style={styles.skillChip}>
+                    {skill}
+                  </Text>
+                ))}
+              </View>
+            ) : (
+              <Text style={styles.skillPlainText}>{profile.skills.join("   •   ")}</Text>
+            )}
           </View>
         ) : null}
 

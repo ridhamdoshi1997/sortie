@@ -30,6 +30,8 @@ export interface Profile {
   linkedin_url: string | null;
   portfolio_url: string | null;
   work_authorization: string | null;
+  preferred_model: "gemini" | "openai" | "anthropic" | null;
+  preferred_resume_theme: "classic" | "modern" | "minimal" | null;
   resume_pdf_url: string | null;
   linkedin_context_id: string | null;
   linkedin_connected: boolean;
