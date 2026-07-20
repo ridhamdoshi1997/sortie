@@ -94,6 +94,7 @@ export interface Job {
   missing_skills: string[];
   evaluation: JobEvaluationDimension[] | null;
   recommendation_score: number | null;
+  overall_grade: "A" | "B" | "C" | "D" | "F" | null;
   cover_letter: string | null;
   tailored_resume_url: string | null;
   tailored_match_score: number | null;

@@ -87,7 +87,14 @@ export const evaluateJobsAsync = inngest.createFunction(
         }
 
         const provider = profile.preferred_model ?? "gemini";
-        const jobChunks = chunkArray(rawJobs, 10);
+        // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
+        // the richer 2-3 sentence per-dimension notes cause the model to
+        // silently under-deliver a 10-job batch (only ~2 of 10 jobs actually
+        // evaluated, the rest fell back to neutral placeholders, even at a
+        // 24000-token budget — not a truncation issue, the model just stops
+        // completing the full batch). Chunk size 5 passed 3/3 live test runs
+        // with zero fallbacks; size 8 already failed the same way size 10 did.
+        const jobChunks = chunkArray(rawJobs, 5);
 
         try {
             for (const chunk of jobChunks) {
@@ -107,6 +114,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 missing_skills: evalResult?.missingSkills || [],
                                 evaluation: evalResult?.dimensions ?? null,
                                 recommendation_score: evalResult?.recommendationScore ?? null,
+                                overall_grade: evalResult?.overallGrade ?? null,
                             })
                             .eq("id", job.id);
 

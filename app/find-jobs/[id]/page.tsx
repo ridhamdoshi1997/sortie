@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
 import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
+import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
 import { JobActions } from "@/components/job-details/JobActions";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -61,7 +62,7 @@ export default async function JobDetailsPage({ params }: Props) {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[820px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-0">
+      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <JobActions applyUrl={applyUrl} company={company} showBackLink />
         <JobInfo job={job} />
         <MatchScore
@@ -71,14 +72,21 @@ export default async function JobDetailsPage({ params }: Props) {
           evaluation={job.evaluation}
           recommendationScore={job.recommendation_score}
         />
-              <JobDescription
-                  aboutRole={job.about_role || job.description}
-                  responsibilities={job.responsibilities}
-                  requirements={job.requirements}
-                  niceToHave={job.nice_to_have}
-                  benefits={job.benefits}
-                  sourceUrl={applyUrl}
-              />
+
+        <EvaluationBreakdown
+          evaluation={job.evaluation ?? []}
+          recommendationScore={job.recommendation_score}
+          overallGrade={job.overall_grade}
+        />
+
+        <JobDescription
+          aboutRole={job.about_role || job.description}
+          responsibilities={job.responsibilities}
+          requirements={job.requirements}
+          niceToHave={job.nice_to_have}
+          benefits={job.benefits}
+          sourceUrl={applyUrl}
+        />
         <div className="flex flex-wrap justify-end gap-4">
           <ModelSelector value={profile?.preferred_model ?? "gemini"} />
           <ThemeSelector value={profile?.preferred_resume_theme ?? "modern"} />

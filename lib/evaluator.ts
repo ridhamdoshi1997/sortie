@@ -132,9 +132,9 @@ function fallbackEvaluation(id: string): JobEvaluationResult {
   };
 }
 
-const SYSTEM_PROMPT = `You are a strict, honest career-fit evaluator grading job postings for a specific candidate across 10 fixed dimensions. Be direct — a mediocre or bad fit should get C/D/F grades, not inflated praise.
+export const SYSTEM_PROMPT = `You are a strict, honest career-fit evaluator grading job postings for a specific candidate across 10 fixed dimensions. Be direct — a mediocre or bad fit should get C/D/F grades, not inflated praise.
 
-Grade every job across exactly these 10 dimensions, in this exact order, each with a one-line justification grounded in the actual job posting and candidate profile:
+Grade every job across exactly these 10 dimensions, in this exact order, each with a substantive 2-3 sentence justification grounded in the actual job posting and candidate profile — cite specific concrete detail (the actual skill, number, location, or phrase from the posting/profile), not a vague one-line summary:
 1. Skills/tech match — how well the candidate's real skills cover what the job actually requires
 2. Seniority/level fit — whether the role's level matches the candidate's experience
 3. Compensation fit — how the posted salary (if any) compares to the candidate's stated expectation
@@ -149,6 +149,7 @@ Grade every job across exactly these 10 dimensions, in this exact order, each wi
 Rules:
 - If an explicit constraint is provided and the job clearly fails to meet it, that must weigh heavily toward a low overall grade and recommendation score — never ignore an explicit stated constraint.
 - Never invent facts about the job that aren't in the posting. If information for a dimension is missing, say so in the note and grade conservatively (C), not optimistically.
+- Every note must do real work: name the specific requirement/signal from the posting, connect it to the specific fact from the candidate's profile that supports or contradicts it, and state the practical consequence for the candidate. Two or three sentences, not a fragment.
 - matchedSkills/missingSkills: concrete skill names only, drawn from the candidate's real skills list and the job's actual stated requirements.
 - overallGrade is your holistic letter grade for the role as a whole, not a mechanical average of the 10 dimensions.
 - recommendationScore is 1-5 (5 = apply immediately, 1 = skip) — your honest overall recommendation, independent of but consistent with overallGrade.
@@ -160,7 +161,7 @@ Return ONLY valid JSON matching this exact shape:
     {
       "id": "string — must match the job's given ID exactly",
       "dimensions": [
-        { "dimension": "Skills/tech match", "grade": "A"|"B"|"C"|"D"|"F", "note": "string" },
+        { "dimension": "Skills/tech match", "grade": "A"|"B"|"C"|"D"|"F", "note": "string — 2-3 sentences with specific concrete detail" },
         ... all 10 dimensions in the exact order given above ...
       ],
       "overallGrade": "A"|"B"|"C"|"D"|"F",
@@ -191,7 +192,12 @@ ${jobs.map(buildJobText).join("\n\n---\n\n")}`;
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,
-    maxTokens: 6000,
+    // NOT the fix for batch completeness — tested 12000 and 24000 with no
+    // difference; the model was never truncating, it was silently omitting
+    // jobs from the batch (see chunkArray call site in functions.ts, which
+    // is the actual fix). This budget just needs headroom for a 5-job chunk
+    // of richer 2-3 sentence notes, verified against real output length.
+    maxTokens: 8000,
     jsonResponse: true,
   });
 
@@ -207,6 +213,16 @@ ${jobs.map(buildJobText).join("\n\n---\n\n")}`;
   if (!result.success) {
     console.error("[lib/evaluator] schema validation failed", result.error);
     return jobs.map((job) => fallbackEvaluation(job.id));
+  }
+
+  if (result.data.evaluations.length < jobs.length) {
+    // The model can return syntactically valid JSON that just omits some
+    // requested jobs — schema validation alone won't catch this. Missing
+    // jobs silently fall back to neutral C-grade placeholders below; this
+    // log is the only signal that happened, so don't remove it.
+    console.error(
+      `[lib/evaluator] incomplete batch: requested ${jobs.length} jobs, model returned ${result.data.evaluations.length}`,
+    );
   }
 
   const byId = new Map(result.data.evaluations.map((evaluation) => [evaluation.id, evaluation]));

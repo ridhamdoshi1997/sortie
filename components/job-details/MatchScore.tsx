@@ -37,23 +37,9 @@ function SkillBadge({
     );
 }
 
-function GradeBadge({ grade }: { grade: JobEvaluationDimension["grade"] }) {
-    const className =
-        grade === "A" || grade === "B"
-            ? "bg-success-lightest text-success-foreground"
-            : grade === "C"
-              ? "bg-surface-secondary text-text-secondary"
-              : "bg-error/10 text-error";
-
-    return (
-        <span
-            className={`inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full font-mono text-xs font-semibold ${className}`}
-        >
-            {grade}
-        </span>
-    );
-}
-
+// 10-dimension grid moved to EvaluationBreakdown.tsx, rendered as a sibling
+// outside this page's narrow reading-width column — see
+// app/find-jobs/[id]/page.tsx.
 export function MatchScore({
     matchReason,
     matchedSkills,
@@ -110,27 +96,6 @@ export function MatchScore({
                     </div>
                 )}
             </section>
-
-            {safeEvaluation.length > 0 && (
-                <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
-                    <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
-                        10-Dimension Evaluation
-                    </h2>
-                    <div className="mt-4 flex flex-col divide-y divide-border">
-                        {safeEvaluation.map((dim) => (
-                            <div key={dim.dimension} className="flex items-start gap-3 py-3 first:pt-0 last:pb-0">
-                                <GradeBadge grade={dim.grade} />
-                                <div className="flex flex-col gap-0.5">
-                                    <p className="text-sm font-medium leading-5 text-text-primary">
-                                        {dim.dimension}
-                                    </p>
-                                    <p className="text-xs leading-5 text-text-muted">{dim.note}</p>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                </section>
-            )}
 
             <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
                 <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
