@@ -6,6 +6,74 @@ Full page UI built with mock data first — verified visually before any logic i
 
 ---
 
+# START HERE — Session Handoff (2026-07-21)
+
+Read this section first in any new session before touching the phase-by-phase detail below. It's the map; everything after it is the territory.
+
+## The mission, in one sentence
+
+**Sortie is the individual's own, explainable career agent** — it tells you where to aim, what you're worth, and what's next, and it stays with you across every job and every year, not just the three months you're actively hunting. Start consumer, win on judgment over speed, keep the profile useful for the 70% of the workforce who aren't looking today, grow into B2B white-label as the durable revenue. Full reasoning behind each piece of this lives in the five strategy artifacts referenced throughout this doc (Launch Playbook, Revenue Map, Career OS, Competitive Map, Built to Last) — this file is where their conclusions turn into build items.
+
+## Where things stand right now
+
+- **Shipped:** Phases 1–7, 9, 11 (core pipeline, model router, 10-dimension evaluator, document generation), plus Phase 0's cost/security controls (RLS, metering, Gemini-only cost policy, kill switches, rate limiting, signup cap, auto-provisioning trigger) — all committed and pushed to `origin/main` as of this session.
+- **Designed but not backed by real data:** everything under `/preview` — resume gap analysis, network signals, onboarding, resume workspace editor, interview bank/settings/notifications. These are real components with dummy props, verified live, ready to wire up.
+- **Not yet done:** Phase 0 tasks #33–35 (Privacy Policy/Terms + account deletion, two-account isolation test, actual Vercel deploy) — these gate a real public launch and should be the first thing finished before anything net-new ships.
+- **Next planned build:** the résumé gap-analysis backend (tasks #36–38 in the task list) — turns the `/preview` mockup into a real feature.
+
+## The competitive reality: JobRight is the closest thing to us
+
+Across the deep teardown this session (their onboarding, job list, job detail page, résumé editor, interview bank, settings, and auth flow — see §H1, §C1, §C2 below for the full anatomy), JobRight is the single most directly comparable product live today. That's useful: it means most of "what should this look like" is now answered by direct observation, not guesswork.
+
+**Where they're ahead of us today (close the gap, don't skip it):**
+
+| Gap | What to build | Where it's detailed |
+| --- | --- | --- |
+| No Chrome extension | Capture-first extension ("save → grade → track"), never auto-apply | §G |
+| No résumé editor workspace | Score-jump + changelog, one-tap refinement chips, style controls, section editor | §C1 |
+| No network/connections feature | `NetworkSignals.tsx` (free half) wired to real profile data; paid people-data API deferred | §G, §H1 |
+| No conversational per-job AI chat | "Ask Orion"-equivalent — reuses the `DocumentChatEditor` chat pattern, pointed at job-fit Q&A | §B |
+| Coarser profile schema | Split name/phone/address into ATS-autofill-grade fields; EEO self-ID as a separate, optional step | §C2 |
+| No application tracker | Kanban board (Phase 15) | §D |
+
+**Where we're already ahead, or building toward being ahead — this is the part to protect, not copy:**
+
+1. **Judgment over speed.** Their whole category (them included) is racing toward auto-apply — and their own users report it hurts them. We explicitly reject that (§G, "Explicitly rejected"). Every dollar they spend on autofill infrastructure is a dollar we don't need to spend chasing a race we're not in.
+2. **10-dimension evaluation depth.** Their match panel is 3 sub-scores (Experience/Skill/Industry %) with no explanation per score. Ours is 10 dimensions, each with a grounded one-line reason, plus an overall letter grade — genuinely more explainable, which is also the direction hiring regulation (EU AI Act) is forcing the whole industry anyway.
+3. **Correctable, human-in-the-loop skill tags** (their one feature we most want to copy) is a natural extension of our "human always decides" principle — for us it's not a bolt-on, it's the same design philosophy as the rest of the product.
+4. **Model-agnostic router.** They're presumably locked to one model/vendor. Ours already routes across Gemini/OpenAI/Claude — a real hedge against any one provider's price or quality shifting.
+5. **The whole Career OS layer — this is the biggest one.** Nothing in JobRight (or any competitor surveyed) addresses the post-hire, passive-70%-of-the-workforce lifecycle: rejection intelligence, offer/negotiation analysis, market-watch for people not actively looking, portable career identity. This is where the real, durable moat is — not in out-featuring them on job-search mechanics, but in being relevant long after (and long before) a job search starts. See §E in full.
+6. **Human coaching, deliberately not copied.** Their premium tier is 1-on-1 human recruiter coaching — doesn't scale, expensive to deliver. Ours answers the same three problems ("hearing nothing," "don't know where to aim," "interview coming up") with AI instead of a human, at software margins.
+
+**The one-line strategic summary:** match their table-stakes UI/UX quality (it's genuinely good — clean, calm, functional), but win with the parts of the product that can't be copied by adding a headcount: the evaluation depth, the correctable/explainable AI, the model independence, and the career-long relevance.
+
+## Full feature list — read this instead of asking "what's left"
+
+Every feature discussed anywhere (strategy artifacts, competitor teardown, brainstorms) is tracked in **one place**: the **Master Feature Inventory**, sections **A through L**, later in this file. Don't re-derive a feature list from scratch in a new session — search this file for the feature name first. If it's not there, it hasn't been discussed yet.
+
+Quick index of what's in the inventory, so you know where to look:
+- **A** — Job data & coverage (scanning, ATS adapters, freshness, external job import)
+- **B** — Evaluation & intelligence (10-dim evaluator, correctable tags, per-job AI chat, comp benchmarking)
+- **C, C1, C2** — Documents, résumé workspace anatomy, auth & profile schema
+- **D** — Application tracking & rejection intelligence
+- **E** — Career identity & post-hire (the Career OS — the biggest differentiator)
+- **F** — Interview, offer & negotiation
+- **G** — Integrations & plugins (Chrome extension, Gmail, network signals, explicitly-rejected auto-apply)
+- **H, H1** — UI/UX, full job-detail-page anatomy vs. JobRight
+- **I** — Growth surface & SEO
+- **J** — Monetization
+- **K** — Trust, safety, legal & ops
+- **L** — B2B / white-label
+
+## What to do first in the next session
+
+1. Read this section, then skim the Master Feature Inventory table of contents above — don't re-read the whole file line by line.
+2. Check `git status` and `git log` to confirm nothing changed outside this session.
+3. Finish Phase 0 (#33–35) before building anything new — it's the gate between "works on my machine" and "safe to show a stranger."
+4. Then: résumé gap-analysis backend (#36–38), or the "Previous Company / School" network-signals wiring discussed at the end of this session — both are cheap, both turn an existing `/preview` mockup into something real.
+
+---
+
 ## Phase 1 — Foundation
 
 ### 01 Homepage
