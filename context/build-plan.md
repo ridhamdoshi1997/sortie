@@ -1133,6 +1133,14 @@ Serves the 70% of the workforce who aren't actively job-hunting — the retentio
 | **Feature announcement + waitlist modal** | 🎨 | `/preview/more` — how to launch an expensive beta to a bounded audience rather than everyone at once |
 | Light/dark mode | ✅ | Custom (2026-07-18) |
 
+#### The "Introducing [Feature] — Beta" showcase pattern, source-verified
+
+Captured from a real screenshot you shared (Profile page, not one of the extracted video frames): **"Introducing Jobright Agent [Beta]"** — subhead *"The first AI that hunts jobs for you — see it in action now,"* an embedded demo video, then three stat callouts side by side — **2x Interview Landed / 80% Time Saved / 24/7 Working for You** — a **"You're on the Waitlist"** badge, and a **"Skip Waiting and Enable Agent Now"** button offering to jump the queue.
+
+This is the exact pattern our own `BetaModal` in `/preview/more` was designed around (stat row, waitlist position, "Join the beta" CTA) — the design preview already implements this showcase style, it just wasn't traced back to this specific source before now. Worth keeping the connection explicit: when we gate our own first expensive beta (most likely candidate: the passive market-watch feature, §E), this is the proven template — big benefit-led stats, not a feature-list, plus a visible queue position so "waiting" doesn't feel like "ignored."
+
+**The Agent feature itself, separately:** visited live and found genuinely empty — the actual `/agent` page returns only a skeleton loader with no content, confirming it's gated behind this same waitlist for us as an outside observer. Nothing to learn from the real feature (if it even has content yet); the showcase modal is the only real artifact captured. Consistent with the existing decision not to build auto-apply (§G) — if their "Agent" turns out to be an auto-apply agent once unlocked, that's further reason not to chase it.
+
 ### H1. Job detail page — full anatomy
 
 Captured from a complete walkthrough of the competitor's job detail page (2026-07-21). Ours currently has: agent read, 10-dimension grid, skills comparison, company research, document generator. This is everything *they* show, so gaps are visible at a glance.
@@ -1164,6 +1172,10 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 **Persistent right rail (both tabs):** AI Tools — *View Custom Resume* (with "Updated {date}"), *Build Cover Letter*, *Analyze How Well You Fit*. Sortie has all three capabilities but doesn't surface them as a persistent rail.
 
 **Cost note:** funding data and Glassdoor ratings are the only genuinely expensive items here. Leadership team, recent news, required/preferred split, industry tags, freshness, and the correctable skill tags are all cheap or free — and the correctable tags are the highest-value item on this page for us.
+
+> **How Insider Connection is actually showcased, confirmed by screenshot, not just described:** the three buckets render as distinct colored header pills — *Beyond Your Network* in green, *From Your Previous Company* in blue, *From Your School* in purple — each a separate card, with real profile photo/initial avatars for the "previous company" bucket specifically (the other two showed empty in the account tested, presumably placeholders when no overlap exists). A single **"2 email credits available today"** badge sits top-right of the whole section, and a bold callout line above the cards — *"Get 3x more responses when you reach out via email instead of LinkedIn"* — is the actual sales pitch for the paid email-lookup feature, working the free "Find More Connections" links and the paid "Find Any Email" box into one visual block rather than two separate features. If we build the free half (`NetworkSignals.tsx`), this color-per-bucket treatment and that one-line pitch are worth carrying over directly.
+>
+> **How the Company tab is actually showcased:** each Funding round renders as its own small card (date, round type, amount) in a horizontal row rather than a plain list — visually distinct from a bullet list, and it's what makes "funding timeline" read as a feature rather than a data dump. Leadership Team is photo-card-per-person with a LinkedIn icon overlay in the corner of the photo, not a table row. Small, cheap details, but they're the difference between "we have company data" and "this looks like a real product."
 
 ## I. Growth surface & SEO
 
