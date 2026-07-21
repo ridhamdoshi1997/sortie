@@ -835,3 +835,320 @@ Nothing left unaddressed except the Phase 9 rubric conflict. If there's more bey
 | Phase 16 — Ecosystem Ingestion & Export          | 8 plugins |
 | Phase 17 — Remaining Custom Feature(s)           | TBD      |
 | **v2 Total (excl. Phase 17)**                    | **24 + 8 plugins** |
+
+---
+
+# Master Feature Inventory
+
+**Consolidated 2026-07-21.** Single source of truth for every feature discussed anywhere — the v1/v2 phases above, plus everything that came out of the five strategy sheets (Launch Playbook, Revenue Map, Career OS, Competitive Map, Built to Last) and the follow-up feature brainstorm. If a feature isn't in this table, it hasn't been agreed.
+
+**Status key:** ✅ done · 🎨 design preview built (`/preview`, dummy data, no backend) · 📋 planned (has a phase) · 🆕 new (agreed, not yet scoped into a phase)
+
+> **🎨 is not "nearly done".** The preview pages under `/preview/*` are static components fed placeholder props. Every one of them still needs the full backend behind it — schema, migration, an API route, metering, rate limiting, kill switch, and live verification — before it ships. Treat 🎨 as *"the design question is settled, the engineering hasn't started."* The components themselves are props-driven and reusable, so none of that work is thrown away; only `app/preview/*` gets deleted at the end.
+
+## The spine — build these in this order
+
+Everything else is a facet of these three. Sequence matters: each one makes the next cheaper to build.
+
+1. **Application tracker + rejection intelligence** — attacks the #1 documented user pain (the feedback black hole), gives users a daily reason to return, and is the data foundation everything else sits on.
+2. **Portable career identity** — the tracker's data plus an always-current profile becomes the own-your-data career record. This is *bet #2* from Built to Last and the connective tissue that turns a pile of features into one product. Most items in sections E and F below are facets of it.
+3. **Passive market-watch ("A-grade only")** — the identity, pointed outward. Serves the 70% of the workforce not actively looking, and converts the churn problem into a retention advantage.
+
+## A. Job data & coverage
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| SerpApi job discovery | ✅ | Phase 6 |
+| ATS provider adapters (Ashby, Greenhouse, Lever) | 📋 | Phase 8 |
+| Structured job APIs (Adzuna, Arbeitnow, TheirStack, Apify, Serper) | 📋 | Phase 8 |
+| Custom board queries | 📋 | Phase 8 |
+| Posting liveness / freshness checks | 📋 | Phase 10 |
+| Dedup & status normalization | 📋 | Phase 14 |
+| Ghost-job & layoff-risk company signals | 🆕 | Brainstorm |
+| **"Add job" — evaluate any external posting** (paste a job from anywhere, not just scanned sources) | 🆕 | Teardown, their "External" jobs tab. Real gap: our evaluation only ever runs on jobs *we* found — this lets a user bring their own and get the same 10-dimension grade + tailored documents |
+| **Saved-job liveness status** (Active / Closed sub-tabs on saved jobs) | 🆕 | Teardown, their "Liked" tab. A sharper UI for the freshness-check work already in Phase 10 — surface it as a per-saved-job status, not just a scan-time filter |
+
+## B. Evaluation & intelligence
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| 10-dimension A–F evaluator | ✅ | Phase 9 |
+| Multi-provider model router | ✅ | Phase 7 |
+| Deep company research (Browserbase/Stagehand) | ✅ | Phase 10 (partial) |
+| Company research — candidate angle | 📋 | Phase 10 |
+| Company enrichment APIs (People Data Labs, LinkdAPI) | 🆕 | Launch Playbook |
+| Cross-application pattern analytics (personal funnel diagnosis) | 🆕 | Brainstorm |
+| Live salary / comp benchmarking | 🆕 | Career OS + Brainstorm |
+| Job-description decoder (must-have vs. padding) | 🆕 | Brainstorm |
+| "Should I apply?" quick verdict | 🆕 | Brainstorm |
+| Skills-first evaluation (skills over titles) | 🆕 | Built to Last (bet #3) |
+| **Correctable skill tags — human-in-the-loop** | 🆕 | Competitor teardown — see note below |
+| Job requirements split into **Required** vs **Preferred** | 🆕 | Competitor teardown |
+| Match sub-scores (experience / skill / industry, scored separately) | 🆕 | Competitor teardown |
+| **Conversational per-job AI chat ("Ask Orion")** — evidence-cited breakdown (Relevant Experience / Seniority / Education / Core Skills aligned vs. not-aligned, each citing the candidate's actual employers) + free-text follow-up + regenerate | 🆕 | Teardown (2026-07-21 deep pass). Genuinely richer than a static one-liner — reuses the chat-panel pattern we already built for `DocumentChatEditor`, just pointed at job-fit Q&A instead of document revision |
+
+> **Correctable skill tags deserve their own note.** The competitor renders every skill the AI *thinks* you have as a clickable tag, with the instruction: *"If anything seems off, you can easily click on the tags to select or unselect skills to reflect your actual expertise."* The user corrects the model, and the match re-scores.
+>
+> This is the single most on-thesis feature in their entire product for us. Sortie's durable bet (Built to Last, #4) is **explainable AI where the human always decides** — and this is exactly that, made concrete: the evaluation stops being a verdict handed down and becomes a conversation the user can correct. It also quietly fixes bad extractions from the résumé parser, and every correction is training signal about what the user actually knows. High priority.
+>
+> **Visual treatment, confirmed by scrolling the real page (not just reading its text):** tags are color-coded, not just clickable — a green pill with a thumbs-up icon for a skill the model believes you have, plain grey text for one it doesn't. That distinction should carry into our own version so a user can tell "matched" from "gap" at a glance before reading anything.
+
+## C. Documents
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| ATS resume + cover letter generation | ✅ | Phase 11 / F30 |
+| AI Co-Pilot chat revision | ✅ | Phase 11 / F32 |
+| 3 ATS-safe resume themes | ✅ | Custom (2026-07-19) |
+| Application email drafts | 📋 | Phase 11 / F31 |
+| Resume version manager (slots, primary flag, per-résumé status) | 🎨 | Brainstorm + teardown — `/preview/resume` |
+| Follow-up & thank-you generator + timing nudges | 🆕 | Brainstorm |
+| DOCX / Markdown export | 📋 | Phase 16 |
+| **Resume fit / gap analysis** (score 0–10, per-check gaps, keyword coverage) | 🎨 | Competitor teardown — **design preview built** |
+
+### C1. Resume editor — the surface we're missing entirely
+
+Today Sortie's flow is *click Generate → receive a PDF*. The competitor teardown (2026-07-21) showed a full editing workspace instead: a live document preview beside a three-tab rail. That's the difference between a black box and a tool, and most of the pieces are cheap because we already own the hard parts (generation, chat revision, themes).
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Live preview pane + page counter + "fit to one page" | 🆕 | Rendering only, no AI cost |
+| **Score jump + "what changed" changelog** | 🆕 | Re-score after generation and diff against the pre-generation gap score. Makes invisible work visible — highest value per unit effort |
+| **One-tap refinement chips** ("stronger action verbs", "shorten summary", "cut filler") | 🆕 | Pre-written prompts routed through the existing `DocumentChatEditor` — nearly free, far more discoverable than a blank text box |
+| **Style controls** — columns (2/3/4), skills layout, section/entry/line spacing, margins, justify toggle, reset | 🆕 | Props into `ResumePDF.tsx`. Zero AI cost. Natural extension of the 3 existing themes |
+| Section-level "compare to original" + "edit with AI" | 🆕 | Hover a section to diff or revise just that block, rather than the whole document |
+| Multi-resume switching in the editor | 🆕 | Depends on the resume version manager above; needs schema work |
+| Visible credit/usage consumption in-editor | 🆕 | Metering shown at point of use (already the pattern in the design preview) |
+
+**Suggested build order:** score-jump + changelog → refinement chips → style controls → section-level editing → multi-resume. The first three need no new backend beyond what the gap analysis already introduces.
+
+**Design preview:** `/preview/resume` — manager table, section editor with drag-to-reorder, and the full style panel (templates, accent colour, font family + four sizes, bullet style, header alignment, columns, spacing sliders).
+
+#### The base-résumé vs tailored-copy data model — decide before building
+
+The competitor surfaces this explicitly in their editor: *"Section order changes will be saved, other edits here apply only to this resume. For major updates like editing experiences, update your Base Resume to affect future resumes."*
+
+That single sentence encodes a real architectural decision we have to make deliberately, because getting it wrong is destructive:
+
+- **One base résumé** = the user's actual career history (the `profiles` row today). The source of truth.
+- **Many tailored copies** = per-job derivatives. Each stores its own generated content, style settings, and section order.
+- **Edits to a tailored copy must never silently rewrite the base.** If someone reshuffles bullets for one application, that can't retroactively alter their real history or every future résumé.
+- **Some settings are global, some are per-copy.** Section *order* and style preferences reasonably persist across résumés; content edits do not.
+- Needs a `resumes` table (base + derivatives, with a `is_primary` flag and a slot cap), not just the current single `profiles.resume_pdf_url`.
+
+Without this split, multi-résumé, the style controls, and section editing all collide with each other.
+
+### C2. Authentication &amp; sign-in
+
+Captured from the recorded walkthrough (2026-07-21). Notable for how little there is — that's the point.
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| Google OAuth | ✅ | Already working |
+| GitHub OAuth | ✅ | Already working |
+| **Google One Tap** (inline account chooser, not a redirect) | 🆕 | Their flow shows name + email in a popup with a "Continue as {name}" button and the standard consent line about sharing name, email and profile picture. Far lower friction than a redirect round-trip |
+| **No separate signup form** — OAuth lands straight in onboarding | 🆕 | There is no account-creation screen, no password, no email-verification step. Auth completes → immediately into the role picker. Matches our `/preview/onboarding` flow |
+| Logout available *during* onboarding | 🆕 | An escape hatch on every onboarding step, so a half-finished setup isn't a trap |
+| LinkedIn OAuth | 🆕 | Highest-value addition for a career product — doubles as profile prefill. Note: LinkedIn's API only returns name/email/photo, **not** work history, so résumé upload stays the real import path |
+| Email / magic-link sign-in | 🆕 | For people who won't use social login |
+| Dual entry points on marketing page | 🆕 | "Join now" in the nav + "Try for free" in the hero, both to the same auth |
+
+**Backend implication:** the `on_auth_user_created` trigger we added on 2026-07-21 already provisions a `profiles` row for any new OAuth user, so adding LinkedIn or email sign-in won't reintroduce the "profile won't save" bug. Any new provider must be verified against that trigger.
+
+#### Profile field granularity — a schema gap, not just a feature gap
+
+Their profile wizard (Personal → Education → Work Experience → Skill → Equal Employment) splits contact info far finer than ours: **First / Middle / Last name** (we store one `full_name`), **Phone Type + Country Code + Phone** (we store one `phone`), and a full **Address Line / Country-Region / State-Province / City** breakdown (we store one `location` string).
+
+This isn't cosmetic — it's what a real ATS-autofill feature requires. Workday/Greenhouse/Lever forms ask for these fields separately, so a coarse `full_name`/`phone`/`location` schema can't power autofill later without a painful re-migration. **If the Chrome extension (section G) or any future application-autofill feature is actually going to happen, this schema split should happen before those, not after.**
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Split contact fields (name parts, phone type/country code, structured address) | 🆕 | Teardown — prerequisite for any future autofill feature |
+| **Equal Employment / voluntary self-ID** (race/ethnicity, gender, veteran status, disability — the standard EEOC fields many ATS applications request) | 🆕 | Teardown. Sensitive data — must be clearly optional, separately consented, and never required to use the product |
+
+## D. Application tracking & post-application
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| **Application tracker** | 📋 | Phase 15 (Kanban) — **spine #1** |
+| Kanban board UI (Applied / Interviewing / Offered) | 📋 | Phase 15 |
+| **Rejection intelligence** (diagnose employer silence) | 🆕 | Career OS — **spine #1** |
+| Application timeline view (per-job history) | 🆕 | Brainstorm (UI) |
+| Interview debrief capture | 🆕 | Brainstorm |
+| Deadline tracker / application calendar | 🆕 | Brainstorm |
+| Dashboard filter/sort/group parity | 📋 | Phase 14 |
+
+## E. Career identity & post-hire (the Career OS)
+
+Serves the 70% of the workforce who aren't actively job-hunting — the retention engine.
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| **Portable career identity** (own-your-data career record) | 🆕 | Built to Last (bet #2) — **spine #2** |
+| Data portability / full career-record export | 🆕 | Built to Last |
+| **Passive market-watch** ("A-grade only" pings) | 🆕 | Career OS — **spine #3** |
+| Always-warm résumé | 🆕 | Career OS |
+| Running accomplishment log | 🆕 | Career OS |
+| Personal-brand upkeep nudges | 🆕 | Career OS |
+| "Warm-up mode" (comp benchmarks + gap-to-target + get-ready plan) | 🆕 | Career OS |
+| Promotion / performance-review prep (brag docs, self-reviews) | 🆕 | Career OS |
+| Skill-gap tracking & career pathing | 🆕 | Career OS |
+| Skills verification & proficiency testing | 🆕 | Built to Last |
+| Career-path simulator (3-year trajectory comparison) | 🆕 | Brainstorm |
+| Weekly AI career briefing | 🆕 | Brainstorm |
+
+## F. Interview, offer & negotiation
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Interview story bank | 📋 | Phase 12 |
+| Per-job interview prep (incl. technical question prediction) | 📋 | Phase 12 |
+| Negotiation scripts | 📋 | Phase 12 |
+| Live mock-interview simulator (conversational, scored) | 🆕 | Brainstorm |
+| Offer evaluation & total-comp analysis | 🆕 | Career OS |
+| Multi-offer comparison | 🆕 | Career OS |
+| First-90-days success plan | 🆕 | Career OS |
+| Hiring contact discovery + outreach drafts | 📋 | Phase 13 |
+| **Interview question bank by company** (community-contributed, grouped by tier, per-company counts, "contribute a question") | 🎨 | Teardown — `/preview/more`. Their version is a real moat: 393 companies / 8,901 questions, gated behind upgrade. Ours would need seeding and moderation — a content problem, not just an engineering one |
+
+**Explicitly skipped (2026-07-21):** human 1-on-1 recruiter coaching, sold as a premium tier ("I'm trying to find my first job" / "I'm applying but hearing nothing" / "I have an interview coming up" → "Meet My Coach"). It's a real, well-designed problem-framed entry point — worth borrowing the *framing* for our own AI-powered equivalents (offer analysis, rejection intelligence, interview prep already cover the same three problems) — but the human-service delivery model doesn't scale the way software does and isn't something we're building for now.
+
+## G. Integrations & plugins
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| **Chrome extension — capture-first** ("save → grade → track", never auto-apply) | 🆕 | Competitive Map |
+| Gmail ingest (job leads) | 📋 | Phase 16 |
+| Gmail — application status detection (powers rejection intelligence) | 🆕 | Competitive Map |
+| **Network signals** (former colleagues / school alumni at this company) | 🎨 | Free — deep-links to LinkedIn people search, no paid people API, no scraping. `NetworkSignals.tsx` built |
+| Work-email lookup (Hunter/Apollo) | ⛔ deferred | Paid ($39–49/mo) **and** CASL/GDPR exposure — needs a compliance review first |
+| LinkedIn-alerts ingest | 📋 | Phase 16 |
+| LinkedIn profile import (onboarding) | 🆕 | Competitive Map |
+| Google Calendar / Outlook interview detection | 📋 | Phase 16 |
+| Notion + Obsidian export | 📋 | Phase 16 |
+| Zapier / Sheets export | 🆕 | Competitive Map |
+| Push / browser notifications | 🆕 | Brainstorm |
+| Proactive match digest email | 🆕 | Brainstorm |
+
+**Explicitly rejected:** auto-apply / mass-autofill. It's commoditized, users report it damages their credibility, agentic hiring will absorb it, and it directly contradicts the "aim, don't spray" positioning. Do not build.
+
+## H. UI / UX
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Command palette (Cmd+K) | 🆕 | Brainstorm |
+| Detail drawer / split view (fast job browsing) | 🆕 | Brainstorm |
+| Global search | 🆕 | Brainstorm |
+| Rich filtering & sorting on Find Jobs | 📋 | v1 F11 (partial) |
+| Job card quick-actions (save/hide/generate inline) | 🆕 | Brainstorm |
+| Job comparison view (side-by-side, 10 dimensions) | 🆕 | Brainstorm |
+| Bulk actions (multi-select archive/tag) | 🆕 | Brainstorm |
+| Tags & personal notes on jobs | 🆕 | Brainstorm |
+| Recently viewed / pinned jobs | 🆕 | Brainstorm |
+| Profile completeness meter | 🆕 | Brainstorm |
+| **Onboarding flow** (role picker → work auth → resume upload → seniority confirm) | 🎨 | `/preview/onboarding` built. The role picker is a *searchable* input plus a two-panel category→role browser; their version also carries an explicit **"H1B sponsorship" checkbox** alongside work authorization. Both feed the visa/work-authorization dimension, which currently has no real data behind it |
+| **"How did you find us?"** attribution step | 🎨 | Free growth analytics — tells you which channel actually converts |
+| Guided first-run product tour (tooltip walkthrough) | 🆕 | Competitor teardown |
+| Empty states with guidance | 🆕 | Brainstorm |
+| **Loading states that teach + time expectations** ("usually 10–20 seconds") | 🎨 | Turns dead wait time into feature discovery |
+| Skeleton loaders + optimistic UI + toast system | 🆕 | Brainstorm |
+| Contextual tooltips explaining the 10 dimensions | 🆕 | Brainstorm |
+| Keyboard shortcuts | 🆕 | Brainstorm |
+| Analytics dashboard (funnel, score distribution, skills radar, heatmap) | 📋/🆕 | v1 F17 + Brainstorm |
+| "Today" / focus view | 🆕 | Brainstorm |
+| Customizable dashboard widgets | 🆕 | Brainstorm |
+| Installable PWA + mobile responsive polish | 🆕 | Brainstorm |
+| Accessibility (WCAG) pass | 🆕 | Brainstorm — also a B2B requirement |
+| App-level theme customization (accent, density) | 🆕 | Brainstorm |
+| **Notification / activity inbox** (empty state explains what will arrive) | 🎨 | `/preview/more` — the delivery surface for market-watch pings and application status changes |
+| **Settings panel** (login & security, subscription, credits & usage, job alerts) | 🎨 | `/preview/more` — includes the account-deletion UI, which is Phase 0 task #33 and a GDPR/CCPA obligation |
+| **Feature announcement + waitlist modal** | 🎨 | `/preview/more` — how to launch an expensive beta to a bounded audience rather than everyone at once |
+| Light/dark mode | ✅ | Custom (2026-07-18) |
+
+### H1. Job detail page — full anatomy
+
+Captured from a complete walkthrough of the competitor's job detail page (2026-07-21). Ours currently has: agent read, 10-dimension grid, skills comparison, company research, document generator. This is everything *they* show, so gaps are visible at a glance.
+
+**Overview tab, in order:**
+
+| Section | Contents | Sortie status |
+| --- | --- | --- |
+| Sticky action bar | Contextual badges ("Be an early applicant", "Less than 25 applicants"), hide, save, primary apply CTA | 🆕 |
+| Header | Company · relative post time ("1 minute ago"), title, then a meta grid: location, work mode, salary range, employment type, seniority, years required | Partial — 🆕 for freshness + work mode |
+| Match panel | Headline % + band ("97% STRONG MATCH") with **sub-scores broken out**: Experience Level 100%, Skill 100%, Industry Exp. 49% | 🆕 (we have richer 10-dim data, weaker presentation) |
+| Company blurb | One paragraph with company name and role bolded, then industry tags | 🆕 |
+| **Insider Connection** | Three buckets — *Beyond Your Network* / *From Your Previous Company* / *From Your School* — each with avatars, names, "Previously@…" context, and a View / Find More Connections link. Metered ("2 email credits available today") | 🎨 partial — `NetworkSignals.tsx` covers the free half |
+| Find Any Email | Paste a LinkedIn profile URL → work email | ⛔ deferred (paid + CASL/GDPR) |
+| Responsibilities | Bulleted list | ✅ have |
+| **Qualification** | Interactive skill tags (matched vs not) + **Required** list + **Preferred** list, with the "click tags to correct" affordance | 🆕 — see the correctable-tags note in §B |
+| Benefits | Bulleted list | ✅ have |
+
+**Company tab:**
+
+| Section | Contents | Sortie status |
+| --- | --- | --- |
+| Company card | Logo, description, socials (X / LinkedIn / Crunchbase), **Glassdoor rating**, founded year, HQ, employee count, website | Partial |
+| **Funding** | Current stage, total funding, and a dated timeline of rounds | 🆕 — needs Crunchbase ($49–99/mo, free tier gone) or a cheaper alternative |
+| **Leadership Team** | Photo cards, name, title, LinkedIn link | 🆕 |
+| **Recent News** | Three cards: source, headline, date | 🆕 — cheap via a news API or the existing research agent |
+| Attribution | "Company data provided by Crunchbase" | — |
+
+**Persistent right rail (both tabs):** AI Tools — *View Custom Resume* (with "Updated {date}"), *Build Cover Letter*, *Analyze How Well You Fit*. Sortie has all three capabilities but doesn't surface them as a persistent rail.
+
+**Cost note:** funding data and Glassdoor ratings are the only genuinely expensive items here. Leadership team, recent news, required/preferred split, industry tags, freshness, and the correctable skill tags are all cheap or free — and the correctable tags are the highest-value item on this page for us.
+
+## I. Growth surface & SEO
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Free ATS score checker (no-login lead magnet) | 🆕 | Launch Playbook |
+| Programmatic SEO pages built on evaluation data | 🆕 | Launch Playbook |
+| JobPosting structured data + sitemap + robots.txt | 🆕 | Launch Playbook |
+| Editorial content / guides (for backlinks & authority) | 🆕 | Launch Playbook |
+| Shareable public evaluation link | 🆕 | Brainstorm |
+
+## J. Monetization
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Free tier + metering | ✅ | Phase 0 |
+| Stripe subscription (Pro tier) | 🆕 | Revenue Map |
+| Premium done-for-you tier ($49–99/mo) | 🆕 | Revenue Map |
+| Problem-framed help entry points ("I'm applying but hearing nothing") | 🎨 | The premium tier's front door, framed as the user's problem rather than a feature list |
+| Credit packs / à la carte top-ups | 🆕 | Revenue Map |
+| Affiliate / referral integrations | 🆕 | Revenue Map |
+
+## K. Trust, safety, legal & ops
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| RLS on all user-data tables | ✅ | Phase 0 |
+| Per-user daily metering | ✅ | Phase 0 |
+| Provider cost policy (public = Gemini only) | ✅ | Phase 0 |
+| Rate limiting on AI routes | ✅ | Phase 0 |
+| Feature kill switches | ✅ | Phase 0 |
+| Signup cap / waitlist | ✅ | Phase 0 |
+| Privacy Policy + Terms | 📋 | Phase 0 |
+| Account deletion / data erasure | 📋 | Phase 0 |
+| Multi-tenancy isolation test | 📋 | Phase 0 |
+| Error monitoring (Sentry) | 🆕 | Launch Playbook |
+
+## L. B2B / white-label (the durable revenue destination)
+
+| Feature | Status | Source |
+| --- | --- | --- |
+| Multi-tenancy hardening (prerequisite) | 🆕 | Revenue Map |
+| White-label branding (logo, colors, subdomain) | 🆕 | Revenue Map |
+| Org admin / cohort management | 🆕 | Revenue Map |
+| Outcome reporting for institutions | 🆕 | Revenue Map |
+
+## Durable principles (constraints on *how* everything above gets built)
+
+These aren't features — they're the guardrails that keep the product on the right side of where hiring is heading. From Built to Last.
+
+- **Be the candidate's agent**, never the employer's. Neutrality is the moat incumbents structurally can't copy.
+- **Everything stays explainable** — always show the "why," the human always decides. Never a black box. (Also aligns with EU AI Act direction and is a B2B selling point.)
+- **Judgment over speed** — never drift into auto-apply/spam territory, regardless of competitive pressure.
+- **Skills-first, not title-first** — hiring is moving this way.
+- **Stay model-agnostic** — the router already delivers this; keep it.
+- **The user owns their data** — portability isn't a nice-to-have, it's what makes the career identity trustworthy.

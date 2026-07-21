@@ -1,13 +1,35 @@
 "use server";
 
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { getCurrentUser } from "@/lib/auth";
 import { inngest } from "@/lib/inngest/client";
 import { searchJobs } from "@/lib/jobScraper";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@insforge/sdk'; //
 
 export async function scrapeAndEvaluateJobs(title: string, location: string, filters: Record<string, string>, userId: string) {
+    if (!isFeatureEnabled("search")) {
+        throw new Error(featureDisabledMessage("search"));
+    }
+
     const insforge = await createInsforgeServer();
+
+    // Each search costs a real SerpApi call plus AI evaluation of every
+    // result — gate it before spending either, not after.
+    const user = await getCurrentUser();
+
+    const rateLimit = await checkRateLimit(insforge, userId, user?.email, "jobs/search");
+    if (!rateLimit.allowed) {
+        throw new Error(rateLimit.error);
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, userId, user?.email, "search");
+    if (!usage.allowed) {
+        throw new Error(usage.error);
+    }
 
     const { data: run, error: runError } = await insforge.database
         .from("agent_runs")

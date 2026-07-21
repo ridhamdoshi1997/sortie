@@ -42,6 +42,7 @@ export function FindJobsForm({
     const [title, setTitle] = useState(initialTitle ?? "");
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
+    const [searchError, setSearchError] = useState<string | null>(null);
     const [jobs, setJobs] = useState<any[]>(initialJobs);
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
@@ -101,6 +102,7 @@ export function FindJobsForm({
     const handleSearch = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
+        setSearchError(null);
 
         try {
             const savedJobs = await scrapeAndEvaluateJobs(title, location, filters, userId);
@@ -108,6 +110,9 @@ export function FindJobsForm({
             setJobIds((savedJobs ?? []).map((job: any) => job.id));
         } catch (error) {
             console.error("Pipeline failed:", error);
+            setSearchError(
+                error instanceof Error ? error.message : "Search failed. Please try again."
+            );
         } finally {
             setLoading(false);
         }
@@ -188,6 +193,9 @@ export function FindJobsForm({
                             </>
                         )}
                     </Button>
+                    {searchError && (
+                        <p className="mt-3 text-sm text-error">{searchError}</p>
+                    )}
                 </form>
             </div>
 

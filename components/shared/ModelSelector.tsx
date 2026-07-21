@@ -22,6 +22,7 @@ function providerLabel(provider: ModelProvider): string {
 
 type Props = {
   value: ModelProvider;
+  isAdmin: boolean;
 };
 
 // Persists to profiles.preferred_model — every AI route (research, document
@@ -36,10 +37,17 @@ type Props = {
 // color can't be restyled to the app's amber accent (confirmed: neither
 // CSS `color-scheme` nor `accent-color` changes it in Chromium), so a real
 // popup is the only way to get an on-brand highlighted-option color.
-export function ModelSelector({ value }: Props) {
+export function ModelSelector({ value, isAdmin }: Props) {
   const [selected, setSelected] = useState<ModelProvider>(value);
   const [isPending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+
+  // GPT/Claude cost real money per call — only offered once a paid plan
+  // exists. Server-enforced in actions/profile.ts's setPreferredModel; this
+  // is just so non-admins never see an option they'd be rejected for.
+  const availableProviders = (Object.keys(PROVIDER_NAMES) as ModelProvider[]).filter(
+    (provider) => provider === "gemini" || isAdmin,
+  );
 
   function handleChange(next: ModelProvider) {
     const previous = selected;
@@ -70,7 +78,7 @@ export function ModelSelector({ value }: Props) {
           <SelectValue>{(v: ModelProvider) => providerLabel(v)}</SelectValue>
         </SelectTrigger>
         <SelectContent>
-          {(Object.keys(PROVIDER_NAMES) as ModelProvider[]).map((provider) => (
+          {availableProviders.map((provider) => (
             <SelectItem key={provider} value={provider}>
               {providerLabel(provider)}
             </SelectItem>

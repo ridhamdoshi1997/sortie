@@ -92,7 +92,9 @@ ${buildJobContext(job)}
 COMPANY RESEARCH:
 ${buildResearchContext(dossier)}`,
     temperature: 0.6,
-    maxTokens: 1200,
+    // Full tailored resume JSON — 1200 truncated on longer work histories.
+    // maxTokens is a ceiling, not a charge.
+    maxTokens: 4000,
     jsonResponse: true,
   });
 
@@ -117,7 +119,7 @@ ${buildJobContext(job)}
 COMPANY RESEARCH:
 ${buildResearchContext(dossier)}`,
     temperature: 0.6,
-    maxTokens: 700,
+    maxTokens: 1500,
   });
 
   return raw.trim();
@@ -170,7 +172,8 @@ ${JSON.stringify(currentContent)}
 CONVERSATION SO FAR (apply the latest Candidate instruction):
 ${buildConversationContext(messages)}`,
     temperature: 0.5,
-    maxTokens: 1300,
+    // Revised resume JSON — same truncation risk as generation above.
+    maxTokens: 4000,
     jsonResponse: true,
   });
 
@@ -212,7 +215,7 @@ ${currentContent}
 CONVERSATION SO FAR (apply the latest Candidate instruction):
 ${buildConversationContext(messages)}`,
     temperature: 0.5,
-    maxTokens: 900,
+    maxTokens: 2000,
     jsonResponse: true,
   });
 

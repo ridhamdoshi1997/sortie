@@ -2,7 +2,11 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { researchCompany } from "@/agent/research";
+import { resolveProvider } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import type { AgentLog, CompanyResearchDossier, Job, Profile } from "@/types";
@@ -28,6 +32,7 @@ type ResearchJobRow = Pick<
 type ResearchProfileRow = Pick<
   Profile,
   | "id"
+  | "email"
   | "current_title"
   | "experience_level"
   | "years_experience"
@@ -44,6 +49,13 @@ function isUuid(value: string): boolean {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    if (!isFeatureEnabled("company_research")) {
+      return NextResponse.json(
+        { success: false, error: featureDisabledMessage("company_research") },
+        { status: 503 },
+      );
+    }
+
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -72,6 +84,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, userId, user.email, "agent/research");
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ success: false, error: rateLimit.error }, { status: 429 });
+    }
 
     async function logAgentMessage(input: {
       message: string;
@@ -127,7 +144,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const { data: profile, error: profileError } = await insforge.database
       .from("profiles")
       .select(
-        "id,current_title,experience_level,years_experience,skills,work_experience,preferred_model",
+        "id,email,current_title,experience_level,years_experience,skills,work_experience,preferred_model",
       )
       .eq("id", userId)
       .maybeSingle<ResearchProfileRow>();
@@ -147,6 +164,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const usage = await checkAndConsumeUsage(insforge, userId, profile.email, "company_research");
+    if (!usage.allowed) {
+      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+    }
+
     await logAgentMessage({
       message: `Starting company research for ${job.company ?? "this company"}.`,
       level: "info",
@@ -156,7 +178,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       job,
       profile,
       log: logAgentMessage,
-      provider: profile.preferred_model ?? "gemini",
+      provider: resolveProvider(profile.preferred_model, profile.email),
     });
 
     if (!result.success) {

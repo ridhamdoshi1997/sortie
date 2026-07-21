@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { isWithinSignupCap } from "@/lib/access";
 import { createInsforgeServer } from "@/lib/insforge-server";
 
 type ProfileCompletionRow = {
@@ -22,6 +23,17 @@ export async function requireUser() {
 
   if (!user) {
     redirect("/login");
+  }
+
+  // Minimum-cost public launch policy (see progress-tracker.md "Phase 0") —
+  // bounds worst-case AI/Browserbase spend by capping total accounts.
+  // Their auth account already exists (InsForge provisions it on OAuth
+  // before any app code runs); this only gates access to the product, not
+  // account creation itself.
+  const insforge = await createInsforgeServer();
+  const withinCap = await isWithinSignupCap(insforge, user.id, user.email);
+  if (!withinCap) {
+    redirect("/waitlist");
   }
 
   return user;

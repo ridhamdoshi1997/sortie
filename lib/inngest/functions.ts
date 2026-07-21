@@ -1,5 +1,5 @@
 import { inngest } from "./client";
-import { createInsforgeServer } from "@/lib/insforge-server";
+import { resolveProvider } from "@/lib/access";
 import { evaluateJobCompatibility } from "@/lib/evaluator";
 import { createAdminClient } from '@insforge/sdk';
 import type { Profile } from "@/types";
@@ -27,7 +27,11 @@ export const evaluateJobsAsync = inngest.createFunction(
         console.log("🔍 [Inngest] Received jobIds:", jobIds);
 
         const startedAtMs = Date.now();
-        const insforge = await createInsforgeServer();
+        // Background context has no request cookies, so a cookie-based server
+        // client here is effectively anonymous — every DB access in this
+        // function must go through the admin (service-key) client, which
+        // bypasses RLS. The cookie client only ever worked here because RLS
+        // was disabled on jobs/profiles, which is now fixed.
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!
@@ -52,7 +56,7 @@ export const evaluateJobsAsync = inngest.createFunction(
             }]);
         }
 
-        const { data: rawJobs, error } = await insforge.database
+        const { data: rawJobs, error } = await admin.database
             .from("jobs")
             .select("*")
             .in("id", jobIds);
@@ -73,7 +77,7 @@ export const evaluateJobsAsync = inngest.createFunction(
         // (skills, salary expectation, work authorization, etc.) instead of
         // a hardcoded placeholder bio — several of the 10 dimensions
         // (compensation, visa, location fit) are meaningless without it.
-        const { data: profile, error: profileError } = await insforge.database
+        const { data: profile, error: profileError } = await admin.database
             .from("profiles")
             .select("*")
             .eq("id", userId)
@@ -86,7 +90,7 @@ export const evaluateJobsAsync = inngest.createFunction(
             throw new Error(message);
         }
 
-        const provider = profile.preferred_model ?? "gemini";
+        const provider = resolveProvider(profile.preferred_model, profile.email);
         // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
         // the richer 2-3 sentence per-dimension notes cause the model to
         // silently under-deliver a 10-job batch (only ~2 of 10 jobs actually

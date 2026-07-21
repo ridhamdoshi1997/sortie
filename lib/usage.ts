@@ -1,0 +1,82 @@
+import type { createInsforgeServer } from "@/lib/insforge-server";
+import { isAdminUser } from "@/lib/access";
+
+type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
+
+// Minimum-cost public launch policy (see progress-tracker.md "Phase 0").
+// Every action here triggers a real external cost — an AI call, a
+// Browserbase session, or a SerpApi search — so each gets a conservative
+// per-user daily cap on the free plan. Admins (lib/access.ts) are unmetered.
+export type UsageAction =
+  | "search"
+  | "document_generation"
+  | "company_research"
+  | "resume_extract"
+  | "resume_analysis";
+
+const DAILY_LIMITS: Record<UsageAction, number> = {
+  search: 5,
+  document_generation: 10,
+  company_research: 3,
+  resume_extract: 5,
+  // Cheaper than a full generation (one short structured call, no PDF render)
+  // and it's the step users take *before* deciding to generate, so it gets a
+  // higher cap — gating it too tightly would push people to generate blind.
+  resume_analysis: 15,
+};
+
+const ACTION_LABELS: Record<UsageAction, string> = {
+  search: "job searches",
+  document_generation: "document generations",
+  company_research: "company research runs",
+  resume_extract: "resume imports",
+  resume_analysis: "resume fit checks",
+};
+
+type UsageResult = { allowed: true } | { allowed: false; error: string };
+
+// Read-then-write, not an atomic upsert — an acceptable race window at this
+// scale (worst case a user squeezes in one extra call past a small daily
+// cap), and it avoids standing up a Postgres RPC function just for this.
+export async function checkAndConsumeUsage(
+  insforge: Insforge,
+  userId: string,
+  email: string | null | undefined,
+  action: UsageAction,
+): Promise<UsageResult> {
+  if (isAdminUser(email)) {
+    return { allowed: true };
+  }
+
+  const limit = DAILY_LIMITS[action];
+  const today = new Date().toISOString().slice(0, 10);
+
+  const { data: existing } = await insforge.database
+    .from("usage_daily")
+    .select("id,count")
+    .eq("user_id", userId)
+    .eq("day", today)
+    .eq("action", action)
+    .maybeSingle<{ id: string; count: number }>();
+
+  const currentCount = existing?.count ?? 0;
+  if (currentCount >= limit) {
+    return {
+      allowed: false,
+      error: `Daily limit reached for ${ACTION_LABELS[action]} (${limit}/day on the free plan) — try again tomorrow.`,
+    };
+  }
+
+  if (existing) {
+    await insforge.database
+      .from("usage_daily")
+      .update({ count: currentCount + 1 })
+      .eq("id", existing.id);
+  } else {
+    await insforge.database
+      .from("usage_daily")
+      .insert([{ user_id: userId, day: today, action, count: 1 }]);
+  }
+
+  return { allowed: true };
+}

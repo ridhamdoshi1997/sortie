@@ -9,9 +9,13 @@ const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
   buf: Buffer,
 ) => Promise<{ text: string }>;
 
+import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { checkRateLimit } from "@/lib/rateLimit";
 import type { ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
@@ -21,6 +25,18 @@ export async function setPreferredModel(
   provider: ModelProvider,
 ): Promise<{ success: boolean; error?: string }> {
   const user = await requireUser();
+
+  // Cost-control policy for the public launch (no paid tier exists yet):
+  // GPT/Claude cost real money per call — only allowlisted accounts may
+  // select them. Enforced here, the one place preferred_model is ever
+  // written, not just hidden in the UI (a direct action call would
+  // otherwise bypass a client-side-only restriction).
+  if (provider !== "gemini" && !isAdminUser(user.email)) {
+    return {
+      success: false,
+      error: "Only Gemini is available right now — GPT and Claude are coming to a paid plan soon.",
+    };
+  }
 
   try {
     const insforge = await createInsforgeServer();
@@ -152,29 +168,31 @@ export async function saveProfile(
       education,
     });
 
+    const profileFields = {
+      full_name: data.fullName || null,
+      phone: data.phone || null,
+      location: data.location || null,
+      linkedin_url: data.linkedinUrl || null,
+      portfolio_url: data.portfolioUrl || null,
+      work_authorization: data.workAuth || null,
+      current_title: data.currentTitle || null,
+      experience_level: data.experienceLevel || null,
+      years_experience: yearsExperience,
+      skills: data.skills,
+      industries: data.industries,
+      work_experience: workExperience,
+      education,
+      job_titles_seeking: data.jobTitlesSeeking,
+      remote_preference: data.remotePreference || null,
+      salary_expectation: data.salaryExpectation || null,
+      preferred_locations: data.preferredLocations,
+      cover_letter_tone: data.coverLetterTone || null,
+      is_complete: isComplete,
+    };
+
     const { data: updated, error } = await insforge.database
       .from("profiles")
-      .update({
-        full_name: data.fullName || null,
-        phone: data.phone || null,
-        location: data.location || null,
-        linkedin_url: data.linkedinUrl || null,
-        portfolio_url: data.portfolioUrl || null,
-        work_authorization: data.workAuth || null,
-        current_title: data.currentTitle || null,
-        experience_level: data.experienceLevel || null,
-        years_experience: yearsExperience,
-        skills: data.skills,
-        industries: data.industries,
-        work_experience: workExperience,
-        education,
-        job_titles_seeking: data.jobTitlesSeeking,
-        remote_preference: data.remotePreference || null,
-        salary_expectation: data.salaryExpectation || null,
-        preferred_locations: data.preferredLocations,
-        cover_letter_tone: data.coverLetterTone || null,
-        is_complete: isComplete,
-      })
+      .update(profileFields)
       .eq("id", user.id)
       .select("id")
       .maybeSingle<{ id: string }>();
@@ -184,9 +202,20 @@ export async function saveProfile(
       return { success: false, error: "Failed to save profile" };
     }
 
+    // Self-heal: a profiles row is normally provisioned by the
+    // on_auth_user_created trigger on auth.users, but if that ever doesn't
+    // fire (or the account predates it), the UPDATE above matches zero rows
+    // and the user could never save anything. Insert the row instead of
+    // dead-ending them. RLS (profiles_insert_own) still enforces id = auth.uid().
     if (!updated) {
-      console.error("[actions/profile] saveProfile no row matched for user", user.id);
-      return { success: false, error: "Profile not found. Please sign out and sign in again." };
+      const { error: insertError } = await insforge.database
+        .from("profiles")
+        .insert([{ id: user.id, ...profileFields }]);
+
+      if (insertError) {
+        console.error("[actions/profile] saveProfile insert fallback", insertError);
+        return { success: false, error: "Failed to save profile" };
+      }
     }
 
     if (isComplete && !existing?.is_complete) {
@@ -280,10 +309,19 @@ export async function extractProfile(): Promise<{
   data?: ExtractedProfile;
   error?: string;
 }> {
+  if (!isFeatureEnabled("resume_extract")) {
+    return { success: false, error: featureDisabledMessage("resume_extract") };
+  }
+
   const user = await requireUser();
 
   try {
     const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "profile/extract");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
 
     const { data: fileData, error: downloadError } = await insforge.storage
       .from("resumes")
@@ -309,6 +347,11 @@ export async function extractProfile(): Promise<{
       };
     }
 
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "resume_extract");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
     const { data: existingProfile } = await insforge.database
       .from("profiles")
       .select("preferred_model")
@@ -316,7 +359,7 @@ export async function extractProfile(): Promise<{
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
     const raw = await complete(
-      getModel(existingProfile?.preferred_model ?? "gemini", "smart"),
+      getModel(resolveProvider(existingProfile?.preferred_model, user.email), "smart"),
       {
         systemPrompt:
           "You are a resume parser. Extract structured profile data from the resume text and return only valid JSON matching the exact schema provided. Use null for missing fields. Arrays must always be arrays (never null). experience_level must be one of: Junior, Mid-Level, Senior, Lead, Manager, Director, Executive — pick the closest match or null.",
@@ -340,16 +383,41 @@ export async function extractProfile(): Promise<{
 Resume text:
 ${extractedText.slice(0, 6000)}`,
         temperature: 0.3,
-        maxTokens: 800,
+        // 800 was too small: a full resume's work_experience array routinely
+        // exceeds it, the response truncates mid-JSON, and JSON.parse below
+        // throws — which is why extraction failed only on longer resumes.
+        maxTokens: 4000,
         jsonResponse: true,
       },
     );
 
-    const extracted = JSON.parse(raw) as ExtractedProfile;
+    let extracted: ExtractedProfile;
+    try {
+      extracted = JSON.parse(raw) as ExtractedProfile;
+    } catch (parseError) {
+      console.error("[actions/profile] extractProfile JSON parse failed", parseError, raw.slice(0, 500));
+      return {
+        success: false,
+        error:
+          "The AI response for this resume was incomplete. Please try again — if it keeps failing, try a shorter resume.",
+      };
+    }
 
     return { success: true, data: extracted };
   } catch (error) {
     console.error("[actions/profile] extractProfile", error);
+
+    // Distinguish provider rate limits from real failures — on the free
+    // Gemini tier a burst of extractions returns 429, which previously
+    // surfaced as a generic "failed" and looked like a broken feature.
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes("429") || /quota|rate limit/i.test(message)) {
+      return {
+        success: false,
+        error: "The AI service is rate-limited right now. Please wait a minute and try again.",
+      };
+    }
+
     return { success: false, error: "Failed to extract profile from resume." };
   }
 }

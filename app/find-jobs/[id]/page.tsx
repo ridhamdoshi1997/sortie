@@ -13,6 +13,7 @@ import { MatchScore } from "@/components/job-details/MatchScore";
 import { Navbar } from "@/components/layout/Navbar";
 import { ModelSelector } from "@/components/shared/ModelSelector";
 import { ThemeSelector } from "@/components/shared/ThemeSelector";
+import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import type { Job, Profile } from "@/types";
@@ -58,6 +59,12 @@ export default async function JobDetailsPage({ params }: Props) {
     .eq("id", user.id)
     .maybeSingle<Pick<Profile, "preferred_model" | "preferred_resume_theme">>();
 
+  const isAdmin = isAdminUser(user.email);
+  // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
+  // or an admin allowlist change) so the selector never shows/persists a
+  // provider a non-admin can no longer actually use.
+  const modelValue = resolveProvider(profile?.preferred_model, user.email);
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -88,7 +95,7 @@ export default async function JobDetailsPage({ params }: Props) {
           sourceUrl={applyUrl}
         />
         <div className="flex flex-wrap justify-end gap-4">
-          <ModelSelector value={profile?.preferred_model ?? "gemini"} />
+          <ModelSelector value={modelValue} isAdmin={isAdmin} />
           <ThemeSelector value={profile?.preferred_resume_theme ?? "modern"} />
         </div>
         <CompanyResearch

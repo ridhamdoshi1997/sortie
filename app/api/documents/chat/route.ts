@@ -4,10 +4,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { reviseCoverLetter, reviseTailoredResume, type ChatMessage } from "@/agent/documents";
+import { resolveProvider } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
 import { getModel } from "@/lib/models";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { ResumePDF, type GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
 import { CoverLetterPDF } from "@/app/api/documents/generate/CoverLetterPDF";
 import type { Job, Profile } from "@/types";
@@ -52,6 +56,13 @@ function isValidMessages(value: unknown): value is ChatMessage[] {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    if (!isFeatureEnabled("document_generation")) {
+      return NextResponse.json(
+        { success: false, error: featureDisabledMessage("document_generation") },
+        { status: 503 },
+      );
+    }
+
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -94,6 +105,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const messages = body.messages;
 
     const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "documents/chat");
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ success: false, error: rateLimit.error }, { status: 429 });
+    }
 
     const { data: job, error: jobError } = await insforge.database
       .from("jobs")
@@ -153,8 +169,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    const usage = await checkAndConsumeUsage(insforge, user.id, profile.email, "document_generation");
+    if (!usage.allowed) {
+      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+    }
+
     const dossier = job.company_research;
-    const provider = profile.preferred_model ?? "gemini";
+    const provider = resolveProvider(profile.preferred_model, profile.email);
     const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;

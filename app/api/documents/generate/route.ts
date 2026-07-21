@@ -5,10 +5,14 @@ import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { researchCompany } from "@/agent/research";
 import { generateCoverLetter, generateTailoredResume } from "@/agent/documents";
+import { resolveProvider } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
 import { getModel } from "@/lib/models";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { checkRateLimit } from "@/lib/rateLimit";
 import { ResumePDF } from "@/app/api/resume/generate/ResumePDF";
 import { CoverLetterPDF } from "./CoverLetterPDF";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
@@ -40,6 +44,13 @@ function isUuid(value: string): boolean {
 
 export async function POST(req: NextRequest): Promise<NextResponse> {
   try {
+    if (!isFeatureEnabled("document_generation")) {
+      return NextResponse.json(
+        { success: false, error: featureDisabledMessage("document_generation") },
+        { status: 503 },
+      );
+    }
+
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json(
@@ -75,6 +86,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "documents/generate");
+    if (!rateLimit.allowed) {
+      return NextResponse.json({ success: false, error: rateLimit.error }, { status: 429 });
+    }
 
     const { data: job, error: jobError } = await insforge.database
       .from("jobs")
@@ -113,7 +129,12 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const provider = profile.preferred_model ?? "gemini";
+    const provider = resolveProvider(profile.preferred_model, profile.email);
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, profile.email, "document_generation");
+    if (!usage.allowed) {
+      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+    }
 
     // "Generate" is one click start to finish — research the company first
     // if it hasn't been researched yet, same logic as /api/agent/research.
