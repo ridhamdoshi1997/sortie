@@ -29,6 +29,7 @@ export default async function FindJobsPage() {
             .select("*")
             .eq("user_id", user.id)
             .eq("run_id", lastRun.id)
+            .eq("is_hidden", false)
             .order("found_at", { ascending: false });
         initialJobs = scopedJobs ?? [];
     }
@@ -41,6 +42,7 @@ export default async function FindJobsPage() {
             .from("jobs")
             .select("*")
             .eq("user_id", user.id)
+            .eq("is_hidden", false)
             .order("found_at", { ascending: false })
             .limit(100);
         initialJobs = fallbackJobs ?? [];

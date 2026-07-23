@@ -4,8 +4,6 @@ import Link from "next/link";
 type Props = {
   aboutRole: string | null;
   responsibilities: string[];
-  requirements: string[];
-  niceToHave: string[];
   benefits: string[];
   sourceUrl: string | null;
 };
@@ -42,16 +40,12 @@ function BulletList({ section }: { section: BulletSection }) {
 export function JobDescription({
   aboutRole,
   responsibilities,
-  requirements,
-  niceToHave,
   benefits,
   sourceUrl,
 }: Props) {
   const shouldShowFullPostLink = isTruncatedPreview(aboutRole) && sourceUrl;
   const sections: BulletSection[] = [
     { title: "Responsibilities", items: responsibilities },
-    { title: "Requirements", items: requirements },
-    { title: "Nice to Have", items: niceToHave },
     { title: "Benefits", items: benefits },
   ];
 

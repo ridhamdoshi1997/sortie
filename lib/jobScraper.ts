@@ -8,6 +8,7 @@ export type NormalizedJob = {
     applyUrl?: string;
     salary?: string;
     type?: string;
+    postedAt?: string;
     source: string;
 };
 
@@ -134,6 +135,7 @@ async function fetchSerpApiPages(
                 applyUrl: pickApplyUrl(job.apply_options),
                 salary: job.detected_extensions?.salary,
                 type: job.detected_extensions?.schedule_type,
+                postedAt: job.detected_extensions?.posted_at,
                 source: "SerpApi"
             }))
         );

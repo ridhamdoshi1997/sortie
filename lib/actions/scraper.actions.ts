@@ -88,6 +88,7 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         job_type: job.type || null,
         url: job.url || null,
         external_apply_url: job.applyUrl || null,
+        posted_at: job.postedAt || null,
         // Never actually set anywhere before — needed so a later page load
         // can scope "my last search" to exactly this batch instead of
         // showing the user's entire saved-job history.
@@ -96,7 +97,7 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
 
     const { data: savedJobs, error } = await insforge.database
         .from("jobs")
-        .upsert(jobsToInsert, { onConflict: 'external_id' })
+        .upsert(jobsToInsert, { onConflict: 'user_id,external_id' })
         .select('*');
 
     // 2. DEBUG: Check what the database actually returned

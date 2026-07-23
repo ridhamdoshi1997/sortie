@@ -2,15 +2,15 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Search } from "lucide-react";
+import { FileSearch } from "lucide-react";
 
-import type { CompanyResearchDossier } from "@/types";
+import type { ResumeGapAnalysisResult } from "@/types";
 
 type Props = {
   jobId: string;
 };
 
-export function ResearchCompanyButton({ jobId }: Props) {
+export function AnalyzeResumeFitButton({ jobId }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -22,21 +22,20 @@ export function ResearchCompanyButton({ jobId }: Props) {
 
     startTransition(async () => {
       try {
-        const res = await fetch("/api/agent/research", {
+        const res = await fetch("/api/documents/analyze", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ jobId }),
         });
         const json = (await res.json()) as {
           success: boolean;
-          data?: { dossier: CompanyResearchDossier };
+          data?: ResumeGapAnalysisResult;
           error?: string;
         };
 
         if (!res.ok || !json.success) {
           setError(
-            json.error ??
-              "Company research could not be completed. Please try again.",
+            json.error ?? "Resume fit analysis could not be completed. Please try again.",
           );
           return;
         }
@@ -57,13 +56,13 @@ export function ResearchCompanyButton({ jobId }: Props) {
         onClick={handleClick}
         className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
       >
-        <Search className="h-4 w-4" />
-        {isPending ? "Researching..." : "Research Company"}
+        <FileSearch className="h-4 w-4" />
+        {isPending ? "Analyzing..." : "Check Resume Fit"}
       </button>
       {error && <p className="max-w-xs text-xs text-error">{error}</p>}
       {success && (
         <p className="max-w-xs text-xs text-success">
-          Research saved. Refreshing details...
+          Analysis saved. Refreshing details...
         </p>
       )}
     </div>

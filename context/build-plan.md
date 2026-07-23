@@ -31,7 +31,7 @@ Across the deep teardown this session (their onboarding, job list, job detail pa
 | --- | --- | --- |
 | No Chrome extension | Capture-first extension ("save → grade → track"), never auto-apply | §G |
 | No résumé editor workspace | Score-jump + changelog, one-tap refinement chips, style controls, section editor | §C1 |
-| No network/connections feature | `NetworkSignals.tsx` (free half) wired to real profile data; paid people-data API deferred | §G, §H1 |
+| No network/connections feature | ✅ closed 2026-07-22/23 — `NetworkSignals.tsx` (free, real profile-derived fact) *and* `InsiderConnections.tsx` (paid, real Apify/LinkedIn people-search, opt-in, ~$0.31-0.32/lookup) both shipped | §G, §H1 |
 | No conversational per-job AI chat | "Ask Orion"-equivalent — reuses the `DocumentChatEditor` chat pattern, pointed at job-fit Q&A | §B |
 | Coarser profile schema | Split name/phone/address into ATS-autofill-grade fields; EEO self-ID as a separate, optional step | §C2 |
 | No application tracker | Kanban board (Phase 15) | §D |
@@ -1149,14 +1149,14 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 
 | Section | Contents | Sortie status |
 | --- | --- | --- |
-| Sticky action bar | Contextual badges ("Be an early applicant", "Less than 25 applicants"), hide, save, primary apply CTA | 🆕 |
-| Header | Company · relative post time ("1 minute ago"), title, then a meta grid: location, work mode, salary range, employment type, seniority, years required | Partial — 🆕 for freshness + work mode |
+| Sticky action bar | Contextual badges ("Be an early applicant", "Less than 25 applicants"), hide, save, primary apply CTA | ✅ shipped 2026-07-22 (`JobActionBar.tsx`) — Save/Hide + freshness/Remote badges are real; "early applicant"/"under 25 applicants" badges explicitly not built, no data source (SerpApi doesn't carry applicant counts) |
+| Header | Company · relative post time ("1 minute ago"), title, then a meta grid: location, work mode, salary range, employment type, seniority, years required | Partial — freshness ✅ shipped 2026-07-22 (`jobs.posted_at`, confirmed live SerpApi provides this for free), work mode still ⛔ (no structured field exists in SerpApi's response at all, only a text-match "Remote" heuristic — a real work-mode column would overclaim precision we don't have) |
 | Match panel | Headline % + band ("97% STRONG MATCH") with **sub-scores broken out**: Experience Level 100%, Skill 100%, Industry Exp. 49% | 🆕 (we have richer 10-dim data, weaker presentation) |
-| Company blurb | One paragraph with company name and role bolded, then industry tags | 🆕 |
-| **Insider Connection** | Three buckets — *Beyond Your Network* / *From Your Previous Company* / *From Your School* — each with avatars, names, "Previously@…" context, and a View / Find More Connections link. Metered ("2 email credits available today") | 🎨 partial — `NetworkSignals.tsx` covers the free half |
-| Find Any Email | Paste a LinkedIn profile URL → work email | ⛔ deferred (paid + CASL/GDPR) |
+| Company blurb | One paragraph with company name and role bolded, then industry tags | Partial — `industryTags` ✅ shipped 2026-07-22 (extends the existing `CompanyResearchDossier`, no new AI call), the blurb paragraph itself (`companyOverview`) already existed pre-session |
+| **Insider Connection** | Three buckets — *Beyond Your Network* / *From Your Previous Company* / *From Your School* — each with avatars, names, "Previously@…" context, and a View / Find More Connections link. Metered ("2 email credits available today") | ✅ shipped 2026-07-23 (`InsiderConnections.tsx`), paid via Apify (`harvestapi` actors, ~$0.31-0.32/lookup, capped 3/day), opt-in only, no billing/subscription gate yet (stated plan: gate behind a future paid tier). `NetworkSignals.tsx` remains the free/always-available fallback for users past the cap |
+| Find Any Email | Paste a LinkedIn profile URL → work email | ⛔ dropped, not just deferred — the fallback tool (`dev_fusion`'s actor, URL-based) is blocked on Apify's free plan for API use; the working alternative (HarvestAPI) is filter-based (name+company), not URL-based, so an arbitrary-URL paste box genuinely isn't buildable on this tier. Per-person email reveal on already-found Insider Connections *is* shipped (~$0.10/lookup, capped 4/day) |
 | Responsibilities | Bulleted list | ✅ have |
-| **Qualification** | Interactive skill tags (matched vs not) + **Required** list + **Preferred** list, with the "click tags to correct" affordance | 🆕 — see the correctable-tags note in §B |
+| **Qualification** | Interactive skill tags (matched vs not) + **Required** list + **Preferred** list, with the "click tags to correct" affordance | ✅ shipped 2026-07-22 (`Qualification.tsx`) — clicking a tag calls `correctSkillTag`, moves it between matched/missing; a data correction only, does not re-run the evaluator or change `match_score` |
 | Benefits | Bulleted list | ✅ have |
 
 **Company tab:**
@@ -1165,7 +1165,7 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | --- | --- | --- |
 | Company card | Logo, description, socials (X / LinkedIn / Crunchbase), **Glassdoor rating**, founded year, HQ, employee count, website | Partial |
 | **Funding** | Current stage, total funding, and a dated timeline of rounds | 🆕 — needs Crunchbase ($49–99/mo, free tier gone) or a cheaper alternative |
-| **Leadership Team** | Photo cards, name, title, LinkedIn link | 🆕 |
+| **Leadership Team** | Photo cards, name, title, LinkedIn link | ✅ shipped 2026-07-22/23 — waterfall: Wikipedia (free) → site-guessing (free) → Apify/LinkedIn (paid, ~$0.10-0.11, last resort only). Photo cards with LinkedIn icon overlay match JobRight's own treatment; real photos only from the Apify path, initials-avatar fallback otherwise |
 | **Recent News** | Three cards: source, headline, date | 🆕 — cheap via a news API or the existing research agent |
 | Attribution | "Company data provided by Crunchbase" | — |
 

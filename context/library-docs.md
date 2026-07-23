@@ -254,244 +254,56 @@ const jobRecord = {
 
 ---
 
-## Browserbase
+## Jina Reader (company page fetching)
 
-**Check first:** Check AGENTS.md for an installed Browserbase skill. If a Browserbase MCP server is configured — use it. The skill/MCP will have the latest session management and API patterns.
+**Replaced Browserbase + Stagehand on 2026-07-22** — a cost decision, not a bug fix. Browserbase's free tier is 1 browser-hour/month *total* (not per user), and self-hosting headless Chromium on Vercel Hobby is a real engineering risk (Stagehand's own docs recommend Browserbase specifically *because* Vercel serverless functions can't reliably run a bundled Chromium binary — size/memory/cold-start limits). Jina Reader renders the page in a real browser on *their* infrastructure and returns clean markdown — no browser to host at all, genuinely free at this app's volume, verified live against a real JS-rendered site during the swap.
 
-### Session Creation — Company Research
-
-```typescript
-import Browserbase from "@browserbasehq/sdk";
-
-const bb = new Browserbase({ apiKey: process.env.BROWSERBASE_API_KEY! });
-
-// Single session for company research — sequential page visits
-const session = await bb.sessions.create({
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  timeout: 120, // 2 minute session — visits 3-4 pages max
-});
-```
-
-**Important — Browserbase runs independently from your Next.js server:**
-Browserbase sessions run on Browserbase's cloud infrastructure, not inside your Next.js API route. The API route triggers the Browserbase session and returns a response while the session continues running independently on Browserbase's platform. Do not add `maxDuration` or any timeout configuration to Next.js API routes to accommodate Browserbase session length.
-
-**Rules:**
-
-- Always use single sessions — never parallel sessions (free plan limit)
-- Session timeout is 120 seconds — sufficient for 3-4 page visits
-- Always end sessions cleanly — call stagehand.close() when done
-- Project ID always from `process.env.BROWSERBASE_PROJECT_ID` — never hardcode
-- Browserbase client lives in `lib/browserbase.ts` — always import from there
-
----
-
-## Stagehand
-
-**Check first:** Check AGENTS.md for an installed Stagehand skill. If a Stagehand MCP server is configured — use it. The skill/MCP will have the latest act() and extract() patterns.
-
-### Initialisation
+### Fetching a page
 
 ```typescript
-import { Stagehand } from "@browserbasehq/stagehand";
+async function fetchViaJinaReader(url: string): Promise<string | null> {
+  const jinaKey = process.env.JINA_API_KEY; // optional — raises rate limit, not required
+  const headers: Record<string, string> = { Accept: "text/plain" };
+  if (jinaKey) headers.Authorization = `Bearer ${jinaKey}`;
 
-const stagehand = new Stagehand({
-  env: "BROWSERBASE",
-  apiKey: process.env.BROWSERBASE_API_KEY!,
-  projectId: process.env.BROWSERBASE_PROJECT_ID!,
-  browserbaseSessionID: session.id,
-  model: { modelName: "openai/gpt-4o", apiKey: process.env.OPENAI_API_KEY! },
-  disablePino: true,
-});
-
-await stagehand.init();
-const page = stagehand.context.activePage()!;
-```
-
-### extract()
-
-```typescript
-import { z } from "zod";
-
-const result = await stagehand.extract({
-  instruction:
-    "Extract the company overview, main product description, and any technology mentions from this page.",
-  schema: z.object({
-    companyOverview: z.string().optional(),
-    mainProduct: z.string().optional(),
-    techMentions: z.array(z.string()).optional(),
-    navLinks: z
-      .array(
-        z.object({
-          label: z.string(),
-          url: z.string(),
-        }),
-      )
-      .optional(),
-  }),
-});
-```
-
-### act()
-
-```typescript
-// Always wrap in try/catch
-try {
-  await stagehand.act({
-    action: "Click the About link in the navigation",
+  const response = await fetch(`https://r.jina.ai/${url}`, {
+    headers,
+    signal: AbortSignal.timeout(25000), // Jina's typical latency is ~7.9s; leave real headroom
   });
-} catch (error) {
-  await logAgentError(jobId, null, error);
+
+  if (!response.ok) return null;
+  const text = await response.text();
+  return text.trim() || null;
 }
 ```
 
-## Company Research Section
+**Rules:**
 
-Replace the existing Stagehand "Company Research Pattern" section in library-docs.md with this:
-
----
+- No API key required for basic use — `JINA_API_KEY` is optional, only raises the rate limit (10M free tokens on a free key)
+- Always set a real timeout (`AbortSignal.timeout`) — this is a plain `fetch()`, nothing enforces one for you
+- Returns markdown, including anchors as `[text](url)` — link discovery for sub-pages is a plain regex pass over that markdown (`extractMarkdownLinks` in `agent/research.ts`), not an AI call
+- `visited: boolean` must be threaded through any research result — `true` only when a real fetch succeeded. Never let a downstream LLM call cite a URL as a source when nothing was actually fetched (this exact bug shipped once — a guessed fallback homepage URL got cited as a "source" by the model when no real research had happened).
 
 ### Company Research Pattern
 
-Three-step process: homepage extraction → sub-page extraction → GPT-4o synthesis.
-Job description and user profile come from DB — never re-fetch what you already have.
-Browser's only job is the company website.
+Three-step process: homepage fetch+extract → sub-page fetch+extract → provider-selected synthesis. Job description and user profile come from DB — never re-fetch what you already have. See `agent/research.ts`'s `collectBrowserResearch`/`synthesizeDossier` for the full current implementation; this is the shape, not a copy-paste snippet (the real file is the source of truth).
 
-```typescript
-// Step 1 — Homepage extraction
-const homepageData = await stagehand.extract({
-  instruction:
-    "This is a company's homepage. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches). Then find the internal links most worth visiting to research them as an employer.",
-  schema: z.object({
-    oneLiner: z.string().describe("What the company does in one sentence"),
-    productSummary: z
-      .string()
-      .describe("What they build/sell and who it's for"),
-    signals: z
-      .array(z.string())
-      .describe("Funding, notable customers, scale, mission, recent news"),
-    pageLinks: z
-      .array(
-        z.object({
-          url: z.string(),
-          kind: z.enum([
-            "about",
-            "careers",
-            "blog",
-            "engineering",
-            "product",
-            "team",
-            "other",
-          ]),
-        }),
-      )
-      .describe("Internal links worth visiting"),
-  }),
-});
+- Step 1/2 (page fetch + structured extraction) always run on Gemini's fast/cheap tier via `lib/models.ts`'s router, regardless of what provider the user picked — same design as when this ran through Stagehand's own model.
+- Step 3 (final dossier synthesis) uses the model router with whatever provider the user selected (`getModel(provider, "smart")`) — never hardcode a specific model here.
+- Max 3 sub-pages — same limit as before, just to keep the extraction calls cheap, not a platform constraint anymore.
+- If page-fetch research comes back empty (`visited: false`) — still run synthesis with job + profile only, and the prompt/output must make that explicit rather than silently presenting inferred claims as verified.
 
-// If oneLiner and productSummary are empty — wrong site or parked domain
-// Skip to synthesis with job description and profile only
-if (!homepageData.oneLiner && !homepageData.productSummary) {
-  await stagehand.close();
-  // proceed to synthesis with empty companyResearch
-}
+**Dossier fields:** see `CompanyResearchDossier` in `types/index.ts` — that interface is the current source of truth, not this doc.
 
-// Step 2 — Sub-page extraction (max 3, prefer about/blog/engineering/product over careers)
-const subPageData = await stagehand.extract({
-  instruction:
-    "Extract substance that helps a candidate understand this company before applying: what they do, their values and how they work, the specific technologies and tools they use, notable projects or customers, and how the team operates. Ignore nav, footers, cookie banners, and generic marketing copy.",
-  schema: z.object({
-    keyPoints: z.array(z.string()),
-    technologies: z
-      .array(z.string())
-      .describe("Specific languages, frameworks, tools, platforms"),
-    valuesOrCulture: z
-      .array(z.string())
-      .describe("Stated values, working style, team norms"),
-    notable: z
-      .array(z.string())
-      .describe("Customers, funding, scale, projects, awards"),
-  }),
-});
+### Leadership Team lookup
 
-// Step 3 — GPT-4o synthesis (after browser closes)
-// Feed three data sources: company research + job from DB + profile from DB
-const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
+Deliberately separate from the main auto-populated dossier — opt-in only, triggered by its own button (`components/job-details/LeadershipTeamButton.tsx` → `POST /api/agent/research/leadership`), never runs automatically. Real people's names/titles are the kind of specific, checkable fact an LLM is most likely to get confidently wrong, so this stays gated behind an explicit user action rather than folded into the free auto-populate flow. Tries a short list of common about/team page paths (`LEADERSHIP_PATH_GUESSES` in `agent/research.ts`) via the same Jina fetch + Gemini extraction pattern, stops at the first page with a real roster, returns an empty list (not an error) if none is found.
 
-Rules:
-- Ground every company claim in the provided research or job posting. Never invent funding, customers, headcount, or facts. If research was thin, infer carefully from the job posting and say what's inferred.
-- Be specific to THIS candidate. Connect their actual skills and past work to this company's stack, product, and values. No generic advice that would apply to anyone.
-- Turn the candidate's missing skills into a strategy: how to frame the gap honestly and what adjacent experience to lean on.
-- Talking points and questions must reference real things from the research, the kind of detail that signals the candidate did their homework.
-- Keep every item tight: one or two sentences. No fluff.
-
-Return ONLY valid JSON matching this shape:
-{
-  "companyOverview": string,
-  "techStack": string[],
-  "culture": string[],
-  "whyThisRole": string,
-  "yourEdge": string[],
-  "gapsToAddress": string[],
-  "smartQuestions": string[],
-  "interviewPrep": string[],
-  "sources": string[]
-}`;
-
-const userPrompt = `COMPANY RESEARCH (from their website):
-${JSON.stringify(companyResearch)}
-
-JOB POSTING:
-Title: ${job.title}
-Company: ${job.company}
-Description: ${job.description}
-Matched skills (already computed): ${job.matched_skills.join(", ")}
-Missing skills (already computed): ${job.missing_skills.join(", ")}
-
-CANDIDATE PROFILE:
-Current title: ${profile.current_title}
-Experience: ${profile.years_experience} years, level ${profile.experience_level}
-Skills: ${profile.skills.join(", ")}
-Work history: ${JSON.stringify(profile.work_experience)}`;
-
-const response = await openai.chat.completions.create({
-  model: "gpt-4o",
-  response_format: { type: "json_object" },
-  temperature: 0.4,
-  messages: [
-    { role: "system", content: systemPrompt },
-    { role: "user", content: userPrompt },
-  ],
-});
-```
-
-**Dossier fields:**
-
-| Field           | Type     | Purpose                                             |
-| --------------- | -------- | --------------------------------------------------- |
-| companyOverview | string   | What the company does                               |
-| techStack       | string[] | Technologies they use                               |
-| culture         | string[] | Values and working style                            |
-| whyThisRole     | string   | Why this role exists                                |
-| yourEdge        | string[] | Specific links between THIS candidate and this role |
-| gapsToAddress   | string[] | Missing skills reframed as strategy                 |
-| smartQuestions  | string[] | Questions that show real research                   |
-| interviewPrep   | string[] | Topics to prepare for this role                     |
-| sources         | string[] | Pages the company info came from                    |
-
-**Rules:**
-
-- Always use `extract()` with a Zod schema — never parse raw HTML or use regex
-- Always wrap every `act()` and `extract()` in try/catch
-- Always call `await stagehand.close()` when done — ends the Browserbase session
-- Model is always `gpt-4o` — never use other models
-- Temperature is `0.4` for synthesis — grounded but flexible enough to make real connections
-- Max 3 sub-pages — never exceed this on free plan
-- Always close session in finally block — never leave sessions open even if research fails
-- Job description and profile always come from DB — never re-fetch via browser
-- If browser research returns empty — still run synthesis with job + profile only
-- yourEdge, gapsToAddress, and smartQuestions are the most valuable fields — never skip them
+---
 
 ### Structured JSON Response
+
+> **Note:** this example still shows the old hardcoded-`gpt-4o` pattern from before Phase 7's model router (`lib/models.ts`) shipped. It's stale — new code should go through `getModel(provider, tier)` + `complete(...)`, not call the OpenAI client directly like this. Kept here only as a historical reference until this section is properly rewritten; don't copy the hardcoded model string.
 
 ```typescript
 import OpenAI from "openai";
@@ -531,12 +343,12 @@ const result = JSON.parse(response.choices[0].message.content!);
 
 **Rules:**
 
-- Model string is always `'gpt-4o'` — never use other model names
-- Always use `response_format: { type: 'json_object' }` for structured data
-- Always parse `response.choices[0].message.content` as string — even with json_object it returns a string
-- Always validate parsed JSON before using — wrap in try/catch
+- Use `lib/models.ts`'s `getModel(provider, tier)` + `complete(...)` — never call a provider SDK directly outside that router
+- Always use `response_format: { type: 'json_object' }` (or the router's `jsonResponse: true`) for structured data
+- Always parse the returned string as JSON — even in JSON mode it's still a string
+- Always validate parsed JSON before using — wrap in try/catch (or use a Zod `safeParse`, the pattern used throughout `agent/research.ts`)
 - Match threshold is always `MATCH_THRESHOLD` from `lib/utils.ts` — never hardcode 70
-- Company research synthesis must always return a complete dossier — never return empty even if browser research failed
+- Company research synthesis must always return a complete dossier — never return empty even if page-fetch research failed
 
 ---
 

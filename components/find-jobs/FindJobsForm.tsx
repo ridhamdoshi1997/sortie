@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
-import { Search, MapPin, Briefcase, Loader2 } from "lucide-react";
+import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
 import Link from "next/link";
@@ -54,6 +54,7 @@ export function FindJobsForm({
         visa_sponsorship: "",
         remote_policy: "",
     });
+    const [showSavedOnly, setShowSavedOnly] = useState(false);
 
     // --- AUTO-REFRESH POLLING LOGIC ---
     // Polls by the exact set of job ids this search returned, not by
@@ -117,6 +118,9 @@ export function FindJobsForm({
             setLoading(false);
         }
     };
+
+    const savedCount = jobs.filter((job) => job.is_saved).length;
+    const visibleJobs = showSavedOnly ? jobs.filter((job) => job.is_saved) : jobs;
 
     return (
         <div className="mx-auto mt-0 w-full max-w-6xl space-y-8">
@@ -202,11 +206,30 @@ export function FindJobsForm({
             {/* Results */}
             {jobs.length > 0 && (
                 <div className="border-t border-border pt-6">
-                    <p className="mb-4 font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                        Active targets — {jobs.length}
-                    </p>
+                    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                            Active targets — {visibleJobs.length}
+                        </p>
+                        {savedCount > 0 && (
+                            <button
+                                type="button"
+                                onClick={() => setShowSavedOnly((prev) => !prev)}
+                                className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
+                                    showSavedOnly
+                                        ? "border-accent bg-accent-muted text-accent"
+                                        : "border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+                                }`}
+                            >
+                                <Bookmark className={`h-3.5 w-3.5 ${showSavedOnly ? "fill-current" : ""}`} />
+                                Saved only ({savedCount})
+                            </button>
+                        )}
+                    </div>
+                    {visibleJobs.length === 0 && (
+                        <p className="text-sm text-text-muted">No saved jobs yet — save one from its detail page.</p>
+                    )}
                     <div className="flex flex-col gap-4">
-                        {jobs.map((job) => {
+                        {visibleJobs.map((job) => {
                             const tags = jobTags(job);
                             return (
                                 <Link href={`/find-jobs/${job.id}`} key={job.id}>

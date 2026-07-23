@@ -9,26 +9,18 @@ import {
     X,
 } from "lucide-react";
 
-// Exported so the API route and preview page share one shape. Deliberately
-// mirrors what a single structured AI call can return in one pass.
-export type GapStatus = "pass" | "warn" | "fail";
+import type {
+    GapCheckResult,
+    GapStatus,
+    ResumeGapAnalysisResult,
+} from "@/types";
 
-export type GapCheck = {
-    label: string;
-    status: GapStatus;
-    /** What the job posting asks for. */
-    jobSide: string;
-    /** What the candidate's profile/resume currently says. */
-    resumeSide: string;
-};
-
-export type ResumeGapAnalysisData = {
-    /** 0-10 fit of this resume against this specific posting. */
-    score: number;
-    checks: GapCheck[];
-    matchedKeywords: string[];
-    missingKeywords: string[];
-};
+// Re-exported under the preview page's existing names so this component's
+// shape stays the single source of truth in @/types without touching every
+// call site.
+export type { GapStatus };
+export type GapCheck = GapCheckResult;
+export type ResumeGapAnalysisData = ResumeGapAnalysisResult;
 
 type Props = {
     data: ResumeGapAnalysisData;

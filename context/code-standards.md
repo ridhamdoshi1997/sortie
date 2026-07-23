@@ -54,7 +54,7 @@ The AI agent on this project operates as a senior engineer. This means:
 
 - Folders: kebab-case — `job-details`, `agent-controls`
 - Component files: PascalCase — `StatsBar.tsx`, `RecentActivity.tsx`
-- Utility files: camelCase — `browserbase.ts`, `posthog-client.ts`
+- Utility files: camelCase — `jobScraper.ts`, `posthog-client.ts`
 - Type files: camelCase — `index.ts`
 - API route files: always `route.ts`
 - Server Action files: camelCase — `profile.ts`, `jobs.ts`
@@ -245,8 +245,8 @@ All environment variables defined in `.env.local` for development. Never hardcod
 | ------------------------------- | ---------------------- |
 | `NEXT_PUBLIC_INSFORGE_URL`      | lib/insforge-client.ts |
 | `NEXT_PUBLIC_INSFORGE_ANON_KEY` | lib/insforge-client.ts |
-| `BROWSERBASE_API_KEY`           | lib/browserbase.ts     |
-| `BROWSERBASE_PROJECT_ID`        | lib/browserbase.ts     |
+| `JINA_API_KEY` (optional)       | agent/research.ts      |
+| `APIFY_API_TOKEN` (optional)    | agent/research.ts      |
 | `OPENAI_API_KEY`                | agent/ functions       |
 | `ADZUNA_APP_ID`                 | lib/adzuna.ts          |
 | `ADZUNA_APP_KEY`                | lib/adzuna.ts          |
@@ -290,7 +290,7 @@ import { Button } from "../../../components/ui/button";
 
 - No comments explaining what the code does — code must be self-explanatory
 - Comments only for why — explaining a non-obvious decision
-- Agent functions may have a brief comment explaining the Browserbase or Stagehand strategy
+- Agent functions may have a brief comment explaining the research/extraction strategy
 - Never leave TODO comments in committed code
 
 ---
@@ -306,9 +306,8 @@ Never install a new package without a clear reason. Before installing anything c
 Approved dependencies for this project:
 
 - `@insforge/ssr` — InsForge client
-- `@browserbasehq/sdk` — Browserbase sessions
-- `@browserbasehq/stagehand` — AI browser control
-- `openai` — GPT-4o API
+- `openai` — model router client (gemini/openai, see `lib/models.ts`)
+- Company page fetching goes through Jina Reader (`https://r.jina.ai/`) via plain `fetch()` — no SDK, no dependency
 - `posthog-js` — PostHog browser client
 - `posthog-node` — PostHog server client
 - `@react-pdf/renderer` — Resume PDF generation

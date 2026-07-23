@@ -29,6 +29,7 @@ import {
     ResumeGapAnalysis,
     type ResumeGapAnalysisData,
 } from "@/components/job-details/ResumeGapAnalysis";
+import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { NetworkSignals } from "@/components/shared/NetworkSignals";
 
 const weakFit: ResumeGapAnalysisData = {
@@ -485,10 +486,50 @@ export default function PreviewPage() {
                 </SectionLabel>
                 <NetworkSignals
                     company="Manulife"
-                    signals={[
-                        { kind: "colleague", count: 3, via: "Meridian Credit Union" },
-                        { kind: "alumni", count: 5, via: "University of Windsor" },
-                    ]}
+                    previousEmployer={{ employer: "Meridian Credit Union" }}
+                    searchTerms={["Meridian Credit Union", "University of Windsor"]}
+                />
+            </section>
+
+            <section>
+                <SectionLabel note="paid, opt-in — real LinkedIn people via Apify, ~$0.31-0.32/lookup">
+                    Insider connections
+                </SectionLabel>
+                <InsiderConnections
+                    jobId="preview-dummy-id"
+                    company="Manulife"
+                    lookedUp
+                    connections={{
+                        beyondNetwork: [
+                            {
+                                name: "Liz J.",
+                                firstName: "Liz",
+                                lastName: "J.",
+                                title: "Director, Growth Marketing",
+                                linkedinUrl: "https://www.linkedin.com/in/liz-j-9169711a",
+                            },
+                        ],
+                        previousCompany: [
+                            {
+                                name: "Nithya Murali",
+                                firstName: "Nithya",
+                                lastName: "Murali",
+                                title: "Senior Software Engineer",
+                                pastEmployer: "HCL Technologies",
+                                linkedinUrl: "https://www.linkedin.com/in/nithya-murali",
+                            },
+                        ],
+                        school: [
+                            {
+                                name: "Mandeep Kaur",
+                                firstName: "Mandeep",
+                                lastName: "Kaur",
+                                title: "Cloud Operations Engineer",
+                                linkedinUrl: "https://www.linkedin.com/in/mandeep-kaur",
+                            },
+                        ],
+                        companyLinkedinUrl: "https://www.linkedin.com/company/manulife/",
+                    }}
                 />
             </section>
 

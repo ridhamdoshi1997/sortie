@@ -8,13 +8,16 @@ import {
   Lightbulb,
   ListChecks,
   MessageSquareText,
+  Newspaper,
   ShieldCheck,
   Sparkles,
   Users,
 } from "lucide-react";
 
-import { ResearchCompanyButton } from "@/components/job-details/ResearchCompanyButton";
-import type { CompanyResearchDossier } from "@/types";
+import { AutoResearchCompany } from "@/components/job-details/AutoResearchCompany";
+import { LeadershipTeamButton } from "@/components/job-details/LeadershipTeamButton";
+import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
+import type { CompanyLeader, CompanyResearchDossier } from "@/types";
 
 type Props = {
   company: string;
@@ -116,22 +119,76 @@ function Sources({ sources }: { sources: string[] }) {
   );
 }
 
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((part) => part[0])
+    .filter(Boolean)
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+}
+
+// JobRight's own leadership section is photo-card-per-person with a
+// LinkedIn icon overlaid in the corner of the photo, not a table row
+// (build-plan.md §H1). Real photos only ever come from the paid Apify
+// path — Wikipedia/site-guess sources fall back to an initials avatar.
+function LeaderCard({ leader }: { leader: CompanyLeader }) {
+  const card = (
+    <div className="flex flex-col items-center rounded-xl border border-border bg-surface-secondary p-4 text-center">
+      <div className="relative">
+        {leader.photoUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element -- external, unpredictable host (LinkedIn CDN); no fixed domain to allowlist for next/image
+          <img
+            src={leader.photoUrl}
+            alt=""
+            className="h-16 w-16 rounded-full object-cover"
+          />
+        ) : (
+          <div className="flex h-16 w-16 items-center justify-center rounded-full bg-accent-muted text-lg font-semibold text-accent">
+            {getInitials(leader.name)}
+          </div>
+        )}
+        {leader.linkedinUrl && (
+          <span className="absolute -bottom-1 -right-1 flex h-6 w-6 items-center justify-center rounded-full border-2 border-surface-secondary bg-accent text-accent-foreground">
+            <LinkedInGlyph className="h-3.5 w-3.5" />
+          </span>
+        )}
+      </div>
+      <p className="mt-3 text-sm font-semibold leading-5 text-text-primary">
+        {leader.name}
+      </p>
+      <p className="mt-1 text-xs leading-4 text-text-muted">{leader.title}</p>
+    </div>
+  );
+
+  if (!leader.linkedinUrl) return card;
+
+  return (
+    <Link
+      href={leader.linkedinUrl}
+      target="_blank"
+      rel="noreferrer"
+      aria-label={`${leader.name} on LinkedIn`}
+      className="transition-opacity hover:opacity-90"
+    >
+      {card}
+    </Link>
+  );
+}
+
 export function CompanyResearch({ company, jobId, research }: Props) {
   const hasResearch = research !== null;
 
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
-      <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
-            <Building2 className="h-4 w-4 text-accent" />
-          </div>
-          <h2 className="text-base font-semibold leading-6 text-text-primary">
-            Company Research
-          </h2>
+      <div className="flex items-center gap-3 border-b border-border p-6">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
+          <Building2 className="h-4 w-4 text-accent" />
         </div>
-
-        {!hasResearch && <ResearchCompanyButton jobId={jobId} />}
+        <h2 className="text-base font-semibold leading-6 text-text-primary">
+          Company Research
+        </h2>
       </div>
 
       {research ? (
@@ -149,6 +206,18 @@ export function CompanyResearch({ company, jobId, research }: Props) {
               <p className="text-sm font-medium leading-6 text-text-primary">
                 {research.companyOverview}
               </p>
+              {research.industryTags && research.industryTags.length > 0 && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {research.industryTags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="inline-flex items-center rounded-full bg-surface px-3 py-1 text-xs font-medium text-text-secondary"
+                    >
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             <TechStack items={research.techStack} />
@@ -183,6 +252,12 @@ export function CompanyResearch({ company, jobId, research }: Props) {
                 icon={MessageSquareText}
                 variant="success"
               />
+              <ResearchList
+                title="Recent Updates"
+                items={research.recentUpdates ?? []}
+                icon={Newspaper}
+                variant="info"
+              />
             </div>
 
             <div className="rounded-xl border border-border bg-surface-secondary p-4">
@@ -198,6 +273,30 @@ export function CompanyResearch({ company, jobId, research }: Props) {
                 {research.whyThisRole}
               </p>
             </div>
+
+            <div>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold leading-5 text-text-primary">
+                  Leadership Team
+                </h3>
+                {!research.leadershipLookedUp && <LeadershipTeamButton jobId={jobId} />}
+              </div>
+              {research.leadershipTeam && research.leadershipTeam.length > 0 ? (
+                <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
+                  {research.leadershipTeam.map((leader) => (
+                    <LeaderCard key={`${leader.name}-${leader.title}`} leader={leader} />
+                  ))}
+                </div>
+              ) : research.leadershipLookedUp ? (
+                <p className="text-sm text-text-muted">
+                  Searched, but no public leadership roster was found for this company.
+                </p>
+              ) : (
+                <p className="text-sm text-text-muted">
+                  Not looked up yet — this runs a separate, on-demand search.
+                </p>
+              )}
+            </div>
           </div>
 
           <Sources sources={research.sources} />
@@ -208,18 +307,18 @@ export function CompanyResearch({ company, jobId, research }: Props) {
             <Building2 className="h-6 w-6 text-text-muted" />
           </div>
           <p className="mt-5 text-sm font-semibold leading-5 text-text-primary">
-            No research yet
+            Building your briefing
           </p>
           <p className="mt-2 max-w-xs text-sm leading-6 text-text-muted">
-            Click &quot;Research Company&quot; to let the AI browse {company}
-            &apos;s public pages and build a dossier.
+            The AI is browsing {company}&apos;s public pages to build a dossier.
+            This usually takes under a minute.
           </p>
           <div className="mt-5 flex items-center gap-2 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent">
             <Sparkles className="h-3 w-3" />
             Candidate-specific briefing
           </div>
           <div className="mt-4">
-            <ResearchCompanyButton jobId={jobId} />
+            <AutoResearchCompany jobId={jobId} company={company} />
           </div>
         </div>
       )}

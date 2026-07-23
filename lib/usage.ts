@@ -12,7 +12,9 @@ export type UsageAction =
   | "document_generation"
   | "company_research"
   | "resume_extract"
-  | "resume_analysis";
+  | "resume_analysis"
+  | "insider_connections"
+  | "email_lookup";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -23,6 +25,16 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // and it's the step users take *before* deciding to generate, so it gets a
   // higher cap — gating it too tightly would push people to generate blind.
   resume_analysis: 15,
+  // ~$0.31-0.32/call (3 Apify people-search pages + company-URL resolves) —
+  // the most expensive single action in the app, capped tightly.
+  insider_connections: 3,
+  // Originally planned at ~$0.01/call via dev_fusion, but that actor is
+  // blocked on Apify's free plan for API calls — reworked to use
+  // HarvestAPI's own search actor instead (same vendor as everything else),
+  // which is closer to its ~$0.10/search-page rate per lookup. Capped down
+  // from the original 10/day to match the real cost, not the cheaper one
+  // originally planned.
+  email_lookup: 4,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -31,6 +43,8 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   company_research: "company research runs",
   resume_extract: "resume imports",
   resume_analysis: "resume fit checks",
+  insider_connections: "insider connection lookups",
+  email_lookup: "email lookups",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

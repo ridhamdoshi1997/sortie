@@ -100,6 +100,10 @@ export interface Job {
   tailored_match_score: number | null;
   is_tailored: boolean;
   company_research: CompanyResearchDossier | null;
+  resume_analysis: ResumeGapAnalysisResult | null;
+  is_saved: boolean;
+  is_hidden: boolean;
+  posted_at: string | null;
   found_at: string;
 }
 
@@ -109,8 +113,59 @@ export interface JobEvaluationDimension {
   note: string;
 }
 
+export type GapStatus = "pass" | "warn" | "fail";
+
+export interface GapCheckResult {
+  label: string;
+  status: GapStatus;
+  jobSide: string;
+  resumeSide: string;
+}
+
+export interface ResumeGapAnalysisResult {
+  score: number;
+  checks: GapCheckResult[];
+  matchedKeywords: string[];
+  missingKeywords: string[];
+}
+
+export interface CompanyLeader {
+  name: string;
+  title: string;
+  // Only ever populated by the paid Apify LinkedIn fallback — Wikipedia and
+  // site-guess extraction never have a real profile URL/photo to offer.
+  linkedinUrl?: string;
+  photoUrl?: string;
+}
+
+export interface ConnectionPerson {
+  name: string;
+  // Kept separately from `name` — the email-reveal lookup searches by
+  // first/last name + company (HarvestAPI's actor is filter-based, not
+  // URL-based, so a combined display name alone isn't enough to re-query).
+  firstName: string;
+  lastName: string;
+  title: string;
+  linkedinUrl?: string;
+  photoUrl?: string;
+  // Only set on the "previous company" bucket, where it's the actual reason
+  // this person is shown at all.
+  pastEmployer?: string;
+}
+
+export interface InsiderConnections {
+  beyondNetwork: ConnectionPerson[];
+  previousCompany: ConnectionPerson[];
+  school: ConnectionPerson[];
+  // The job's resolved LinkedIn company URL, cached here so a later
+  // email-reveal click can search "this person's name + this company"
+  // without re-resolving the company URL (an extra Apify call) every time.
+  companyLinkedinUrl?: string;
+}
+
 export interface CompanyResearchDossier {
   companyOverview: string;
+  industryTags: string[];
   techStack: string[];
   culture: string[];
   whyThisRole: string;
@@ -118,6 +173,24 @@ export interface CompanyResearchDossier {
   gapsToAddress: string[];
   smartQuestions: string[];
   interviewPrep: string[];
+  // Grounded in whatever the site crawl actually surfaced (blog/press pages),
+  // not a real news API — labeled "Recent Updates" in the UI, not "Recent
+  // News", so it doesn't overclaim where this came from.
+  recentUpdates: string[];
+  // Opt-in only (separate button, separate API call) — never populated by
+  // the main auto-fetch. Extracting real people's names carries real
+  // accuracy risk, so the candidate explicitly asks for it rather than it
+  // running silently for every job. See agent/research.ts's
+  // researchLeadershipTeam.
+  leadershipTeam: CompanyLeader[];
+  // Distinguishes "never searched" from "searched, found nothing" — both
+  // states leave leadershipTeam as [], which is otherwise indistinguishable
+  // in the UI and reads as "the button didn't do anything."
+  leadershipLookedUp?: boolean;
+  // Same opt-in-only, paid-lookup pattern as leadershipTeam — see
+  // agent/research.ts's researchInsiderConnections.
+  insiderConnections?: InsiderConnections;
+  insiderConnectionsLookedUp?: boolean;
   sources: string[];
 }
 

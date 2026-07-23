@@ -373,10 +373,88 @@ Job result cards are a two-column CSS grid (`grid-cols-[1fr_auto]`): left column
 
 ---
 
+### Tabs (primitive)
+
+File: components/ui/Tabs.tsx
+Last updated: 2026-07-22 (new)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Tab list shell   | `flex w-fit gap-1 rounded-full border border-border bg-surface p-1`                   |
+| Tab — active     | `bg-accent-light text-accent`                                                          |
+| Tab — inactive   | `text-text-secondary`, `hover:text-text-primary`                                       |
+| Tab              | `rounded-full px-4 py-1.5 text-sm font-medium transition-colors`                      |
+
+**Pattern notes:**
+Plain client component, local `useState` for active tab — no Radix/shadcn Tabs primitive exists in this codebase (no Radix dependency at all), so this was built from scratch rather than reusing an installed library. Takes `tabs: {id, label, content}[]` and an optional `defaultTabId`. No URL-param sync (tab resets on refresh) — a cheap future upgrade if ever needed, not built since not requested. First real use: `app/find-jobs/[id]/page.tsx`'s Overview/Company split, restructured from a single flat scroll to match JobRight's job-detail-page anatomy (`build-plan.md` §H1).
+
+### JobActionBar
+
+File: components/job-details/JobActionBar.tsx
+Last updated: 2026-07-22 (new, replaces the deleted JobActions.tsx)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Shell            | `sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur` |
+| Save — active    | `border-accent bg-accent-muted text-accent`                                            |
+| Save — inactive  | `border-border bg-surface text-text-secondary`, `hover:bg-surface-secondary`          |
+| Apply CTA        | `bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground`, `hover:opacity-90` |
+| Badges           | `rounded-full bg-surface-secondary px-3 py-1 text-xs font-medium text-text-muted` (freshness/hidden), `bg-info-lightest text-info` (Remote) |
+
+**Pattern notes:**
+`position: sticky`, not `fixed` — `ui-rules.md` bans `fixed` for UI elements, but `sticky` still participates in normal document flow so it's compliant. Replaces the old top-of-page `JobActions` (back link + bare apply link) and the bottom-of-page duplicate apply button (deleted, consolidated into this one bar) — matches JobRight's single top action bar rather than two separate CTAs. Owns real Save/Hide state (optimistic update + `actions/jobs.ts`'s `toggleSaveJob`/`toggleHideJob`), and displays `postedAt`/`isRemote` when available (see the Job Details Page entry below for where that data comes from).
+
+### Qualification
+
+File: components/job-details/Qualification.tsx
+Last updated: 2026-07-22 (new)
+
+| Property           | Class                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| Shell              | `rounded-2xl border border-border bg-surface p-6 shadow-card` (matches other job-detail cards) |
+| Matched skill tag  | `bg-success-lightest px-3 py-1 text-xs font-medium text-success-foreground`, clickable |
+| Gap skill tag      | `bg-accent-muted px-3 py-1 text-xs font-medium text-accent`, clickable                |
+| Required/Preferred | Plain `list-disc` bullet columns, `sm:grid-cols-2`                                    |
+
+**Pattern notes:**
+Consolidates what used to be split across two components: correctable skill tags (previously a static, non-interactive section in `MatchScore.tsx` — now clickable, moves a skill between matched/missing via `actions/jobs.ts`'s `correctSkillTag`, optimistic update with rollback on failure) and the Required/Preferred lists (previously two of `JobDescription.tsx`'s four bullet sections). Correcting a tag is a data fix only — does not re-run the AI evaluator or change `match_score`. Reuses the exact skill-badge token pair already spec'd elsewhere (`bg-success-lightest`/`text-success-foreground` for matched, `bg-accent-muted`/`text-accent` for missing) rather than inventing new ones.
+
+### Insider Connections
+
+File: components/job-details/InsiderConnections.tsx (+ InsiderConnectionsButton.tsx, EmailLookupButton.tsx, shared/LinkedInGlyph.tsx)
+Last updated: 2026-07-23 (new)
+
+| Property           | Class                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------- |
+| Shell              | `rounded-2xl border border-border bg-surface shadow-card` (outer), `border-b border-border p-6` header |
+| Bucket shell       | `rounded-xl border border-border bg-surface-secondary p-3`                            |
+| Bucket header pill | `bg-success-lightest text-success-foreground` (Beyond Your Network), `bg-info-lightest text-info` (Previous Company), `bg-accent-muted text-accent` (School) |
+| Person row         | `rounded-lg border border-border bg-surface p-3`, initials avatar `bg-accent-muted text-accent` |
+| Email button       | icon-only `h-7 w-7 rounded-full border border-border`; found state `bg-success-lightest text-success-foreground` pill with the real email as link text |
+| LinkedIn button    | icon-only `h-7 w-7 rounded-full border border-border`, uses `LinkedInGlyph` (inline SVG — `lucide-react`'s installed version dropped brand/logo icons entirely, no `Linkedin` export) |
+
+**Pattern notes:**
+Three-bucket layout matching a real JobRight screenshot exactly (Beyond Your Network / From Your Previous Company / From Your School). Paid, opt-in only (`InsiderConnectionsButton`), same `*LookedUp` three-state pattern as Leadership Team (not-looked-up / looked-up-empty / looked-up-found) built in from the start. Lives in the **Company tab**, not Overview — it shares Leadership's "company research must already exist" prerequisite, and placing it in Overview would let a user hit that error before ever visiting the tab that triggers the prerequisite. `EmailLookupButton` is per-person, searches by the person's already-known first/last name + the job's resolved LinkedIn company URL (cached on the connections payload as `companyLinkedinUrl`) — not URL-based, since the underlying Apify actor is filter-based only. See `progress-tracker.md`'s 2026-07-22/23 entry for the full cost/vendor story.
+
+### NetworkSignals
+
+File: components/shared/NetworkSignals.tsx
+Last updated: 2026-07-22 (rewritten twice same session — see progress-tracker.md for the full story)
+
+| Property         | Class                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------- |
+| Shell            | `rounded-2xl border border-border bg-surface shadow-card`, `border-b border-border p-6` header |
+| Fact badge       | `bg-success-lightest px-3 py-1 text-xs font-medium text-success-foreground` (**not** `bg-agent-light`/`text-agent-dark` — that pair is reserved for AI-*generated* content only; this is a deterministic string match, a mistake caught and fixed this session) |
+| Hint chips       | `bg-surface-secondary px-2.5 py-1 text-xs font-medium text-text-secondary`             |
+| CTA              | `bg-accent px-4 py-2 text-sm font-medium text-accent-foreground`, `hover:opacity-90`  |
+
+**Pattern notes:**
+The free, always-available counterpart to the paid Insider Connections feature (see that entry above) — placed in the Overview tab, no prerequisite. Shows only what's actually knowable for free: whether the candidate's own `work_experience` includes the exact hiring company (`lib/networkSignals.ts`'s `findPreviousEmployerMatch`), plus a LinkedIn people-search link scoped to the hiring company alone (not a jumbled multi-term query — see progress-tracker.md for why that broke). Deliberately does not claim a headcount ("3 former colleagues work here") the way JobRight's version does — no free data source exists for that, and inventing one would violate this app's own "never invent a fact" principle.
+
 ### Job Details Page
 
 File: app/find-jobs/[id]/page.tsx and components/job-details/*
-Last updated: 2026-06-05
+Last updated: 2026-07-23 (restructured into Overview/Company tabs, JobActionBar, Qualification, Insider Connections — see their own entries above; superseded the 2026-06-05 layout below in structure, not in every token)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
@@ -434,8 +512,8 @@ Nested inside each `DocumentGenerator.tsx` action panel, one instance per docume
 
 ### Company Research Dossier
 
-File: components/job-details/CompanyResearch.tsx and components/job-details/ResearchCompanyButton.tsx
-Last updated: 2026-06-05
+File: components/job-details/CompanyResearch.tsx, components/job-details/AutoResearchCompany.tsx, components/job-details/LeadershipTeamButton.tsx
+Last updated: 2026-07-23 (Leadership Team section + industry tags added; ResearchCompanyButton.tsx replaced by AutoResearchCompany.tsx — auto-fires on first mount of the Company tab instead of waiting for a manual click, same underlying API route/gates)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
@@ -451,6 +529,8 @@ Last updated: 2026-06-05
 
 **Pattern notes:**
 The research card preserves the Feature 12 card shell and header, then swaps between an empty state with a client action and a dense read-only dossier. The client action lives in its own component, uses plain `fetch` plus `useTransition`, and calls `router.refresh()` after the API saves research. Dossier sections should stay compact, token-driven, and source-linked; do not add a refresh action unless Feature 13 scope changes.
+
+**2026-07-23 additions:** `industryTags` renders as a small pill row under the overview paragraph (`bg-surface px-3 py-1 text-xs font-medium text-text-secondary`), guarded with `research.industryTags && research.industryTags.length > 0` since cached dossiers from before this field existed have it as `undefined`, not `[]` — a plain `.length` check would throw on those. Leadership Team renders as photo cards (matching JobRight's own treatment, not a table row) via the shared `LeaderCard` pattern (initials-avatar fallback when no real photo, LinkedIn icon badge overlaid bottom-right when a `linkedinUrl` exists) — see the Insider Connections entry above for the sibling feature this pattern was extended into.
 
 ---
 
