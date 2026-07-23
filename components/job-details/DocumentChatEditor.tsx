@@ -106,7 +106,7 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
       {!isPending && justUpdated && (
         <p className="flex items-center gap-1.5 rounded-md bg-success-lightest px-2.5 py-1.5 text-xs font-medium text-success-foreground">
           <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
-          New PDF generated with these changes — click "View" above to see it.
+          New PDF generated with these changes — click &quot;View&quot; above to see it.
         </p>
       )}
       {error && <p className="text-xs text-error">{error}</p>}

@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth"; // Ensure this import path is correct 
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
 import { Navbar } from "@/components/layout/Navbar";
+import type { Job } from "@/types";
 
 export default async function FindJobsPage() {
     // 1. Fetch the user server-side
@@ -22,7 +23,7 @@ export default async function FindJobsPage() {
     const lastRun = lastRuns?.[0] ?? null;
     const lastRunAt = lastRun?.updated_at ?? null;
 
-    let initialJobs: any[] = [];
+    let initialJobs: Job[] = [];
     if (lastRun) {
         const { data: scopedJobs } = await insforge.database
             .from("jobs")

@@ -69,7 +69,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
 
                 {searchTerms.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                        <span>Once you're on LinkedIn, look for people who also list:</span>
+                        <span>Once you&apos;re on LinkedIn, look for people who also list:</span>
                         {searchTerms.map((term) => (
                             <span
                                 key={term}

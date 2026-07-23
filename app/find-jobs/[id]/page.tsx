@@ -22,7 +22,7 @@ import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
-import type { Job, Profile } from "@/types";
+import type { Profile } from "@/types";
 
 type Props = {
   params: Promise<{ id: string }>;

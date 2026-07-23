@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { getCurrentUser } from "@/lib/auth";
 
-export async function GET(request: NextRequest): Promise<NextResponse> {
+export async function GET(): Promise<NextResponse> {
   try {
     const user = await getCurrentUser();
     if (!user) {

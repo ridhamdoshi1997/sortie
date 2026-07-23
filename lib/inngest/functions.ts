@@ -16,7 +16,7 @@ export const evaluateJobsAsync = inngest.createFunction(
         name: "Evaluate Scraped Jobs via Gemini",
         triggers: [{ event: "jobs/evaluate" }]
     },
-    async ({ event, step }: any) => {
+    async ({ event, step }) => {
         const { jobIds, filters, userId, runId } = event.data as {
             jobIds: string[];
             filters: Record<string, string>;

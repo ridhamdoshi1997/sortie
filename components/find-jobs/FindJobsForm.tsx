@@ -3,15 +3,16 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
+import { Card } from "@/components/ui/card";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
 import Link from "next/link";
+import type { Job } from "@/types";
 
 type Props = {
     userId: string;
-    initialJobs?: any[];
+    initialJobs?: Job[];
     lastRunAt?: string | null;
     initialTitle?: string | null;
     initialLocation?: string | null;
@@ -24,7 +25,7 @@ function scoreTierClass(score: number) {
 }
 
 // Real tag pills from actual job fields — never fabricated placeholder tags.
-function jobTags(job: any): string[] {
+function jobTags(job: Job): string[] {
     const tags: string[] = [];
     if (job.job_type) tags.push(job.job_type);
     if (job.location && /remote/i.test(job.location)) tags.push("Remote");
@@ -43,7 +44,7 @@ export function FindJobsForm({
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const [jobs, setJobs] = useState<any[]>(initialJobs);
+    const [jobs, setJobs] = useState<Job[]>(initialJobs);
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
     const [jobIds, setJobIds] = useState<string[]>(
@@ -77,12 +78,12 @@ export function FindJobsForm({
                         // other already-scored job from view each tick.
                         setJobs((prev) =>
                             prev.map(
-                                (job) => updatedJobs.find((updated: any) => updated.id === job.id) ?? job
+                                (job) => updatedJobs.find((updated) => updated.id === job.id) ?? job
                             )
                         );
 
                         // Stop polling once every job we're watching has a score.
-                        if (updatedJobs.every((job: any) => job.match_score !== null)) {
+                        if (updatedJobs.every((job) => job.match_score !== null)) {
                             clearInterval(interval);
                         }
                     }
@@ -108,7 +109,7 @@ export function FindJobsForm({
         try {
             const savedJobs = await scrapeAndEvaluateJobs(title, location, filters, userId);
             setJobs(savedJobs ?? []);
-            setJobIds((savedJobs ?? []).map((job: any) => job.id));
+            setJobIds((savedJobs ?? []).map((job) => job.id));
         } catch (error) {
             console.error("Pipeline failed:", error);
             setSearchError(

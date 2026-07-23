@@ -178,8 +178,6 @@ function LeaderCard({ leader }: { leader: CompanyLeader }) {
 }
 
 export function CompanyResearch({ company, jobId, research }: Props) {
-  const hasResearch = research !== null;
-
   return (
     <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex items-center gap-3 border-b border-border p-6">

@@ -1,5 +1,5 @@
 import React from "react";
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
@@ -25,7 +25,7 @@ function createResumeDocument(
   ) as unknown as React.ReactElement<DocumentProps>;
 }
 
-export async function POST(_req: NextRequest): Promise<NextResponse> {
+export async function POST(): Promise<NextResponse> {
   try {
     if (!isFeatureEnabled("document_generation")) {
       return NextResponse.json(

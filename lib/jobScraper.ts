@@ -1,3 +1,20 @@
+// Shape of a single entry in SerpApi's Google Jobs `jobs_results` array.
+// Only the fields this file actually reads — SerpApi returns many more.
+type SerpApiJobResult = {
+    job_id: string;
+    title?: string;
+    company_name?: string;
+    location?: string;
+    description?: string;
+    share_link?: string;
+    apply_options?: Array<{ link?: string }>;
+    detected_extensions?: {
+        salary?: string;
+        schedule_type?: string;
+        posted_at?: string;
+    };
+};
+
 export type NormalizedJob = {
     id: string;
     title: string;
@@ -125,7 +142,7 @@ async function fetchSerpApiPages(
         if (jobs.length === 0) break;
 
         allJobs.push(
-            ...jobs.map((job: any) => ({
+            ...jobs.map((job: SerpApiJobResult) => ({
                 id: job.job_id,
                 title: job.title,
                 company: job.company_name,
@@ -188,7 +205,7 @@ const serpApiProvider: JobScraperProvider = {
     }
 };
 const serperProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode) {
+    async search() {
         throw new Error("Serper integration is planned but not yet implemented.");
     }
 };

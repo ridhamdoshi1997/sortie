@@ -22,8 +22,6 @@ export function AutoResearchCompany({ jobId, company }: Props) {
   const [isPending, startTransition] = useTransition();
 
   function run(): void {
-    setError(null);
-
     startTransition(async () => {
       try {
         const res = await fetch("/api/agent/research", {
@@ -52,9 +50,11 @@ export function AutoResearchCompany({ jobId, company }: Props) {
     });
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- fire once on mount
+  // Intentionally mount-only — `run` is redefined every render and including
+  // it here would refetch on every render instead of once per job.
   useEffect(() => {
     run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (error) {
@@ -64,7 +64,10 @@ export function AutoResearchCompany({ jobId, company }: Props) {
         <button
           type="button"
           disabled={isPending}
-          onClick={run}
+          onClick={() => {
+            setError(null);
+            run();
+          }}
           className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-secondary disabled:opacity-60"
         >
           <RotateCw className="h-4 w-4" />

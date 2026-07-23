@@ -9,7 +9,6 @@ interface ConnectedAccountsProps {
 
 export function ConnectedAccounts({
   linkedinConnected,
-  linkedinContextId: _linkedinContextId,
 }: ConnectedAccountsProps) {
   const [isConnected, setIsConnected] = useState(linkedinConnected);
   const [pendingContextId, setPendingContextId] = useState<string | null>(null);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useImperativeHandle, useRef, useState, useTransition } from "react";
+import { useImperativeHandle, useState, useTransition } from "react";
 
 import { saveProfile } from "@/actions/profile";
 import type { ExtractedProfile } from "@/actions/profile";
