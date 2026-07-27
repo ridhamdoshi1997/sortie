@@ -17,7 +17,7 @@ export function ProfileAttentionBanner({
     circumference - (completionPercent / 100) * circumference;
 
   return (
-    <section className="flex items-start justify-between gap-6 rounded-2xl border border-border bg-surface p-6 shadow-card">
+    <section className="glass-panel flex items-start justify-between gap-6 rounded-2xl p-6">
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <svg

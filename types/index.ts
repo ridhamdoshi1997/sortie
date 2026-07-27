@@ -87,6 +87,7 @@ export interface Job {
   requirements: string[];
   nice_to_have: string[];
   benefits: string[];
+  hiring_process: string[];
   about_company: string | null;
   match_score: number | null;
   match_reason: string | null;

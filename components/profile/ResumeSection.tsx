@@ -105,7 +105,7 @@ export function ResumeSection({ existingResumeUrl, onExtracted }: Props) {
   const showExistingLink = existingResumeUrl && !fileName;
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+    <section className="glass-panel rounded-2xl p-6">
       <h2 className="text-base font-semibold text-text-primary">Resume</h2>
       <p className="mt-0.5 text-sm text-text-secondary">
         Upload an existing resume to auto fill the profile, or generate a new

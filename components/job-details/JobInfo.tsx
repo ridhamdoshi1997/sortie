@@ -39,7 +39,7 @@ function InfoCard({ item }: { item: InfoItem }) {
   const Icon = item.icon;
 
   return (
-    <article className="flex min-h-20 items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-card">
+    <article className="glass-panel flex min-h-20 items-center gap-4 rounded-2xl p-4">
       <div
         className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.iconBackgroundClassName}`}
       >
@@ -97,7 +97,7 @@ export function JobInfo({ job }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+      <section className="glass-panel rounded-2xl p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
             <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl border border-border bg-surface-secondary">

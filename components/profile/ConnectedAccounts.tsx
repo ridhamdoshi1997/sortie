@@ -63,7 +63,7 @@ export function ConnectedAccounts({
       : "Not connected";
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+    <section className="glass-panel rounded-2xl p-6">
       <h2 className="text-base font-semibold text-text-primary">
         Connected Accounts
       </h2>

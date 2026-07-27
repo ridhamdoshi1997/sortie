@@ -48,7 +48,7 @@ export function JobActionBar({
   }
 
   return (
-    <div className="sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur">
+    <div className="glass-panel-strong sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
       <Link
         href="/find-jobs"
         className="inline-flex items-center gap-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
@@ -78,10 +78,8 @@ export function JobActionBar({
           type="button"
           disabled={isPending}
           onClick={handleSave}
-          className={`inline-flex min-h-9 items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 ${
-            saved
-              ? "border-accent bg-accent-muted text-accent"
-              : "border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+          className={`glass-pill inline-flex min-h-9 items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 ${
+            saved ? "text-accent" : "text-text-secondary"
           }`}
         >
           <Bookmark className={`h-4 w-4 ${saved ? "fill-current" : ""}`} />
@@ -92,7 +90,7 @@ export function JobActionBar({
           type="button"
           disabled={isPending}
           onClick={handleHide}
-          className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-60"
+          className="glass-pill inline-flex min-h-9 items-center gap-2 px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors disabled:opacity-60"
         >
           {hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           {hidden ? "Unhide" : "Hide"}
@@ -103,14 +101,14 @@ export function JobActionBar({
             href={applyUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="inline-flex min-h-9 items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-glass-highlight)_35%,transparent)] transition-opacity hover:opacity-90"
           >
             Apply at {company}
             <ExternalLink className="h-4 w-4" />
           </Link>
         ) : (
           <div
-            className="inline-flex min-h-9 cursor-not-allowed items-center gap-2 rounded-lg border border-border bg-surface-secondary px-4 py-1.5 text-sm font-medium text-text-muted"
+            className="glass-pill inline-flex min-h-9 cursor-not-allowed items-center gap-2 px-4 py-1.5 text-sm font-medium text-text-muted"
             title="No application link was saved for this job"
           >
             No link available

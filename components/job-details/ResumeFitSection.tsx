@@ -16,7 +16,7 @@ export function ResumeFitSection({ jobId, company, analysis }: Props) {
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    <section className="glass-panel overflow-hidden rounded-2xl">
       <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">

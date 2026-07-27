@@ -89,6 +89,13 @@
   --radius-full: 9999px;
 
   --shadow-card: 0px 1px 3px rgb(0 0 0 / 0.1), 0px 1px 2px -1px rgb(0 0 0 / 0.1);
+
+  /* Liquid Glass — the specular top-edge highlight every glass surface
+     catches, regardless of theme (Apple's own dark-mode glass still uses a
+     bright highlight, just at lower opacity — see the .dark override
+     below). Not a surface/background color; only ever used at low alpha
+     via color-mix() for borders/inset highlights. */
+  --color-glass-highlight: #ffffff;
 }
 
 :root {
@@ -140,9 +147,120 @@ html {
 
 body {
   min-height: 100vh;
-  background: var(--color-background);
+  background-color: var(--color-background);
+  /* Liquid Glass ambient backdrop — lives directly on body's own background
+     (not a separate position:fixed/z-index:-1 div) so there is zero
+     stacking-context ambiguity about what paints in front of what. A
+     negative-z-index div inside body is a classic trap: body has its own
+     background and doesn't establish a stacking context, so browsers can
+     resolve the paint order such that the div's background never shows —
+     exactly what happened here on the first attempt (glass panels looked
+     completely flat, no color visible through the blur, even though the
+     panels' own translucency/blur was confirmed working in isolation).
+     background-attachment: fixed keeps it from re-tiling per scroll
+     position, same intent as the old approach, just implemented safely. */
+  /* Apple Music-inspired: ONE dominant hue per zone with a lot of plain
+     dark space between them, not several competing blobs. The original
+     4-blob version mixed warm (accent) and cool (agent) colors in
+     overlapping regions — warm+cool alpha-blended together reads as a
+     muddy brown/olive haze, not a clean gradient, and got worse as the
+     drift animation slid the blobs into each other's territory over
+     time. Two blobs, kept in opposite corners with the travel distance
+     capped so they never cross paths (see the drift keyframes below). */
+  background-image:
+    radial-gradient(
+      circle at 15% 10%,
+      color-mix(in srgb, var(--color-accent) 34%, transparent) 0%,
+      transparent 45%
+    ),
+    radial-gradient(
+      circle at 88% 92%,
+      color-mix(in srgb, var(--color-agent) 26%, transparent) 0%,
+      transparent 42%
+    );
+  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
+}
+
+/* Oversized canvas so animating background-position slides the whole
+   composed gradient field around, rather than tiling/clipping it — the
+   standard technique for a drifting gradient background. Slow and subtle
+   on purpose (60s, small travel distance): this is meant to make glass
+   surfaces feel alive at a glance, not to be a distracting moving
+   background. Respects reduced-motion below.
+   Deliberately its own separate rule, not merged into the body{} block
+   above — Lightning CSS's @supports-fallback rewrite for color-mix() has
+   already silently dropped properties sharing a declaration block with a
+   color-mix() value once in this file (the backdrop-filter ordering bug
+   elsewhere here); background-size/animation shared a block with the
+   color-mix()-based background-image and were silently missing from the
+   compiled output entirely — confirmed via computed style showing
+   animationName: none despite the rule existing in source. Isolating them
+   into their own rule sidesteps whatever the exact trigger is. */
+body {
+  /* background-size is driven entirely by glass-backdrop-breathe below —
+     no static value here, it would just be immediately overridden. */
+  animation:
+    glass-backdrop-drift 75s ease-in-out infinite alternate,
+    glass-backdrop-breathe 22s ease-in-out infinite alternate;
+}
+
+/* Deliberately a tight, small-radius wander (roughly a 20-point band
+   around center) rather than a full 0-100% traversal — with only two
+   blobs now, in opposite corners, a full-range slide would still drag
+   them past each other at some point in the cycle and recreate the same
+   warm/cool muddy overlap this redesign exists to remove. Multi-stop
+   path (not a straight back-and-forth) so it still reads as organic. */
+@keyframes glass-backdrop-drift {
+  0% {
+    background-position: 40% 40%;
+  }
+  35% {
+    background-position: 52% 45%;
+  }
+  65% {
+    background-position: 45% 55%;
+  }
+  100% {
+    background-position: 58% 50%;
+  }
+}
+
+/* Independent, slower pulse on the canvas size itself — subtle on
+   purpose, same reasoning as above (a big swing would re-spread the
+   blobs enough to cross paths). */
+@keyframes glass-backdrop-breathe {
+  0% {
+    background-size: 172% 172%;
+  }
+  100% {
+    background-size: 184% 184%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  body {
+    animation: none;
+  }
+}
+
+.dark body {
+  /* Apple Music's dark "now playing" backgrounds are mostly black with a
+     whisper of one or two colors, not a vivid multi-blob wash — much
+     lower alpha than light mode needs, since even a little color reads
+     as a lot against near-black. */
+  background-image:
+    radial-gradient(
+      circle at 15% 10%,
+      color-mix(in srgb, var(--color-accent) 15%, transparent) 0%,
+      transparent 45%
+    ),
+    radial-gradient(
+      circle at 88% 92%,
+      color-mix(in srgb, var(--color-agent) 11%, transparent) 0%,
+      transparent 42%
+    );
 }
 
 /* Tailwind v4 only auto-generates font-family utilities for the canonical
@@ -296,6 +414,214 @@ body {
 .landing-button-secondary:hover {
   background: var(--color-surface-secondary);
   border-color: color-mix(in srgb, var(--color-border) 70%, var(--color-accent-light) 30%);
+}
+
+/* === Liquid Glass ===========================================================
+   Apple-inspired translucent material, layered on top of this app's existing
+   brand palette — never replaces --color-accent/--color-agent/etc., those
+   still render exactly as before on top of a glass surface. A glass surface
+   needs a colorful/gradient backdrop behind it to actually read as glass
+   rather than a plain semi-transparent card — see .glass-backdrop, applied
+   at the page level in layout.tsx. Drop-in replacement for the old
+   `border border-border bg-surface ... shadow-card` card pattern used
+   throughout job-details/profile/dashboard — same rounded-2xl/p-6 sit
+   alongside it unchanged, this class only owns background/border/shadow. */
+.glass-panel {
+  /* No position declaration here on purpose — this class must never fight
+     a call site's own position utility (sticky/relative/absolute). It did
+     once: `position: relative` here silently overrode JobActionBar's
+     `sticky` utility class entirely (unlayered CSS always beats a layered
+     Tailwind utility in this file, by design — see the cascade-layer
+     invariant), which combined with that same element's `top-16` offset
+     to visually shift it down over the content below while its original
+     document-flow space stayed reserved — a real, confirmed layout bug,
+     not a browser rendering quirk as first suspected. */
+  background-color: color-mix(in srgb, var(--color-surface) 62%, transparent);
+  /* The sheen is what actually sells "glass" over "translucent card" — one
+     clean specular highlight top-left (as if light is hitting a curved
+     surface), fading to nothing by center. Used to also have a faint
+     mirrored glow bottom-right; dropped it — combined with the ambient
+     body backdrop bleeding through the blur, it compounded into a visible
+     odd "extra glow blob" in the corner of cards rather than reading as
+     glass. Apple Music-style restraint: one clear highlight, not several
+     competing ones. Layered as background-image so it composites above
+     the backdrop-filter blur, under the content. Background opacity
+     bumped 55->62% from the first pass — full transparency was hurting
+     readability on text-dense cards (Qualification/Benefits/Responsi-
+     bilities); the blur/sheen still carries the glass look at this level. */
+  background-image: radial-gradient(
+    120% 90% at 8% -10%,
+    color-mix(in srgb, var(--color-glass-highlight) 55%, transparent) 0%,
+    transparent 55%
+  );
+  -webkit-backdrop-filter: blur(36px) saturate(200%) brightness(108%);
+  backdrop-filter: blur(36px) saturate(200%) brightness(108%);
+  border: 1px solid
+    color-mix(in srgb, var(--color-glass-highlight) 45%, var(--color-border) 40%);
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 85%, transparent),
+    inset 0 -14px 20px -12px color-mix(in srgb, var(--color-overlay) 10%, transparent),
+    0 28px 56px -12px color-mix(in srgb, var(--color-overlay) 26%, transparent),
+    0 6px 20px color-mix(in srgb, var(--color-overlay) 12%, transparent);
+}
+
+/* Dark mode is intentionally BOLDER than light, not softer — first pass
+   muted the dark variant (lower highlight/glow alpha) to avoid it feeling
+   "too bright," which instead made it read as flatter and weaker than
+   light mode. Real glass over a dark surface reads as more dramatic: a
+   deep black backdrop with a brighter, more saturated glow bleeding
+   through and a crisper top highlight — closer to a "premium/futuristic"
+   feel than a washed-out version of the light variant. */
+.dark .glass-panel {
+  background-color: color-mix(in srgb, var(--color-surface) 34%, transparent);
+  background-image: radial-gradient(
+    120% 90% at 8% -10%,
+    color-mix(in srgb, var(--color-glass-highlight) 32%, transparent) 0%,
+    transparent 55%
+  );
+  border-color: color-mix(in srgb, var(--color-glass-highlight) 30%, var(--color-border) 55%);
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 45%, transparent),
+    inset 0 -14px 20px -12px color-mix(in srgb, var(--color-overlay) 35%, transparent),
+    0 32px 64px -12px color-mix(in srgb, var(--color-overlay) 70%, transparent),
+    0 6px 20px color-mix(in srgb, var(--color-overlay) 50%, transparent);
+}
+
+/* Interactive variant (job cards, anything clickable) — since .glass-panel
+   is deliberately unlayered (see the cascade-layer invariant elsewhere in
+   this file), a plain `hover:border-accent` Tailwind utility on the same
+   element would silently lose to this class's own border/shadow. Bake the
+   hover feedback into the glass system itself instead: a lift + brighter
+   top highlight + accent-tinted border, closer to how real glass responds
+   to a cursor than a flat border-color swap would be anyway. Also carries
+   a cursor-following glow (--mouse-x/--mouse-y, set by GlassCursorGlow.tsx
+   on pointer move) that fades in on hover — the one genuinely "alive"
+   touch, since a static gradient reads as "glass-styled" rather than
+   glass no matter how good the values are. */
+.glass-panel-interactive {
+  position: relative;
+  isolation: isolate;
+  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+}
+
+.glass-panel-interactive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 250ms ease;
+  background: radial-gradient(
+    220px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    color-mix(in srgb, var(--color-glass-highlight) 35%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.glass-panel-interactive:hover::after {
+  opacity: 1;
+}
+
+.glass-panel-interactive:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-glass-highlight) 25%);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 60%, transparent),
+    0 24px 48px -8px color-mix(in srgb, var(--color-overlay) 18%, transparent),
+    0 4px 12px color-mix(in srgb, var(--color-overlay) 8%, transparent);
+}
+
+.dark .glass-panel-interactive:hover {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 22%, transparent),
+    0 24px 48px -8px color-mix(in srgb, var(--color-overlay) 50%, transparent),
+    0 4px 12px color-mix(in srgb, var(--color-overlay) 30%, transparent);
+}
+
+/* Higher-opacity variant for chrome that must stay legible while content
+   scrolls behind it (sticky action bar, navbar) — same glass language
+   (blur, saturate, top highlight) but tuned for readability over motion
+   rather than maximum transparency. Opacity dropped further (80->64%
+   light, 76->58% dark) in the second pass — the first version read as
+   "an off-white card with a border," not glass; this is as transparent as
+   it can go while the Save/Hide/Apply buttons and posting-freshness badge
+   stay legible over arbitrary scrolled content underneath. */
+.glass-panel-strong {
+  /* No position declaration — see .glass-panel's comment on why. This is
+     the exact class that caused the real overlap bug (JobActionBar's
+     `sticky` utility was being silently overridden). */
+  background-color: color-mix(in srgb, var(--color-surface) 64%, transparent);
+  background-image: radial-gradient(
+    120% 100% at 10% -20%,
+    color-mix(in srgb, var(--color-glass-highlight) 50%, transparent) 0%,
+    transparent 55%
+  );
+  -webkit-backdrop-filter: blur(24px) saturate(210%) brightness(112%);
+  backdrop-filter: blur(24px) saturate(210%) brightness(112%);
+  border: 1px solid
+    color-mix(in srgb, var(--color-glass-highlight) 35%, var(--color-border) 55%);
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 70%, transparent),
+    0 10px 28px color-mix(in srgb, var(--color-overlay) 14%, transparent);
+}
+
+.dark .glass-panel-strong {
+  background-color: color-mix(in srgb, var(--color-overlay) 58%, transparent);
+  background-image: radial-gradient(
+    120% 100% at 10% -20%,
+    color-mix(in srgb, var(--color-glass-highlight) 26%, transparent) 0%,
+    transparent 55%
+  );
+  border-color: color-mix(in srgb, var(--color-glass-highlight) 24%, var(--color-border) 65%);
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 32%, transparent),
+    0 12px 32px color-mix(in srgb, var(--color-overlay) 45%, transparent);
+}
+
+/* Dark ink chrome (navbar, mission-console hero) gets its own strong-glass
+   variant — same idea, but tinted from --color-overlay instead of
+   --color-surface since that chrome stays dark in both app themes. */
+.glass-panel-overlay {
+  background-color: color-mix(in srgb, var(--color-overlay) 62%, transparent);
+  background-image: radial-gradient(
+    140% 120% at 0% -30%,
+    color-mix(in srgb, var(--color-glass-highlight) 22%, transparent) 0%,
+    transparent 55%
+  );
+  -webkit-backdrop-filter: blur(26px) saturate(210%) brightness(112%);
+  backdrop-filter: blur(26px) saturate(210%) brightness(112%);
+  border: 1px solid color-mix(in srgb, var(--color-glass-highlight) 26%, transparent);
+  box-shadow:
+    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 34%, transparent),
+    0 10px 36px color-mix(in srgb, var(--color-overlay) 32%, transparent);
+}
+
+/* Small pill-shaped controls (action-bar buttons, badges, CTAs) — Apple's
+   actual Liquid Glass controls are much rounder than this app's default
+   rounded-lg buttons; the shape reads as part of the material as much as
+   the translucency does. Deliberately not blurred as heavily as the
+   panels above — these sit on top of an already-glass surface (e.g.
+   JobActionBar), so a second full blur pass would be visual noise. */
+.glass-pill {
+  border-radius: var(--radius-full);
+  background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
+  -webkit-backdrop-filter: blur(10px) saturate(180%);
+  backdrop-filter: blur(10px) saturate(180%);
+  border: 1px solid color-mix(in srgb, var(--color-glass-highlight) 35%, var(--color-border) 50%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 55%, transparent);
+  transition: transform 150ms ease, box-shadow 150ms ease;
+}
+
+.glass-pill:hover {
+  transform: translateY(-1px);
+}
+
+.dark .glass-pill {
+  background-color: color-mix(in srgb, var(--color-surface) 45%, transparent);
+  border-color: color-mix(in srgb, var(--color-glass-highlight) 18%, var(--color-border) 65%);
+  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 20%, transparent);
 }
 
 @layer base {

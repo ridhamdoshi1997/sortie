@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
+import { GlassCursorGlow } from "@/components/shared/GlassCursorGlow";
 
 export const metadata: Metadata = {
   title: "Sortie",
@@ -16,8 +17,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={cn("h-full", "antialiased", "font-sans")} suppressHydrationWarning>
-      <body className="flex min-h-full flex-col bg-background">
+      <body className="flex min-h-full flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+          <GlassCursorGlow />
           {children}
         </ThemeProvider>
       </body>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Check, X } from "lucide-react";
+import { Award, Check, X } from "lucide-react";
 
 import { correctSkillTag } from "@/actions/jobs";
 
@@ -60,63 +60,61 @@ export function Qualification({
     });
   }
 
+  const hasSkills = matched.length > 0 || missing.length > 0;
+
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
-      <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
-        Qualification
-      </h2>
-
-      <div className="mt-5 flex flex-col gap-4">
-        <div>
-          <p className="mb-2 text-xs font-medium leading-4 text-text-muted">
-            You have — click a skill if this is wrong
-          </p>
-          {matched.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {matched.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleCorrect(skill, "missing")}
-                  title="Move to gap skills"
-                  className="inline-flex items-center gap-1 rounded-full bg-success-lightest px-3 py-1 text-xs font-medium text-success-foreground transition-opacity hover:opacity-80 disabled:opacity-60"
-                >
-                  <Check className="h-3 w-3" />
-                  {skill}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-text-muted">No matched skills were recorded.</p>
-          )}
+    <section className="glass-panel rounded-2xl p-6">
+      <div className="mb-1 flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
+            <Award className="h-4 w-4 text-text-secondary" />
+          </div>
+          <h2 className="text-base font-semibold leading-6 text-text-primary">Qualification</h2>
         </div>
-
-        <div>
-          <p className="mb-2 text-xs font-medium leading-4 text-text-muted">
-            Gap skills — click a skill if you actually have it
-          </p>
-          {missing.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {missing.map((skill) => (
-                <button
-                  key={skill}
-                  type="button"
-                  disabled={isPending}
-                  onClick={() => handleCorrect(skill, "matched")}
-                  title="Move to your skills"
-                  className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent transition-opacity hover:opacity-80 disabled:opacity-60"
-                >
-                  <X className="h-3 w-3" />
-                  {skill}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-text-muted">No gap skills were recorded.</p>
-          )}
-        </div>
+        <p className="mt-1 flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
+          <Check className="h-3 w-3 text-success" />
+          Represents the skills you have
+        </p>
       </div>
+
+      <p className="mb-4 mt-3 text-sm leading-6 text-text-secondary">
+        Find out how your skills align with this job&apos;s requirements. If anything seems off,
+        you can easily click on the tags to select or unselect skills to reflect your actual
+        expertise.
+      </p>
+
+      {hasSkills ? (
+        <div className="flex flex-wrap gap-2">
+          {matched.map((skill) => (
+            <button
+              key={skill}
+              type="button"
+              disabled={isPending}
+              onClick={() => handleCorrect(skill, "missing")}
+              title="Move to gap skills"
+              className="inline-flex items-center gap-1 rounded-full bg-success-lightest px-3 py-1 text-xs font-medium text-success-foreground transition-opacity hover:opacity-80 disabled:opacity-60"
+            >
+              <Check className="h-3 w-3" />
+              {skill}
+            </button>
+          ))}
+          {missing.map((skill) => (
+            <button
+              key={skill}
+              type="button"
+              disabled={isPending}
+              onClick={() => handleCorrect(skill, "matched")}
+              title="Move to your skills"
+              className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent transition-opacity hover:opacity-80 disabled:opacity-60"
+            >
+              <X className="h-3 w-3" />
+              {skill}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-sm text-text-muted">No skills were recorded for this job.</p>
+      )}
 
       {(requirements.length > 0 || niceToHave.length > 0) && (
         <div className="mt-6 grid gap-6 border-t border-border pt-6 sm:grid-cols-2">

@@ -3,15 +3,18 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
+import { Benefits } from "@/components/job-details/Benefits";
 import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
+import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
 import { MatchScore } from "@/components/job-details/MatchScore";
 import { Qualification } from "@/components/job-details/Qualification";
+import { Responsibilities } from "@/components/job-details/Responsibilities";
 import { ResumeFitSection } from "@/components/job-details/ResumeFitSection";
 import { Navbar } from "@/components/layout/Navbar";
 import { ModelSelector } from "@/components/shared/ModelSelector";
@@ -125,6 +128,13 @@ export default async function JobDetailsPage({ params }: Props) {
                     overallGrade={job.overall_grade}
                   />
 
+                  <JobDescription
+                    aboutRole={job.about_role || job.description}
+                    sourceUrl={applyUrl}
+                  />
+
+                  <Responsibilities items={job.responsibilities ?? []} />
+
                   <Qualification
                     jobId={job.id}
                     matchedSkills={job.matched_skills}
@@ -133,12 +143,9 @@ export default async function JobDetailsPage({ params }: Props) {
                     niceToHave={job.nice_to_have}
                   />
 
-                  <JobDescription
-                    aboutRole={job.about_role || job.description}
-                    responsibilities={job.responsibilities}
-                    benefits={job.benefits}
-                    sourceUrl={applyUrl}
-                  />
+                  <Benefits items={job.benefits ?? []} />
+
+                  <HiringProcess items={job.hiring_process ?? []} />
 
                   <NetworkSignals
                     company={company}

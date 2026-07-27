@@ -4,6 +4,8 @@ Design tokens for Sortie (formerly JobPilot). All colors, typography, spacing, a
 
 **Rebrand note (2026-07-18):** the app was renamed from JobPilot to Sortie and the palette moved from a generic purple/white SaaS look to a deliberate "mission console" identity — dark ink chrome, warm amber signal accent, and a teal "agent" accent reserved exclusively for AI-generated content. The token *names* below are unchanged from v1 (`--color-accent`, `--color-success`, etc.) so existing components didn't need to be touched — only their values changed, plus one new semantic role (`--color-agent`) was added. See `context/RESUME.md` for current build status.
 
+**Liquid Glass material (2026-07-24):** a translucent, Apple-inspired glass material layered on top of the existing mission-console palette — see the "Liquid Glass" section below for the full recipe and a Lightning CSS gotcha that cost real debugging time and will recur if not read first.
+
 **Dark mode + a serious pre-existing bug found while building it (2026-07-18):** a light/dark theme toggle was added (`next-themes`, `components/layout/ThemeToggle.tsx`, rendered in `Navbar.tsx`). While verifying it live, `--color-accent`/`--color-background`/`--color-border`/`--font-sans`/`--radius-sm through --radius-xl` were found to have been silently resolving to shadcn's generic scaffold values (`var(--accent)`, `var(--background)`, etc. — pale oklch grays and a fallback font stack), **not this app's real design tokens**, since the original rebrand. Cause: `app/globals.css`'s leftover shadcn `@theme inline { }` block redeclared those same theme keys, and Tailwind v4 keeps only one `:root` declaration per key when a name exists in both a plain `@theme` block and an `@theme inline` block — the inline one wins outright, it is not a normal CSS cascade you can out-specificity. This was invisible in light mode purely by coincidence (shadcn's default oklch grays and this app's actual paper/border hex are both pale neutrals, and shadcn's default accent gray vs. this app's amber look different but nobody had directly compared `text-accent`'s rendered color against the intended hex — the diamond wordmark mark, "Start for free" button, and all `border-border` usage across the *entire app* were rendering shadcn defaults, not Sortie's palette). Dark mode made it obvious immediately (accent turned pale gray instead of amber, background stayed white instead of going dark). Fixed by removing the colliding key redeclarations from `@theme inline`, keeping only the genuinely non-colliding shadcn primitive tokens (sidebar, chart, ring, input, destructive, muted, secondary, primary, popover, card, foreground) that this app's components don't otherwise use. See the `@theme inline` block's own comment in `globals.css` for the full explanation — treat it as load-bearing documentation, not a comment to tidy away.
 
 ---
@@ -387,6 +389,51 @@ Full table (every surface/text/accent/agent/success/info tier) is in `app/global
 **`--color-overlay-foreground` exists because `bg-overlay` (the navbar/hero chrome) stays dark in *both* themes** — it's fixed branding, not something that flips to a light chrome in light mode. Content sitting on it (`Navbar.tsx` nav links/icons, `Logo.tsx`'s `variant="light"`, `FindJobsForm.tsx`'s mission-console panel) must use `text-overlay-foreground` / `border-overlay-foreground` / `bg-overlay-foreground`, never `text-surface` / `border-surface` / `bg-surface` — those now have a real, different dark-mode value (a dark surface color, correct for actual cards) and would go dark-on-dark and disappear on the permanently-dark chrome once dark mode is active. This exact bug shipped once during development and was caught in live verification before release — don't reintroduce it.
 
 `components/ui/button.tsx` and `components/ui/input.tsx` had their leftover shadcn `dark:*` utility classes (`dark:bg-input/30`, `dark:border-input`, `dark:aria-invalid:border-destructive/50`, etc.) removed — those referenced shadcn's own raw tokens, not this app's design system, and `tailwind-merge` does not strip a `dark:`-scoped class as a conflict against a plain same-property override at a call site (different conflict group), so they would have activated uncoordinated generic shadcn styling the moment `.dark` was toggled. If shadcn scaffolding is ever added back to either file, re-check for this.
+
+---
+
+## Liquid Glass (2026-07-24)
+
+Apple-inspired translucent material, layered on top of the existing brand palette — implemented entirely in `app/globals.css`, never replaces `--color-accent`/`--color-agent`/etc., those still render exactly as before on top of a glass surface.
+
+### Classes
+
+| Class | Use | Notes |
+| --- | --- | --- |
+| `.glass-panel` | Default content cards (Qualification, Benefits, Responsibilities, dashboard/profile cards) | Heaviest blur (36px) + sheen; background opacity tuned for text readability, not maximum transparency |
+| `.glass-panel-interactive` | Add alongside `.glass-panel` on anything clickable (job result cards) | Adds lift-on-hover, accent-tinted border, and a cursor-following glow (see below) — never combine with a `hover:border-*`/`hover:shadow-*` Tailwind utility on the same element, see the cascade gotcha below |
+| `.glass-panel-strong` | Chrome that must stay legible over scrolling content (`JobActionBar`) | More opaque than `.glass-panel`, still genuinely translucent (64%/58% light/dark) |
+| `.glass-panel-overlay` | Dark ink chrome (`Navbar`, `FindJobsForm`'s mission-console hero) | Tinted from `--color-overlay`, not `--color-surface` |
+| `.glass-pill` | Small pill-shaped controls sitting on top of an already-glass surface (JobActionBar's Save/Hide buttons) | Lighter blur (10px) — a second full blur pass on top of a parent glass panel is visual noise, not a stronger effect |
+
+### The cursor glow
+
+`.glass-panel-interactive`'s hover glow follows the actual cursor position via `--mouse-x`/`--mouse-y` CSS custom properties, set by `components/shared/GlassCursorGlow.tsx` (mounted once in `app/layout.tsx`) — a single document-level, rAF-throttled `pointermove` listener using event delegation (`.closest('.glass-panel-interactive')`), not one listener per card. This is the one part of the system that's genuinely interactive rather than a static gradient — deliberately so, since a static gradient reads as "glass-styled" rather than actual glass no matter how well-tuned the values are.
+
+### The ambient ​backdrop
+
+Lives directly on `body`'s own background (`app/globals.css`), not a separate `position: fixed; z-index: -1` div — that was the first approach and it silently never rendered (see the gotcha below). `background-size: 180% 180%` plus a slow (60s) `background-position` keyframe animation gives a subtle drift so glass surfaces feel alive; respects `prefers-reduced-motion`.
+
+### Dark mode is bolder, not softer
+
+The first pass muted dark mode's highlight/glow alpha to avoid it feeling "too bright" — this backfired, making dark mode read as flatter and weaker than light mode. Real glass over a dark surface should look *more* dramatic (deeper black backdrop, brighter/more saturated glow, crisper highlight), not a washed-out version of the light variant. Every `.dark` override in the glass system intentionally uses higher alpha values than a naive "just darken everything" pass would produce.
+
+### Chrome vs. content
+
+Real Liquid Glass is used for *controls* (nav bars, floating action bars, buttons) sitting over rich content — not applied uniformly to every piece of content. Heavy glass on large text-dense cards actively hurts readability. This is why `.glass-panel`'s background opacity (62%/34% light/dark) is noticeably higher than `.glass-panel-overlay`/`.glass-panel-strong`'s more transparent chrome treatment, even though `.glass-panel` has the strongest blur of the three — blur carries the "glass" look, opacity protects text legibility.
+
+### Deliberately not implemented: true SVG-filter refraction
+
+Real Liquid Glass distorts/refracts content behind it (`feDisplacementMap` SVG filters used as a `backdrop-filter` value), not just blurs it. Researched live before deciding against it: **Chrome-only** (Safari/Firefox ignore the whole `backdrop-filter` declaration if it references an unsupported SVG filter — silent full degradation to a flat, unstyled card, not a graceful fallback), and **expensive to recompute** on any dynamic resize (a full displacement-map rebuild on nearly every shape/size change). For a real product rather than a Chrome-only demo, this app uses the standard, ~97%-supported `blur()`/`saturate()`/`brightness()` trio instead — it covers most of what reads as "glass" without staking every browser's rendering on a non-standard technique.
+
+### Gotcha: Lightning CSS silently drops properties that share a declaration block with a `color-mix()` value
+
+Confirmed **three separate times** while building this system — this will recur on any future glass/gradient work in this file if not read first. Tailwind v4's build (Lightning CSS) auto-generates an `@supports (color: color-mix(in lab, red, red))` fallback block for any declaration using `color-mix()`, splitting the original rule into multiple fragments (a plain-color fallback version + the real `color-mix()` version gated behind `@supports`). This rewrite has, more than once, silently dropped *other, unrelated* properties that shared the same original declaration block:
+
+1. **`backdrop-filter` ordering**: writing the standard `backdrop-filter` property before its `-webkit-backdrop-filter` fallback caused the *standard* property to disappear entirely from the compiled output (only the prefixed one survived) — fixed by always writing `-webkit-backdrop-filter` first, `backdrop-filter` last.
+2. **`animation`/`background-size` sharing a block with a `color-mix()`-based `background-image`**: both properties vanished completely from the compiled CSS (confirmed via `getComputedStyle(body).animationName === "none"` despite the rule existing correctly in source) — fixed by moving them into their own separate `body { }` rule, not combined with the `color-mix()`-bearing declarations.
+
+**The practical rule going forward**: after adding any new `color-mix()`-based declaration to a rule that also has other properties, verify the *compiled* output (`curl` the served CSS chunk, or check `getComputedStyle()` in the browser) rather than trusting that source-level correctness survived the build. If a property silently doesn't apply, try isolating it into its own rule before assuming it's a browser/logic bug.
 
 ---
 

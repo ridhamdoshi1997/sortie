@@ -11,6 +11,7 @@ import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 const navigationItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/find-jobs", label: "Find Jobs" },
+  { href: "/saved-jobs", label: "Saved Jobs" },
   { href: "/profile", label: "Profile" },
 ];
 
@@ -22,7 +23,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
   const pathname = usePathname();
 
   return (
-    <header className="bg-overlay">
+    <header className="glass-panel-overlay">
       <div className="mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Logo priority variant="light" />
 

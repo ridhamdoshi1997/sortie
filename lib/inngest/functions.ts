@@ -119,6 +119,16 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 evaluation: evalResult?.dimensions ?? null,
                                 recommendation_score: evalResult?.recommendationScore ?? null,
                                 overall_grade: evalResult?.overallGrade ?? null,
+                                responsibilities: evalResult?.responsibilities || [],
+                                requirements: evalResult?.requirements || [],
+                                nice_to_have: evalResult?.niceToHave || [],
+                                benefits: evalResult?.benefits || [],
+                                about_role: evalResult?.aboutRole || null,
+                                hiring_process: evalResult?.hiringProcess || [],
+                                // Fallback only — never overwrite a real
+                                // structured salary already on the row
+                                // (e.g. from the scraper's own source data).
+                                ...(job.salary ? {} : { salary: evalResult?.salary || null }),
                             })
                             .eq("id", job.id);
 

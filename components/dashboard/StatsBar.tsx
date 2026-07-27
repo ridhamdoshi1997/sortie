@@ -31,7 +31,7 @@ export function StatsBar({
       {stats.map((stat) => (
         <div
           key={stat.label}
-          className="rounded-2xl border border-border bg-surface p-6 shadow-card"
+          className="glass-panel rounded-2xl p-6"
         >
           <p className="text-sm font-medium text-text-secondary">{stat.label}</p>
           <p className="mt-2 text-3xl font-semibold leading-9 text-text-primary">

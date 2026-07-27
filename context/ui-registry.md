@@ -407,17 +407,62 @@ Last updated: 2026-07-22 (new, replaces the deleted JobActions.tsx)
 ### Qualification
 
 File: components/job-details/Qualification.tsx
-Last updated: 2026-07-22 (new)
+Last updated: 2026-07-24 (reworked to a single merged tag row + header icon/legend, matching a real JobRight screenshot)
 
 | Property           | Class                                                                                 |
 | ------------------ | ------------------------------------------------------------------------------------- |
 | Shell              | `rounded-2xl border border-border bg-surface p-6 shadow-card` (matches other job-detail cards) |
+| Header             | `h-8 w-8 rounded-full bg-surface-secondary` icon circle (`Award`, `lucide-react`) + `text-base font-semibold` title — same pattern as `JobDescription`/`Responsibilities`/`Benefits` |
+| Legend (top-right) | `text-xs text-text-muted` + small `text-success` check icon — "Represents the skills you have" |
+| Intro copy         | `text-sm leading-6 text-text-secondary`                                               |
 | Matched skill tag  | `bg-success-lightest px-3 py-1 text-xs font-medium text-success-foreground`, clickable |
 | Gap skill tag      | `bg-accent-muted px-3 py-1 text-xs font-medium text-accent`, clickable                |
 | Required/Preferred | Plain `list-disc` bullet columns, `sm:grid-cols-2`                                    |
 
 **Pattern notes:**
-Consolidates what used to be split across two components: correctable skill tags (previously a static, non-interactive section in `MatchScore.tsx` — now clickable, moves a skill between matched/missing via `actions/jobs.ts`'s `correctSkillTag`, optimistic update with rollback on failure) and the Required/Preferred lists (previously two of `JobDescription.tsx`'s four bullet sections). Correcting a tag is a data fix only — does not re-run the AI evaluator or change `match_score`. Reuses the exact skill-badge token pair already spec'd elsewhere (`bg-success-lightest`/`text-success-foreground` for matched, `bg-accent-muted`/`text-accent` for missing) rather than inventing new ones.
+Consolidates what used to be split across two components: correctable skill tags (previously a static, non-interactive section in `MatchScore.tsx` — now clickable, moves a skill between matched/missing via `actions/jobs.ts`'s `correctSkillTag`, optimistic update with rollback on failure) and the Required/Preferred lists (previously two of `JobDescription.tsx`'s four bullet sections). Correcting a tag is a data fix only — does not re-run the AI evaluator or change `match_score`. Reuses the exact skill-badge token pair already spec'd elsewhere (`bg-success-lightest`/`text-success-foreground` for matched, `bg-accent-muted`/`text-accent` for missing) rather than inventing new ones. **2026-07-24:** tags were originally split into two labeled sections ("You have" / "Gap skills"); merged into one `flex flex-wrap` row (matched tags first, then gap tags) to match JobRight's actual layout — the check/✕ icon on each tag is now the only thing distinguishing them, plus the header legend restating what the check means.
+
+### Responsibilities
+
+File: components/job-details/Responsibilities.tsx
+Last updated: 2026-07-24 (new — split out of `JobDescription.tsx`)
+
+| Property | Class                                                                                  |
+| -------- | --------------------------------------------------------------------------------------- |
+| Shell    | `rounded-2xl border border-border bg-surface p-6 shadow-card`                          |
+| Header   | `h-8 w-8 rounded-full bg-surface-secondary` icon circle (`Briefcase`, `lucide-react`) + `text-base font-semibold` title |
+| List     | Plain `list-disc` bullets, single column                                                |
+
+**Pattern notes:**
+Was previously one of `JobDescription.tsx`'s bullet sections; pulled into its own card to match a real JobRight screenshot, which shows Responsibilities/Qualification/Benefits as three visually distinct cards rather than sub-sections of one "Job Description" block. Renders nothing if `job.responsibilities` is empty (`return null`), same guard pattern as the other optional job-detail cards.
+
+### Benefits
+
+File: components/job-details/Benefits.tsx
+Last updated: 2026-07-24 (new — split out of `JobDescription.tsx`)
+
+| Property | Class                                                                                  |
+| -------- | --------------------------------------------------------------------------------------- |
+| Shell    | `rounded-2xl border border-border bg-surface p-6 shadow-card`                          |
+| Header   | `h-8 w-8 rounded-full bg-surface-secondary` icon circle (`Gift`, `lucide-react`) + `text-base font-semibold` title |
+| List     | `list-disc` bullets in a `grid gap-x-8 gap-y-2 sm:grid-cols-2 lg:grid-cols-3`           |
+
+**Pattern notes:**
+Same split-out story as Responsibilities above. Rendered as a multi-column grid (not a single vertical list) to match JobRight's layout — most benefit entries are short phrases, so 2-3 columns reads better than a long single column. Renders nothing if `job.benefits` is empty.
+
+### HiringProcess
+
+File: components/job-details/HiringProcess.tsx
+Last updated: 2026-07-24 (new)
+
+| Property | Class                                                                                  |
+| -------- | --------------------------------------------------------------------------------------- |
+| Shell    | `rounded-2xl border border-border bg-surface p-6 shadow-card`                          |
+| Header   | `h-8 w-8 rounded-full bg-surface-secondary` icon circle (`ListOrdered`, `lucide-react`) + `text-base font-semibold` title |
+| List     | `list-decimal` (numbered, unlike the other bullet-list cards — this is a sequence)     |
+
+**Pattern notes:**
+New card, found via structural analysis of 25 real scraped postings (not guessed) — interview/application process detail (steps, format, timeline) is a real, recurring, differentiated category most postings don't have but some describe in real detail (e.g. a full "Application Review → Intro Chat → Technical Deep Dive → Decision" pipeline). Renders nothing if `job.hiring_process` is empty — most postings won't have this, and that's expected, not a bug. Placed after Benefits in `app/find-jobs/[id]/page.tsx`'s Overview tab.
 
 ### Insider Connections
 
@@ -451,6 +496,35 @@ Last updated: 2026-07-22 (rewritten twice same session — see progress-tracker.
 **Pattern notes:**
 The free, always-available counterpart to the paid Insider Connections feature (see that entry above) — placed in the Overview tab, no prerequisite. Shows only what's actually knowable for free: whether the candidate's own `work_experience` includes the exact hiring company (`lib/networkSignals.ts`'s `findPreviousEmployerMatch`), plus a LinkedIn people-search link scoped to the hiring company alone (not a jumbled multi-term query — see progress-tracker.md for why that broke). Deliberately does not claim a headcount ("3 former colleagues work here") the way JobRight's version does — no free data source exists for that, and inventing one would violate this app's own "never invent a fact" principle.
 
+### JobResultCard
+
+File: components/shared/JobResultCard.tsx
+Last updated: 2026-07-24 (new — extracted from `FindJobsForm.tsx`'s inline job-card JSX)
+
+| Property     | Class                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------- |
+| Shell        | Real `Card` UI primitive (`components/ui/card.tsx`), not a reimplemented div — `className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-4 border-border bg-surface p-5 transition-all hover:border-accent hover:shadow-md"` merged over Card's shadcn base classes |
+| Score badge  | `font-mono text-2xl font-semibold tabular-nums`, tiered via the standard Match Score Colors (`text-success`/`text-info`/`text-warning`) |
+| Tag pills    | `rounded-[5px] border border-border px-2 py-0.5 text-[11px] text-text-secondary` — real fields only (`job_type`, remote text-match, first 2 `matched_skills`), never fabricated |
+| Agent read   | Standard Agent Content treatment (`border-agent`, `bg-agent-light`, `text-agent-dark` mono label) |
+
+**Pattern notes:**
+Used by both `FindJobsForm.tsx`'s results list and the new Saved Jobs page (see that entry below) — same card, two different data sources (current search vs. all-time saves). Deliberately kept as the actual `Card` primitive with the original className rather than a hand-rebuilt div, since shadcn's `Card` base uses its own raw tokens (`bg-card`, `ring-1 ring-foreground/10`, `rounded-xl`) that don't match this app's design system — an approximate rebuild risked silently drifting from the real rendered output.
+
+### Saved Jobs Page
+
+File: app/saved-jobs/page.tsx
+Last updated: 2026-07-24 (new)
+
+| Property   | Class                                                                                 |
+| ---------- | --------------------------------------------------------------------------------------- |
+| Page shell | `mx-auto flex w-full max-w-7xl flex-col gap-8 p-8` — matches Find Jobs page shell     |
+| Title      | `text-4xl font-bold tracking-tight text-text-primary`                                |
+| List       | `flex flex-col gap-4` of `JobResultCard`                                              |
+
+**Pattern notes:**
+Queries `jobs` by `user_id` + `is_saved = true` with no `run_id` scoping, unlike the Find Jobs list — a save must stay visible regardless of how many new searches happen afterward. Nav link added to `Navbar.tsx` between Find Jobs and Profile.
+
 ### Job Details Page
 
 File: app/find-jobs/[id]/page.tsx and components/job-details/*
@@ -469,6 +543,8 @@ Last updated: 2026-07-23 (restructured into Overview/Company tabs, JobActionBar,
 
 **Pattern notes:**
 Job detail pages use a narrow centered column rather than the full dashboard width. Job descriptions render the complete stored text with `whitespace-pre-line`, append any populated structured bullet sections, and show a bordered `View Full Job Post` notice when the saved Adzuna preview ends with `…` or `...`. Company research now renders a saved 9-field dossier read-only; once research exists, the generate action is hidden. Authenticated app pages pass `isAuthenticated` to `Navbar` so the top-right user icon and sign-out action match the signed-in designs.
+
+**Update 2026-07-24:** Overview tab card order changed to `MatchScore` → `EvaluationBreakdown` → `JobDescription` → `Responsibilities` → `Qualification` → `Benefits` → `NetworkSignals`. `JobDescription` now renders only the "about role" paragraph + full-post-link (its old Responsibilities/Benefits bullet sub-sections were split into their own standalone cards — see those entries above) — matches a real JobRight screenshot, which shows these as visually distinct cards rather than sub-sections of one block.
 
 **Update 2026-07-18:** `MatchScore.tsx`'s "AI Match Reasoning" section now uses the Agent Content treatment (`border-agent`, `bg-agent-light`, `text-agent-dark` mono label reading "Agent read") instead of a generic `bg-success-lightest` sparkle icon — see `ui-rules.md`'s Agent Content section. (Corrected same day from `bg-agent-muted`/`text-agent-foreground` to `bg-agent-light`/`text-agent-dark`, matching the approved mockup's exact tint/ink pair — see the Agent Content correction note in `ui-tokens.md`.) The Company Research dossier (`CompanyResearch.tsx`) has not been updated yet and still uses its original neutral card treatment despite also being AI-generated content — apply the same (corrected) treatment there next time that component is touched.
 

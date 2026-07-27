@@ -146,7 +146,7 @@ export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove }:
     const totalKeywords = data.matchedKeywords.length + data.missingKeywords.length;
 
     return (
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <section className="glass-panel overflow-hidden rounded-2xl">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
                 <div className="flex items-center gap-3">

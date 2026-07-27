@@ -45,7 +45,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
     if (!previousEmployer && searchTerms.length === 0) return null;
 
     return (
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <section className="glass-panel overflow-hidden rounded-2xl">
             <div className="flex items-center gap-3 border-b border-border p-6">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
                     <Users className="h-4 w-4 text-accent" />
