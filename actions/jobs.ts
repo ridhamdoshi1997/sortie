@@ -4,8 +4,69 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { inngest } from "@/lib/inngest/client";
+import { fetchViaJinaReader } from "@/agent/research";
 
 type ActionResult = { success: boolean; error?: string };
+
+type AddExternalJobInput = {
+  title: string;
+  company: string;
+  location?: string;
+  description: string;
+  url?: string;
+};
+
+// Same evaluation pipeline lib/actions/scraper.actions.ts's search flow uses
+// (jobs/evaluate Inngest event -> evaluateJobsAsync -> evaluator.ts) — a
+// manually-pasted job only needs id/title/company/description to run
+// through it, everything else is nullable there already.
+export async function fetchExternalJobText(url: string): Promise<{ text: string | null }> {
+  await requireUser();
+  const text = await fetchViaJinaReader(url);
+  return { text: text ? text.slice(0, 12000) : null };
+}
+
+export async function addExternalJob(input: AddExternalJobInput): Promise<ActionResult & { jobId?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: job, error } = await insforge.database
+      .from("jobs")
+      .insert([
+        {
+          user_id: user.id,
+          source: "url",
+          external_id: crypto.randomUUID(),
+          title: input.title,
+          company: input.company,
+          location: input.location || null,
+          description: input.description,
+          url: input.url || null,
+        },
+      ])
+      .select("id")
+      .single<{ id: string }>();
+
+    if (error || !job) {
+      console.error("[actions/jobs] addExternalJob", error);
+      return { success: false, error: "Failed to save job" };
+    }
+
+    await inngest.send({
+      name: "jobs/evaluate",
+      data: { jobIds: [job.id], filters: {}, userId: user.id, runId: null },
+    });
+
+    revalidatePath("/jobs/external");
+    return { success: true, jobId: job.id };
+  } catch (error) {
+    console.error("[actions/jobs] addExternalJob", error);
+    return { success: false, error: "Failed to save job" };
+  }
+}
 
 export async function toggleSaveJob(jobId: string, saved: boolean): Promise<ActionResult> {
   const user = await requireUser();
@@ -56,6 +117,33 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
   } catch (error) {
     console.error("[actions/jobs] toggleHideJob", error);
     return { success: false, error: "Failed to update hidden status" };
+  }
+}
+
+export async function markApplied(jobId: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ application_status: "applied" })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] markApplied", error);
+      return { success: false, error: "Failed to mark as applied" };
+    }
+
+    revalidatePath("/find-jobs");
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/jobs/applied");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] markApplied", error);
+    return { success: false, error: "Failed to mark as applied" };
   }
 }
 

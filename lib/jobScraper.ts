@@ -13,6 +13,9 @@ type SerpApiJobResult = {
         schedule_type?: string;
         posted_at?: string;
     };
+    // Google Jobs' own resolved employer logo, when it has one — real data
+    // from the API we already call, not a guess. Absent for some listings.
+    thumbnail?: string;
 };
 
 export type NormalizedJob = {
@@ -27,6 +30,7 @@ export type NormalizedJob = {
     type?: string;
     postedAt?: string;
     source: string;
+    logoUrl?: string;
 };
 
 // Google Jobs listings via SerpApi carry a `share_link` (a google.com/search
@@ -153,7 +157,8 @@ async function fetchSerpApiPages(
                 salary: job.detected_extensions?.salary,
                 type: job.detected_extensions?.schedule_type,
                 postedAt: job.detected_extensions?.posted_at,
-                source: "SerpApi"
+                source: "SerpApi",
+                logoUrl: job.thumbnail
             }))
         );
 

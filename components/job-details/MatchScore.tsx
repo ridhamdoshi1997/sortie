@@ -30,7 +30,7 @@ export function MatchScore({
 
     return (
         <>
-            <section className="glass-panel rounded-2xl p-6">
+            <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
                 <div className="mb-4 flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-agent" />
                     <h2 className="font-mono text-[11px] font-semibold tracking-wide text-agent uppercase">

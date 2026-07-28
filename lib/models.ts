@@ -32,6 +32,28 @@ export const MODEL_IDS: Record<ModelProvider, Record<ModelTier, string>> = {
   anthropic: { fast: "claude-haiku-4-5", smart: "claude-sonnet-5" },
 };
 
+// 2026-07-27: the primary key hit BOTH its per-minute AND per-day free-tier
+// caps for gemini-3.1-flash-lite (confirmed live against the real Google AI
+// Studio usage dashboard — 16/15 RPM, 502/500 RPD). Retrying the same model
+// can't fix RPD exhaustion — there's no requests left today, period — so
+// complete() falls through this list on a 429/503 instead.
+//
+// The first attempt at this list was guessed from the dashboard's display
+// names ("Gemini 2.5 Flash Lite" -> "gemini-2.5-flash-lite") and got it
+// wrong — confirmed live, every one of those guesses either 404'd
+// ("no longer available to new users" — deprecated for this account
+// despite still showing quota on the dashboard) or was an outright invalid
+// ID. This list is instead every model that returned a real 200 from a
+// live test call against the EXACT endpoint complete() calls (not just
+// Google's models.list, which doesn't guarantee the OpenAI-compat layer
+// supports a given model): gemini-2.5-flash-lite, gemini-2.5-flash,
+// gemini-2.0-flash(-lite), and gemini-3.1-flash-lite-preview all failed
+// live (404 deprecated, or 429 "check your plan and billing" — a
+// plan-level block, not today's usage) despite looking plausible from the
+// model name alone. Re-verify the same way (a real completions call, not a
+// models.list check) before adding anything else here.
+const GEMINI_FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
+
 export function getModel(
   provider: ModelProvider,
   tier: ModelTier = "smart",
@@ -78,6 +100,65 @@ function stripJsonFences(raw: string): string {
   return fenced ? fenced[1] : trimmed;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Process-lifetime memory of which Gemini models are currently known
+// rate-limited (model -> timestamp it's safe to try again). Without this, a
+// single research request that calls complete() several times in sequence
+// (homepage extraction, each sub-page, final synthesis — collectBrowserResearch
+// in agent/research.ts does this one call at a time, not in parallel) wastes
+// a full retry cycle (~12s) on the primary model on EVERY call, even though
+// the very first call in that chain already proved it's exhausted — nothing
+// carried that knowledge forward. 60s cooldown matches the free tier's RPM
+// window (RPD exhaustion just keeps re-tripping this harmlessly on the next
+// window, which is fine — it fails fast into cooldown again rather than
+// wasting a full retry cycle re-discovering what's already known).
+const modelCooldownUntil = new Map<string, number>();
+
+function isInCooldown(model: string): boolean {
+  const until = modelCooldownUntil.get(model);
+  return until !== undefined && Date.now() < until;
+}
+
+function markCooldown(model: string): void {
+  modelCooldownUntil.set(model, Date.now() + 60_000);
+}
+
+// The free-tier gemini-3.1-flash-lite key this project uses is rate-limited
+// to 15 requests/minute (confirmed live from a real 429 response) — a
+// single call in a request that fires several in quick succession (e.g.
+// company research's per-page extraction + synthesis) can trip it even
+// though the request as a whole is well within reason. scripts/
+// backfill-job-structure.mjs already retries on 429/503/UNAVAILABLE with
+// backoff for its own bulk use case; this is the same idea applied here so
+// EVERY call site that goes through complete() (evaluator, research,
+// document generation/chat) gets it, not just the one script. Capped at 3
+// attempts with a shorter backoff than the bulk script's — this runs
+// inside a live user-facing request, not an unattended background job, so
+// it can't afford to wait 15-75s per retry.
+async function withRateLimitRetry<T>(fn: (attempt: number) => Promise<T>): Promise<T> {
+  const maxAttempts = 3;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn(attempt);
+    } catch (error) {
+      const status = (error as { status?: number })?.status;
+      const isRateLimited = status === 429 || status === 503;
+      if (!isRateLimited || attempt === maxAttempts) {
+        throw error;
+      }
+      const waitMs = 4000 * attempt;
+      console.error(`[lib/models] ${status} — retrying after ${waitMs}ms (attempt ${attempt}/${maxAttempts})`);
+      await sleep(waitMs);
+    }
+  }
+  // Unreachable — the loop always returns or throws — but keeps TypeScript
+  // happy about a guaranteed return value.
+  throw new Error("withRateLimitRetry: exhausted attempts without returning or throwing");
+}
+
 // Normalizes chat completion across providers so call sites don't branch on
 // provider shape. JSON mode is enforced natively for gemini/openai via
 // response_format; Anthropic has no equivalent on the Messages API, so the
@@ -93,12 +174,14 @@ export async function complete(
       ? `${args.userPrompt}\n\nRespond with ONLY valid JSON — no markdown code fences, no commentary before or after.`
       : args.userPrompt;
 
-    const response = await handle.client.messages.create({
-      model: handle.model,
-      max_tokens: args.maxTokens,
-      system: args.systemPrompt,
-      messages: [{ role: "user", content: userPrompt }],
-    });
+    const response = await withRateLimitRetry(() =>
+      handle.client.messages.create({
+        model: handle.model,
+        max_tokens: args.maxTokens,
+        system: args.systemPrompt,
+        messages: [{ role: "user", content: userPrompt }],
+      }),
+    );
 
     const textBlock = response.content.find(
       (block): block is Anthropic.TextBlock => block.type === "text",
@@ -110,23 +193,66 @@ export async function complete(
     return args.jsonResponse ? stripJsonFences(textBlock.text) : textBlock.text;
   }
 
-  const response = await handle.client.chat.completions.create({
-    model: handle.model,
-    max_tokens: args.maxTokens,
-    temperature: args.temperature,
-    ...(args.jsonResponse
-      ? { response_format: { type: "json_object" as const } }
-      : {}),
-    messages: [
-      { role: "system", content: args.systemPrompt },
-      { role: "user", content: args.userPrompt },
-    ],
-  });
+  // Only gemini has a real fallback chain (see GEMINI_FALLBACK_MODELS above)
+  // — openai has just the one configured model per tier, nothing to fall
+  // back to, so it stays a single attempt same as before.
+  const modelsToTry =
+    handle.provider === "gemini"
+      ? [handle.model, ...GEMINI_FALLBACK_MODELS.filter((m) => m !== handle.model)]
+      : [handle.model];
 
-  const raw = response.choices[0].message.content;
-  if (!raw) {
-    throw new Error(`${handle.provider} returned an empty response`);
+  let lastError: unknown;
+  let triedAny = false;
+  for (const model of modelsToTry) {
+    // Skip a model we already know is rate-limited from an earlier call in
+    // this same process (e.g. an earlier step in this same research
+    // request) — unless it's the only option left, in which case trying it
+    // anyway (and getting a fast 429) beats throwing with no attempt at all.
+    if (isInCooldown(model) && model !== modelsToTry[modelsToTry.length - 1]) {
+      console.error(`[lib/models] ${model} in cooldown from an earlier call this request — skipping straight to next fallback`);
+      continue;
+    }
+
+    triedAny = true;
+    try {
+      const response = await withRateLimitRetry(() =>
+        handle.client.chat.completions.create({
+          model,
+          max_tokens: args.maxTokens,
+          temperature: args.temperature,
+          ...(args.jsonResponse
+            ? { response_format: { type: "json_object" as const } }
+            : {}),
+          messages: [
+            { role: "system", content: args.systemPrompt },
+            { role: "user", content: args.userPrompt },
+          ],
+        }),
+      );
+
+      const raw = response.choices[0].message.content;
+      if (!raw) {
+        throw new Error(`${handle.provider} returned an empty response`);
+      }
+
+      return raw;
+    } catch (error) {
+      lastError = error;
+      const status = (error as { status?: number })?.status;
+      // Only fall through to the next model on rate-limit/exhaustion —
+      // anything else (bad request, auth failure, etc.) is a real bug that
+      // silently trying a different model would just mask.
+      if (status !== 429 && status !== 503) {
+        throw error;
+      }
+      markCooldown(model);
+      console.error(`[lib/models] ${model} exhausted (${status}) — trying next fallback`);
+    }
   }
 
-  return raw;
+  if (!triedAny) {
+    throw new Error("[lib/models] all candidate models were in cooldown and none were attempted");
+  }
+
+  throw lastError;
 }

@@ -11,7 +11,7 @@ export default function WaitlistPage() {
     <>
       <Navbar />
       <main>
-        <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+        <section className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
           <div className="w-full max-w-lg rounded-[24px] border border-border bg-surface p-8 text-center shadow-card sm:p-10">
             <div className="mx-auto inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary">
               <Clock3 aria-hidden className="h-4 w-4 text-accent" />

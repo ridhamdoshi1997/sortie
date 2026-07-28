@@ -384,7 +384,7 @@ export function ProfileForm({ profile, formRef }: Props) {
 
   return (
     <form onSubmit={handleSubmit}>
-      <section className="glass-panel rounded-2xl">
+      <section className="border border-border bg-surface shadow-card rounded-2xl">
         <div className="border-b border-border px-6 py-5">
           <h2 className="text-base font-semibold text-text-primary">
             Profile Information

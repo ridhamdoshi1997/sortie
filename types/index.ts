@@ -88,6 +88,16 @@ export interface Job {
   nice_to_have: string[];
   benefits: string[];
   hiring_process: string[];
+  // Extracted from the posting text itself, same zero-marginal-cost pattern
+  // as responsibilities/benefits — only ever populated for jobs evaluated
+  // from 2026-07-27 onward, older rows stay null (no backfill).
+  seniority_level: string | null;
+  years_experience_required: string | null;
+  // Google Jobs' own resolved logo (SerpApi's `thumbnail` field) — real
+  // data, not a domain guess. Only present for jobs found via search from
+  // 2026-07-27 onward; JobResultCard falls back to a guessed-domain lookup
+  // when this is null (external/manually-added jobs, or older ones).
+  company_logo_url: string | null;
   about_company: string | null;
   match_score: number | null;
   match_reason: string | null;
@@ -104,6 +114,7 @@ export interface Job {
   resume_analysis: ResumeGapAnalysisResult | null;
   is_saved: boolean;
   is_hidden: boolean;
+  application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
   posted_at: string | null;
   found_at: string;
 }

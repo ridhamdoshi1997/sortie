@@ -4,7 +4,7 @@ Design tokens for Sortie (formerly JobPilot). All colors, typography, spacing, a
 
 **Rebrand note (2026-07-18):** the app was renamed from JobPilot to Sortie and the palette moved from a generic purple/white SaaS look to a deliberate "mission console" identity — dark ink chrome, warm amber signal accent, and a teal "agent" accent reserved exclusively for AI-generated content. The token *names* below are unchanged from v1 (`--color-accent`, `--color-success`, etc.) so existing components didn't need to be touched — only their values changed, plus one new semantic role (`--color-agent`) was added. See `context/RESUME.md` for current build status.
 
-**Liquid Glass material (2026-07-24):** a translucent, Apple-inspired glass material layered on top of the existing mission-console palette — see the "Liquid Glass" section below for the full recipe and a Lightning CSS gotcha that cost real debugging time and will recur if not read first.
+**Liquid Glass material (2026-07-24), retired from content cards (2026-07-27):** a translucent, Apple-inspired glass material was layered on every content card app-wide — job cards, qualification panels, dashboard widgets. Live computed-style research against Apple's own macOS Tahoe marketing page, Linear, Vercel, and Raycast showed all four reserve blur/glass for floating chrome only (sticky nav, headers) and use flat surfaces + hairline borders for ordinary content, with dark backgrounds much closer to near-black than this app's original dark-mode values. Content cards were reverted to plain flat `border border-border bg-surface shadow-card` utilities (no custom class needed); glass stays only on genuinely floating/sticky chrome (`Navbar`, `JobActionBar`, `FindJobsForm`'s console). See the "Liquid Glass" section below for the current, narrower scope and the Lightning CSS gotchas that still apply to the chrome classes that remain.
 
 **Dark mode + a serious pre-existing bug found while building it (2026-07-18):** a light/dark theme toggle was added (`next-themes`, `components/layout/ThemeToggle.tsx`, rendered in `Navbar.tsx`). While verifying it live, `--color-accent`/`--color-background`/`--color-border`/`--font-sans`/`--radius-sm through --radius-xl` were found to have been silently resolving to shadcn's generic scaffold values (`var(--accent)`, `var(--background)`, etc. — pale oklch grays and a fallback font stack), **not this app's real design tokens**, since the original rebrand. Cause: `app/globals.css`'s leftover shadcn `@theme inline { }` block redeclared those same theme keys, and Tailwind v4 keeps only one `:root` declaration per key when a name exists in both a plain `@theme` block and an `@theme inline` block — the inline one wins outright, it is not a normal CSS cascade you can out-specificity. This was invisible in light mode purely by coincidence (shadcn's default oklch grays and this app's actual paper/border hex are both pale neutrals, and shadcn's default accent gray vs. this app's amber look different but nobody had directly compared `text-accent`'s rendered color against the intended hex — the diamond wordmark mark, "Start for free" button, and all `border-border` usage across the *entire app* were rendering shadcn defaults, not Sortie's palette). Dark mode made it obvious immediately (accent turned pale gray instead of amber, background stayed white instead of going dark). Fixed by removing the colliding key redeclarations from `@theme inline`, keeping only the genuinely non-colliding shadcn primitive tokens (sidebar, chart, ring, input, destructive, muted, secondary, primary, popover, card, foreground) that this app's components don't otherwise use. See the `@theme inline` block's own comment in `globals.css` for the full explanation — treat it as load-bearing documentation, not a comment to tidy away.
 
@@ -370,9 +370,9 @@ Added 2026-07-18 via `next-themes` (`attribute="class"`, `defaultTheme="system"`
 
 | Token | Light | Dark |
 |---|---|---|
-| background | `#f3f4f2` | `#14171b` |
-| surface | `#ffffff` | `#1b1f24` |
-| border | `#d8dbd6` | `#2c3138` |
+| background | `#f3f4f2` | `#0a0b0d` |
+| surface | `#ffffff` | `#101215` |
+| border | `#d8dbd6` | `#23262b` |
 | text-primary | `#15181d` | `#eceeec` |
 | text-secondary | `#565c56` | `#a3aaa3` |
 | accent (signal) | `#c9711f` | `#e0913f` |
@@ -384,7 +384,7 @@ Added 2026-07-18 via `next-themes` (`attribute="class"`, `defaultTheme="system"`
 | overlay (ink chrome) | `#15181d` | `#0d0f12` |
 | overlay-foreground | `#ffffff` | `#ffffff` (fixed) |
 
-Full table (every surface/text/accent/agent/success/info tier) is in `app/globals.css`'s `.dark { }` block directly — treat that as the source of truth, this table is a quick-reference subset.
+Full table (every surface/text/accent/agent/success/info tier) is in `app/globals.css`'s `.dark { }` block directly — treat that as the source of truth, this table is a quick-reference subset. The background/surface/border rows were retuned 2026-07-27 to a near-black ramp (see the Liquid Glass section below) — `--color-overlay`/`-overlay-dark` were already correctly near-black and were left unchanged; it was specifically the ordinary card/page tokens that were a step too light relative to that.
 
 **`--color-overlay-foreground` exists because `bg-overlay` (the navbar/hero chrome) stays dark in *both* themes** — it's fixed branding, not something that flips to a light chrome in light mode. Content sitting on it (`Navbar.tsx` nav links/icons, `Logo.tsx`'s `variant="light"`, `FindJobsForm.tsx`'s mission-console panel) must use `text-overlay-foreground` / `border-overlay-foreground` / `bg-overlay-foreground`, never `text-surface` / `border-surface` / `bg-surface` — those now have a real, different dark-mode value (a dark surface color, correct for actual cards) and would go dark-on-dark and disappear on the permanently-dark chrome once dark mode is active. This exact bug shipped once during development and was caught in live verification before release — don't reintroduce it.
 
@@ -392,35 +392,35 @@ Full table (every surface/text/accent/agent/success/info tier) is in `app/global
 
 ---
 
-## Liquid Glass (2026-07-24)
+## Liquid Glass (2026-07-24, narrowed to chrome-only 2026-07-27)
 
-Apple-inspired translucent material, layered on top of the existing brand palette — implemented entirely in `app/globals.css`, never replaces `--color-accent`/`--color-agent`/etc., those still render exactly as before on top of a glass surface.
+Apple-inspired translucent material — implemented entirely in `app/globals.css`. Originally applied to every content card app-wide; retuned to match what real "premium" references (Apple's own site, Linear, Vercel, Raycast — verified via live computed styles, not just visual impression) actually do: **glass is chrome-only**, ordinary content cards are flat. Never replaces `--color-accent`/`--color-agent`/etc. — those still render exactly as before on top of a glass or flat surface.
 
 ### Classes
 
 | Class | Use | Notes |
 | --- | --- | --- |
-| `.glass-panel` | Default content cards (Qualification, Benefits, Responsibilities, dashboard/profile cards) | Heaviest blur (36px) + sheen; background opacity tuned for text readability, not maximum transparency |
-| `.glass-panel-interactive` | Add alongside `.glass-panel` on anything clickable (job result cards) | Adds lift-on-hover, accent-tinted border, and a cursor-following glow (see below) — never combine with a `hover:border-*`/`hover:shadow-*` Tailwind utility on the same element, see the cascade gotcha below |
-| `.glass-panel-strong` | Chrome that must stay legible over scrolling content (`JobActionBar`) | More opaque than `.glass-panel`, still genuinely translucent (64%/58% light/dark) |
-| `.glass-panel-overlay` | Dark ink chrome (`Navbar`, `FindJobsForm`'s mission-console hero) | Tinted from `--color-overlay`, not `--color-surface` |
-| `.glass-pill` | Small pill-shaped controls sitting on top of an already-glass surface (JobActionBar's Save/Hide buttons) | Lighter blur (10px) — a second full blur pass on top of a parent glass panel is visual noise, not a stronger effect |
+| *(none — plain utilities)* | Ordinary content cards (Qualification, Benefits, Responsibilities, dashboard/profile/job-details cards) | `border border-border bg-surface shadow-card` directly at the call site, no custom CSS class. `.glass-panel` was retired 2026-07-27 — this is the exact pre-Liquid-Glass pattern, restored. `--shadow-card` is intentionally near-invisible on the near-black dark surfaces; elevation there comes from the background/surface/border gray-step difference, not a shadow (matches Linear/Raycast) |
+| `.card-interactive-glow` | Add alongside the plain flat utilities on anything clickable (job result cards) | Renamed from `.glass-panel-interactive` — no longer glass-related, just a hover lift + toned-down cursor-following glow (see below). Never combine with a `hover:border-*`/`hover:shadow-*` Tailwind utility on the same element, see the cascade gotcha below |
+| `.glass-panel-strong` | Chrome that must stay legible over scrolling content (`JobActionBar`) | Retuned 2026-07-27: `blur(20px) saturate(150%)`, no brightness boost, no sheen layer, single box-shadow — the references use plain blur with no vibrancy boost at all; this keeps a light touch of saturation without the original's heaviness |
+| `.glass-panel-overlay` | Dark ink chrome (`Navbar`, `FindJobsForm`'s mission-console hero) | Tinted from `--color-overlay`, not `--color-surface`; same retuned recipe as `.glass-panel-strong` |
+| `.glass-pill` | Small pill-shaped controls sitting on top of an already-glass surface (JobActionBar's Save/Hide buttons) | Lighter blur (8px), no saturate boost — sits on an already-blurred parent, a second full effect pass is visual noise |
 
 ### The cursor glow
 
-`.glass-panel-interactive`'s hover glow follows the actual cursor position via `--mouse-x`/`--mouse-y` CSS custom properties, set by `components/shared/GlassCursorGlow.tsx` (mounted once in `app/layout.tsx`) — a single document-level, rAF-throttled `pointermove` listener using event delegation (`.closest('.glass-panel-interactive')`), not one listener per card. This is the one part of the system that's genuinely interactive rather than a static gradient — deliberately so, since a static gradient reads as "glass-styled" rather than actual glass no matter how well-tuned the values are.
+`.card-interactive-glow`'s hover glow follows the actual cursor position via `--mouse-x`/`--mouse-y` CSS custom properties, set by `components/shared/GlassCursorGlow.tsx` (mounted once in `app/layout.tsx`) — a single document-level, rAF-throttled `pointermove` listener using event delegation (`.closest('.card-interactive-glow')`, renamed from `.glass-panel-interactive`), not one listener per card. This remains the app's one genuinely interactive hover touch, now tuned as a subtle accent-tinted highlight rather than a glass sheen (references don't have this exact pattern, so it's tuned by eye against the flat-card baseline).
 
-### The ambient ​backdrop
+### The ambient backdrop — simplified to flat, 2026-07-27
 
-Lives directly on `body`'s own background (`app/globals.css`), not a separate `position: fixed; z-index: -1` div — that was the first approach and it silently never rendered (see the gotcha below). `background-size: 180% 180%` plus a slow (60s) `background-position` keyframe animation gives a subtle drift so glass surfaces feel alive; respects `prefers-reduced-motion`.
+The original 2-blob animated drift/breathe backdrop was removed. None of the 4 premium references use an ambient gradient wash at all — they're flat. Once ordinary cards stopped being glass, an animated backdrop had nothing left to show through and was motion for its own sake. Replaced with a single static (no animation), very low-alpha `--color-accent` radial highlight near the top of `body`'s own background — `--color-agent` (teal) stays reserved for its AI-content signal role, not ambient decoration, per the Invariants below.
 
-### Dark mode is bolder, not softer
+### Dark mode is bolder, not softer (still applies to the remaining chrome)
 
-The first pass muted dark mode's highlight/glow alpha to avoid it feeling "too bright" — this backfired, making dark mode read as flatter and weaker than light mode. Real glass over a dark surface should look *more* dramatic (deeper black backdrop, brighter/more saturated glow, crisper highlight), not a washed-out version of the light variant. Every `.dark` override in the glass system intentionally uses higher alpha values than a naive "just darken everything" pass would produce.
+The first pass muted dark mode's highlight/glow alpha to avoid it feeling "too bright" — this backfired, making dark mode read as flatter and weaker than light mode. This lesson still applies to the chrome classes that stayed glass; the ambient-backdrop-specific corollary (see above) no longer applies since that's flat now.
 
-### Chrome vs. content
+### Chrome vs. content — now structural, not just a design guideline
 
-Real Liquid Glass is used for *controls* (nav bars, floating action bars, buttons) sitting over rich content — not applied uniformly to every piece of content. Heavy glass on large text-dense cards actively hurts readability. This is why `.glass-panel`'s background opacity (62%/34% light/dark) is noticeably higher than `.glass-panel-overlay`/`.glass-panel-strong`'s more transparent chrome treatment, even though `.glass-panel` has the strongest blur of the three — blur carries the "glass" look, opacity protects text legibility.
+This used to be a stated intent that the implementation didn't fully follow (`.glass-panel` was applied to every content card). As of 2026-07-27 it's enforced by the class list itself: there is no glass class left that a content card could reach for. Real Liquid Glass is used for *controls* (nav bars, floating action bars, buttons) sitting over rich content — never applied uniformly to every piece of content, since heavy glass on large text-dense cards actively hurts readability.
 
 ### Deliberately not implemented: true SVG-filter refraction
 

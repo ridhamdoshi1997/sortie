@@ -28,10 +28,11 @@ export function StatsBar({
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {stats.map((stat) => (
+      {stats.map((stat, index) => (
         <div
           key={stat.label}
-          className="glass-panel rounded-2xl p-6"
+          className="fade-in-up border border-border bg-surface shadow-card rounded-2xl p-6"
+          style={{ animationDelay: `${index * 60}ms` }}
         >
           <p className="text-sm font-medium text-text-secondary">{stat.label}</p>
           <p className="mt-2 text-3xl font-semibold leading-9 text-text-primary">

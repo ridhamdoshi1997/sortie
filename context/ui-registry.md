@@ -37,11 +37,11 @@ Text-based wordmark, not an image — no new logo asset was generated as part of
 ### Login Card
 
 File: components/auth/LoginCard.tsx
-Last updated: 2026-06-03
+Last updated: 2026-07-27 (left panel switched from `landing-hero-glow` to `bg-surface-secondary` — the marketing-page gradient had leaked onto this functional auth page; now consistent with the app's flat-card system)
 
 | Property         | Class                                                                                                   |
 | ---------------- | ------------------------------------------------------------------------------------------------------- |
-| Background       | `bg-surface` outer shell with `landing-hero-glow` on the left auth storytelling panel                    |
+| Background       | `bg-surface` outer shell with `bg-surface-secondary` on the left auth storytelling panel                 |
 | Border           | `border border-border`, `border-b border-border` on mobile split, `lg:border-r` on desktop split        |
 | Border radius    | `rounded-[24px]` outer shell, `rounded-full` on the small OAuth security badge, `rounded-md` buttons     |
 | Text — primary   | Hero `text-[clamp(2.35rem,5vw,4.25rem)] font-semibold leading-[0.96] tracking-[-0.04em] text-text-slate`, form title `text-3xl font-semibold leading-9 text-text-primary` |
@@ -57,23 +57,27 @@ Auth screens use a two-panel shell: a left explanatory panel with the establishe
 ### Navbar
 
 File: components/layout/Navbar.tsx
-Last updated: 2026-07-18 (added `ThemeToggle`; swapped `surface` tokens for `overlay-foreground` ahead of dark mode shipping — see below)
+Last updated: 2026-07-27 (rebuilt as a true 3-column grid to center the nav links, then made a floating inset rounded bar rather than edge-to-edge — matching Raycast's own nav structure, see Pattern notes)
 
 Global — rendered on both public pages (homepage, login) and authenticated pages (dashboard, find-jobs detail, profile) via the `isAuthenticated` prop, not landing-only despite the old entry name.
 
 | Property         | Class                                                                                                    |
 | ---------------- | -------------------------------------------------------------------------------------------------------- |
-| Background       | `bg-overlay` (dark ink chrome — fixed dark in both light and dark app themes)                            |
-| Border           | `none` — contrast against the page below provides separation                                             |
+| Background       | `bg-overlay` via `.glass-panel-overlay` (solid flat chrome, no blur as of 2026-07-27 — fixed dark in both light and dark app themes) |
+| Border           | `border-b border-border` hairline (via `.glass-panel-overlay`)                                            |
 | Border radius    | `rounded-md` on CTA only                                                                                 |
 | Text — primary   | `text-sm font-medium text-overlay-foreground/60` (inactive), `text-accent` (active)                       |
 | Text — secondary | `bg-accent text-accent-foreground` primary-button pattern on CTA (not `landing-button-primary`, which is for light-surface sections) |
-| Spacing          | `mx-auto flex h-16 max-w-[1440px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8`             |
-| Hover state      | `hover:text-overlay-foreground` on nav links, `hover:opacity-90` on CTA                                   |
+| Spacing          | `mx-auto grid h-16 max-w-[1440px] grid-cols-[1fr_auto_1fr] items-center gap-4 px-4 sm:px-6 lg:px-8` — 3 columns: logo (left), nav (true-centered), actions (right) |
+| Hover state      | `hover:text-overlay-foreground` on nav links (`duration-200 ease-in-out`), `hover:opacity-90` on CTA       |
 | Shadow           | `none`                                                                                                   |
 | Accent usage     | Active nav item, mark glyph on `Logo variant="light"`, CTA background                                    |
 
 **Pattern notes:**
+**2026-07-27 (second change, same day):** `header` itself is now just a `sticky top-4 z-40 mx-4 sm:mx-6 lg:mx-8` positioning wrapper — the actual chrome (`.glass-panel-overlay`, `rounded-2xl`) moved to the inner grid div, so the bar reads as a rounded floating card with a gap around it rather than an edge-to-edge strip (again matching Raycast's own nav structurally, not its content). `.glass-panel-overlay`'s CSS changed from `border-bottom` only to a full `border` on all sides to support this (a rounded box with only a bottom edge drawn looked broken — this also incidentally fixed the same visual gap on `FindJobsForm.tsx`'s console, which already combined this class with `rounded-2xl`). Because the navbar's total vertical footprint grew (16px top margin + 64px bar = 5rem, was flush 4rem), every page using `min-h-[calc(100vh-4rem)]` was updated to `calc(100vh-5rem)` to keep the math exact — `dashboard/page.tsx`, `profile/page.tsx`, `find-jobs/[id]/page.tsx`, `waitlist/page.tsx`, `LoginCard.tsx`.
+
+**2026-07-27 (first change, same day):** container changed from a `flex justify-between` row to `grid grid-cols-[1fr_auto_1fr]` — with 3 unevenly-sized children, `justify-between` only guarantees equal *gaps* between them, it doesn't truly center the middle one; two equal `1fr` side columns are what actually centers the nav links regardless of how wide the logo or actions group happen to be. Matches Raycast's own nav layout (checked via `getBoundingClientRect()` measurements on raycast.com: logo pinned far-left, nav links centered as their own group, login/CTA pinned far-right — not their logo asset or content, just the structural arrangement). Logo and the actions group each got their own wrapper `div` so they behave as single grid items; nav link gap tightened `gap-8` → `gap-6`.
+
 Top navigation is always a full-width dark ink bar (`bg-overlay`), matching the wordmark/hero-chrome treatment used elsewhere (e.g. `FindJobsForm.tsx`'s hero) — and stays that way in both light and dark app theme, since it's fixed branding, not something that should flip to a light bar. `Logo` renders with `variant="light"` here so the wordmark and tag stay legible against the dark background. Authenticated-state icon/link colors use opacity-modified `overlay-foreground` tokens (`text-overlay-foreground/50`, `text-overlay-foreground/70`), **not `surface`** — `surface` now has a real, different dark-mode value and would go invisible on this permanently-dark chrome once dark mode ships (see ui-tokens.md's Dark Mode section). `ThemeToggle` renders here (both branches, next to sign-out / the CTA) — see its own entry below.
 
 ### ThemeToggle
@@ -391,18 +395,20 @@ Plain client component, local `useState` for active tab — no Radix/shadcn Tabs
 ### JobActionBar
 
 File: components/job-details/JobActionBar.tsx
-Last updated: 2026-07-22 (new, replaces the deleted JobActions.tsx)
+Last updated: 2026-07-27 (no longer sticky — see Pattern notes)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
-| Shell            | `sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface/95 p-4 shadow-card backdrop-blur` |
+| Shell            | `glass-panel-strong flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4` (solid flat surface, no blur — see `ui-tokens.md`'s Liquid Glass section) |
 | Save — active    | `border-accent bg-accent-muted text-accent`                                            |
 | Save — inactive  | `border-border bg-surface text-text-secondary`, `hover:bg-surface-secondary`          |
 | Apply CTA        | `bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground`, `hover:opacity-90` |
 | Badges           | `rounded-full bg-surface-secondary px-3 py-1 text-xs font-medium text-text-muted` (freshness/hidden), `bg-info-lightest text-info` (Remote) |
 
 **Pattern notes:**
-`position: sticky`, not `fixed` — `ui-rules.md` bans `fixed` for UI elements, but `sticky` still participates in normal document flow so it's compliant. Replaces the old top-of-page `JobActions` (back link + bare apply link) and the bottom-of-page duplicate apply button (deleted, consolidated into this one bar) — matches JobRight's single top action bar rather than two separate CTAs. Owns real Save/Hide state (optimistic update + `actions/jobs.ts`'s `toggleSaveJob`/`toggleHideJob`), and displays `postedAt`/`isRemote` when available (see the Job Details Page entry below for where that data comes from).
+**2026-07-27:** dropped `sticky top-16` entirely — once `Navbar` became its own floating/sticky bar (see its entry above), stacking a second sticky bar directly underneath read as two competing pinned elements, and needed its own top offset kept in sync with `Navbar`'s height (a dependency that already broke once: `top-16` briefly overlapped the new floating navbar's bottom edge before this was simplified to not-sticky at all). This bar is now plain in-flow — Save/Hide/Apply scroll away with the rest of the page, same as any other section.
+
+Replaces the old top-of-page `JobActions` (back link + bare apply link) and the bottom-of-page duplicate apply button (deleted, consolidated into this one bar) — matches JobRight's single top action bar rather than two separate CTAs. Owns real Save/Hide state (optimistic update + `actions/jobs.ts`'s `toggleSaveJob`/`toggleHideJob`), and displays `postedAt`/`isRemote` when available (see the Job Details Page entry below for where that data comes from).
 
 ### Qualification
 
@@ -499,11 +505,11 @@ The free, always-available counterpart to the paid Insider Connections feature (
 ### JobResultCard
 
 File: components/shared/JobResultCard.tsx
-Last updated: 2026-07-24 (new — extracted from `FindJobsForm.tsx`'s inline job-card JSX)
+Last updated: 2026-07-27 (glass hover effect retuned — see below)
 
 | Property     | Class                                                                                 |
 | ------------ | --------------------------------------------------------------------------------------- |
-| Shell        | Real `Card` UI primitive (`components/ui/card.tsx`), not a reimplemented div — `className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-4 border-border bg-surface p-5 transition-all hover:border-accent hover:shadow-md"` merged over Card's shadcn base classes |
+| Shell        | Real `Card` UI primitive (`components/ui/card.tsx`), not a reimplemented div — `className="border border-border bg-surface shadow-card card-interactive-glow grid cursor-pointer grid-cols-[1fr_auto] items-start gap-4 rounded-2xl p-5"` merged over Card's shadcn base classes. `.card-interactive-glow` (renamed 2026-07-27 from `.glass-panel-interactive`, `app/globals.css`) adds the hover lift + cursor-tracked highlight — see `ui-tokens.md`'s Liquid Glass section |
 | Score badge  | `font-mono text-2xl font-semibold tabular-nums`, tiered via the standard Match Score Colors (`text-success`/`text-info`/`text-warning`) |
 | Tag pills    | `rounded-[5px] border border-border px-2 py-0.5 text-[11px] text-text-secondary` — real fields only (`job_type`, remote text-match, first 2 `matched_skills`), never fabricated |
 | Agent read   | Standard Agent Content treatment (`border-agent`, `bg-agent-light`, `text-agent-dark` mono label) |
@@ -672,3 +678,31 @@ Last updated: 2026-06-05
 
 **Pattern notes:**
 Three named exports from one file — `CompanyResearchChart`, `JobsOverTimeChart`, `MatchDistributionChart`. All are `"use client"` (recharts needs browser). Colors use CSS variable references (`var(--color-*)`) so they stay token-driven inside recharts props. Left margin is `left: -20` on all charts to trim excess YAxis whitespace. Area gradient defined in `<defs>` with id `jobsGradient`.
+
+---
+
+### CompanyLogo
+
+File: components/shared/CompanyLogo.tsx
+Last updated: 2026-07-28 (new — went through 6 live-iterated versions the same day, see progress-tracker.md's top entry for the full sequence)
+
+| Property | Class |
+| --- | --- |
+| Box (no logo/failed) | `flex h-14 w-14 (md) / h-20 w-20 (lg) flex-shrink-0 items-center justify-center rounded-xl/rounded-2xl border border-border bg-surface-secondary`, `Building2` icon inside |
+| Box (real logo) | Same size/border/bg, `object-contain`, small padding, real `<img>` |
+
+**Pattern notes:**
+Two real candidate sources tried in order: `logoUrl` prop (a real SerpApi thumbnail, or — for jobs evaluated 2026-07-28 onward — a Clearbit URL built from a domain `lib/evaluator.ts`'s `companyDomain` field asked Gemini to resolve from its own knowledge, not string-guessed), then a client-side naive domain guess (`company.toLowerCase()`, strip legal suffixes) as a safety net for the rest of the existing catalog that hasn't been re-evaluated under the new pipeline. The naive-guess candidate is routed through `/api/logo?url=` (new, same-origin proxy with a small explicit host allowlist), not fetched directly — direct `<img src="https://logo.clearbit.com/...">` requests were confirmed live to get stuck on the browser's native broken-image glyph with `onError` never firing (suspected ad-blocker/tracking-protection interference). Google's favicon service was tried twice as a third candidate and reverted both times — it silently serves its own generic placeholder for a domain it doesn't recognize (200 status, not a 404), which defeats error-based fallback logic and reads worse than the plain icon. Used by `JobResultCard.tsx` (size `md`, 56px) and `JobInfo.tsx`'s header (size `lg`, 80px).
+
+### ComingSoon
+
+File: components/shared/ComingSoon.tsx
+Last updated: 2026-07-28 (new)
+
+| Property | Class |
+| --- | --- |
+| Icon chip | `flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-secondary`, accent-colored icon |
+| Body | Centered column, `min-h-[calc(100vh-10rem)]`, title + one-line description |
+
+**Pattern notes:**
+Shared placeholder for `/agent`, `/interview`, `/settings`, `/notifications` — real routes (so nav links don't 404) with no backend, explicitly deferred per your own scoping rather than half-built. Takes `icon`/`title`/`description` props.

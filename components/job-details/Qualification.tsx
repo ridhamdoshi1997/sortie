@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Award, Check, X } from "lucide-react";
+import { Award, Check, CheckCircle2, Circle, X } from "lucide-react";
 
 import { correctSkillTag } from "@/actions/jobs";
 
@@ -13,15 +13,38 @@ type Props = {
   niceToHave: string[];
 };
 
-function BulletColumn({ title, items }: { title: string; items: string[] }) {
+// Required gets a solid accent-toned check (must-have, weighted heavier);
+// Preferred gets a lighter outline dot (nice-to-have) — the two columns
+// used to be visually identical bullet lists with nothing but the header
+// label distinguishing "must-have" from "optional," which is the actual
+// distinction that matters here.
+function BulletColumn({
+  title,
+  items,
+  variant,
+}: {
+  title: string;
+  items: string[];
+  variant: "required" | "preferred";
+}) {
   if (items.length === 0) return null;
+  const Icon = variant === "required" ? CheckCircle2 : Circle;
 
   return (
     <div>
       <h3 className="text-sm font-semibold leading-5 text-text-primary">{title}</h3>
-      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm font-medium leading-6 text-text-primary">
+      <ul className="mt-3 flex flex-col gap-2.5">
         {items.map((item) => (
-          <li key={item}>{item}</li>
+          <li key={item} className="flex items-start gap-2.5 text-sm leading-6 text-text-primary">
+            <Icon
+              className={`mt-1 h-3.5 w-3.5 shrink-0 ${
+                variant === "required" ? "text-accent" : "text-text-muted"
+              }`}
+            />
+            <span className={variant === "preferred" ? "text-text-secondary" : "font-medium"}>
+              {item}
+            </span>
+          </li>
         ))}
       </ul>
     </div>
@@ -63,7 +86,7 @@ export function Qualification({
   const hasSkills = matched.length > 0 || missing.length > 0;
 
   return (
-    <section className="glass-panel rounded-2xl p-6">
+    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="mb-1 flex items-start justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
@@ -118,8 +141,8 @@ export function Qualification({
 
       {(requirements.length > 0 || niceToHave.length > 0) && (
         <div className="mt-6 grid gap-6 border-t border-border pt-6 sm:grid-cols-2">
-          <BulletColumn title="Required" items={requirements} />
-          <BulletColumn title="Preferred" items={niceToHave} />
+          <BulletColumn title="Required" items={requirements} variant="required" />
+          <BulletColumn title="Preferred" items={niceToHave} variant="preferred" />
         </div>
       )}
     </section>

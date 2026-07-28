@@ -11,26 +11,34 @@
      concept mockup. Never for body copy or UI chrome. */
   --font-display: "Avenir Next", "Century Gothic", "Segoe UI Semibold", ui-sans-serif, sans-serif;
 
-  --color-background: #f3f4f2;
+  /* Raycast-style neutral ramp (2026-07-27) — fully achromatic grays (0%
+     saturation), not the sage/green-tinted neutrals this app used before.
+     Raycast's own site has no light mode to source values from directly,
+     so these are derived using the same elevation logic as its real dark
+     tokens (bg/bg-100/bg-200 steps, hairline borders, tiered fg opacity),
+     just inverted for a light ground. Accent/agent/success/etc. below are
+     UNCHANGED — only the neutral chrome moved, per explicit direction to
+     keep this app's own accent, not Raycast's blue. */
+  --color-background: #f7f7f8;
   --color-surface: #ffffff;
-  --color-surface-secondary: #eaebe7;
-  --color-surface-tertiary: #f7f7f5;
-  --color-surface-muted: #eef0ec;
+  --color-surface-secondary: #eeeef0;
+  --color-surface-tertiary: #fbfbfc;
+  --color-surface-muted: #f2f2f4;
 
-  --color-border: #d8dbd6;
-  --color-border-light: #e4e6e2;
-  --color-border-muted: #dcded9;
+  --color-border: #e2e3e5;
+  --color-border-light: #ececee;
+  --color-border-muted: #e6e7e9;
 
-  --color-text-primary: #15181d;
-  --color-text-secondary: #565c56;
-  --color-text-muted: #8a8f89;
-  --color-text-dark: #2c3129;
-  --color-text-darker: #1e211c;
-  --color-text-darkest: #15181d;
-  --color-text-black: #0d0f0c;
-  --color-text-slate: #2c3129;
-  --color-text-slate-medium: #565c56;
-  --color-chart-axis: #8a8f89;
+  --color-text-primary: #17181a;
+  --color-text-secondary: #55585c;
+  --color-text-muted: #8a8d91;
+  --color-text-dark: #26282b;
+  --color-text-darker: #1c1e20;
+  --color-text-darkest: #17181a;
+  --color-text-black: #0a0a0b;
+  --color-text-slate: #26282b;
+  --color-text-slate-medium: #55585c;
+  --color-chart-axis: #8a8d91;
 
   /* Signal — primary accent. Reserved for primary actions and the
      wordmark; never used for AI-generated content (see --color-agent). */
@@ -75,27 +83,25 @@
   --color-linkedin-light: #dce6f1;
   --color-linkedin-foreground: #ffffff;
 
-  --color-overlay: #15181d;
-  --color-overlay-dark: #0d0f12;
+  --color-overlay: #111213;
+  --color-overlay-dark: #0a0b0c;
   /* Fixed — the overlay chrome stays dark in both app themes, so its
      content color never changes. Never reuse --color-surface for
      text/borders/backgrounds on top of --color-overlay. */
   --color-overlay-foreground: #ffffff;
 
+  /* Tightened 2026-07-27 to match Raycast's smaller, more geometric radius
+     scale (their own --radius-md is 6px) — was 8/12/14, read as noticeably
+     rounder/softer than the reference. --radius-sm and the shadcn-derived
+     --radius (below, drives rounded-2xl/3xl/4xl used on most cards) moved
+     the same direction. */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
   --shadow-card: 0px 1px 3px rgb(0 0 0 / 0.1), 0px 1px 2px -1px rgb(0 0 0 / 0.1);
-
-  /* Liquid Glass — the specular top-edge highlight every glass surface
-     catches, regardless of theme (Apple's own dark-mode glass still uses a
-     bright highlight, just at lower opacity — see the .dark override
-     below). Not a surface/background color; only ever used at low alpha
-     via color-mix() for borders/inset highlights. */
-  --color-glass-highlight: #ffffff;
 }
 
 :root {
@@ -123,7 +129,10 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /* Tightened 2026-07-27 (was 0.625rem) alongside --radius-sm/md/lg/xl in
+     the @theme block above — drives rounded-2xl/3xl/4xl, used on nearly
+     every content card app-wide, toward Raycast's tighter geometric feel. */
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -147,120 +156,14 @@ html {
 
 body {
   min-height: 100vh;
+  /* Fully flat, no ambient gradient at all (2026-07-27) — Raycast's own
+     page background has zero gradient wash, not even a faint one; matching
+     it exactly means dropping the single low-alpha highlight the prior
+     pass kept. Structure now comes entirely from the background/surface/
+     border step system below, same as the reference. */
   background-color: var(--color-background);
-  /* Liquid Glass ambient backdrop — lives directly on body's own background
-     (not a separate position:fixed/z-index:-1 div) so there is zero
-     stacking-context ambiguity about what paints in front of what. A
-     negative-z-index div inside body is a classic trap: body has its own
-     background and doesn't establish a stacking context, so browsers can
-     resolve the paint order such that the div's background never shows —
-     exactly what happened here on the first attempt (glass panels looked
-     completely flat, no color visible through the blur, even though the
-     panels' own translucency/blur was confirmed working in isolation).
-     background-attachment: fixed keeps it from re-tiling per scroll
-     position, same intent as the old approach, just implemented safely. */
-  /* Apple Music-inspired: ONE dominant hue per zone with a lot of plain
-     dark space between them, not several competing blobs. The original
-     4-blob version mixed warm (accent) and cool (agent) colors in
-     overlapping regions — warm+cool alpha-blended together reads as a
-     muddy brown/olive haze, not a clean gradient, and got worse as the
-     drift animation slid the blobs into each other's territory over
-     time. Two blobs, kept in opposite corners with the travel distance
-     capped so they never cross paths (see the drift keyframes below). */
-  background-image:
-    radial-gradient(
-      circle at 15% 10%,
-      color-mix(in srgb, var(--color-accent) 34%, transparent) 0%,
-      transparent 45%
-    ),
-    radial-gradient(
-      circle at 88% 92%,
-      color-mix(in srgb, var(--color-agent) 26%, transparent) 0%,
-      transparent 42%
-    );
-  background-attachment: fixed;
   color: var(--color-text-primary);
   font-family: var(--font-sans);
-}
-
-/* Oversized canvas so animating background-position slides the whole
-   composed gradient field around, rather than tiling/clipping it — the
-   standard technique for a drifting gradient background. Slow and subtle
-   on purpose (60s, small travel distance): this is meant to make glass
-   surfaces feel alive at a glance, not to be a distracting moving
-   background. Respects reduced-motion below.
-   Deliberately its own separate rule, not merged into the body{} block
-   above — Lightning CSS's @supports-fallback rewrite for color-mix() has
-   already silently dropped properties sharing a declaration block with a
-   color-mix() value once in this file (the backdrop-filter ordering bug
-   elsewhere here); background-size/animation shared a block with the
-   color-mix()-based background-image and were silently missing from the
-   compiled output entirely — confirmed via computed style showing
-   animationName: none despite the rule existing in source. Isolating them
-   into their own rule sidesteps whatever the exact trigger is. */
-body {
-  /* background-size is driven entirely by glass-backdrop-breathe below —
-     no static value here, it would just be immediately overridden. */
-  animation:
-    glass-backdrop-drift 75s ease-in-out infinite alternate,
-    glass-backdrop-breathe 22s ease-in-out infinite alternate;
-}
-
-/* Deliberately a tight, small-radius wander (roughly a 20-point band
-   around center) rather than a full 0-100% traversal — with only two
-   blobs now, in opposite corners, a full-range slide would still drag
-   them past each other at some point in the cycle and recreate the same
-   warm/cool muddy overlap this redesign exists to remove. Multi-stop
-   path (not a straight back-and-forth) so it still reads as organic. */
-@keyframes glass-backdrop-drift {
-  0% {
-    background-position: 40% 40%;
-  }
-  35% {
-    background-position: 52% 45%;
-  }
-  65% {
-    background-position: 45% 55%;
-  }
-  100% {
-    background-position: 58% 50%;
-  }
-}
-
-/* Independent, slower pulse on the canvas size itself — subtle on
-   purpose, same reasoning as above (a big swing would re-spread the
-   blobs enough to cross paths). */
-@keyframes glass-backdrop-breathe {
-  0% {
-    background-size: 172% 172%;
-  }
-  100% {
-    background-size: 184% 184%;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  body {
-    animation: none;
-  }
-}
-
-.dark body {
-  /* Apple Music's dark "now playing" backgrounds are mostly black with a
-     whisper of one or two colors, not a vivid multi-blob wash — much
-     lower alpha than light mode needs, since even a little color reads
-     as a lot against near-black. */
-  background-image:
-    radial-gradient(
-      circle at 15% 10%,
-      color-mix(in srgb, var(--color-accent) 15%, transparent) 0%,
-      transparent 45%
-    ),
-    radial-gradient(
-      circle at 88% 92%,
-      color-mix(in srgb, var(--color-agent) 11%, transparent) 0%,
-      transparent 42%
-    );
 }
 
 /* Tailwind v4 only auto-generates font-family utilities for the canonical
@@ -268,6 +171,32 @@ body {
    needs this manual utility class. */
 .font-display {
   font-family: var(--font-display);
+}
+
+/* Entrance animation (2026-07-27) — a single restrained fade-up on load,
+   matching the reference's own hero-text reveal (opacity + a small upward
+   drift, ease timing, no bounce/spring). Deliberately applied to page-title
+   -level elements only (see call sites), not sprinkled across every card —
+   the reference itself only uses this on its hero, not on every section. */
+.fade-in-up {
+  animation: fade-in-up 500ms ease both;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up {
+    animation: none;
+  }
 }
 
 .landing-panel {
@@ -416,95 +345,52 @@ body {
   border-color: color-mix(in srgb, var(--color-border) 70%, var(--color-accent-light) 30%);
 }
 
-/* === Liquid Glass ===========================================================
-   Apple-inspired translucent material, layered on top of this app's existing
-   brand palette — never replaces --color-accent/--color-agent/etc., those
-   still render exactly as before on top of a glass surface. A glass surface
-   needs a colorful/gradient backdrop behind it to actually read as glass
-   rather than a plain semi-transparent card — see .glass-backdrop, applied
-   at the page level in layout.tsx. Drop-in replacement for the old
-   `border border-border bg-surface ... shadow-card` card pattern used
-   throughout job-details/profile/dashboard — same rounded-2xl/p-6 sit
-   alongside it unchanged, this class only owns background/border/shadow. */
-.glass-panel {
-  /* No position declaration here on purpose — this class must never fight
-     a call site's own position utility (sticky/relative/absolute). It did
-     once: `position: relative` here silently overrode JobActionBar's
-     `sticky` utility class entirely (unlayered CSS always beats a layered
-     Tailwind utility in this file, by design — see the cascade-layer
-     invariant), which combined with that same element's `top-16` offset
-     to visually shift it down over the content below while its original
-     document-flow space stayed reserved — a real, confirmed layout bug,
-     not a browser rendering quirk as first suspected. */
-  background-color: color-mix(in srgb, var(--color-surface) 62%, transparent);
-  /* The sheen is what actually sells "glass" over "translucent card" — one
-     clean specular highlight top-left (as if light is hitting a curved
-     surface), fading to nothing by center. Used to also have a faint
-     mirrored glow bottom-right; dropped it — combined with the ambient
-     body backdrop bleeding through the blur, it compounded into a visible
-     odd "extra glow blob" in the corner of cards rather than reading as
-     glass. Apple Music-style restraint: one clear highlight, not several
-     competing ones. Layered as background-image so it composites above
-     the backdrop-filter blur, under the content. Background opacity
-     bumped 55->62% from the first pass — full transparency was hurting
-     readability on text-dense cards (Qualification/Benefits/Responsi-
-     bilities); the blur/sheen still carries the glass look at this level. */
-  background-image: radial-gradient(
-    120% 90% at 8% -10%,
-    color-mix(in srgb, var(--color-glass-highlight) 55%, transparent) 0%,
-    transparent 55%
-  );
-  -webkit-backdrop-filter: blur(36px) saturate(200%) brightness(108%);
-  backdrop-filter: blur(36px) saturate(200%) brightness(108%);
-  border: 1px solid
-    color-mix(in srgb, var(--color-glass-highlight) 45%, var(--color-border) 40%);
-  box-shadow:
-    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 85%, transparent),
-    inset 0 -14px 20px -12px color-mix(in srgb, var(--color-overlay) 10%, transparent),
-    0 28px 56px -12px color-mix(in srgb, var(--color-overlay) 26%, transparent),
-    0 6px 20px color-mix(in srgb, var(--color-overlay) 12%, transparent);
-}
+/* === Surface system ==========================================================
+   Retired 2026-07-27, blur fully retired 2026-07-27 (same day, second pass):
+   ordinary content cards (job-details/profile/dashboard) no longer use a
+   `.glass-panel` class at all — every real "modern/premium" reference this
+   redesign is based on (Apple's own site, Linear, Vercel, Raycast, measured
+   via live computed styles) treats blur/glass as at most a floating-chrome
+   material, never the default surface for an ordinary in-flow card. Content
+   cards use the plain Tailwind utilities directly at each call site:
+   `border border-border bg-surface shadow-card` — the exact pre-Liquid-Glass
+   pattern this class used to replace. `--shadow-card` is intentionally
+   near-invisible on the near-black dark surfaces; elevation comes from the
+   background/surface/border gray-step difference, same as Linear/Raycast,
+   not from a shadow.
 
-/* Dark mode is intentionally BOLDER than light, not softer — first pass
-   muted the dark variant (lower highlight/glow alpha) to avoid it feeling
-   "too bright," which instead made it read as flatter and weaker than
-   light mode. Real glass over a dark surface reads as more dramatic: a
-   deep black backdrop with a brighter, more saturated glow bleeding
-   through and a crisper top highlight — closer to a "premium/futuristic"
-   feel than a washed-out version of the light variant. */
-.dark .glass-panel {
-  background-color: color-mix(in srgb, var(--color-surface) 34%, transparent);
-  background-image: radial-gradient(
-    120% 90% at 8% -10%,
-    color-mix(in srgb, var(--color-glass-highlight) 32%, transparent) 0%,
-    transparent 55%
-  );
-  border-color: color-mix(in srgb, var(--color-glass-highlight) 30%, var(--color-border) 55%);
-  box-shadow:
-    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 45%, transparent),
-    inset 0 -14px 20px -12px color-mix(in srgb, var(--color-overlay) 35%, transparent),
-    0 32px 64px -12px color-mix(in srgb, var(--color-overlay) 70%, transparent),
-    0 6px 20px color-mix(in srgb, var(--color-overlay) 50%, transparent);
-}
+   Second pass, matching Raycast specifically: its own header/nav has ZERO
+   backdrop-filter (confirmed via getComputedStyle — `blur: "none"`) and the
+   page background has no ambient gradient at all. `.glass-panel-strong`/
+   `.glass-panel-overlay`/`.glass-pill` (the sticky/floating chrome) dropped
+   backdrop-filter entirely and became solid flat surfaces with a hairline
+   border — the class names stay (still describe "chrome treatment," just no
+   longer glass) so call sites didn't need touching. This also fully retires
+   the two Lightning CSS `color-mix()` + `backdrop-filter`/`animation`
+   gotchas as a live risk in this file — there's no backdrop-filter left to
+   trigger them. Still documented in context/ui-tokens.md's Liquid Glass
+   section as a lesson for any future glass/gradient work, even though
+   nothing here currently exercises it. */
 
-/* Interactive variant (job cards, anything clickable) — since .glass-panel
-   is deliberately unlayered (see the cascade-layer invariant elsewhere in
-   this file), a plain `hover:border-accent` Tailwind utility on the same
-   element would silently lose to this class's own border/shadow. Bake the
-   hover feedback into the glass system itself instead: a lift + brighter
-   top highlight + accent-tinted border, closer to how real glass responds
-   to a cursor than a flat border-color swap would be anyway. Also carries
-   a cursor-following glow (--mouse-x/--mouse-y, set by GlassCursorGlow.tsx
-   on pointer move) that fades in on hover — the one genuinely "alive"
-   touch, since a static gradient reads as "glass-styled" rather than
-   glass no matter how good the values are. */
-.glass-panel-interactive {
+/* Interactive hover glow (job-search result cards) — the app's one
+   genuinely "alive" touch, kept and toned down rather than removed: a
+   small lift + a soft cursor-tracked highlight, not a glass sheen. Renamed
+   from .glass-panel-interactive since it no longer has anything to do with
+   glass — just a hover effect layered on top of the same plain flat
+   utilities every other card uses. Cursor tracking (--mouse-x/--mouse-y)
+   still comes from the single document-level listener in
+   components/shared/GlassCursorGlow.tsx; only the selector name changed. */
+.card-interactive-glow {
   position: relative;
   isolation: isolate;
-  transition: transform 200ms ease, box-shadow 200ms ease, border-color 200ms ease;
+  /* ease-in-out, not ease — matches the ~200ms ease-in-out timing Raycast
+     uses on its own nav-link hover transitions, kept consistent across
+     every interactive element in this file rather than mixing easing
+     curves per component. */
+  transition: transform 200ms ease-in-out, box-shadow 200ms ease-in-out, border-color 200ms ease-in-out;
 }
 
-.glass-panel-interactive::after {
+.card-interactive-glow::after {
   content: "";
   position: absolute;
   inset: 0;
@@ -513,115 +399,80 @@ body {
   opacity: 0;
   transition: opacity 250ms ease;
   background: radial-gradient(
-    220px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
-    color-mix(in srgb, var(--color-glass-highlight) 35%, transparent) 0%,
+    180px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    color-mix(in srgb, var(--color-accent) 16%, transparent) 0%,
     transparent 70%
   );
   pointer-events: none;
 }
 
-.glass-panel-interactive:hover::after {
+.card-interactive-glow:hover::after {
   opacity: 1;
 }
 
-.glass-panel-interactive:hover {
+.card-interactive-glow:hover {
   transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-glass-highlight) 25%);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 60%, transparent),
-    0 24px 48px -8px color-mix(in srgb, var(--color-overlay) 18%, transparent),
-    0 4px 12px color-mix(in srgb, var(--color-overlay) 8%, transparent);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border) 55%);
+  box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-overlay) 14%, transparent);
 }
 
-.dark .glass-panel-interactive:hover {
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 22%, transparent),
-    0 24px 48px -8px color-mix(in srgb, var(--color-overlay) 50%, transparent),
-    0 4px 12px color-mix(in srgb, var(--color-overlay) 30%, transparent);
+.dark .card-interactive-glow:hover {
+  box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-overlay) 40%, transparent);
 }
 
-/* Higher-opacity variant for chrome that must stay legible while content
-   scrolls behind it (sticky action bar, navbar) — same glass language
-   (blur, saturate, top highlight) but tuned for readability over motion
-   rather than maximum transparency. Opacity dropped further (80->64%
-   light, 76->58% dark) in the second pass — the first version read as
-   "an off-white card with a border," not glass; this is as transparent as
-   it can go while the Save/Hide/Apply buttons and posting-freshness badge
-   stay legible over arbitrary scrolled content underneath. */
+/* Secondary chrome bar (JobActionBar) — solid, not blurred (2026-07-27):
+   Raycast's own sticky/floating chrome has zero backdrop-filter, relying on
+   a solid background + hairline border instead. JobActionBar itself is no
+   longer sticky (stacking it under the now-floating Navbar read as two
+   competing pinned bars) but this class keeps the same solid recipe since
+   it's still the "secondary chrome" surface, just in normal document flow
+   now. No position declaration here on purpose (see the cascade-layer
+   invariant elsewhere in this file) — call sites own their own position,
+   and this class silently overriding one is exactly the bug class that bit
+   JobActionBar once already when it WAS sticky. */
 .glass-panel-strong {
-  /* No position declaration — see .glass-panel's comment on why. This is
-     the exact class that caused the real overlap bug (JobActionBar's
-     `sticky` utility was being silently overridden). */
-  background-color: color-mix(in srgb, var(--color-surface) 64%, transparent);
-  background-image: radial-gradient(
-    120% 100% at 10% -20%,
-    color-mix(in srgb, var(--color-glass-highlight) 50%, transparent) 0%,
-    transparent 55%
-  );
-  -webkit-backdrop-filter: blur(24px) saturate(210%) brightness(112%);
-  backdrop-filter: blur(24px) saturate(210%) brightness(112%);
-  border: 1px solid
-    color-mix(in srgb, var(--color-glass-highlight) 35%, var(--color-border) 55%);
-  box-shadow:
-    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 70%, transparent),
-    0 10px 28px color-mix(in srgb, var(--color-overlay) 14%, transparent);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  box-shadow: 0 1px 0 var(--color-border);
 }
 
 .dark .glass-panel-strong {
-  background-color: color-mix(in srgb, var(--color-overlay) 58%, transparent);
-  background-image: radial-gradient(
-    120% 100% at 10% -20%,
-    color-mix(in srgb, var(--color-glass-highlight) 26%, transparent) 0%,
-    transparent 55%
-  );
-  border-color: color-mix(in srgb, var(--color-glass-highlight) 24%, var(--color-border) 65%);
-  box-shadow:
-    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 32%, transparent),
-    0 12px 32px color-mix(in srgb, var(--color-overlay) 45%, transparent);
+  background-color: var(--color-overlay);
+  border-color: var(--color-border);
 }
 
-/* Dark ink chrome (navbar, mission-console hero) gets its own strong-glass
-   variant — same idea, but tinted from --color-overlay instead of
-   --color-surface since that chrome stays dark in both app themes. */
+/* Dark ink chrome (navbar, mission-console hero) — same solid, flat recipe,
+   tinted from --color-overlay instead of --color-surface since that chrome
+   stays dark in both app themes (and now converges with --color-background
+   in dark mode, matching how Raycast's own header sits flush on its page).
+   Full border on all sides, not just border-bottom (changed 2026-07-27) —
+   Navbar is now a floating rounded-corner bar (see Navbar.tsx), and
+   FindJobsForm's console already combines this class with `rounded-2xl`;
+   a rounded box with only a bottom edge drawn looked broken on 3 sides. */
 .glass-panel-overlay {
-  background-color: color-mix(in srgb, var(--color-overlay) 62%, transparent);
-  background-image: radial-gradient(
-    140% 120% at 0% -30%,
-    color-mix(in srgb, var(--color-glass-highlight) 22%, transparent) 0%,
-    transparent 55%
-  );
-  -webkit-backdrop-filter: blur(26px) saturate(210%) brightness(112%);
-  backdrop-filter: blur(26px) saturate(210%) brightness(112%);
-  border: 1px solid color-mix(in srgb, var(--color-glass-highlight) 26%, transparent);
-  box-shadow:
-    inset 0 1.5px 0 color-mix(in srgb, var(--color-glass-highlight) 34%, transparent),
-    0 10px 36px color-mix(in srgb, var(--color-overlay) 32%, transparent);
+  background-color: var(--color-overlay);
+  border: 1px solid var(--color-border);
 }
 
-/* Small pill-shaped controls (action-bar buttons, badges, CTAs) — Apple's
-   actual Liquid Glass controls are much rounder than this app's default
-   rounded-lg buttons; the shape reads as part of the material as much as
-   the translucency does. Deliberately not blurred as heavily as the
-   panels above — these sit on top of an already-glass surface (e.g.
-   JobActionBar), so a second full blur pass would be visual noise. */
+/* Small pill-shaped controls (action-bar buttons) — still round, solid
+   surface, no blur (sits on an already-solid JobActionBar so there's
+   nothing behind it to obscure anyway). Transition timing matches Raycast's
+   own ~200ms ease-in-out nav/link hover speed. */
 .glass-pill {
   border-radius: var(--radius-full);
-  background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
-  -webkit-backdrop-filter: blur(10px) saturate(180%);
-  backdrop-filter: blur(10px) saturate(180%);
-  border: 1px solid color-mix(in srgb, var(--color-glass-highlight) 35%, var(--color-border) 50%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 55%, transparent);
-  transition: transform 150ms ease, box-shadow 150ms ease;
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  transition: transform 200ms ease-in-out, border-color 200ms ease-in-out;
 }
 
 .glass-pill:hover {
   transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border) 60%);
 }
 
 .dark .glass-pill {
-  background-color: color-mix(in srgb, var(--color-surface) 45%, transparent);
-  border-color: color-mix(in srgb, var(--color-glass-highlight) 18%, var(--color-border) 65%);
-  box-shadow: inset 0 1px 0 color-mix(in srgb, var(--color-glass-highlight) 20%, transparent);
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-border);
 }
 
 @layer base {
@@ -732,26 +583,37 @@ body {
      agent/success all come directly from the mockup's dark variant);
      the rest are derived by the same lightening-for-dark-bg pattern since
      this app has more granular roles than the mockup covered. */
-  --color-background: #14171b;
-  --color-surface: #1b1f24;
-  --color-surface-secondary: #20242a;
-  --color-surface-tertiary: #171a1f;
-  --color-surface-muted: #1e2227;
+  /* Raycast's own real dark tokens (2026-07-27, replacing the earlier
+     near-black approximation) — pulled directly via getComputedStyle() on
+     raycast.com: --color-bg #07080a, --color-bg-100 rgb(16,17,17),
+     --color-bg-200 rgb(24,25,26), --color-fg hsl(240,11%,96%), --color-fg-200
+     rgb(194,199,202), --color-fg-300 #78787c, --color-border hsl(195,5%,15%).
+     Mapped 1:1 onto this app's existing role names below — accent/agent/
+     success/etc. further down are UNCHANGED, only the neutral ramp moved,
+     per explicit direction to keep this app's own accent rather than
+     Raycast's blue. --color-overlay/-overlay-dark converge with background
+     below (see that block) since Raycast's own chrome isn't a separate
+     darker tone from its page background. */
+  --color-background: #07080a;
+  --color-surface: #101111;
+  --color-surface-secondary: #18191a;
+  --color-surface-tertiary: #0a0b0c;
+  --color-surface-muted: #131415;
 
-  --color-border: #2c3138;
-  --color-border-light: #23272d;
-  --color-border-muted: #272c32;
+  --color-border: #232526;
+  --color-border-light: #18191a;
+  --color-border-muted: #1c1d1f;
 
-  --color-text-primary: #eceeec;
-  --color-text-secondary: #a3aaa3;
-  --color-text-muted: #6d746d;
-  --color-text-dark: #dfe3dc;
-  --color-text-darker: #e5e8e2;
-  --color-text-darkest: #eceeec;
-  --color-text-black: #f2f4f0;
-  --color-text-slate: #dfe3dc;
-  --color-text-slate-medium: #a3aaa3;
-  --color-chart-axis: #6d746d;
+  --color-text-primary: #f3f3f5;
+  --color-text-secondary: #c2c7ca;
+  --color-text-muted: #78787c;
+  --color-text-dark: #e4e6e7;
+  --color-text-darker: #eceeef;
+  --color-text-darkest: #f3f3f5;
+  --color-text-black: #ffffff;
+  --color-text-slate: #e4e6e7;
+  --color-text-slate-medium: #c2c7ca;
+  --color-chart-axis: #5e6366;
 
   --color-accent: #e0913f;
   --color-accent-dark: #f6d9b6;
@@ -789,8 +651,18 @@ body {
 
   --color-linkedin-light: #16232f;
 
-  --color-overlay: #0d0f12;
-  --color-overlay-dark: #08090b;
+  /* Reverted the "converge with background" attempt from earlier the same
+     day (2026-07-27) — that made the floating navbar card invisible: with
+     overlay === background, the "gap" around the bar and the bar itself
+     render as literally the same pixel color, so no card shape reads at
+     all regardless of the margin/border being correct (confirmed via a
+     real screenshot showing the bar completely flush, no floating effect
+     visible). Raycast's own real screenshot shows its nav bar as a
+     visibly lighter panel than the page behind it — matches
+     --color-surface (Raycast's own bg-100 elevation tier) here instead;
+     -dark is one step further (bg-200) for hover/pressed states. */
+  --color-overlay: #101111;
+  --color-overlay-dark: #18191a;
 }
 
 @layer base {

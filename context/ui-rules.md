@@ -1,6 +1,8 @@
 # UI Rules
 
-Concise rules for building JobPilot UI. Design assets are available — use them as the source of truth for visual decisions. These rules cover the most important patterns and constraints to keep the UI consistent without over-specifying every detail.
+Concise rules for building Sortie (formerly JobPilot) UI. Design assets are available — use them as the source of truth for visual decisions. These rules cover the most important patterns and constraints to keep the UI consistent without over-specifying every detail.
+
+**2026-07-27 reconciliation note:** several sections below (Cards, Typography Hierarchy, Badges, Buttons, Form Inputs, Table, Empty States) had hardcoded hex values left over from a pre-rebrand draft (`#7C5CFC` purple primary button, `#E7EAF3` borders, `#101828` text, `#99A1AF` muted, etc.) that never got updated during the 2026-07-18 Sortie rebrand and directly contradicted `ui-tokens.md`'s actual amber/teal palette — see `ui-tokens.md`'s own "never hardcode hex" Invariant, which this file was itself violating. Rewritten below to reference tokens instead of literal values.
 
 ---
 
@@ -36,17 +38,17 @@ Three nav items: Dashboard, Find Jobs, Profile. Dark ink chrome (`bg-overlay`), 
 
 ## Cards
 
-Every content section lives in a card.
+Every content section lives in a card. Flat, not glass — as of 2026-07-27, blur/`backdrop-filter` is reserved exclusively for genuinely floating/sticky chrome (`Navbar`, `JobActionBar`, `FindJobsForm`'s console — see `ui-tokens.md`'s Liquid Glass section), never for an ordinary content card.
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-border-radius: 16px
-padding: 24px
-box-shadow: 0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px -1px rgba(0,0,0,0.1)
+background: bg-surface
+border: border border-border
+border-radius: rounded-2xl (16px)
+padding: p-6 (24px)
+box-shadow: shadow-card
 ```
 
-Never use colored card backgrounds — always white. Color goes inside cards via badges, bars, and text, never on the card surface itself.
+Never use colored card backgrounds. Color goes inside cards via badges, bars, and text, never on the card surface itself.
 
 ---
 
@@ -59,7 +61,7 @@ Three levels used consistently throughout:
 ```
 font-size: 16px
 font-weight: 600
-color: #101828
+color: text-text-primary
 line-height: 24px
 ```
 
@@ -68,7 +70,7 @@ line-height: 24px
 ```
 font-size: 14px
 font-weight: 500
-color: #101828
+color: text-text-primary
 line-height: 20px
 ```
 
@@ -77,11 +79,11 @@ line-height: 20px
 ```
 font-size: 12px
 font-weight: 400
-color: #99A1AF
+color: text-text-muted
 line-height: 16px
 ```
 
-Stat numbers on dashboard use 30px / weight 600 / color #101828.
+Stat numbers on dashboard use 30px / weight 600 / `text-text-primary`.
 
 ---
 
@@ -95,7 +97,7 @@ font-size: 12px
 font-weight: 500
 ```
 
-Trend badges on stat cards use `border-radius: 4px` (not pill) with `#ECFDF5` background and `#009966` text.
+Trend badges on stat cards use `border-radius: 4px` (`rounded-sm`, not pill) with `bg-success-lightest` background and `text-success-darker` text.
 
 ---
 
@@ -104,10 +106,10 @@ Trend badges on stat cards use `border-radius: 4px` (not pill) with `#ECFDF5` ba
 **Primary button:**
 
 ```
-background: #7C5CFC
-color: #FFFFFF
-border-radius: 8px
-padding: 8px 16px
+background: bg-accent
+color: text-accent-foreground
+border-radius: rounded-md (8px)
+padding: px-4 py-2 (16px / 8px)
 font-size: 14px
 font-weight: 500
 ```
@@ -115,11 +117,11 @@ font-weight: 500
 **Secondary button:**
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-color: #101828
-border-radius: 8px
-padding: 8px 16px
+background: bg-surface
+border: border border-border
+color: text-text-primary
+border-radius: rounded-md (8px)
+padding: px-4 py-2 (16px / 8px)
 ```
 
 ---
@@ -127,13 +129,13 @@ padding: 8px 16px
 ## Form Inputs
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-border-radius: 8px
-padding: 8px 12px
+background: bg-surface
+border: border border-border
+border-radius: rounded-md (8px)
+padding: px-3 py-2 (12px / 8px)
 font-size: 14px
-color: #101828
-placeholder color: #99A1AF
+color: text-text-primary
+placeholder color: text-text-muted
 focus: ring-1 ring-accent border-accent
 ```
 
@@ -141,11 +143,11 @@ focus: ring-1 ring-accent border-accent
 
 ## Table (Jobs List)
 
-- No alternating row colors — white rows only, separated by border
-- Row border: `1px solid #E7EAF3` between rows
-- Column headers: uppercase, 12px, font-weight 500, color `#6A7282`
-- Row text: 14px, color `#101828`
-- Hover state: `background: #F9FAFB`
+- No alternating row colors — `bg-surface` rows only, separated by border
+- Row border: `border-b border-border` between rows
+- Column headers: uppercase, 12px, font-weight 500, `text-text-secondary`
+- Row text: 14px, `text-text-primary`
+- Hover state: `hover:bg-surface-secondary`
 
 ---
 
@@ -156,14 +158,14 @@ Inline progress bar shown next to the percentage number.
 ```
 height: 4px
 border-radius: 9999px
-background track: #E7EAF3
+background track: bg-border-light
 ```
 
 Fill color by score:
 
-- 80-100%: `#3F7A4F` (green, `--color-success`)
-- 60-79%: `#4472A8` (steel blue, `--color-info`)
-- Below 60%: `#B5502E` (red-orange, `--color-warning`)
+- 80-100%: `bg-success` (green)
+- 60-79%: `bg-info` (steel blue)
+- Below 60%: `bg-warning` (red-orange)
 
 Score numbers themselves (not the bar) render in `font-mono font-semibold tabular-nums`, colored the same tier — see `FindJobsForm.tsx` job cards for the reference implementation.
 
@@ -192,7 +194,7 @@ The point is reliability, not decoration: a user should be able to tell "the AI 
 
 Every section that can be empty must have an empty state. Keep it minimal:
 
-- Short descriptive text in `color: #99A1AF`
+- Short descriptive text in `text-text-muted`
 - Optional icon above text
 - CTA button if there's a logical next action
 

@@ -31,7 +31,7 @@ function EmptyState({ message }: { message: string }) {
 
 export function CompanyResearchChart({ data }: { data: DayCount[] }) {
   return (
-    <div className="glass-panel rounded-2xl p-6">
+    <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <h2 className="text-base font-semibold leading-6 text-text-primary">
         Company Research Activity
       </h2>
@@ -85,7 +85,7 @@ export function CompanyResearchChart({ data }: { data: DayCount[] }) {
 
 export function JobsOverTimeChart({ data }: { data: DayCount[] }) {
   return (
-    <div className="glass-panel rounded-2xl p-6">
+    <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <h2 className="text-base font-semibold leading-6 text-text-primary">
         Jobs Found Over Time
       </h2>
@@ -155,7 +155,7 @@ export function JobsOverTimeChart({ data }: { data: DayCount[] }) {
 
 export function MatchDistributionChart({ data }: { data: MatchBucket[] }) {
   return (
-    <div className="glass-panel rounded-2xl p-6">
+    <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <h2 className="text-base font-semibold leading-6 text-text-primary">
         Match Score Distribution
       </h2>

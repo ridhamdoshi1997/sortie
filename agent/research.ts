@@ -299,7 +299,7 @@ function extractMarkdownLinks(markdown: string): Array<{ text: string; url: stri
 // genuinely free at this app's volume (10M free tokens with an API key,
 // or a lower-rate-limited keyless tier). Replaces Browserbase/Stagehand as
 // the "get real content off a JS-rendered page" step.
-async function fetchViaJinaReader(url: string): Promise<string | null> {
+export async function fetchViaJinaReader(url: string): Promise<string | null> {
   const jinaKey = process.env.JINA_API_KEY;
   const headers: Record<string, string> = { Accept: "text/plain" };
   if (jinaKey) {

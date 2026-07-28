@@ -179,7 +179,7 @@ function LeaderCard({ leader }: { leader: CompanyLeader }) {
 
 export function CompanyResearch({ company, jobId, research }: Props) {
   return (
-    <section className="glass-panel overflow-hidden rounded-2xl">
+    <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex items-center gap-3 border-b border-border p-6">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
           <Building2 className="h-4 w-4 text-accent" />

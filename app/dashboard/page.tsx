@@ -181,7 +181,7 @@ export default async function DashboardPage() {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-360 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-360 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
         {completionPercent < 100 && (
           <ProfileAttentionBanner
             completionPercent={completionPercent}

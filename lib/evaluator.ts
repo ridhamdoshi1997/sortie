@@ -65,6 +65,25 @@ export type JobEvaluationResult = {
   // "Application Review -> Intro Chat -> Technical Deep Dive -> Decision"
   // pipeline) that wasn't captured by any existing field.
   hiringProcess: string[];
+  // Extracted from the posting text — a normalized level label (e.g.
+  // "Entry-level", "Mid-level", "Senior", "Lead", "Executive") and the
+  // stated years-of-experience requirement (e.g. "5+ years"), when the
+  // posting actually says so. Empty string when it doesn't — never guessed
+  // from title alone.
+  seniorityLevel: string;
+  yearsExperienceRequired: string;
+  // Not extracted from the posting — this is the model's own world
+  // knowledge of the real company, used to build a reliable logo lookup.
+  // Naive string-guessing (lowercase the company name, strip "inc"/"llc")
+  // fails for any company known by an abbreviation or a name that doesn't
+  // literally match its domain — "Bank of Montreal" isn't
+  // bankofmontreal.com, it's bmo.com; "Royal Bank of Canada" is rbc.com,
+  // not royalbankofcanada.com. Confirmed live (2026-07-28) that this was
+  // the actual cause of most missing/wrong logos, not a broken logo API.
+  // Empty string when the model isn't confident — never guess a plausible-
+  // looking but wrong domain, since a wrong domain can silently return
+  // ANOTHER real company's logo, not just a 404.
+  companyDomain: string;
 };
 
 export type EvaluationJob = {
@@ -107,6 +126,9 @@ const jobEvaluationSchema = z.object({
   aboutRole: z.string().default(""),
   salary: z.string().default(""),
   hiringProcess: z.array(z.string()).default([]),
+  seniorityLevel: z.string().default(""),
+  yearsExperienceRequired: z.string().default(""),
+  companyDomain: z.string().default(""),
 });
 
 const responseSchema = z.object({
@@ -172,6 +194,9 @@ function fallbackEvaluation(id: string): JobEvaluationResult {
     aboutRole: "",
     salary: "",
     hiringProcess: [],
+    seniorityLevel: "",
+    yearsExperienceRequired: "",
+    companyDomain: "",
   };
 }
 
@@ -201,6 +226,9 @@ Rules:
 - aboutRole: a clean 2-4 sentence prose summary of the role and company. The raw Description text is often a scraped job-board page mixed with boilerplate — salary-context filler ("Market median for X roles is..."), "Resume Keywords to Include" sections, "Sign up free to auto-tailor your resume" prompts, apply-tracking IDs, and near-identical Equal Opportunity/accommodation/legal disclaimer paragraphs that appear on almost every posting worded almost the same way regardless of employer. Ignore all of that noise; write the summary only from the real posting content underneath it — never include EEO/accommodation boilerplate in the summary, it carries no per-job signal.
 - salary: the posting's stated compensation as a short human-readable string (e.g. "$150,000 - $180,000 CAD" or "$46-$65/hr"), extracted directly from wherever the posting states it (a dedicated "Compensation"/"Pay Details" block, or inline). Extraction, not invention — if the posting genuinely states no figure, return an empty string.
 - hiringProcess: the posting's interview/application process detail, if it describes one (number of steps, format, timeline — e.g. "Application review", "Technical interview (1 hour)", "Final decision within 2-4 business days"). Each a short bullet-point phrase. Most postings won't have this — return an empty array rather than inventing a generic process.
+- seniorityLevel: a short normalized label (e.g. "Entry-level", "Mid-level", "Senior", "Lead", "Executive") ONLY if the posting itself states or clearly implies a level (title or an explicit "Seniority Level" field) — extraction, not inference from tone. Return an empty string if the posting doesn't say.
+- yearsExperienceRequired: the posting's stated experience requirement as a short string (e.g. "5+ years", "2-4 years"), extracted directly from the text. Return an empty string if the posting doesn't state one — never estimate from seniority level or title alone.
+- companyDomain: the bare primary website domain of the company named in this posting (e.g. "bmo.com", "rbc.com", "scotiabank.com") — no protocol, no "www.", no path. Use your own real-world knowledge of the actual company, not a literal transformation of its name (Bank of Montreal is bmo.com, not bankofmontreal.com). Only return a domain you are genuinely confident is correct for THIS specific company — if you don't recognize the company or aren't sure, return an empty string. A wrong domain here would surface a completely different, unrelated company's logo, which is worse than showing no logo at all.
 
 Return ONLY valid JSON matching this exact shape:
 {
@@ -222,7 +250,10 @@ Return ONLY valid JSON matching this exact shape:
       "benefits": string[],
       "aboutRole": "string",
       "salary": "string",
-      "hiringProcess": string[]
+      "hiringProcess": string[],
+      "seniorityLevel": "string",
+      "yearsExperienceRequired": "string",
+      "companyDomain": "string"
     }
   ]
 }`;
@@ -307,6 +338,9 @@ ${jobs.map(buildJobText).join("\n\n---\n\n")}`;
       aboutRole: evaluation.aboutRole,
       salary: evaluation.salary,
       hiringProcess: evaluation.hiringProcess,
+      seniorityLevel: evaluation.seniorityLevel,
+      yearsExperienceRequired: evaluation.yearsExperienceRequired,
+      companyDomain: evaluation.companyDomain,
     };
   });
 }

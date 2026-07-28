@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { ArrowLeft, Bookmark, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
 
-import { toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { markApplied, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
 
 type Props = {
   jobId: string;
@@ -12,6 +12,7 @@ type Props = {
   company: string;
   initialSaved: boolean;
   initialHidden: boolean;
+  initialApplicationStatus?: string;
   postedAt?: string | null;
   isRemote?: boolean;
 };
@@ -22,12 +23,23 @@ export function JobActionBar({
   company,
   initialSaved,
   initialHidden,
+  initialApplicationStatus,
   postedAt,
   isRemote,
 }: Props) {
   const [saved, setSaved] = useState(initialSaved);
   const [hidden, setHidden] = useState(initialHidden);
+  const [applied, setApplied] = useState(initialApplicationStatus === "applied");
   const [isPending, startTransition] = useTransition();
+
+  function handleMarkApplied(): void {
+    if (applied) return;
+    setApplied(true);
+    startTransition(async () => {
+      const result = await markApplied(jobId);
+      if (!result.success) setApplied(false);
+    });
+  }
 
   function handleSave(): void {
     const next = !saved;
@@ -48,7 +60,14 @@ export function JobActionBar({
   }
 
   return (
-    <div className="glass-panel-strong sticky top-16 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
+    // No longer sticky (2026-07-27) — with the main Navbar now its own
+    // floating/sticky bar, stacking a second sticky bar directly under it
+    // read as one too many pinned elements competing for the same space
+    // (and needed its own top offset kept in sync with Navbar's height,
+    // which is exactly the kind of dependency that broke once already).
+    // This is a plain in-flow bar now; Save/Hide/Apply just aren't
+    // reachable without scrolling back up, same as any other section.
+    <div className="glass-panel-strong flex flex-wrap items-center justify-between gap-3 rounded-2xl p-4">
       <Link
         href="/find-jobs"
         className="inline-flex items-center gap-2 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
@@ -96,12 +115,24 @@ export function JobActionBar({
           {hidden ? "Unhide" : "Hide"}
         </button>
 
+        <button
+          type="button"
+          disabled={isPending || applied}
+          onClick={handleMarkApplied}
+          className={`glass-pill inline-flex min-h-9 items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-100 ${
+            applied ? "text-success" : "text-text-secondary"
+          }`}
+        >
+          <Check className="h-4 w-4" />
+          {applied ? "Applied" : "Mark as applied"}
+        </button>
+
         {applyUrl ? (
           <Link
             href={applyUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-9 items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground shadow-[inset_0_1px_0_color-mix(in_srgb,var(--color-glass-highlight)_35%,transparent)] transition-opacity hover:opacity-90"
+            className="inline-flex min-h-9 items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
           >
             Apply at {company}
             <ExternalLink className="h-4 w-4" />

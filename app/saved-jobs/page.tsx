@@ -24,7 +24,7 @@ export default async function SavedJobsPage() {
       <Navbar isAuthenticated />
       <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 p-8">
         <div className="flex flex-col gap-1">
-          <h1 className="text-4xl font-bold tracking-tight text-text-primary">Saved Jobs</h1>
+          <h1 className="fade-in-up text-4xl font-bold tracking-tight text-text-primary">Saved Jobs</h1>
           <p className="text-lg text-text-secondary">
             Every job you&apos;ve saved, regardless of which search found it.
           </p>
@@ -36,8 +36,8 @@ export default async function SavedJobsPage() {
           </p>
         ) : (
           <div className="flex flex-col gap-4">
-            {jobs.map((job) => (
-              <JobResultCard key={job.id} job={job} />
+            {jobs.map((job, index) => (
+              <JobResultCard key={job.id} job={job} index={index} />
             ))}
           </div>
         )}

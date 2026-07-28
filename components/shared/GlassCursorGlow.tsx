@@ -2,16 +2,15 @@
 
 import { useEffect } from "react";
 
-// The one genuinely "alive" touch in the Liquid Glass system — a glow that
-// follows the cursor on any .glass-panel-interactive element (see the CSS
-// class's own comment in globals.css). Everything else in that system is a
-// static gradient; without this, the whole thing reads as "glass-styled"
-// rather than glass, no matter how good the static values are.
+// A subtle cursor-tracked highlight on any .card-interactive-glow element
+// (see the CSS class's own comment in globals.css) — the app's one hover
+// "alive" touch, kept from the original Liquid Glass system but toned down
+// once ordinary cards stopped being glass.
 //
 // Single delegated listener on the document (not one per card) so this
-// scales to however many glass cards are on a page without extra listeners.
-// rAF-throttled since pointermove can fire far faster than the display
-// can usefully repaint a CSS custom property update.
+// scales to however many interactive cards are on a page without extra
+// listeners. rAF-throttled since pointermove can fire far faster than the
+// display can usefully repaint a CSS custom property update.
 export function GlassCursorGlow() {
   useEffect(() => {
     let frame: number | null = null;
@@ -23,7 +22,7 @@ export function GlassCursorGlow() {
       if (!event) return;
 
       const target = (event.target as Element | null)?.closest<HTMLElement>(
-        ".glass-panel-interactive",
+        ".card-interactive-glow",
       );
       if (!target) return;
 

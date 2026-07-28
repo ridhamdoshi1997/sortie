@@ -2,11 +2,21 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-07-27
+Last updated: 2026-07-28
 
 ---
 
-## 30-second state (2026-07-24 → 2026-07-27 session)
+## 30-second state (2026-07-28)
+
+**Big session: theme continued to match Raycast specifically, a full nav restructure with 4 new pages shipped, a real Gemini rate-limit/quota crisis was root-caused and fixed in 3 layers, and company logos went through 6 live-verified iterations before landing on the current fix.** Full blow-by-blow in `progress-tracker.md`'s top entry — read that before assuming any of these are fully settled.
+
+**One thing genuinely not yet re-verified — check this first:** the company-logo fix's final piece (`app/api/logo/route.ts`, a same-origin proxy for Clearbit requests, added because direct client-side requests to `logo.clearbit.com` were showing a stuck broken-image glyph with `onError` never firing — likely an ad-blocker/tracking-protection extension silently blocking a known third-party data domain) was the very last change made this session. Confirm logos actually render now, including for companies like Scotiabank/Moneris/BMO/RBC that were flip-flopping across earlier iterations.
+
+**Also worth a real look, not assumed fine:** the floating Navbar + non-sticky `JobActionBar` + `FloatingApplyButton` layout, the icon-bullet redesign on Qualification/Benefits/Responsibilities/HiringProcess, and the new nav (Jobs dropdown, mobile drawer, Settings/Notifications icons) — all built and type/lint-clean, none click-tested end-to-end since this environment still can't complete a real OAuth login (same standing limitation, see gotchas below).
+
+---
+
+## Previous session summary (2026-07-24 → 2026-07-27) — JD structure, Saved Jobs, original Liquid Glass build
 
 **This session had two very different halves: (1) fixing a real, previously-latent data-pipeline bug plus a genuinely new feature (Saved Jobs), and (2) a large, iterative "Liquid Glass" visual redesign across the whole app that found several real build-tool/CSS bugs along the way.** Read `context/progress-tracker.md`'s top entries for full detail; this is the fast summary. Full detail on part 2 also lives in `context/ui-tokens.md`'s "Liquid Glass" section — **read that before touching `app/globals.css` again**, it documents three confirmed Lightning CSS bugs that will recur if not read first.
 
@@ -56,8 +66,8 @@ Also found via a real screenshot: the first ambient-backdrop design (4 radial gr
 
 ## Steps to reorient, in order
 
-1. **First, check with the user whether the Liquid Glass backdrop redesign (Apple Music-inspired, 2-blob) actually looks right** — it was applied and unverified at session end, see the note above.
-2. Read `context/ui-tokens.md`'s **Liquid Glass** section in full before touching `app/globals.css` — three confirmed Lightning CSS bugs are documented there with the exact fix pattern; assume a fourth exists somewhere if you add new `color-mix()`-based rules and something silently doesn't apply. Verify via `getComputedStyle()` in the browser, not just by reading source — source-level correctness has not been a reliable signal in this file.
+1. **First, check with the user whether the 2026-07-27 flat-card/near-black redesign actually reads as premium** — it was applied and unverified at session end, see the note above.
+2. Read `context/ui-tokens.md`'s **Liquid Glass** section in full before touching `app/globals.css` — two confirmed Lightning CSS bugs are documented there with the exact fix pattern, still live risks for the chrome classes that stayed glass (`.glass-panel-strong`/`.glass-panel-overlay`/`.glass-pill`); assume a similar bug exists somewhere if you add new `color-mix()`-based rules and something silently doesn't apply. Verify via `getComputedStyle()` in the browser, not just by reading source — source-level correctness has not been a reliable signal in this file.
 3. Check backfill progress: `npx @insforge/cli db query "SELECT count(*) FILTER (WHERE match_score IS NOT NULL) AS evaluated, count(*) FILTER (WHERE about_role IS NOT NULL) AS has_structure FROM jobs" --json`. If `has_structure` is still well below `evaluated`, the backfill script can just be re-run (it's idempotent, targets only unbackfilled rows) — see `progress-tracker.md` for the exact command.
 4. Read `context/progress-tracker.md`'s **Current Status** section — top entries are this session's full detail.
 5. Run `git status` — confirm the tree matches what this file claims.
@@ -74,6 +84,10 @@ Also found via a real screenshot: the first ambient-backdrop design (4 radial gr
 - Two Apify actors have their own gates independent of your account balance — `dev_fusion/Linkedin-Profile-Scraper` refuses free-plan API calls entirely (Console-only), and some actors need a one-time manual permission approval in the Apify console before their first API call works (`https://console.apify.com/actors/<id>?approvePermissions=true` — the error response gives you the exact link when this is the blocker).
 - **New this session:** the free-tier `gemini-3.1-flash-lite` key (used both by `gemini-mcp-tool` and this app's own `lib/evaluator.ts`) is rate-limited to 15 requests/minute — confirmed live from the actual 429 response. Any bulk/backfill script against this key needs real pacing (4.5s+ between calls) and generous backoff on 429/503, or it fails partway through.
 - **New this session:** Lightning CSS (Tailwind v4's build tool) has silently dropped valid CSS properties three separate times when they shared a declaration block with a `color-mix()`-based value — see `ui-tokens.md`'s Liquid Glass section for the exact patterns and fixes. Don't assume a CSS change "didn't work" is your logic being wrong before checking the actual compiled output.
+- **New this session:** `gemini-3.1-flash-lite`'s free tier has BOTH an RPM (15/min) and a separate **daily** RPD cap (500/day) — confirmed live against the real Google AI Studio usage dashboard. Retrying/backing off only helps with the RPM case; once RPD is exhausted there is no quota left until the next day no matter how long you wait or retry. `lib/models.ts` now has retry+backoff (`withRateLimitRetry`) AND a model fallback chain (`GEMINI_FALLBACK_MODELS`) AND a process-lifetime cooldown cache so a multi-call request (company research) doesn't re-pay the "primary is exhausted" discovery cost on every call — but if research/evaluation is ever slow or failing again, check that dashboard first before assuming it's a code regression.
+- **New this session:** don't guess Gemini model ID strings from Google AI Studio's dashboard display names — several read as having real quota there but are actually `404 "no longer available to new users"` (deprecated for this account) when actually called. Verify live against the exact OpenAI-compat endpoint `lib/models.ts` calls (a real `chat.completions.create` test call), not just `models.list`, before adding a model anywhere.
+- **New this session:** this sandboxed environment could not get outbound network access working reliably via either Bash (`curl` — no DNS resolution) or the browser tool (`navigate`/`fetch` to arbitrary external hosts kept failing) partway through the session — several live-verification attempts (Clearbit's actual behavior, Google favicon CORS headers) had to fall back to reasoning from user-provided screenshots instead of direct confirmation. If this recurs, don't assume an external service is broken just because it couldn't be reached from here — the CLI (`npx @insforge/cli`) and the running dev server's own Node process (`node --env-file=.env <script>`) still had working network access throughout, useful as an alternative verification path.
+- **New this session, still open:** Company logos went through 6 iterations (full history in `progress-tracker.md`'s top entry) before landing on `app/api/logo/route.ts` — a same-origin proxy for Clearbit requests, added because direct client-side `<img>` requests to `logo.clearbit.com` were showing a permanently-stuck broken-image glyph with `onError` never firing (suspected ad-blocker/tracking-protection interference, never fully confirmed). **This was the very last change of the session and has not been re-verified against a real screenshot** — check it first.
 
 ---
 

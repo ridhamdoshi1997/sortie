@@ -89,6 +89,7 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         url: job.url || null,
         external_apply_url: job.applyUrl || null,
         posted_at: job.postedAt || null,
+        company_logo_url: job.logoUrl || null,
         // Never actually set anywhere before — needed so a later page load
         // can scope "my last search" to exactly this batch instead of
         // showing the user's entire saved-job history.

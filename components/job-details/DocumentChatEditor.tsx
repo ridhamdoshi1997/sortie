@@ -58,7 +58,11 @@ export function DocumentChatEditor({ jobId, kind }: Props) {
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+    // No own border/background (2026-07-28) — this used to be a 3rd nested
+    // surface tone (bg-surface, inside DocumentAction's bg-surface-secondary,
+    // inside DocumentGenerator's bg-surface). A plain top divider reads as a
+    // continuation of the card it lives in rather than a separate box.
+    <div className="flex flex-col gap-2 border-t border-border pt-3">
       <p className="font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted">
         Refine with AI
       </p>

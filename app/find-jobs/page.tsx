@@ -55,7 +55,7 @@ export default async function FindJobsPage() {
             <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 p-8">
                 {/* 1. Page Header */}
                 <div className="flex flex-col gap-1">
-                    <h1 className="text-4xl font-bold tracking-tight text-text-primary">Find & Evaluate</h1>
+                    <h1 className="fade-in-up text-4xl font-bold tracking-tight text-text-primary">Find & Evaluate</h1>
                     <p className="text-lg text-text-secondary">
                         Source new opportunities and run them through the job search engine.
                     </p>

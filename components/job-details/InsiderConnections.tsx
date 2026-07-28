@@ -113,7 +113,7 @@ export function InsiderConnections({ jobId, company, connections, lookedUp }: Pr
     (connections?.school.length ?? 0) > 0;
 
   return (
-    <section className="glass-panel overflow-hidden rounded-2xl">
+    <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">

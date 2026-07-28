@@ -35,7 +35,7 @@ export default async function ProfilePage() {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <ProfileAttentionBanner
           completionPercent={completionPercent}
           missingFields={missingFields}

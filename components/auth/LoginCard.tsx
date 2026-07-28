@@ -14,9 +14,9 @@ export function LoginCard({ error }: Props) {
   const message = error ? errorMessages[error] : null;
 
   return (
-    <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <section className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="grid w-full max-w-5xl overflow-hidden rounded-[24px] border border-border bg-surface shadow-card lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="landing-hero-glow flex min-h-[440px] flex-col justify-between border-b border-border p-8 sm:p-10 lg:border-b-0 lg:border-r">
+        <div className="bg-surface-secondary flex min-h-[440px] flex-col justify-between border-b border-border p-8 sm:p-10 lg:border-b-0 lg:border-r">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary">
               <ShieldCheck aria-hidden className="h-4 w-4 text-accent" />

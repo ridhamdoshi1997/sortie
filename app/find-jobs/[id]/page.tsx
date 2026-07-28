@@ -7,6 +7,7 @@ import { Benefits } from "@/components/job-details/Benefits";
 import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
+import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
@@ -17,9 +18,7 @@ import { Qualification } from "@/components/job-details/Qualification";
 import { Responsibilities } from "@/components/job-details/Responsibilities";
 import { ResumeFitSection } from "@/components/job-details/ResumeFitSection";
 import { Navbar } from "@/components/layout/Navbar";
-import { ModelSelector } from "@/components/shared/ModelSelector";
 import { NetworkSignals } from "@/components/shared/NetworkSignals";
-import { ThemeSelector } from "@/components/shared/ThemeSelector";
 import { Tabs } from "@/components/ui/Tabs";
 import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
@@ -97,103 +96,120 @@ export default async function JobDetailsPage({ params }: Props) {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        <JobActionBar
-          jobId={job.id}
-          applyUrl={applyUrl}
-          company={company}
-          initialSaved={job.is_saved}
-          initialHidden={job.is_hidden}
-          postedAt={job.posted_at}
-          isRemote={isRemote}
-        />
-        <JobInfo job={job} />
-
-        <Tabs
-          tabs={[
-            {
-              id: "overview",
-              label: "Overview",
-              content: (
-                <div className="flex flex-col gap-6">
-                  <MatchScore
-                    matchReason={job.match_reason}
-                    evaluation={job.evaluation}
-                    recommendationScore={job.recommendation_score}
-                  />
-
-                  <EvaluationBreakdown
-                    evaluation={job.evaluation ?? []}
-                    recommendationScore={job.recommendation_score}
-                    overallGrade={job.overall_grade}
-                  />
-
-                  <JobDescription
-                    aboutRole={job.about_role || job.description}
-                    sourceUrl={applyUrl}
-                  />
-
-                  <Responsibilities items={job.responsibilities ?? []} />
-
-                  <Qualification
-                    jobId={job.id}
-                    matchedSkills={job.matched_skills}
-                    missingSkills={job.missing_skills}
-                    requirements={job.requirements}
-                    niceToHave={job.nice_to_have}
-                  />
-
-                  <Benefits items={job.benefits ?? []} />
-
-                  <HiringProcess items={job.hiring_process ?? []} />
-
-                  <NetworkSignals
-                    company={company}
-                    previousEmployer={previousEmployer}
-                    searchTerms={networkSearchTerms}
-                  />
-                </div>
-              ),
-            },
-            {
-              id: "company",
-              label: "Company",
-              content: (
-                <div className="flex flex-col gap-6">
-                  <CompanyResearch
-                    company={company}
-                    jobId={job.id}
-                    research={job.company_research}
-                  />
-
-                  {job.company_research && (
-                    <InsiderConnections
-                      jobId={job.id}
-                      company={company}
-                      connections={job.company_research.insiderConnections}
-                      lookedUp={job.company_research.insiderConnectionsLookedUp}
-                    />
-                  )}
-                </div>
-              ),
-            },
-          ]}
-        />
-
-        <div className="flex flex-wrap justify-end gap-4">
-          <ModelSelector value={modelValue} isAdmin={isAdmin} />
-          <ThemeSelector value={profile?.preferred_resume_theme ?? "modern"} />
+      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+        {/* Staggered entrance (2026-07-28) — .fade-in-up already existed
+            (used on a few page titles) but was never applied to job-details
+            cards. Wrapping divs here, not editing each card component, so
+            this stays a page-level concern rather than 10+ files each
+            growing a delay prop. Respects prefers-reduced-motion via the
+            class itself. */}
+        <div className="fade-in-up">
+          <JobActionBar
+            jobId={job.id}
+            applyUrl={applyUrl}
+            company={company}
+            initialSaved={job.is_saved}
+            initialHidden={job.is_hidden}
+            initialApplicationStatus={job.application_status}
+            postedAt={job.posted_at}
+            isRemote={isRemote}
+          />
         </div>
-        <ResumeFitSection
-          jobId={job.id}
-          company={company}
-          analysis={job.resume_analysis}
-        />
-        <DocumentGenerator
-          jobId={job.id}
-          resumePdfUrl={application?.resume_pdf_url ?? null}
-          coverLetterPdfUrl={application?.cover_letter_pdf_url ?? null}
-        />
+        <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
+          <JobInfo job={job} />
+        </div>
+
+        <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
+          <Tabs
+            tabs={[
+              {
+                id: "overview",
+                label: "Overview",
+                content: (
+                  <div className="flex flex-col gap-6">
+                    <MatchScore
+                      matchReason={job.match_reason}
+                      evaluation={job.evaluation}
+                      recommendationScore={job.recommendation_score}
+                    />
+
+                    <EvaluationBreakdown
+                      evaluation={job.evaluation ?? []}
+                      recommendationScore={job.recommendation_score}
+                      overallGrade={job.overall_grade}
+                    />
+
+                    <JobDescription
+                      aboutRole={job.about_role || job.description}
+                      sourceUrl={applyUrl}
+                    />
+
+                    <Responsibilities items={job.responsibilities ?? []} />
+
+                    <Qualification
+                      jobId={job.id}
+                      matchedSkills={job.matched_skills}
+                      missingSkills={job.missing_skills}
+                      requirements={job.requirements}
+                      niceToHave={job.nice_to_have}
+                    />
+
+                    <Benefits items={job.benefits ?? []} />
+
+                    <HiringProcess items={job.hiring_process ?? []} />
+
+                    <NetworkSignals
+                      company={company}
+                      previousEmployer={previousEmployer}
+                      searchTerms={networkSearchTerms}
+                    />
+                  </div>
+                ),
+              },
+              {
+                id: "company",
+                label: "Company",
+                content: (
+                  <div className="flex flex-col gap-6">
+                    <CompanyResearch
+                      company={company}
+                      jobId={job.id}
+                      research={job.company_research}
+                    />
+
+                    {job.company_research && (
+                      <InsiderConnections
+                        jobId={job.id}
+                        company={company}
+                        connections={job.company_research.insiderConnections}
+                        lookedUp={job.company_research.insiderConnectionsLookedUp}
+                      />
+                    )}
+                  </div>
+                ),
+              },
+            ]}
+          />
+        </div>
+
+        <div className="fade-in-up" style={{ animationDelay: "240ms" }}>
+          <ResumeFitSection
+            jobId={job.id}
+            company={company}
+            analysis={job.resume_analysis}
+            modelValue={modelValue}
+            isAdmin={isAdmin}
+            themeValue={profile?.preferred_resume_theme ?? "modern"}
+          />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: "300ms" }}>
+          <DocumentGenerator
+            jobId={job.id}
+            resumePdfUrl={application?.resume_pdf_url ?? null}
+            coverLetterPdfUrl={application?.cover_letter_pdf_url ?? null}
+          />
+        </div>
+        <FloatingApplyButton applyUrl={applyUrl} company={company} />
       </main>
     </>
   );

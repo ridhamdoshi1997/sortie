@@ -83,7 +83,7 @@ export function EvaluationBreakdown({ evaluation, recommendationScore, overallGr
     const overallStyle = overallGrade ? GRADE_STYLES[overallGrade] : null;
 
     return (
-        <section className="glass-panel rounded-2xl p-6">
+        <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                     10-Dimension Evaluation

@@ -17,7 +17,7 @@ export function JobDescription({ aboutRole, sourceUrl }: Props) {
   const shouldShowFullPostLink = isTruncatedPreview(aboutRole) && sourceUrl;
 
   return (
-    <section className="glass-panel rounded-2xl p-6">
+    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
           <FileText className="h-4 w-4 text-text-secondary" />

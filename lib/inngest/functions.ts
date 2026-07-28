@@ -125,10 +125,23 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 benefits: evalResult?.benefits || [],
                                 about_role: evalResult?.aboutRole || null,
                                 hiring_process: evalResult?.hiringProcess || [],
+                                seniority_level: evalResult?.seniorityLevel || null,
+                                years_experience_required: evalResult?.yearsExperienceRequired || null,
                                 // Fallback only — never overwrite a real
                                 // structured salary already on the row
                                 // (e.g. from the scraper's own source data).
                                 ...(job.salary ? {} : { salary: evalResult?.salary || null }),
+                                // Fallback only — never overwrite a real
+                                // scraped thumbnail from SerpApi. Built from
+                                // the model's own knowledge of the company's
+                                // real domain (see companyDomain's comment in
+                                // evaluator.ts), not the old naive
+                                // lowercase-the-name guess — that guess is
+                                // what actually caused most missing/wrong
+                                // logos, confirmed live 2026-07-28.
+                                ...(job.company_logo_url || !evalResult?.companyDomain
+                                    ? {}
+                                    : { company_logo_url: `https://logo.clearbit.com/${evalResult.companyDomain}?size=128` }),
                             })
                             .eq("id", job.id);
 
