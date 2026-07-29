@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
-import { GlassCursorGlow } from "@/components/shared/GlassCursorGlow";
+import { GlassCursorGlow } from "@/components/ui/GlassCursorGlow";
+import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
 
 export const metadata: Metadata = {
   title: "Sortie",
@@ -21,6 +22,7 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <GlassCursorGlow />
           {children}
+          <SettingsModalLoader />
         </ThemeProvider>
       </body>
     </html>

@@ -37,6 +37,14 @@ type Props = {
 // Sortie's own scoring language. Deliberately not quoting an industry
 // "ATS threshold" statistic — this is our assessment of fit against this
 // posting, and the copy says so rather than implying an external standard.
+//
+// Redesigned 2026-07-28 — top two tiers were a literal green/blue traffic
+// light. This score is AI-generated, so "Strong fit" uses --color-agent
+// (the app's AI-content signal, not a generic success green) and "Decent
+// fit" is neutral gray rather than an "info" blue — a decent-but-unremarkable
+// fit isn't a notable event worth its own color. The bottom two tiers keep
+// warning/error: their copy already carries real cautionary guidance
+// ("reconsider the role"), so that severity stays intentional, not decorative.
 function scoreBand(score: number): {
     label: string;
     ring: string;
@@ -47,18 +55,18 @@ function scoreBand(score: number): {
     if (score >= 8) {
         return {
             label: "Strong fit",
-            ring: "text-success",
-            text: "text-success-foreground",
-            chip: "bg-success-lightest text-success-foreground",
+            ring: "text-agent",
+            text: "text-agent-dark",
+            chip: "bg-agent-light text-agent-dark",
             guidance: "This resume already lines up well with the posting. Tailoring will be light-touch.",
         };
     }
     if (score >= 6) {
         return {
             label: "Decent fit",
-            ring: "text-info",
-            text: "text-info-foreground",
-            chip: "bg-info-lightest text-info-foreground",
+            ring: "text-text-secondary",
+            text: "text-text-primary",
+            chip: "bg-surface-secondary text-text-secondary",
             guidance: "A solid base with real gaps worth closing before you apply.",
         };
     }

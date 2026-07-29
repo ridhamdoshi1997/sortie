@@ -33,7 +33,7 @@ export function CompanyLogo({ company, logoUrl, size = "md" }: Props) {
   const domainGuess = company ? guessCompanyDomain(company) : null;
   // Two real sources, in order of trust:
   // 1. logoUrl — either a real SerpApi thumbnail, or (for jobs evaluated
-  //    from 2026-07-28 onward) a Clearbit URL built from a domain Gemini
+  //    from 2026-07-28 onward) a logo URL built from a domain Gemini
   //    actually resolved from its own knowledge of the company (see
   //    companyDomain's comment in lib/evaluator.ts) — fixes cases a naive
   //    guess gets wrong, e.g. Bank of Montreal -> bmo.com not
@@ -48,31 +48,24 @@ export function CompanyLogo({ company, logoUrl, size = "md" }: Props) {
   //    since those were only ever showing via this client-side guess, not
   //    a persisted DB value. Keep both tiers.
   //
-  // Deliberately NOT in this chain: Google's favicon service. Tried twice
-  // (2026-07-28) and reverted both times — it doesn't fail for a domain it
-  // doesn't recognize the way Clearbit does, it silently serves its own
-  // generic placeholder globe icon with a 200 status, and reliably
-  // detecting that client-side requires a cross-origin byte-size check
-  // that depends on CORS headers this environment couldn't confirm either
-  // way. It made results look worse (misleading generic blobs), not
-  // better. Don't re-add it without first confirming, live, that a
-  // not-found domain gets a real error rather than a placeholder image.
+  // UPDATE 2026-07-28 (later same day): source swapped from Clearbit to
+  // unavatar.io. Clearbit's Logo API turned out to be fully DNS-dead, not
+  // ad-blocker-blocked as originally guessed — confirmed live. unavatar.io
+  // was confirmed live to behave the way Clearbit used to (real domain ->
+  // real image, unresolvable domain + `fallback=false` -> a real error
+  // status, not a silent placeholder). Google's favicon service is still
+  // deliberately NOT in this chain — tried twice and reverted both times
+  // because it always returns 200 with a generic globe placeholder for an
+  // unrecognized domain, which read as worse than the icon fallback.
   //
-  // Clearbit requests are routed through /api/logo (this app's own
-  // origin), not fetched directly — confirmed live (2026-07-28) that
-  // direct <img src="https://logo.clearbit.com/...">  requests were stuck
-  // showing the browser's native broken-image glyph with `onError` never
-  // firing, even after several rounds of retry/fallback logic here. Most
-  // likely an ad-blocker or tracking-protection extension silently
-  // blocking a known third-party data company's domain. Proxying through
-  // our own origin means the browser never talks to logo.clearbit.com
-  // directly, and a real 404 from OUR server fires onError reliably. The
+  // Domain-guess requests are routed through /api/logo (this app's own
+  // origin), not fetched directly, so a real error from OUR server fires
+  // onError reliably regardless of the upstream's own failure mode. The
   // real SerpApi thumbnail (when logoUrl is already set) is left direct —
-  // it's Google's own image CDN, not a known tracker/data-broker domain,
-  // so there's no equivalent evidence it needs the same treatment.
+  // it's Google's own image CDN, unaffected by any of this.
   const candidates = [
     logoUrl,
-    domainGuess ? `/api/logo?url=${encodeURIComponent(`https://logo.clearbit.com/${domainGuess}?size=128`)}` : null,
+    domainGuess ? `/api/logo?url=${encodeURIComponent(`https://unavatar.io/${domainGuess}?fallback=false`)}` : null,
   ].filter((url): url is string => Boolean(url));
 
   const [candidateIndex, setCandidateIndex] = useState(0);

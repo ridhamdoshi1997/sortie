@@ -23,14 +23,22 @@ type Props = {
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 
-// A 5-step traffic-light gradient across the app's existing semantic colors
-// (success/info/warning/error) instead of collapsing A/B and C/D/F into
-// just two buckets — every grade gets its own distinct, scannable color.
+// Redesigned 2026-07-28 — the previous version was a literal 5-color
+// traffic-light gradient (green/blue/amber/red/dark-red), flagged by design
+// review as reading like a generic B2B dashboard rather than a premium tool.
+// Every grade here is AI-generated evaluation output, so per ui-tokens.md's
+// invariant (`--color-accent` is reserved for user actions, never AI
+// content), the "good" end of the scale uses `--color-agent` (teal, the
+// app's existing AI-content signal) at varying intensity instead of amber —
+// the same bg-agent-light/text-agent-dark pairing MatchScore.tsx's "Agent
+// read" callout already uses. Only the two genuinely-concerning grades keep
+// warning/error — a middling grade isn't an error, so it stays neutral gray
+// rather than defaulting to a "yellow alert" the way a rainbow scale would.
 const GRADE_STYLES: Record<Grade, { label: string; badge: string }> = {
-    A: { label: "Excellent", badge: "bg-success-lightest text-success-foreground" },
-    B: { label: "Good", badge: "bg-info-lightest text-info-foreground" },
-    C: { label: "Fair", badge: "bg-warning/10 text-warning" },
-    D: { label: "Weak", badge: "bg-error/10 text-error" },
+    A: { label: "Excellent", badge: "bg-agent text-agent-foreground" },
+    B: { label: "Good", badge: "bg-agent-light text-agent-dark" },
+    C: { label: "Fair", badge: "bg-surface-secondary text-text-secondary" },
+    D: { label: "Weak", badge: "bg-warning/10 text-warning" },
     F: { label: "Poor", badge: "bg-error text-error-foreground" },
 };
 

@@ -324,6 +324,62 @@ export async function fetchViaJinaReader(url: string): Promise<string | null> {
   }
 }
 
+// Fallback/co-search path, added 2026-07-28: when Jina Reader can't fetch a
+// real page (dead homepage guess, JS-only site Jina still can't render,
+// robots block, etc.), ask Perplexity's Sonar model to search the live web
+// directly instead of giving up and falling through to the generic
+// job-posting-only dossier. Real cost, confirmed live: ~$0.005/call (a flat
+// per-request web-search fee, tokens are negligible on top) — this is why
+// it's a fallback, not a first-choice replacement for the free Jina+Gemini
+// path (explicit product decision, not a technical limitation).
+//
+// Uses Perplexity's native API directly (not routed through OpenRouter or
+// lib/models.ts's getModel/complete) because the thing this needs —
+// top-level `citations: string[]` on the raw response, confirmed live to
+// exist alongside `choices` — is a Perplexity-specific field outside the
+// OpenAI-compatible chat-completions shape complete() normalizes to. The
+// returned text is deliberately NOT trusted as pre-structured JSON; it's
+// run through the same extractStructured() used for Jina markdown so there
+// is exactly one place in this file that has to safely turn "some text
+// from the web" into a validated shape.
+async function fetchViaPerplexity(
+  query: string,
+): Promise<{ text: string; citations: string[] } | null> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [{ role: "user", content: query }],
+        max_tokens: 600,
+      }),
+      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      console.error("[agent/research] fetchViaPerplexity", response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    const text: string | undefined = data.choices?.[0]?.message?.content;
+    if (!text?.trim()) return null;
+
+    const citations: string[] = Array.isArray(data.citations) ? data.citations : [];
+    return { text, citations };
+  } catch (error) {
+    console.error("[agent/research] fetchViaPerplexity", error);
+    return null;
+  }
+}
+
 // Shared structured-extraction step: given real fetched markdown, ask
 // Gemini's fast/cheap tier for a specific JSON shape. Always Gemini,
 // regardless of the synthesis provider the user picked — same design as
@@ -371,6 +427,45 @@ If the page has none of the requested content, return the schema's empty/default
   }
 }
 
+// Tries the Perplexity fallback (see fetchViaPerplexity's comment) when the
+// free Jina+Gemini path came up empty. Returns null if Perplexity isn't
+// configured, or genuinely found nothing either — caller falls through to
+// emptyResearch exactly as before this existed.
+async function tryPerplexityFallback(
+  job: ResearchJob,
+  homepageUrl: string,
+  logger: ResearchLogger | undefined,
+): Promise<BrowserResearch | null> {
+  const company = job.company ?? "this company";
+  const perplexity = await fetchViaPerplexity(
+    `What does ${company} do? Describe their product/service, who it's for, and any concrete signals worth knowing before a job interview: funding, scale, notable customers, mission, and recent news or launches.`,
+  );
+  if (!perplexity) return null;
+
+  const homepage = await extractStructured(
+    perplexity.text,
+    "This is a web-search summary about a company. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches).",
+    homepageContentSchema,
+    `{ "oneLiner": string, "productSummary": string, "signals": string[] }`,
+  );
+
+  if (!homepage || (!homepage.oneLiner && !homepage.productSummary)) {
+    return null;
+  }
+
+  await log(logger, "Filled in company research via Perplexity web search.", "success");
+
+  return {
+    homepageUrl,
+    visited: true,
+    oneLiner: homepage.oneLiner || null,
+    productSummary: homepage.productSummary || null,
+    signals: homepage.signals,
+    pages: [],
+    sources: perplexity.citations,
+  };
+}
+
 async function collectBrowserResearch(
   job: ResearchJob,
   logger: ResearchLogger | undefined,
@@ -399,10 +494,10 @@ async function collectBrowserResearch(
   if (!homepageMarkdown) {
     await log(
       logger,
-      "Could not fetch the company homepage. Using job and profile context only.",
+      "Could not fetch the company homepage directly. Trying a Perplexity web search instead.",
       "warning",
     );
-    return emptyResearch;
+    return (await tryPerplexityFallback(job, homepageUrl, logger)) ?? emptyResearch;
   }
 
   const homepage = await extractStructured(
@@ -415,10 +510,10 @@ async function collectBrowserResearch(
   if (!homepage || (!homepage.oneLiner && !homepage.productSummary)) {
     await log(
       logger,
-      "Homepage extraction did not find meaningful company content. Using job and profile context only.",
+      "Homepage extraction did not find meaningful content. Trying a Perplexity web search instead.",
       "warning",
     );
-    return emptyResearch;
+    return (await tryPerplexityFallback(job, homepageUrl, logger)) ?? emptyResearch;
   }
 
   const research: BrowserResearch = {

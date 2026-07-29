@@ -18,6 +18,20 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### SettingsModal (primary settings surface, replaces the full-page route)
+
+File: components/settings/SettingsModal.tsx (+ SettingsModalLoader.tsx, ssr:false wrapper — see its own comment for why), app/api/settings/me/route.ts
+Last updated: 2026-07-29 (new, same day as SettingsPanel below) — a 2026-07-29 research pass via Gemini 3.1 Pro (`agy`) on modern SaaS settings UX recommended a centered "OS window" modal over a full-page route (Linear/Superhuman pattern). Implemented as a URL-state-driven modal (`?settings=1`, not local-only React state) so it stays bookmarkable/shareable and works with browser back — chose this over the research's suggested Next.js Intercepting Routes for less architectural complexity, same practical result. `Cmd/Ctrl+,` opens it from anywhere; Escape or the X button closes it. Uses `.glass-panel-strong` (chrome, matches this app's existing glass-is-for-floating-UI-only rule) at `max-w-4xl max-h-[85vh]`, `bg-black/40 backdrop-blur-sm` scrim. Mounted once in `app/layout.tsx` via `SettingsModalLoader`, which MUST stay `next/dynamic(..., { ssr: false })` — see that file's comment for the real hydration bug this fixes (a cold load with the query param already set left the modal unhydrated and permanently stuck loading; confirmed live via checking for React fiber attachment on the DOM node). `/settings` (the page below) still exists as a no-JS/hard-refresh fallback.
+
+### SettingsPanel (shared content, rendered by both the modal and /settings)
+
+File: components/settings/SettingsPanel.tsx
+Last updated: 2026-07-29 (new) — matches `/preview/more`'s `SettingsPanel` mockup design exactly, real data only (no fake subscription/credits data). Rendered by both `SettingsModal` (primary path) and `/settings` (`app/settings/page.tsx`, fallback path).
+
+Sidebar nav (4 tabs, `bg-accent-muted text-accent` active state, matches `Navbar`'s dropdown pattern): Login & security / Subscription / Credits & usage / Job alerts. Only Login & security has real content — the other three render a shared `NotYetAvailable` empty state (`text-text-primary` heading + `text-text-muted` body, centered, `py-16`) rather than fabricated data, since no monetization or notification-producing backend exists yet.
+
+Login & security shows real `email` + real OAuth `providers` array from `insforge.auth.getCurrentUser()` (`border border-border` pill per provider, not the mockup's generic password-reset field — this app is OAuth-only today, so password reset only renders conditionally once a user actually has an `email` provider). Delete-account section: `border-error/30 bg-error/5` danger-zone card, click-to-reveal a type-`DELETE`-to-confirm input (`disabled` submit button until exact match) before calling `deleteAccount()` (`actions/account.ts`) — never a single-click destructive action.
+
 ### Logo / Wordmark
 
 File: components/layout/Logo.tsx
@@ -594,8 +608,8 @@ Nested inside each `DocumentGenerator.tsx` action panel, one instance per docume
 
 ### Company Research Dossier
 
-File: components/job-details/CompanyResearch.tsx, components/job-details/AutoResearchCompany.tsx, components/job-details/LeadershipTeamButton.tsx
-Last updated: 2026-07-23 (Leadership Team section + industry tags added; ResearchCompanyButton.tsx replaced by AutoResearchCompany.tsx — auto-fires on first mount of the Company tab instead of waiting for a manual click, same underlying API route/gates)
+File: components/job-details/CompanyResearch.tsx, components/job-details/CompanyResearchAutoLoader.tsx, components/job-details/LeadershipTeamButton.tsx
+Last updated: 2026-07-28 (AutoResearchCompany.tsx renamed to CompanyResearchAutoLoader.tsx — the old name read as a verb phrase/action rather than a UI component noun, design review feedback). Previously 2026-07-23 (Leadership Team section + industry tags added; ResearchCompanyButton.tsx replaced by AutoResearchCompany.tsx — auto-fires on first mount of the Company tab instead of waiting for a manual click, same underlying API route/gates)
 
 | Property         | Class                                                                                 |
 | ---------------- | ------------------------------------------------------------------------------------- |
@@ -692,7 +706,7 @@ Last updated: 2026-07-28 (new — went through 6 live-iterated versions the same
 | Box (real logo) | Same size/border/bg, `object-contain`, small padding, real `<img>` |
 
 **Pattern notes:**
-Two real candidate sources tried in order: `logoUrl` prop (a real SerpApi thumbnail, or — for jobs evaluated 2026-07-28 onward — a Clearbit URL built from a domain `lib/evaluator.ts`'s `companyDomain` field asked Gemini to resolve from its own knowledge, not string-guessed), then a client-side naive domain guess (`company.toLowerCase()`, strip legal suffixes) as a safety net for the rest of the existing catalog that hasn't been re-evaluated under the new pipeline. The naive-guess candidate is routed through `/api/logo?url=` (new, same-origin proxy with a small explicit host allowlist), not fetched directly — direct `<img src="https://logo.clearbit.com/...">` requests were confirmed live to get stuck on the browser's native broken-image glyph with `onError` never firing (suspected ad-blocker/tracking-protection interference). Google's favicon service was tried twice as a third candidate and reverted both times — it silently serves its own generic placeholder for a domain it doesn't recognize (200 status, not a 404), which defeats error-based fallback logic and reads worse than the plain icon. Used by `JobResultCard.tsx` (size `md`, 56px) and `JobInfo.tsx`'s header (size `lg`, 80px).
+Two real candidate sources tried in order: `logoUrl` prop (a real SerpApi thumbnail, or — for jobs evaluated 2026-07-28 onward — a domain-based logo URL built from `lib/evaluator.ts`'s `companyDomain` field, which asks Gemini to resolve the company's real domain from its own knowledge, not string-guessed), then a client-side naive domain guess (`company.toLowerCase()`, strip legal suffixes) as a safety net for the rest of the existing catalog that hasn't been re-evaluated under the new pipeline. The naive-guess candidate is routed through `/api/logo?url=` (same-origin proxy with a small explicit host allowlist), not fetched directly, so a real error always fires the client's `onError` reliably regardless of the upstream's own failure mode. Source is `unavatar.io`, not Clearbit — **2026-07-28, later session:** `logo.clearbit.com` turned out to be fully DNS-dead (confirmed live via `curl`/`nslookup`), not ad-blocker-blocked as first theorized; swapped to `unavatar.io` everywhere (this component, the proxy's allowlist, and `lib/inngest/functions.ts`'s DB-write fallback), plus a one-time backfill of 17 existing DB rows that had a dead Clearbit URL persisted. Google's favicon service was tried twice and reverted both times — it silently serves its own generic placeholder for a domain it doesn't recognize (200 status, not a 404), which defeats error-based fallback logic and reads worse than the plain icon; `unavatar.io` was live-confirmed to return a real error (`403` with `?fallback=false`) instead. Used by `JobResultCard.tsx` (size `md`, 56px) and `JobInfo.tsx`'s header (size `lg`, 80px).
 
 ### ComingSoon
 

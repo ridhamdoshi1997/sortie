@@ -138,10 +138,14 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 // evaluator.ts), not the old naive
                                 // lowercase-the-name guess — that guess is
                                 // what actually caused most missing/wrong
-                                // logos, confirmed live 2026-07-28.
+                                // logos, confirmed live 2026-07-28. Source is
+                                // unavatar.io, not Clearbit — Clearbit's Logo
+                                // API turned out to be fully DNS-dead as of
+                                // 2026-07-28 (confirmed live), not
+                                // ad-blocker-blocked as first guessed.
                                 ...(job.company_logo_url || !evalResult?.companyDomain
                                     ? {}
-                                    : { company_logo_url: `https://logo.clearbit.com/${evalResult.companyDomain}?size=128` }),
+                                    : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
                             })
                             .eq("id", job.id);
 

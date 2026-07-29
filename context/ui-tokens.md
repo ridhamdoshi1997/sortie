@@ -195,13 +195,15 @@ Standard pattern (see `MatchScore.tsx` or `FindJobsForm.tsx` job cards for refer
 
 ### Match Score Colors
 
-Unchanged tiering from v1, new hex values:
+**Redesigned 2026-07-28** — the original v1 tiering was a literal green/blue/amber traffic light, flagged by design review as reading like a generic B2B dashboard rather than a premium tool. Every score/grade this applies to (match %, resume fit score, 10-dimension letter grades) is **AI-generated output** — per the Invariants below, `--color-accent` (amber) is reserved for user actions and must never represent AI content, so the "strong" tier uses `--color-agent` (teal, the app's existing AI-content signal) instead of a generic success green. The middle tier is neutral gray, not an "info" blue — an unremarkable-but-fine score isn't a notable event worth its own color. `--color-warning`/`--color-error` are reserved for tiers whose guidance copy is genuinely cautionary (a weak resume-fit score, a D/F evaluation grade, the ghost-listing/below-threshold flags in `MatchScore.tsx`) — never applied just because a score is on the lower end of an otherwise-fine range.
 
 | Score Range | Meaning | Token                                  |
 | ----------- | ------- | --------------------------------------- |
-| 80-100%     | High    | `text-success`                          |
-| 60-79%      | Medium  | `text-info`                             |
-| Below 60%   | Low     | `text-warning`                          |
+| 80-100%     | Strong  | `text-agent-dark` (or `bg-agent`/`bg-agent-light` for badges — see `EvaluationBreakdown.tsx`'s `GRADE_STYLES`) |
+| 60-79%      | Middling | `text-text-primary` / `text-text-secondary` (neutral, no color claim) |
+| Below 60%   | Weak    | `text-text-muted` (quiet, informational) — or `text-warning`/`text-error` specifically where the copy itself is cautionary (see `ResumeGapAnalysis.tsx`'s `scoreBand`, `EvaluationBreakdown.tsx`'s D/F grades) |
+
+Reference implementations: `components/shared/JobResultCard.tsx`'s `scoreTierClass`, `components/job-details/EvaluationBreakdown.tsx`'s `GRADE_STYLES`, `components/job-details/ResumeGapAnalysis.tsx`'s `scoreBand`.
 
 ### Skills Badges
 
@@ -408,7 +410,7 @@ Apple-inspired translucent material — implemented entirely in `app/globals.css
 
 ### The cursor glow
 
-`.card-interactive-glow`'s hover glow follows the actual cursor position via `--mouse-x`/`--mouse-y` CSS custom properties, set by `components/shared/GlassCursorGlow.tsx` (mounted once in `app/layout.tsx`) — a single document-level, rAF-throttled `pointermove` listener using event delegation (`.closest('.card-interactive-glow')`, renamed from `.glass-panel-interactive`), not one listener per card. This remains the app's one genuinely interactive hover touch, now tuned as a subtle accent-tinted highlight rather than a glass sheen (references don't have this exact pattern, so it's tuned by eye against the flat-card baseline).
+`.card-interactive-glow`'s hover glow follows the actual cursor position via `--mouse-x`/`--mouse-y` CSS custom properties, set by `components/ui/GlassCursorGlow.tsx` (moved from `components/shared/` 2026-07-28 — it's a primitive, not a feature component; mounted once in `app/layout.tsx`) — a single document-level, rAF-throttled `pointermove` listener using event delegation (`.closest('.card-interactive-glow')`, renamed from `.glass-panel-interactive`), not one listener per card. This remains the app's one genuinely interactive hover touch, now tuned as a subtle accent-tinted highlight rather than a glass sheen (references don't have this exact pattern, so it's tuned by eye against the flat-card baseline).
 
 ### The ambient backdrop — simplified to flat, 2026-07-27
 

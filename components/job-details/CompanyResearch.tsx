@@ -14,7 +14,7 @@ import {
   Users,
 } from "lucide-react";
 
-import { AutoResearchCompany } from "@/components/job-details/AutoResearchCompany";
+import { CompanyResearchAutoLoader } from "@/components/job-details/CompanyResearchAutoLoader";
 import { LeadershipTeamButton } from "@/components/job-details/LeadershipTeamButton";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
 import type { CompanyLeader, CompanyResearchDossier } from "@/types";
@@ -316,7 +316,7 @@ export function CompanyResearch({ company, jobId, research }: Props) {
             Candidate-specific briefing
           </div>
           <div className="mt-4">
-            <AutoResearchCompany jobId={jobId} company={company} />
+            <CompanyResearchAutoLoader jobId={jobId} company={company} />
           </div>
         </div>
       )}

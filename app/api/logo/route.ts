@@ -1,20 +1,27 @@
 import { NextRequest, NextResponse } from "next/server";
 
-// Proxies third-party company-logo requests through this app's own origin —
-// added 2026-07-28 after repeated live confirmation that direct client-side
-// <img src> requests to logo.clearbit.com were failing silently in ways
-// that never fired the browser's `error` event (broken-image glyph stuck
-// forever, same symptom whether or not the app's own fallback/retry logic
-// was in place). Most likely cause: an ad-blocker or tracking-protection
-// extension silently blocking a known third-party data company's domain.
-// Routing through our own origin sidesteps that entirely — the browser only
-// ever talks to this app's own domain, and a real 404 from THIS server
-// fires `onError` on the client reliably every time.
+// Proxies third-party company-logo requests through this app's own origin.
+//
+// UPDATE 2026-07-28 (later same day): the original theory here — that
+// logo.clearbit.com was being silently blocked by ad-blockers — was WRONG.
+// Confirmed live: logo.clearbit.com no longer resolves in DNS at all
+// ("Could not resolve host"), while other external hosts (google.com)
+// resolve and connect fine from the same environment. Clearbit's free Logo
+// API is dead, not blocked. Swapped the upstream to unavatar.io, which was
+// confirmed live to behave the way Clearbit used to: a real company domain
+// returns a real image, and (with `fallback=false`) an unresolvable domain
+// returns a real error status instead of a silent generic placeholder.
+// Google's favicon service was tried twice before and reverted both times
+// for exactly that silent-placeholder failure mode — don't reintroduce it.
+//
+// Still worth keeping server-side: a real 404/error from THIS server fires
+// the client's `onError` reliably, which a cross-origin DNS failure does
+// not always do.
 //
 // Only a small, explicit host allowlist may be fetched here — this is a
 // server-side fetch of a caller-supplied URL, which would otherwise be an
 // open SSRF proxy.
-const ALLOWED_HOSTS = ["logo.clearbit.com"];
+const ALLOWED_HOSTS = ["unavatar.io"];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const target = request.nextUrl.searchParams.get("url");

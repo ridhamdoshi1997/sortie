@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import {
   Bell,
@@ -47,6 +47,7 @@ type Props = {
 
 export function Navbar({ isAuthenticated = false }: Props) {
   const pathname = usePathname();
+  const router = useRouter();
   const [jobsOpen, setJobsOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
@@ -76,6 +77,16 @@ export function Navbar({ isAuthenticated = false }: Props) {
       "text-sm font-medium transition-colors duration-200 ease-in-out",
       active ? "text-accent" : "text-overlay-foreground/60 hover:text-overlay-foreground",
     ].join(" ");
+
+  // Opens the settings modal (components/settings/SettingsModal.tsx) over
+  // the current page instead of navigating away to /settings — reads
+  // window.location.search at click time rather than useSearchParams() so
+  // Navbar itself doesn't need a Suspense boundary at every call site.
+  function openSettings() {
+    const params = new URLSearchParams(window.location.search);
+    params.set("settings", "1");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
 
   return (
     <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
@@ -126,13 +137,14 @@ export function Navbar({ isAuthenticated = false }: Props) {
         </nav>
 
         <div className="flex items-center justify-end gap-4">
-          <Link
-            href="/settings"
+          <button
+            type="button"
+            onClick={openSettings}
             aria-label="Settings"
             className="hidden text-overlay-foreground/60 transition-colors duration-200 ease-in-out hover:text-overlay-foreground sm:block"
           >
             <Settings className="h-5 w-5" />
-          </Link>
+          </button>
           <Link
             href="/notifications"
             aria-label="Notifications"
@@ -203,12 +215,13 @@ export function Navbar({ isAuthenticated = false }: Props) {
               </div>
             ))}
             <div className="my-1 border-t border-overlay-foreground/10" />
-            <Link
-              href="/settings"
-              className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5"
+            <button
+              type="button"
+              onClick={openSettings}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5"
             >
               Settings
-            </Link>
+            </button>
             <Link
               href="/notifications"
               className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5"

@@ -16,7 +16,9 @@ type Props = {
 // on first mount (i.e. the first time the Company tab is opened) instead of
 // waiting for a click. Only mounts while research is null; once it succeeds
 // router.refresh() re-fetches the job with real data and this stops rendering.
-export function AutoResearchCompany({ jobId, company }: Props) {
+// Renamed from AutoResearchCompany 2026-07-28 — the old name read as a verb
+// phrase/action rather than a UI component noun (design review feedback).
+export function CompanyResearchAutoLoader({ jobId, company }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

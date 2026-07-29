@@ -9,10 +9,17 @@ import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markApplied, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
 import type { Job } from "@/types";
 
+// Redesigned 2026-07-28 — was a literal green/blue/amber traffic light.
+// This score is AI-generated, so the strong tier uses --color-agent (the
+// app's AI-content signal), not a generic success green; the middle tier is
+// neutral (a decent-but-unremarkable match isn't an "info" event); the low
+// tier stays quiet rather than reading as an alarm — a low match score is
+// informational, not an error. See EvaluationBreakdown.tsx's GRADE_STYLES
+// for the same treatment applied to the 10-dimension letter grades.
 function scoreTierClass(score: number) {
-  if (score >= 80) return "text-success";
-  if (score >= 60) return "text-info";
-  return "text-warning";
+  if (score >= 80) return "text-agent-dark";
+  if (score >= 60) return "text-text-primary";
+  return "text-text-muted";
 }
 
 // Real tag pills from actual job fields — never fabricated placeholder tags.

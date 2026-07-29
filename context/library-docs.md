@@ -292,8 +292,38 @@ Three-step process: homepage fetch+extract → sub-page fetch+extract → provid
 - Step 3 (final dossier synthesis) uses the model router with whatever provider the user selected (`getModel(provider, "smart")`) — never hardcode a specific model here.
 - Max 3 sub-pages — same limit as before, just to keep the extraction calls cheap, not a platform constraint anymore.
 - If page-fetch research comes back empty (`visited: false`) — still run synthesis with job + profile only, and the prompt/output must make that explicit rather than silently presenting inferred claims as verified.
+- **2026-07-28: Perplexity Sonar fallback added** for the two points homepage research used to just give up (Jina fetch fails, or extraction finds nothing) — see the Perplexity section below. Only fires on failure, real per-call cost, deliberately not the default path.
 
 **Dossier fields:** see `CompanyResearchDossier` in `types/index.ts` — that interface is the current source of truth, not this doc.
+
+### Perplexity Sonar (company-research fallback/co-search, added 2026-07-28)
+
+User has a Perplexity Pro subscription but confirmed live it does NOT cover API usage — Pro is the consumer app only; API calls are billed separately regardless of key (own `PERPLEXITY_API_KEY` vs. OpenRouter's `perplexity/sonar` cost the same live-verified amount, ~$0.005/call, a flat per-request web-search fee — tokens are negligible on top). This project uses a **direct Perplexity key** (user's own account, in `.env` as `PERPLEXITY_API_KEY`, not routed through OpenRouter), by explicit user choice — billing/usage visibility stays in the user's own Perplexity dashboard. An `OPENROUTER_API_KEY` was also provisioned (`npx @insforge/cli ai setup --env-file .env`) during this same session and is available if a future feature wants OpenRouter's other models, but nothing currently uses it.
+
+**Explicit product decision: fallback/co-search only, never a replacement for the free Jina+Gemini path or a first-choice call.** Real per-call cost is the reason — the existing pipeline is $0/dossier.
+
+```typescript
+// agent/research.ts — fetchViaPerplexity()
+const response = await fetch("https://api.perplexity.ai/chat/completions", {
+  method: "POST",
+  headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+  body: JSON.stringify({ model: "sonar", messages: [{ role: "user", content: query }], max_tokens: 600 }),
+});
+const data = await response.json();
+// data.choices[0].message.content — plain text answer
+// data.citations — string[] of real source URLs, confirmed live to exist
+//   as a TOP-LEVEL field alongside `choices`, outside the OpenAI-compatible
+//   shape — this is why this call uses a raw fetch, not lib/models.ts's
+//   getModel/complete (which normalizes to the OpenAI-compat shape and
+//   would silently drop this field).
+```
+
+**Rules:**
+
+- Call Perplexity's native API directly (`api.perplexity.ai`), not via OpenRouter — this project's key is a direct Perplexity key, and `citations` needs the raw JSON response, not an SDK-typed one.
+- Never trust Sonar's free-text answer as pre-structured data — run it through the same `extractStructured()` (Gemini) used for Jina markdown, so there's exactly one place in the codebase that turns "text from the web" into a validated shape.
+- `sources` on the resulting `BrowserResearch` must be Sonar's real `citations` array, never a guessed/fallback homepage URL — same "never cite what wasn't actually fetched" rule Jina Reader follows above.
+- Only call this on a real failure of the free path (see the two call sites in `collectBrowserResearch`) — do not add a third "always run both and merge" call site without discussing the added recurring cost first.
 
 ### Leadership Team lookup
 

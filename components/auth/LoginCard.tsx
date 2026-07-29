@@ -1,5 +1,7 @@
 import { GitBranch, Globe, ShieldCheck } from "lucide-react";
 
+import { EmailPasswordForm } from "@/components/auth/EmailPasswordForm";
+
 const errorMessages: Record<string, string> = {
   callback: "We could not finish signing you in. Please try again.",
   oauth: "We could not start that sign-in method. Please try again.",
@@ -73,6 +75,14 @@ export function LoginCard({ error }: Props) {
               </button>
             </form>
           </div>
+
+          <div className="mt-6 flex items-center gap-3">
+            <div className="h-px flex-1 bg-border" />
+            <span className="text-xs font-medium text-text-muted">or</span>
+            <div className="h-px flex-1 bg-border" />
+          </div>
+
+          <EmailPasswordForm />
         </div>
       </div>
     </section>

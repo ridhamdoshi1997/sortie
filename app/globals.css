@@ -379,7 +379,7 @@ body {
    glass — just a hover effect layered on top of the same plain flat
    utilities every other card uses. Cursor tracking (--mouse-x/--mouse-y)
    still comes from the single document-level listener in
-   components/shared/GlassCursorGlow.tsx; only the selector name changed. */
+   components/ui/GlassCursorGlow.tsx; only the selector name changed. */
 .card-interactive-glow {
   position: relative;
   isolation: isolate;
