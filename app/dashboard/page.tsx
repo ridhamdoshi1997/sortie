@@ -173,7 +173,7 @@ export default async function DashboardPage() {
       years_experience: null,
       skills: [],
       work_experience: null,
-      education: null,
+      education: [],
     },
   );
 

@@ -1,9 +1,12 @@
-import Link from "next/link";
+export const dynamic = "force-dynamic";
+
 import { FileText } from "lucide-react";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
+import { ResumeManager } from "@/components/profile/ResumeManager";
+import { listResumes } from "@/actions/resumes";
 
 type GeneratedResumeRow = {
   job_id: string;
@@ -14,7 +17,7 @@ export default async function ResumePage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
-  const [{ data: profile }, { data: applications }] = await Promise.all([
+  const [{ data: profile }, { data: applications }, resumesResult] = await Promise.all([
     insforge.database
       .from("profiles")
       .select("resume_pdf_url")
@@ -26,6 +29,7 @@ export default async function ResumePage() {
       .eq("user_id", user.id)
       .not("generated_resume", "is", null)
       .returns<GeneratedResumeRow[]>(),
+    listResumes(),
   ]);
 
   const hasBase = Boolean(profile?.resume_pdf_url);
@@ -34,24 +38,21 @@ export default async function ResumePage() {
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 p-4 sm:p-6 lg:p-8">
+      <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
         <div className="flex flex-col gap-1">
           <h1 className="fade-in-up text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Resume</h1>
           <p className="text-base text-text-secondary sm:text-lg">
-            Your base resume plus every AI-tailored version generated per job.
+            Manage every résumé slot, sync content with your profile, and keep AI-tailored versions per job.
           </p>
         </div>
 
-        {!hasBase && tailored.length === 0 ? (
-          <p className="text-sm text-text-muted">
-            No resumes yet — upload one from your{" "}
-            <Link href="/profile" className="text-accent hover:underline">
-              profile
-            </Link>
-            .
-          </p>
-        ) : (
+        <ResumeManager initialResumes={resumesResult.data ?? []} />
+
+        {hasBase || tailored.length > 0 ? (
           <div className="flex flex-col gap-3">
+            <h2 className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
+              AI-tailored per job
+            </h2>
             {hasBase && (
               <a
                 href="/api/resume/download"
@@ -84,7 +85,7 @@ export default async function ResumePage() {
               </a>
             ))}
           </div>
-        )}
+        ) : null}
       </main>
     </>
   );

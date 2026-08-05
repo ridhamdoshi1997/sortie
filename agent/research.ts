@@ -5,6 +5,7 @@ import type {
   CompanyLeader,
   CompanyResearchDossier,
   ConnectionPerson,
+  Education,
   InsiderConnections,
   Job,
   Profile,
@@ -1105,6 +1106,21 @@ function getMostRecentPastEmployer(workExperience: WorkExperience[] | null): str
   return past[0]?.company ?? null;
 }
 
+// Insider Connections' school bucket only supports one search term (each is a
+// paid Apify call — fanning out to every degree would multiply the ~$0.31/
+// lookup cost), so pick a single school the same way past employer is picked:
+// most recent first, falling back to array order when graduation_year is missing.
+function getMostRecentEducationInstitution(education: Education[] | null): string | null {
+  if (!education) return null;
+
+  const withInstitution = education.filter((entry) => entry.institution);
+  const sorted = [...withInstitution].sort((a, b) =>
+    (b.graduation_year ?? "").localeCompare(a.graduation_year ?? ""),
+  );
+
+  return sorted[0]?.institution ?? null;
+}
+
 // Deliberately opt-in only, same as Leadership — a real, paid lookup
 // (~$0.31-0.32/call: 3 people-search pages + up to 3 company-URL resolves),
 // never run automatically. Three buckets, matching JobRight's own layout:
@@ -1132,7 +1148,7 @@ export async function researchInsiderConnections(
     }
 
     const pastEmployerName = getMostRecentPastEmployer(profile.work_experience);
-    const school = profile.education?.institution ?? null;
+    const school = getMostRecentEducationInstitution(profile.education);
 
     const pastEmployerUrl = pastEmployerName
       ? await resolveCompanyLinkedInUrl(pastEmployerName)

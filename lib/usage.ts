@@ -13,8 +13,10 @@ export type UsageAction =
   | "company_research"
   | "resume_extract"
   | "resume_analysis"
+  | "resume_quality_analysis"
   | "insider_connections"
-  | "email_lookup";
+  | "email_lookup"
+  | "bullet_rewrite";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -25,6 +27,14 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // and it's the step users take *before* deciding to generate, so it gets a
   // higher cap — gating it too tightly would push people to generate blind.
   resume_analysis: 15,
+  // Distinct from resume_analysis above (that's the résumé-vs-one-job gap
+  // check) — this is the whole-résumé quality grade (10-dimension matrix +
+  // narrative alignment + interviewer-skepticism vulnerabilities +
+  // per-bullet issues) in one larger structured call, closer in shape/cost
+  // to a full document_generation than a quick fit check. JobRight's own
+  // observed pattern for the equivalent feature is 1-2/day free — matched
+  // here rather than guessed.
+  resume_quality_analysis: 3,
   // ~$0.31-0.32/call (3 Apify people-search pages + company-URL resolves) —
   // the most expensive single action in the app, capped tightly.
   insider_connections: 3,
@@ -35,6 +45,12 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // from the original 10/day to match the real cost, not the cheaper one
   // originally planned.
   email_lookup: 4,
+  // Free-tier Gemini, no real $ cost — but still shares the same rate-limited
+  // key as evaluation/extraction, and a single work-experience edit can
+  // plausibly trigger several of these in a row (rewrite each bullet, then
+  // generate a few more), so it gets a generous but real cap rather than
+  // none at all.
+  bullet_rewrite: 30,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -43,8 +59,10 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   company_research: "company research runs",
   resume_extract: "resume imports",
   resume_analysis: "resume fit checks",
+  resume_quality_analysis: "resume quality analyses",
   insider_connections: "insider connection lookups",
   email_lookup: "email lookups",
+  bullet_rewrite: "AI bullet rewrites/generations",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

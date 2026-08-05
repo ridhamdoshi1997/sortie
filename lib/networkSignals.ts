@@ -19,10 +19,12 @@ export function findPreviousEmployerMatch(
 
 export function buildNetworkSearchTerms(
   workExperience: WorkExperience[] | null,
-  education: Education | null,
+  education: Education[] | null,
 ): string[] {
   const employers = (workExperience ?? []).map((entry) => entry.company).filter(Boolean);
-  const school = education?.institution ? [education.institution] : [];
+  const schools = (education ?? [])
+    .map((entry) => entry.institution)
+    .filter((institution): institution is string => !!institution);
 
-  return Array.from(new Set([...employers, ...school]));
+  return Array.from(new Set([...employers, ...schools]));
 }

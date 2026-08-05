@@ -720,3 +720,40 @@ Last updated: 2026-07-28 (new)
 
 **Pattern notes:**
 Shared placeholder for `/agent`, `/interview`, `/settings`, `/notifications` — real routes (so nav links don't 404) with no backend, explicitly deferred per your own scoping rather than half-built. Takes `icon`/`title`/`description` props.
+
+### SectionModal (shared scoped-edit dialog)
+
+File: components/profile/SectionModal.tsx
+Last updated: 2026-08-05 (new)
+
+| Property | Class |
+| --- | --- |
+| Scrim | `fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm` |
+| Panel | `glass-panel-strong flex max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl` |
+
+**Pattern notes:**
+Extracted from `ProfileForm.tsx`'s per-section edit modals (Personal/Professional/Education/Work Experience/Preferences) — same centered "OS window" glass-chrome recipe as `SettingsModal`, deliberately reused rather than inventing a second modal pattern. Takes `title`/`onClose`/`onSave`/`saving`/`children`; footer is a fixed Cancel/Save pair, body is whatever form fields the caller passes as children.
+
+### ResumeManager (multi-résumé slot table)
+
+File: components/profile/ResumeManager.tsx
+Last updated: 2026-08-05 (new)
+
+**Pattern notes:**
+Real backend for `/resume` — up to 5 named résumé slots (`resumes` table), one marked primary (star badge, `bg-accent-muted text-accent`), status pill (`uploaded` / `analysed`, `bg-success-lightest`), per-row `MoreHorizontal` actions menu (Make Primary / Sync to Profile / Rename / Export / Delete — Delete disabled while primary). Upload modal is drag-and-drop, PDF only, 2MB cap (matches the real `uploadResumeSlot` constraint, not JobRight's 10MB/Word claim from the reference scan). Sync modal shows a real diff (`getResumeProfileDiff`) before writing, mapped to 6 sections (Personal/Professional/Education/Certifications/Work Experience/Preferences) — additive-only, never overwrites existing profile content (see `RESUME.md`'s gotcha on why this needs a real "upgrade if better" path eventually).
+
+### ResumeAnalysisView (grade + 10-dimension matrix + per-bullet drill-down)
+
+File: components/profile/ResumeAnalysisView.tsx, app/resume/[id]/page.tsx
+Last updated: 2026-08-05 (new)
+
+**Pattern notes:**
+Per-résumé détail page. `GradeBadge` (A-F, tiered color: A/B success, C warning, D/F error) + Urgent/Critical/Optional `IssueCountPill`s at the top, "Re-Analyze" button (credit-gated, `resume_quality_analysis` usage key, 3/day). Below: Analysis Summary, a teal `--color-agent` "Strategic Narrative" callout (AI-generated holistic insight, never amber), a 10-dimension role-fit grid (reuses `JobEvaluationDimension`'s existing shape), an "Interviewer Skepticism" vulnerabilities list (warning-toned, framed as prep material not fix-it issues), and "Flagged Sections" — each opens `BulletDrillDown` (`SectionKey`-addressed, looked up *live* from the parent's `analysis` state every render so a saved fix immediately shrinks the sidebar/counts without needing a page reload or another Re-Analyze credit spent). Header also has Edit Resume Info / Export / Delete, matching the JobRight reference scan's own per-résumé header actions. Both `/resume` and `/resume/[id]` are `export const dynamic = "force-dynamic"` — see `RESUME.md`'s `revalidatePath` gotcha for why that matters here specifically.
+
+### Tabs (width fix)
+
+File: components/ui/Tabs.tsx
+Last updated: 2026-08-05 (fix, component itself is from an earlier session)
+
+**Pattern notes:**
+The tabpanel wrapper now uses an inline `style={{width:"100%", minWidth:0}}` instead of relying on a Tailwind `w-full` class — the class alone was confirmed live (via computed-width checks across tabs) to not reliably win, letting the panel silently shrink-wrap to whichever tab's content was currently widest. If a similar "this Tailwind width/sizing class doesn't seem to apply" symptom shows up elsewhere in this build, try the inline-style version before assuming the logic itself is wrong.

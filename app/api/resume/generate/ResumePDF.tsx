@@ -310,18 +310,22 @@ export function ResumePDF({ profile, generated, theme = "modern" }: Props) {
         ) : null}
 
         {/* Education */}
-        {profile.education?.degree ? (
+        {profile.education?.some((e) => e.degree) ? (
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Education</Text>
-            <Text style={styles.eduDegree}>
-              {profile.education.degree}
-              {profile.education.field ? ` in ${profile.education.field}` : ""}
-            </Text>
-            <Text style={styles.eduDetails}>
-              {[profile.education.institution, profile.education.graduation_year]
-                .filter(Boolean)
-                .join("   •   ")}
-            </Text>
+            {profile.education
+              .filter((e) => e.degree)
+              .map((e, i) => (
+                <View key={i}>
+                  <Text style={styles.eduDegree}>
+                    {e.degree}
+                    {e.field ? ` in ${e.field}` : ""}
+                  </Text>
+                  <Text style={styles.eduDetails}>
+                    {[e.institution, e.graduation_year].filter(Boolean).join("   •   ")}
+                  </Text>
+                </View>
+              ))}
           </View>
         ) : null}
       </Page>

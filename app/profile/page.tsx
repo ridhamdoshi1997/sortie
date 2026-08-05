@@ -3,7 +3,7 @@ export const dynamic = "force-dynamic";
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
 import { Navbar } from "@/components/layout/Navbar";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
-import { ProfilePageClient } from "@/components/profile/ProfilePageClient";
+import { ProfileForm } from "@/components/profile/ProfileForm";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompletion } from "@/lib/profile-utils";
@@ -35,12 +35,21 @@ export default async function ProfilePage() {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      {/* Inline width, not just Tailwind's flex/mx-auto/max-w classes — this
+         page's <main> was empirically confirmed (via live computed-width
+         checks) to be shrink-wrapping to whichever tab's content is
+         currently widest, meaning `body`'s flex-col stretch (app/layout.tsx)
+         isn't reliably reaching this element under this build. Same fix
+         class already proven to work for Tabs.tsx's tabpanel. */}
+      <main
+        className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8"
+        style={{ width: "100%" }}
+      >
         <ProfileAttentionBanner
           completionPercent={completionPercent}
           missingFields={missingFields}
         />
-        <ProfilePageClient profile={profile ?? null} />
+        <ProfileForm profile={profile ?? null} />
       </main>
     </>
   );

@@ -21,7 +21,8 @@ export interface Profile {
   skills: string[];
   industries: string[];
   work_experience: WorkExperience[] | null;
-  education: Education | null;
+  education: Education[] | null;
+  certifications: string[];
   job_titles_seeking: string[];
   remote_preference: string | null;
   preferred_locations: string[];
@@ -123,6 +124,66 @@ export interface JobEvaluationDimension {
   dimension: string;
   grade: "A" | "B" | "C" | "D" | "F";
   note: string;
+}
+
+// Whole-résumé quality analysis (distinct from ResumeGapAnalysisResult below,
+// which is résumé-vs-one-specific-job). Reuses JobEvaluationDimension's
+// {dimension, grade, note} shape for the 10-dimension role-fit matrix, since
+// it's the same "letter grade + one-line reason" pattern the job evaluator
+// already established — no need for a second shape that means the same
+// thing. See context/jobright-resume-scan-2026-07-30.md for the reference
+// this was designed against (grade tiers, urgent/critical/optional counts,
+// per-bullet issue+diff+rewrite pattern) and the chat flow-design pass for
+// why narrative alignment and vulnerabilities are separate from the
+// dimension grid rather than two more dimensions bolted on.
+export type ResumeIssueSeverity = "urgent" | "critical" | "optional";
+
+export interface ResumeBulletIssue {
+  // Matches the bullet verbatim against work_experience[entryIndex]'s
+  // responsibilities (split the same way BulletEditor/splitIntoBullets
+  // already does) — index-based would break the moment a bullet is
+  // reordered or another one is added/removed above it.
+  originalText: string;
+  issueType: string;
+  issueDetected: string;
+  whyItMatters: string;
+  howToImprove: string;
+  suggestedRewrite: string;
+}
+
+export interface ResumeSectionAnalysis {
+  section: "personal" | "professional_summary" | "skills" | "work_experience" | "education";
+  // Only present for work_experience — which of the profile's entries this
+  // targets, matched by company name (stable across re-analysis; an array
+  // index isn't, since a user can add/remove/reorder roles between runs).
+  entryCompany?: string;
+  severity: ResumeIssueSeverity;
+  issueCount: number;
+  bulletIssues: ResumeBulletIssue[];
+}
+
+export interface ResumeVulnerability {
+  title: string;
+  description: string;
+}
+
+export interface ResumeAnalysis {
+  grade: "A" | "B" | "C" | "D" | "F";
+  gradeLabel: "Excellent" | "Good" | "Satisfactory" | "Improvable";
+  summary: string;
+  urgentCount: number;
+  criticalCount: number;
+  optionalCount: number;
+  // The 10-dimension role-fit matrix — the report's main body, replacing
+  // JobRight's generic Relevance/Impact/Style categories with something
+  // specific to the résumé's own target role.
+  dimensions: JobEvaluationDimension[];
+  // Strategic Narrative Alignment: one holistic read of the whole résumé's
+  // positioning, not a per-dimension score.
+  narrativeInsight: string;
+  // Interviewer Skepticism: "expect to be asked about this," not "fix this."
+  vulnerabilities: ResumeVulnerability[];
+  sections: ResumeSectionAnalysis[];
 }
 
 export type GapStatus = "pass" | "warn" | "fail";

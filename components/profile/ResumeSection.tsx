@@ -108,7 +108,8 @@ export function ResumeSection({ existingResumeUrl, onExtracted }: Props) {
     <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <h2 className="text-base font-semibold text-text-primary">Resume</h2>
       <p className="mt-0.5 text-sm text-text-secondary">
-        Upload an existing resume to auto fill the profile, or generate a new
+        Upload an existing resume — or your LinkedIn profile PDF (LinkedIn →
+        More → Save to PDF) — to auto fill the profile, or generate a new
         detailed one from your details below.
       </p>
 
@@ -166,7 +167,7 @@ export function ResumeSection({ existingResumeUrl, onExtracted }: Props) {
               Click to upload or drag and drop
             </p>
             <p className="text-xs text-text-muted">
-              PDF format only. Maximum file size 2MB.
+              Resume or LinkedIn profile PDF. Maximum file size 2MB.
             </p>
           </>
         )}
