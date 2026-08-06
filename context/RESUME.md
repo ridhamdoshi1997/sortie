@@ -4,6 +4,8 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-06 (Phase 7)
 
+**Everything through this note is committed and pushed** — `feature/my-experiment` @ `e6ea178`, single commit covering the whole Résumé Editor Workspace arc (initial build + all 3 follow-up rounds). Run `git log -1`/`git status` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
+
 ---
 
 ## 30-second state (2026-08-05→06, Phase 7 — Résumé Editor Workspace, current state after 3 follow-up rounds)
