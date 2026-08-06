@@ -1,0 +1,288 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+
+import { resolveProvider } from "@/lib/access";
+import { requireUser } from "@/lib/auth";
+import { createInsforgeServer } from "@/lib/insforge-server";
+import { complete, getModel } from "@/lib/models";
+import { checkRateLimit } from "@/lib/rateLimit";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
+import { buildQualityAnalysisText, runResumeQualityAnalysis } from "@/lib/resumeQuality";
+import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
+import type { Job, Profile, ResumeAnalysis } from "@/types";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+
+// Manual section edits (reorder, hide, per-type content changes) DO change
+// what the résumé actually says, so — unlike style — they're worth
+// re-scoring against, same as an AI regenerate/revise would be.
+export async function saveResumeSections(
+  jobId: string,
+  sections: ResumeSection[],
+): Promise<{ success: boolean; scoreJump?: ScoreJumpResult; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle<Profile>();
+
+    if (!profile) {
+      return { success: false, error: "Profile not found" };
+    }
+
+    const { error } = await insforge.database
+      .from("applications")
+      .update({ resume_sections: sections, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("job_id", jobId);
+
+    if (error) {
+      console.error("[actions/documents] saveResumeSections", error);
+      return { success: false, error: "Failed to save your changes" };
+    }
+
+    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, sections, provider);
+
+    revalidatePath(`/resume/tailored/${jobId}`);
+    revalidatePath(`/find-jobs/${jobId}`);
+    return { success: true, scoreJump };
+  } catch (error) {
+    console.error("[actions/documents] saveResumeSections", error);
+    return { success: false, error: "Failed to save your changes" };
+  }
+}
+
+// The AI Rewrite tab has nothing to show until *some* score exists —
+// `jobs.resume_analysis` is only ever populated as a side effect of a save/
+// regenerate/chat-revise, so a résumé nobody has touched yet in the
+// workspace shows a completely empty tab with no way to get a first score.
+// Gated the same way the pre-existing (profile-scoped) /api/documents/analyze
+// route already was — same feature flag, rate-limit key, and usage cap —
+// this is the tailored-résumé-scoped equivalent via rescoreAgainstTailoredResume.
+export async function analyzeResumeFit(
+  jobId: string,
+  sections: ResumeSection[],
+): Promise<{ success: boolean; scoreJump?: ScoreJumpResult; error?: string }> {
+  if (!isFeatureEnabled("resume_analysis")) {
+    return { success: false, error: featureDisabledMessage("resume_analysis") };
+  }
+
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "documents/analyze");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "resume_analysis");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle<Profile>();
+
+    if (!profile) {
+      return { success: false, error: "Profile not found" };
+    }
+
+    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, sections, provider);
+
+    revalidatePath(`/resume/tailored/${jobId}`);
+    revalidatePath(`/find-jobs/${jobId}`);
+    return { success: true, scoreJump };
+  } catch (error) {
+    console.error("[actions/documents] analyzeResumeFit", error);
+    return { success: false, error: "Failed to analyze this résumé's fit." };
+  }
+}
+
+// The whole-résumé quality grade (10-dimension rubric, narrative insight,
+// vulnerabilities, per-bullet issues) — the tailored-résumé equivalent of
+// actions/resumes.ts's analyzeResume, sharing the same underlying AI call
+// (lib/resumeQuality.ts) and, deliberately, the same `resume_quality_analysis`
+// usage bucket (3/day — a much bigger call than the fit-score check above,
+// so it is NOT auto-run on every edit; only on demand or after Regenerate).
+export async function analyzeTailoredResumeQuality(
+  jobId: string,
+  sections: ResumeSection[],
+): Promise<{ success: boolean; analysis?: ResumeAnalysis; error?: string }> {
+  if (!isFeatureEnabled("resume_quality_analysis")) {
+    return { success: false, error: featureDisabledMessage("resume_quality_analysis") };
+  }
+
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "documents/analyze-quality");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "resume_quality_analysis");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const [{ data: profile }, { data: job }] = await Promise.all([
+      insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
+      insforge.database
+        .from("jobs")
+        .select("title")
+        .eq("id", jobId)
+        .eq("user_id", user.id)
+        .maybeSingle<Pick<Job, "title">>(),
+    ]);
+
+    if (!profile) {
+      return { success: false, error: "Profile not found" };
+    }
+
+    const targetRole = job?.title || profile.current_title || "the role this résumé targets";
+    const résuméText = buildQualityAnalysisText(profile, sections, targetRole);
+    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const result = await runResumeQualityAnalysis(provider, résuméText);
+
+    if (!result.success || !result.analysis) {
+      return { success: false, error: result.error };
+    }
+
+    const { error } = await insforge.database
+      .from("applications")
+      .update({ quality_analysis: result.analysis, quality_analyzed_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("job_id", jobId);
+
+    if (error) {
+      console.error("[actions/documents] analyzeTailoredResumeQuality db", error);
+      return { success: false, error: "Failed to save the quality analysis" };
+    }
+
+    revalidatePath(`/resume/tailored/${jobId}`);
+    return { success: true, analysis: result.analysis };
+  } catch (error) {
+    console.error("[actions/documents] analyzeTailoredResumeQuality", error);
+    return { success: false, error: "Failed to analyze this résumé's quality." };
+  }
+}
+
+// Same `bullet_rewrite` feature flag/usage cap as the base-profile bullet
+// editor (actions/profile.ts's rewriteBullet) — rewriting one bullet is
+// rewriting one bullet regardless of which surface triggered it, so this
+// deliberately shares that quota bucket rather than introducing a second
+// one. Adds real job context (title/company/missing skills) on top of the
+// profile version's generic role-only context, since these bullets are
+// meant to fit one specific posting, not a generic résumé.
+export async function rewriteResumeBullet(
+  jobId: string,
+  entryTitle: string,
+  entryCompany: string,
+  bulletText: string,
+  instruction?: string,
+): Promise<{ success: boolean; text?: string; error?: string }> {
+  if (!isFeatureEnabled("bullet_rewrite")) {
+    return { success: false, error: featureDisabledMessage("bullet_rewrite") };
+  }
+
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "documents/rewrite-bullet");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "bullet_rewrite");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const [{ data: profile }, { data: job }] = await Promise.all([
+      insforge.database
+        .from("profiles")
+        .select("preferred_model")
+        .eq("id", user.id)
+        .maybeSingle<Pick<Profile, "preferred_model">>(),
+      insforge.database
+        .from("jobs")
+        .select("title,company,missing_skills")
+        .eq("id", jobId)
+        .eq("user_id", user.id)
+        .maybeSingle<Pick<Job, "title" | "company" | "missing_skills">>(),
+    ]);
+
+    const jobContext = job
+      ? `Target job: ${job.title ?? "—"} at ${job.company ?? "—"}\nSkills this job wants that the résumé is currently missing: ${(job.missing_skills ?? []).join(", ") || "none recorded"}`
+      : "";
+
+    const raw = await complete(getModel(resolveProvider(profile?.preferred_model, user.email), "fast"), {
+      systemPrompt:
+        "You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. Return only valid JSON.",
+      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
+      temperature: 0.5,
+      maxTokens: 200,
+      jsonResponse: true,
+    });
+
+    let parsed: { rewritten?: string };
+    try {
+      parsed = JSON.parse(raw) as { rewritten?: string };
+    } catch (parseError) {
+      console.error("[actions/documents] rewriteResumeBullet JSON parse failed", parseError, raw.slice(0, 300));
+      return { success: false, error: "The AI response was incomplete. Please try again." };
+    }
+
+    if (!parsed.rewritten) {
+      return { success: false, error: "The AI didn't return a rewrite. Please try again." };
+    }
+
+    return { success: true, text: parsed.rewritten };
+  } catch (error) {
+    console.error("[actions/documents] rewriteResumeBullet", error);
+    return { success: false, error: "Failed to rewrite this bullet." };
+  }
+}
+
+// Style never changes what the résumé says, only how it looks — no rescore.
+export async function saveResumeStyle(jobId: string, style: ResumeStyle): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("applications")
+      .update({ resume_style: style, updated_at: new Date().toISOString() })
+      .eq("user_id", user.id)
+      .eq("job_id", jobId);
+
+    if (error) {
+      console.error("[actions/documents] saveResumeStyle", error);
+      return { success: false, error: "Failed to save your style changes" };
+    }
+
+    revalidatePath(`/resume/tailored/${jobId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/documents] saveResumeStyle", error);
+    return { success: false, error: "Failed to save your style changes" };
+  }
+}

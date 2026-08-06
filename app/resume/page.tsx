@@ -6,6 +6,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { ResumeManager } from "@/components/profile/ResumeManager";
+import { TailoredResumeCard } from "@/components/profile/TailoredResumeCard";
 import { listResumes } from "@/actions/resumes";
 
 type GeneratedResumeRow = {
@@ -68,21 +69,12 @@ export default async function ResumePage() {
               </a>
             )}
             {tailored.map((row) => (
-              <a
+              <TailoredResumeCard
                 key={row.job_id}
-                href={`/api/documents/download?jobId=${row.job_id}&kind=resume`}
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-4 shadow-card transition-colors hover:bg-surface-secondary"
-              >
-                <FileText className="h-5 w-5 text-agent" />
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">
-                    {row.jobs?.title ?? "Tailored resume"}
-                  </p>
-                  <p className="text-xs text-text-muted">{row.jobs?.company ?? "Unknown company"}</p>
-                </div>
-              </a>
+                jobId={row.job_id}
+                title={row.jobs?.title ?? "Tailored resume"}
+                company={row.jobs?.company ?? "Unknown company"}
+              />
             ))}
           </div>
         ) : null}

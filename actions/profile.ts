@@ -16,7 +16,7 @@ import { complete, getModel, type ModelProvider } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
-import type { ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
+import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
 import type { Education, Profile, WorkExperience } from "@/types";

@@ -12,9 +12,12 @@ import { getModel } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { ResumePDF, type GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
-import { CoverLetterPDF } from "@/app/api/documents/generate/CoverLetterPDF";
+import { ResumePDF, type GeneratedContent } from "@/components/documents/ResumePDF";
+import { CoverLetterPDF } from "@/components/documents/CoverLetterPDF";
+import { buildDefaultStyle, mergeGeneratedContent } from "@/lib/resumeSections";
+import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
 import type { Job, Profile } from "@/types";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 type RequestBody = {
   jobId?: unknown;
@@ -153,12 +156,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const contentColumn = kind === "resume" ? "generated_resume" : "generated_cover_letter";
     const { data: application, error: applicationError } = await insforge.database
       .from("applications")
-      .select(contentColumn)
+      .select(`${contentColumn},resume_sections,resume_style`)
       .eq("user_id", user.id)
       .eq("job_id", jobId)
-      .maybeSingle<Record<string, string | null>>();
+      .maybeSingle<{
+        generated_resume?: string | null;
+        generated_cover_letter?: string | null;
+        resume_sections: ResumeSection[] | null;
+        resume_style: ResumeStyle | null;
+      }>();
 
-    const currentContentText = application?.[contentColumn];
+    const currentContentText = application?.[contentColumn as "generated_resume" | "generated_cover_letter"];
     if (applicationError || !currentContentText) {
       return NextResponse.json(
         {
@@ -180,6 +188,10 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;
+    // Only set for kind === "resume" — re-saved after persistGeneratedDocument
+    // below, same pattern as /api/documents/generate.
+    let resumeSections: ResumeSection[] | null = null;
+    let resumeStyle: ResumeStyle | null = null;
 
     if (kind === "resume") {
       const currentContent = JSON.parse(currentContentText) as GeneratedContent;
@@ -193,11 +205,13 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
       reply = revised.reply;
       generatedContentText = JSON.stringify(revised.content);
+      resumeSections = mergeGeneratedContent(application?.resume_sections ?? null, revised.content, profile);
+      resumeStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
       pdfBuffer = await renderToBuffer(
         React.createElement(ResumePDF, {
           profile,
-          generated: revised.content,
-          theme,
+          sections: resumeSections,
+          style: resumeStyle,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
@@ -238,11 +252,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    let scoreJump: ScoreJumpResult | null = null;
+    if (resumeSections && resumeStyle) {
+      const { error: sectionsError } = await insforge.database
+        .from("applications")
+        .update({ resume_sections: resumeSections, resume_style: resumeStyle, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .eq("job_id", jobId);
+      if (sectionsError) {
+        console.error("[api/documents/chat] save resume_sections/resume_style", sectionsError);
+      }
+      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider);
+    }
+
     revalidatePath(`/find-jobs/${jobId}`);
+    revalidatePath(`/resume/tailored/${jobId}`);
 
     return NextResponse.json({
       success: true,
-      data: { reply, pdfUrl: persistResult.storagePath },
+      data: { reply, pdfUrl: persistResult.storagePath, scoreJump, sections: resumeSections, style: resumeStyle },
     });
   } catch (error) {
     console.error("[api/documents/chat]", error);

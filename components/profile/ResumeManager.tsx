@@ -151,6 +151,13 @@ function SyncModal({
   const [stage, setStage] = useState<"loading" | "select" | "syncing" | "done" | "error">("loading");
   const [diffs, setDiffs] = useState<SectionDiff[]>([]);
   const [selected, setSelected] = useState<Set<SyncSection>>(new Set());
+  // Replacement candidates (Education/Work Experience entries that matched
+  // an existing entry but whose content has drifted) default UNCHECKED —
+  // unlike additions, applying one overwrites existing profile content, so
+  // it needs an explicit per-entry opt-in rather than being on by default.
+  // Keyed "section::dedupeKey" since the same key could theoretically repeat
+  // across sections.
+  const [replaceSelections, setReplaceSelections] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -180,9 +187,25 @@ function SyncModal({
     });
   }
 
+  function toggleReplace(section: SyncSection, key: string) {
+    const id = `${section}::${key}`;
+    setReplaceSelections((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   async function confirmSync() {
     setStage("syncing");
-    const result = await syncResumeToProfile(resume.id, Array.from(selected));
+    const replaceKeys: Partial<Record<SyncSection, string[]>> = {};
+    for (const id of replaceSelections) {
+      const [section, key] = id.split("::") as [SyncSection, string];
+      if (!selected.has(section)) continue;
+      (replaceKeys[section] ??= []).push(key);
+    }
+    const result = await syncResumeToProfile(resume.id, Array.from(selected), replaceKeys);
     if (result.success) {
       setStage("done");
       onDone();
@@ -246,13 +269,14 @@ function SyncModal({
                           <Loader2 className="h-3.5 w-3.5 animate-spin text-agent" />
                         ) : diff?.hasChanges ? (
                           <span className="rounded-full bg-agent-muted px-2 py-0.5 text-[10px] font-medium text-agent">
-                            {diff.summary.length} change{diff.summary.length === 1 ? "" : "s"}
+                            {diff.summary.length + diff.replacements.length} change
+                            {diff.summary.length + diff.replacements.length === 1 ? "" : "s"}
                           </span>
                         ) : (
                           <span className="text-[11px] text-text-muted">Nothing new</span>
                         )}
                       </label>
-                      {diff?.hasChanges && stage === "select" && (
+                      {diff?.hasChanges && stage === "select" && selected.has(section) && (
                         <div className="mt-2.5 space-y-1 pl-7">
                           {diff.summary.map((line) => (
                             <p key={line} className="flex items-start gap-1.5 text-xs leading-5 text-agent-dark">
@@ -260,6 +284,37 @@ function SyncModal({
                               {line}
                             </p>
                           ))}
+                        </div>
+                      )}
+                      {diff?.replacements && diff.replacements.length > 0 && stage === "select" && selected.has(section) && (
+                        <div className="mt-2.5 space-y-2 pl-7">
+                          {diff.replacements.map((r) => {
+                            const id = `${section}::${r.key}`;
+                            return (
+                              <label
+                                key={id}
+                                className="flex cursor-pointer items-start gap-2 rounded-lg border border-border/60 p-2 hover:bg-surface-secondary"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={replaceSelections.has(id)}
+                                  onChange={() => toggleReplace(section, r.key)}
+                                  className="mt-0.5 h-3.5 w-3.5 accent-agent"
+                                />
+                                <span className="flex-1">
+                                  <span className="mb-1 block text-[11px] font-medium text-text-primary">
+                                    {r.label} — update with newer résumé content?
+                                  </span>
+                                  <span className="block whitespace-pre-line rounded-md bg-error/10 px-2 py-1 text-[11px] text-error line-through decoration-error/60">
+                                    {r.current}
+                                  </span>
+                                  <span className="mt-1 block whitespace-pre-line rounded-md bg-agent-light px-2 py-1 text-[11px] text-agent-dark">
+                                    {r.proposed}
+                                  </span>
+                                </span>
+                              </label>
+                            );
+                          })}
                         </div>
                       )}
                     </div>

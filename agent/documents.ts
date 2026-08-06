@@ -1,6 +1,6 @@
 import { complete, getModel, type ModelProvider } from "@/lib/models";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
-import type { GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
+import type { GeneratedContent } from "@/components/documents/ResumePDF";
 
 type DocumentJob = Pick<
   Job,

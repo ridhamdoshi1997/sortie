@@ -5,7 +5,7 @@ import { ResumeGapAnalysis } from "@/components/job-details/ResumeGapAnalysis";
 import { ModelSelector } from "@/components/shared/ModelSelector";
 import { ThemeSelector } from "@/components/shared/ThemeSelector";
 import type { ModelProvider } from "@/lib/models";
-import type { ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
+import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import type { ResumeGapAnalysisResult } from "@/types";
 
 type Props = {

@@ -11,17 +11,19 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import type { Profile } from "@/types";
-import { ResumePDF, type GeneratedContent, type ResumeTheme } from "./ResumePDF";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+import { ResumePDF, type GeneratedContent } from "@/components/documents/ResumePDF";
+import { buildDefaultSections, buildDefaultStyle } from "@/lib/resumeSections";
 
 function createResumeDocument(
   profile: Profile,
-  generated: GeneratedContent,
-  theme: ResumeTheme,
+  sections: ResumeSection[],
+  style: ResumeStyle,
 ): React.ReactElement<DocumentProps> {
   // ResumePDF renders a @react-pdf <Document>; the cast bridges React's component
   // prop inference to the renderer's document element type.
   return (
-    <ResumePDF profile={profile} generated={generated} theme={theme} />
+    <ResumePDF profile={profile} sections={sections} style={style} />
   ) as unknown as React.ReactElement<DocumentProps>;
 }
 
@@ -128,9 +130,13 @@ ${profileContext}`,
       );
     }
 
-    // Render PDF buffer server-side
-    const theme = profile.preferred_resume_theme ?? "modern";
-    const buffer = await renderToBuffer(createResumeDocument(profile, generated, theme));
+    // Render PDF buffer server-side. This is the base résumé (/profile) —
+    // it has no `resume_sections`/`resume_style` row of its own to persist
+    // to (that only exists for AI-tailored per-job copies), so it's built
+    // fresh from defaults on every generate rather than loaded/saved.
+    const sections = buildDefaultSections(profile, generated);
+    const style = buildDefaultStyle(profile.preferred_resume_theme);
+    const buffer = await renderToBuffer(createResumeDocument(profile, sections, style));
 
     // Remove existing file then upload fresh (SDK has no upsert — matches actions/profile.ts pattern)
     const path = `${user.id}/resume.pdf`;

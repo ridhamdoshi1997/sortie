@@ -1,60 +1,30 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState } from "react";
 import { Send, CheckCircle2 } from "lucide-react";
 
-type ChatMessage = { role: "user" | "assistant"; content: string };
+import { useDocumentChat } from "@/components/documents/useDocumentChat";
+import type { ScoreJumpResult } from "@/lib/scoreJump";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 type Props = {
   jobId: string;
   kind: "resume" | "cover_letter";
+  // Only meaningful for the résumé workspace, which keeps its own live
+  // sections/style state in sync with a revision — the job-details page's
+  // usage has no such state to update and simply omits this.
+  onRevised?: (data: { reply: string; sections?: ResumeSection[]; style?: ResumeStyle; scoreJump?: ScoreJumpResult | null }) => void;
 };
 
-export function DocumentChatEditor({ jobId, kind }: Props) {
-  const router = useRouter();
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+export function DocumentChatEditor({ jobId, kind, onRevised }: Props) {
+  const { messages, error, justUpdated, isPending, send } = useDocumentChat({ jobId, kind, onRevised });
   const [input, setInput] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [justUpdated, setJustUpdated] = useState(false);
-  const [isPending, startTransition] = useTransition();
 
   function handleSend(e: React.FormEvent): void {
     e.preventDefault();
-    const trimmed = input.trim();
-    if (!trimmed || isPending) return;
-
-    const nextMessages: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
-    setMessages(nextMessages);
+    if (!input.trim() || isPending) return;
+    send(input);
     setInput("");
-    setError(null);
-    setJustUpdated(false);
-
-    startTransition(async () => {
-      try {
-        const res = await fetch("/api/documents/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jobId, kind, messages: nextMessages }),
-        });
-        const json = (await res.json()) as {
-          success: boolean;
-          data?: { reply: string };
-          error?: string;
-        };
-
-        if (!res.ok || !json.success || !json.data) {
-          setError(json.error ?? "Revision failed. Please try again.");
-          return;
-        }
-
-        setMessages((prev) => [...prev, { role: "assistant", content: json.data!.reply }]);
-        setJustUpdated(true);
-        router.refresh();
-      } catch {
-        setError("Network error. Please check your connection and try again.");
-      }
-    });
   }
 
   return (

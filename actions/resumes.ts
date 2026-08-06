@@ -6,13 +6,13 @@ import { revalidatePath } from "next/cache";
 import { resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { complete, getModel } from "@/lib/models";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { isFeatureEnabled, featureDisabledMessage } from "@/lib/features";
+import { runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { extractProfileFromBuffer, type ExtractedProfile } from "@/actions/profile";
 import { SYNC_SECTIONS, type SyncSection } from "@/lib/resumeSync";
-import type { Profile, ResumeAnalysis, ResumeIssueSeverity } from "@/types";
+import type { Profile, ResumeAnalysis } from "@/types";
 
 // Real backend for the /preview/resume mockup's résumé manager. Scoped
 // deliberately: CRUD + résumé→profile sync (additive merge, never
@@ -339,10 +339,80 @@ export async function deleteResume(id: string): Promise<{ success: boolean; erro
   }
 }
 
-export type SectionDiff = { section: SyncSection; hasChanges: boolean; summary: string[] };
+// AI-tailored-per-job résumés aren't rows in the `resumes` table above —
+// they're the `generated_resume`/`resume_pdf_url` columns on that job's
+// `applications` row (see lib/documentPersistence.ts). A cover letter for
+// the same job can share that row, so this only clears the résumé-specific
+// columns and storage file — deleting the whole row would silently destroy
+// an unrelated cover letter. The row itself is only removed once nothing
+// (résumé or cover letter) references it anymore.
+export async function deleteTailoredResume(jobId: string): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: application } = await insforge.database
+      .from("applications")
+      .select("id,resume_pdf_url,cover_letter_pdf_url,generated_cover_letter")
+      .eq("user_id", user.id)
+      .eq("job_id", jobId)
+      .maybeSingle<{
+        id: string;
+        resume_pdf_url: string | null;
+        cover_letter_pdf_url: string | null;
+        generated_cover_letter: string | null;
+      }>();
+
+    if (!application) {
+      return { success: false, error: "Tailored résumé not found" };
+    }
+
+    if (application.resume_pdf_url) {
+      await insforge.storage.from("resumes").remove(application.resume_pdf_url);
+    }
+
+    const hasCoverLetter = Boolean(application.cover_letter_pdf_url || application.generated_cover_letter);
+
+    const { error } = hasCoverLetter
+      ? await insforge.database
+          .from("applications")
+          .update({ generated_resume: null, resume_pdf_url: null })
+          .eq("id", application.id)
+      : await insforge.database.from("applications").delete().eq("id", application.id);
+
+    if (error) {
+      console.error("[actions/resumes] deleteTailoredResume", error);
+      return { success: false, error: "Failed to delete this tailored résumé" };
+    }
+
+    revalidatePath("/resume");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/resumes] deleteTailoredResume", error);
+    return { success: false, error: "Failed to delete this tailored résumé" };
+  }
+}
+
+// A matched entry (same company+title, or same institution+degree) whose
+// content has drifted from what's in the profile — e.g. a fresh extraction
+// has an updated end date/responsibilities, or the original sync happened
+// before a data-quality fix. Surfaced separately from `summary`'s pure
+// additions because applying one is destructive (replaces existing content)
+// and needs its own explicit per-entry opt-in, not just the section-level
+// checkbox additions already get.
+export type ReplacementCandidate = { key: string; label: string; current: string; proposed: string };
+
+export type SectionDiff = {
+  section: SyncSection;
+  hasChanges: boolean;
+  summary: string[];
+  replacements: ReplacementCandidate[];
+};
 
 function diffSection(section: SyncSection, current: Profile, extracted: ExtractedProfile): SectionDiff {
   const summary: string[] = [];
+  const replacements: ReplacementCandidate[] = [];
 
   if (section === "Personal") {
     if (extracted.full_name && extracted.full_name !== current.full_name) {
@@ -381,10 +451,29 @@ function diffSection(section: SyncSection, current: Profile, extracted: Extracte
   }
 
   if (section === "Education") {
-    const existingKeys = new Set((current.education ?? []).map((e) => `${e.institution}|${e.degree}`));
-    extracted.education
-      .filter((e) => !existingKeys.has(`${e.institution}|${e.degree}`))
-      .forEach((e) => summary.push(`+ ${e.degree ?? "Degree"} — ${e.institution ?? "Institution"}`));
+    // dedupeKey, not raw template-string keys — a case/whitespace mismatch
+    // here would show an entry as "new" in this preview while the real sync
+    // (which already uses dedupeKey) treats it as an existing match, so the
+    // two would disagree about what's actually about to happen.
+    const existingByKey = new Map((current.education ?? []).map((e) => [dedupeKey(e.institution, e.degree), e]));
+    extracted.education.forEach((e) => {
+      const key = dedupeKey(e.institution, e.degree);
+      const match = existingByKey.get(key);
+      if (!match) {
+        summary.push(`+ ${e.degree ?? "Degree"} — ${e.institution ?? "Institution"}`);
+        return;
+      }
+      const fieldChanged = (e.field ?? "") !== (match.field ?? "");
+      const yearChanged = (e.graduation_year ?? "") !== (match.graduation_year ?? "");
+      if (fieldChanged || yearChanged) {
+        replacements.push({
+          key,
+          label: `${e.degree ?? "Degree"} — ${e.institution ?? "Institution"}`,
+          current: `${match.field ?? "—"} · ${match.graduation_year ?? "—"}`,
+          proposed: `${e.field ?? "—"} · ${e.graduation_year ?? "—"}`,
+        });
+      }
+    });
   }
 
   if (section === "Certifications") {
@@ -394,10 +483,40 @@ function diffSection(section: SyncSection, current: Profile, extracted: Extracte
   }
 
   if (section === "Work Experience") {
-    const existingKeys = new Set((current.work_experience ?? []).map((w) => `${w.company}|${w.title}`));
-    extracted.work_experience
-      .filter((w) => !existingKeys.has(`${w.company}|${w.title}`))
-      .forEach((w) => summary.push(`+ ${w.title} at ${w.company}`));
+    // Keyed on start_date, NOT company/title text — confirmed live (real
+    // user data) that two extractions of the SAME job can disagree on both:
+    // one résumé said "HCL Technologies" / "Full-stack Developer", another
+    // said "HCL America Inc" / "Developer", for a position that started the
+    // same month either way. A company/title key treated those as two
+    // different jobs and silently appended a duplicate; start_date is the
+    // one field extraction has actually been consistent on across résumé
+    // versions, so it's a far more reliable "is this the same job" signal
+    // than paraphrased company/title strings.
+    const existingByKey = new Map((current.work_experience ?? []).map((w) => [dedupeKey(w.start_date), w]));
+    extracted.work_experience.forEach((w) => {
+      const key = dedupeKey(w.start_date);
+      const match = existingByKey.get(key);
+      if (!match) {
+        summary.push(`+ ${w.title} at ${w.company}`);
+        return;
+      }
+      const companyChanged = dedupeKey(w.company) !== dedupeKey(match.company);
+      const titleChanged = dedupeKey(w.title) !== dedupeKey(match.title);
+      const responsibilitiesChanged = w.responsibilities.trim() !== (match.responsibilities ?? "").trim();
+      const endDateChanged = (w.end_date ?? "") !== (match.end_date ?? "") || w.is_current !== match.is_current;
+      if (companyChanged || titleChanged || responsibilitiesChanged || endDateChanged) {
+        // Company/title shown here too, not just responsibilities — since
+        // the match itself can now pair entries with different company/title
+        // wording, the user needs to see both sides to confirm this really
+        // is the same job before approving the replacement.
+        replacements.push({
+          key,
+          label: `Position starting ${w.start_date}`,
+          current: `${match.title} at ${match.company}\n${match.responsibilities || "(no description)"}`,
+          proposed: `${w.title} at ${w.company}\n${w.responsibilities || "(no description)"}`,
+        });
+      }
+    });
   }
 
   if (section === "Preferences") {
@@ -406,7 +525,7 @@ function diffSection(section: SyncSection, current: Profile, extracted: Extracte
       .forEach((t) => summary.push(`+ Seeking: ${t}`));
   }
 
-  return { section, hasChanges: summary.length > 0, summary };
+  return { section, hasChanges: summary.length > 0 || replacements.length > 0, summary, replacements };
 }
 
 export async function getResumeProfileDiff(
@@ -455,15 +574,19 @@ function dedupeKey(...parts: (string | null | undefined)[]): string {
   return parts.map((p) => (p ?? "").trim().toLowerCase()).join("|");
 }
 
-// Additive merge only — a section sync never removes or overwrites an
-// existing entry, it only adds what's in the résumé but genuinely missing
-// from the profile. A destructive overwrite would contradict the "nothing
-// else is touched" promise the sync modal makes, and risks silently
-// deleting hand-edited profile content just because one résumé's PDF
-// happened not to mention it.
+// Additive by default — a section sync never removes or silently overwrites
+// an existing entry, it only adds what's in the résumé but genuinely missing
+// from the profile. The one exception is `replaceKeys`: an explicit,
+// per-entry opt-in (surfaced by getResumeProfileDiff's `replacements` list
+// and approved one-by-one in the sync modal) for Education/Work Experience
+// entries that matched an existing entry but whose content has drifted —
+// this is the "upgrade an existing entry, don't just add" path. Without an
+// explicit key in `replaceKeys`, a matched entry is left exactly as-is, same
+// as before.
 export async function syncResumeToProfile(
   resumeId: string,
   sections: SyncSection[],
+  replaceKeys: Partial<Record<SyncSection, string[]>> = {},
 ): Promise<{ success: boolean; error?: string }> {
   const user = await requireUser();
 
@@ -511,11 +634,16 @@ export async function syncResumeToProfile(
     }
 
     if (sections.includes("Education")) {
+      const approvedReplace = new Set(replaceKeys["Education"] ?? []);
+      const extractedByKey = new Map(extracted.education.map((e) => [dedupeKey(e.institution, e.degree), e]));
       const existingKeys = new Set(
         (current.education ?? []).map((e) => dedupeKey(e.institution, e.degree)),
       );
       fields.education = [
-        ...(current.education ?? []),
+        ...(current.education ?? []).map((e) => {
+          const key = dedupeKey(e.institution, e.degree);
+          return approvedReplace.has(key) ? (extractedByKey.get(key) ?? e) : e;
+        }),
         ...extracted.education.filter((e) => !existingKeys.has(dedupeKey(e.institution, e.degree))),
       ];
     }
@@ -525,12 +653,18 @@ export async function syncResumeToProfile(
     }
 
     if (sections.includes("Work Experience")) {
-      const existingKeys = new Set(
-        (current.work_experience ?? []).map((w) => dedupeKey(w.company, w.title)),
-      );
+      // Keyed on start_date — must match diffSection's matching exactly, or
+      // a key the diff showed the user as "replace this" won't be found
+      // here and would silently fall through to append-as-new instead.
+      const approvedReplace = new Set(replaceKeys["Work Experience"] ?? []);
+      const extractedByKey = new Map(extracted.work_experience.map((w) => [dedupeKey(w.start_date), w]));
+      const existingKeys = new Set((current.work_experience ?? []).map((w) => dedupeKey(w.start_date)));
       fields.work_experience = [
-        ...(current.work_experience ?? []),
-        ...extracted.work_experience.filter((w) => !existingKeys.has(dedupeKey(w.company, w.title))),
+        ...(current.work_experience ?? []).map((w) => {
+          const key = dedupeKey(w.start_date);
+          return approvedReplace.has(key) ? (extractedByKey.get(key) ?? w) : w;
+        }),
+        ...extracted.work_experience.filter((w) => !existingKeys.has(dedupeKey(w.start_date))),
       ];
     }
 
@@ -630,67 +764,12 @@ ${extracted.education.map((e) => `- ${e.degree ?? "—"} in ${e.field ?? "—"},
 Certifications: ${extracted.certifications?.join(", ") || "—"}
 `.trim();
 
-    const raw = await complete(getModel(resolveProvider(profileRow?.preferred_model, user.email), "smart"), {
-      systemPrompt:
-        "You are an expert résumé reviewer combining three lenses into one report. (1) A 10-DIMENSION ROLE-FIT MATRIX scoped specifically to the target role (pick 10 dimensions that actually matter for THIS role — e.g. for an engineering role: Technical Depth, System Design, Ownership & Scope, Collaboration, Impact Quantification, etc.; for a sales role the dimensions would be entirely different — do not use a generic template). Each dimension gets a letter grade (A-F) and a one-sentence reason grounded in the actual résumé text. (2) STRATEGIC NARRATIVE ALIGNMENT: read the whole résumé holistically and identify what career narrative it currently tells (e.g. 'individual contributor executor' vs 'team lead' vs 'strategic owner') versus what the target role likely expects — one paragraph. (3) INTERVIEWER SKEPTICISM: identify 2-4 specific things a sharp interviewer would probe or doubt (unexplained gaps, vague claims, seniority mismatches) — frame these as 'expect to be asked about this,' not as résumé-editing issues. Separately, identify concrete PER-BULLET issues in the work experience section only (not every bullet needs one — skip bullets that are already strong) with severity urgent/critical/optional, matched to the EXACT original bullet text so it can be found again. For each flagged bullet, also write a suggested rewrite. Only use information that is actually stated or clearly implied in the résumé — never invent metrics, employers, or outcomes. Return only valid JSON matching the exact schema given.",
-      userPrompt: `Résumé to analyze:\n\n${résuméText}\n\nReturn JSON with this exact shape:
-{
-  "grade": "A"|"B"|"C"|"D"|"F",
-  "gradeLabel": "Excellent"|"Good"|"Satisfactory"|"Improvable",
-  "summary": string,
-  "dimensions": [{ "dimension": string, "grade": "A"|"B"|"C"|"D"|"F", "note": string }],
-  "narrativeInsight": string,
-  "vulnerabilities": [{ "title": string, "description": string }],
-  "sections": [
-    {
-      "section": "personal"|"professional_summary"|"skills"|"work_experience"|"education",
-      "entryCompany": string (only for work_experience, must exactly match one of the company names above),
-      "severity": "urgent"|"critical"|"optional",
-      "bulletIssues": [
-        {
-          "originalText": string (must exactly match a substring of that entry's description above),
-          "issueType": string,
-          "issueDetected": string,
-          "whyItMatters": string,
-          "howToImprove": string,
-          "suggestedRewrite": string
-        }
-      ]
+    const provider = resolveProvider(profileRow?.preferred_model, user.email);
+    const result = await runResumeQualityAnalysis(provider, résuméText);
+    if (!result.success || !result.analysis) {
+      return { success: false, error: result.error };
     }
-  ]
-}
-Provide exactly 10 dimensions. "sections" should only include sections that actually have issues — omit clean ones entirely.`,
-      temperature: 0.4,
-      maxTokens: 4000,
-      jsonResponse: true,
-    });
-
-    let parsed: Omit<ResumeAnalysis, "urgentCount" | "criticalCount" | "optionalCount">;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (parseError) {
-      console.error("[actions/resumes] analyzeResume JSON parse failed", parseError, raw.slice(0, 500));
-      return { success: false, error: "The AI response was incomplete. Please try again." };
-    }
-
-    // Counts are derived here, not trusted from the model — keeps the
-    // top-level badge always internally consistent with what's actually in
-    // `sections`, even if the model's own arithmetic is off.
-    const countBy = (severity: ResumeIssueSeverity) =>
-      parsed.sections.filter((s) => s.severity === severity).length;
-
-    const analysis: ResumeAnalysis = {
-      grade: parsed.grade,
-      gradeLabel: parsed.gradeLabel,
-      summary: parsed.summary,
-      dimensions: parsed.dimensions,
-      narrativeInsight: parsed.narrativeInsight,
-      vulnerabilities: parsed.vulnerabilities ?? [],
-      sections: parsed.sections ?? [],
-      urgentCount: countBy("urgent"),
-      criticalCount: countBy("critical"),
-      optionalCount: countBy("optional"),
-    };
+    const analysis = result.analysis;
 
     const { error } = await insforge.database
       .from("resumes")
@@ -711,11 +790,10 @@ Provide exactly 10 dimensions. "sections" should only include sections that actu
     revalidatePath(`/resume/${resumeId}`);
     return { success: true, analysis };
   } catch (error) {
+    // The AI call itself (429/quota included) is handled inside
+    // runResumeQualityAnalysis and returns {success:false, error} rather
+    // than throwing — anything reaching this catch is a DB/infra failure.
     console.error("[actions/resumes] analyzeResume", error);
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("429") || /quota|rate limit/i.test(message)) {
-      return { success: false, error: "The AI service is rate-limited right now. Please wait a minute and try again." };
-    }
     return { success: false, error: "Failed to analyze this résumé." };
   }
 }

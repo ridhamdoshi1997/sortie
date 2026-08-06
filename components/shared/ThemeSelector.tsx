@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { Palette } from "lucide-react";
 
 import { setPreferredResumeTheme } from "@/actions/profile";
-import type { ResumeTheme } from "@/app/api/resume/generate/ResumePDF";
+import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const THEME_LABELS: Record<ResumeTheme, string> = {

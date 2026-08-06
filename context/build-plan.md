@@ -974,23 +974,23 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | DOCX / Markdown export | 📋 | Phase 16 |
 | **Resume fit / gap analysis** (score 0–10, per-check gaps, keyword coverage) | 🎨 | Competitor teardown — **design preview built** |
 
-### C1. Resume editor — the surface we're missing entirely
+### C1. Resume editor — shipped 2026-08-05 (Phase 7)
 
-Today Sortie's flow is *click Generate → receive a PDF*. The competitor teardown (2026-07-21) showed a full editing workspace instead: a live document preview beside a three-tab rail. That's the difference between a black box and a tool, and most of the pieces are cheap because we already own the hard parts (generation, chat revision, themes).
+Today Sortie's flow is *click Generate → receive a PDF*~~. The competitor teardown (2026-07-21) showed a full editing workspace instead: a live document preview beside a three-tab rail.~~ **Real as of this session** — `app/resume/tailored/[jobId]/page.tsx` + `components/documents/ResumeWorkspace.tsx`. Full build detail in `progress-tracker.md`'s top entry; component-level notes in `ui-registry.md`.
 
 | Feature | Status | Notes |
 | --- | --- | --- |
-| Live preview pane + page counter + "fit to one page" | 🆕 | Rendering only, no AI cost |
-| **Score jump + "what changed" changelog** | 🆕 | Re-score after generation and diff against the pre-generation gap score. Makes invisible work visible — highest value per unit effort |
-| **One-tap refinement chips** ("stronger action verbs", "shorten summary", "cut filler") | 🆕 | Pre-written prompts routed through the existing `DocumentChatEditor` — nearly free, far more discoverable than a blank text box |
-| **Style controls** — columns (2/3/4), skills layout, section/entry/line spacing, margins, justify toggle, reset | 🆕 | Props into `ResumePDF.tsx`. Zero AI cost. Natural extension of the 3 existing themes |
-| Section-level "compare to original" + "edit with AI" | 🆕 | Hover a section to diff or revise just that block, rather than the whole document |
-| Multi-resume switching in the editor | 🆕 | Depends on the resume version manager above; needs schema work |
-| Visible credit/usage consumption in-editor | 🆕 | Metering shown at point of use (already the pattern in the design preview) |
+| Live preview pane | ✅ | `@react-pdf/renderer`'s `PDFViewer` wraps the real `ResumePDF`, not a separate HTML approximation |
+| Page counter + "fit to one page" | 🆕 | Not built — `PDFViewer`'s own toolbar covers page navigation; "fit to one page" (AI-driven auto-shrink) deferred, real added AI cost with no clear demand signal yet |
+| **Score jump + "what changed" changelog** | ✅ | `lib/scoreJump.ts` — real gap found building this: the fit score was always computed against the base *profile*, never the tailored résumé, so it could never move before this. Now scores against whatever's actually in the workspace |
+| **One-tap refinement chips** | ✅ | `RefinementChips.tsx`, routed through the same `useDocumentChat` hook `DocumentChatEditor` uses — chips and the chat box currently keep independent message-log state (deliberate simplification, not a bug) |
+| **Style controls** — template, theme, page size, accent colour, font sizes, header alignment, skills columns, bullet style, spacing sliders | ✅ | `StyleTab.tsx`, props into a fully-generalized `ResumePDF.tsx` |
+| Section-level edit + drag-to-reorder + hide | ✅ | `EditorTab.tsx`, first real drag-and-drop in this codebase (`@dnd-kit`, new dependency) — hide is soft (kept in array), no arbitrary custom sections beyond the 4 existing types |
+| **3 structurally distinct templates** (Centered/Structured/Split) | ✅ | Not just style variants — `split` is a genuine two-column sidebar layout, modeled on the real LinkedIn-export PDF this project's own résumé-sync test data already surfaced |
+| Multi-resume switching in the editor | 🆕 | Still deferred — one workspace = one job's tailored résumé, matching today's 1:1 job↔application model |
+| Visible credit/usage consumption in-editor | 🆕 | Still deferred, minor |
 
-**Suggested build order:** score-jump + changelog → refinement chips → style controls → section-level editing → multi-resume. The first three need no new backend beyond what the gap analysis already introduces.
-
-**Design preview:** `/preview/resume` — manager table, section editor with drag-to-reorder, and the full style panel (templates, accent colour, font family + four sizes, bullet style, header alignment, columns, spacing sliders).
+**Design preview (superseded by the real build above):** `/preview/resume` — was pure static JSX with dummy data, no real state or API wiring; kept as a design reference, not touched by this build.
 
 #### The base-résumé vs tailored-copy data model — decide before building
 

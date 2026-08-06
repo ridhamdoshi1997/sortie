@@ -737,10 +737,10 @@ Extracted from `ProfileForm.tsx`'s per-section edit modals (Personal/Professiona
 ### ResumeManager (multi-résumé slot table)
 
 File: components/profile/ResumeManager.tsx
-Last updated: 2026-08-05 (new)
+Last updated: 2026-08-05 (updated — per-entry replace UI)
 
 **Pattern notes:**
-Real backend for `/resume` — up to 5 named résumé slots (`resumes` table), one marked primary (star badge, `bg-accent-muted text-accent`), status pill (`uploaded` / `analysed`, `bg-success-lightest`), per-row `MoreHorizontal` actions menu (Make Primary / Sync to Profile / Rename / Export / Delete — Delete disabled while primary). Upload modal is drag-and-drop, PDF only, 2MB cap (matches the real `uploadResumeSlot` constraint, not JobRight's 10MB/Word claim from the reference scan). Sync modal shows a real diff (`getResumeProfileDiff`) before writing, mapped to 6 sections (Personal/Professional/Education/Certifications/Work Experience/Preferences) — additive-only, never overwrites existing profile content (see `RESUME.md`'s gotcha on why this needs a real "upgrade if better" path eventually).
+Real backend for `/resume` — up to 5 named résumé slots (`resumes` table), one marked primary (star badge, `bg-accent-muted text-accent`), status pill (`uploaded` / `analysed`, `bg-success-lightest`), per-row `MoreHorizontal` actions menu (Make Primary / Sync to Profile / Rename / Export / Delete — Delete disabled while primary). Upload modal is drag-and-drop, PDF only, 2MB cap (matches the real `uploadResumeSlot` constraint, not JobRight's 10MB/Word claim from the reference scan). Sync modal shows a real diff (`getResumeProfileDiff`) before writing, mapped to 6 sections (Personal/Professional/Education/Certifications/Work Experience/Preferences) — additive by default, never overwrites existing profile content automatically. **New this session:** Education/Work Experience entries that matched an existing profile entry but whose content has drifted (updated responsibilities, end date, field, graduation year) now surface as individual `ReplacementCandidate` checkboxes inside that section's diff — struck-through `error`-red current text above `agent`-teal proposed text, default **unchecked**. Only checked entries get passed to `syncResumeToProfile`'s new `replaceKeys` param and actually overwritten; everything else stays additive-only exactly as before. This is the "upgrade if better" path `RESUME.md` previously flagged as missing — implemented as explicit per-entry user consent rather than a silent auto-replace heuristic.
 
 ### ResumeAnalysisView (grade + 10-dimension matrix + per-bullet drill-down)
 
@@ -757,3 +757,51 @@ Last updated: 2026-08-05 (fix, component itself is from an earlier session)
 
 **Pattern notes:**
 The tabpanel wrapper now uses an inline `style={{width:"100%", minWidth:0}}` instead of relying on a Tailwind `w-full` class — the class alone was confirmed live (via computed-width checks across tabs) to not reliably win, letting the panel silently shrink-wrap to whichever tab's content was currently widest. If a similar "this Tailwind width/sizing class doesn't seem to apply" symptom shows up elsewhere in this build, try the inline-style version before assuming the logic itself is wrong.
+
+### ResumeWorkspace (résumé editor — live preview + AI Rewrite/Editor/Style tabs)
+
+File: components/documents/ResumeWorkspace.tsx, app/resume/tailored/[jobId]/page.tsx
+Last updated: 2026-08-05 (updated — 3-tab restructure)
+
+**Pattern notes:**
+The real build of `context/build-plan.md` §C1 / the `/preview/resume` mockup's `ResumeWorkspace`, since restructured to match a real competitor's own editor the user shared live screenshots of. Two-column shell: left is `ResumeLivePreview` (`@react-pdf/renderer`'s `PDFViewer` wrapping the exact same `ResumePDF` the download uses — genuinely WYSIWYG), right is **3 tabs**: **AI Rewrite** (default — `AIRewriteTab.tsx`, bundles the score gauge/changelog, `RefinementChips`, and `DocumentChatEditor`), Editor, Style. Sections/style live in local state, debounced-saved via `actions/documents.ts` (`saveResumeSections` 900ms, `saveResumeStyle` 500ms — style debounces shorter since it never triggers a rescore). An AI chat revision or regenerate updates this same local state directly via an `onRevised` callback (not `router.refresh()` alone — a Client Component's already-initialized `useState` wouldn't pick up new Server Component props from a refresh anyway).
+
+### AIRewriteTab (score gauge + quality grade + changelog + chips + chat)
+
+File: components/documents/AIRewriteTab.tsx
+Last updated: 2026-08-06 (updated — auto-score, quality grade, gap-closing chips)
+
+**Pattern notes:**
+Semicircle `ScoreGauge` (0-10, agent-teal stroke — not the reference's rainbow gradient, matches this app's existing "AI scores use `--color-agent`" rule from `ui-tokens.md`'s Match Score Colors section) + "score jumped from X to Y" line + matched/missing-keyword counts, all sourced from real `ScoreJumpResult` data only. Deliberately does **not** show a "see what's changed" bullet list the way the reference does — this app has no edit-history tracking, and fabricating one would misrepresent what actually happened. Auto-triggers once on workspace mount if unscored (`analyzing`/`onAnalyze` lifted to `ResumeWorkspace`, not owned here). Below it, `QualityGradeCard` (own entry below). A "Close the gap" chip row (one per missing keyword, only shown when there are any) sits above the generic "Quick tweaks" `RefinementChips` row — both share `useDocumentChat` via `DocumentChatEditor`.
+
+### ActionPlan (ranked improvement list)
+
+File: components/documents/ActionPlan.tsx
+Last updated: 2026-08-06 (new)
+
+**Pattern notes:**
+Merges three real signals into one ranked, capped-at-6 list: urgent/critical per-bullet issues from `QualityGradeCard`'s analysis, missing keywords from the fit score, and C/D/F-graded dimensions. Impact badges (`High impact`/`Medium impact`/`Quick win`) are derived from real severity/category, never a fabricated "+N pts" prediction — see `AIRewriteTab`'s comment for why this app avoids invented numbers. Clicking a bullet-issue item calls `onFocusBullet(company, bulletText)` (switches to the Editor tab and highlights that exact bullet, via `EditorTab`'s `FocusTarget` prop); clicking a keyword/dimension item sends a targeted instruction through `useDocumentChat`.
+
+### QualityGradeCard (10-dimension grade, compact)
+
+File: components/documents/QualityGradeCard.tsx
+Last updated: 2026-08-06 (new)
+
+**Pattern notes:**
+Compact sibling of `ResumeAnalysisView.tsx`'s full-page grade display — same `GRADE_BADGE` color map (A/B agent-teal tones, C neutral, D warning, F error), but condensed: small badge + urgent/critical/optional counts + a 2-column grid of `{dimension, grade}` (no per-dimension note text, no space for it in a side panel) + "Analyzed X ago". Deliberately **not** auto-refreshed on every edit — `resume_quality_analysis` is capped at 3/day (much tighter than the 15/day fit-score check), so this only updates on an explicit refresh click or after a full Regenerate (`ResumeWorkspace`'s `handleRegenerate`, and only then if a grade already existed).
+
+### EditorTab / StyleTab (résumé workspace tabs)
+
+File: components/documents/{EditorTab,StyleTab}.tsx
+Last updated: 2026-08-05 (updated — per-bullet AI edit/regenerate)
+
+**Pattern notes:**
+`EditorTab`: per-section rows (Professional Summary/Skills/Work Experience/Education), drag-to-reorder via `@dnd-kit` (first real drag-and-drop in this codebase — the `GripVertical` handles elsewhere, e.g. `ProfileForm.tsx`'s education editor, were always decorative-only, no library wired), visibility eye-toggle (hide is soft — stays in the array, "Show X" restores it, no data loss), inline per-type editors reusing `components/ui/FormControls.tsx` primitives. Each Work Experience bullet has its own **"Edit with AI"** (opens an inline instruction input) and **"Regenerate"** (one-click, no instruction) — both call `actions/documents.ts`'s `rewriteResumeBullet` (shares the `bullet_rewrite` feature flag/usage cap with the profile's own single-bullet rewriter, deliberately one quota bucket not two). This exists here rather than as a hover overlay on the live preview (the reference's own pattern) because `PDFViewer` renders a real PDF inside an iframe — there's no DOM to hover or overlay a button on there. `StyleTab`: template picker (Structured/Centered/Split — 3 real thumbnails), theme, page size, accent-color override, font sizes, header alignment (hidden entirely when template is `centered`, since that template always centers regardless — the control would be a no-op, so it's hidden rather than shown-disabled), skills columns, bullet style, 0-100 spacing sliders mapped to real point ranges only inside `ResumePDF.tsx`'s `createStyles`.
+
+### ResumePDF (sections + style, 3 templates)
+
+File: components/documents/ResumePDF.tsx
+Last updated: 2026-08-05 (generalized — was fixed-shape before this session)
+
+**Pattern notes:**
+Takes `{profile, sections: ResumeSection[], style: ResumeStyle}`, not the old fixed `{profile, generated, theme}`. Per-section-type render helpers (summary/skills/work_experience/education) are shared across all 3 templates so content logic isn't duplicated: `structured` (single column, today's original layout, now with every style knob live), `centered` (centered header + centered section titles, same flow otherwise), `split` (two-column — Contact+Skills+Education in a ~32% sidebar, Summary+Work Experience in the main column, modeled on the real LinkedIn-export PDF layout this project's own résumé-sync test data already showed). Font choices stay restricted to the PDF standard-14 families (Helvetica/Times-Roman) regardless of style — the ATS-safety constraint predates this change and isn't relaxed by it. Page size default is now Letter, not A4 (this project's real jobs are Canadian/US postings). Used by all 3 document routes (`/api/resume/generate`, `/api/documents/generate`, `/api/documents/chat`) plus the live preview — one rendering implementation, not two kept in sync by hand.

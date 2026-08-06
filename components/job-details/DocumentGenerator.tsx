@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import type { ComponentType } from "react";
 import { FileText, Mail, Sparkles } from "lucide-react";
 
-import { DocumentChatEditor } from "@/components/job-details/DocumentChatEditor";
+import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 
 type DocumentKind = "resume" | "cover_letter";
 
