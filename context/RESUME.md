@@ -4,7 +4,7 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-07 (Phase 8)
 
-**Phase 8 work (everything below, back through the Style/Editor tab redesign) is NOT yet committed** — still local changes on `feature/my-experiment`. Everything through Phase 7 is committed and pushed @ `e6ea178`. Run `git log -1`/`git status` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
+**Everything through this note is committed and pushed** — `feature/my-experiment` @ `7170c92`, one commit covering the whole Phase 8 arc (Style/Editor redesign → expanded editing controls → 6 templates/themes → Cover Letter Editor Workspace → `/resume` redesign → stale-listing detection → the live-bug-fix rounds). Run `git log -1`/`git status` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
 
 ---
 
