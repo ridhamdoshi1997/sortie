@@ -4,7 +4,7 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-11 (Phase 9)
 
-**Not yet committed as of this note** — Phase 9's work (Application Tracker/Kanban + Rejection Intelligence, the Resend→Brevo SMTP migration, the signin resend-on-verify bug fix) is complete and live-verified but sitting uncommitted on `feature/my-experiment` on top of Phase 8's `7170c92`. Run `git status`/`git log -1` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
+**Committed, not yet pushed** — Phase 9's work landed in one commit, `78b982f` on `feature/my-experiment`, on top of Phase 8's `7170c92`. Run `git status`/`git log -1` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
 
 ---
 
