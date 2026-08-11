@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, Heart, MapPin, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, Heart, MapPin, TrendingUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
-import { markApplied, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { markApplied, markJobUnavailable, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { getListingSignal } from "@/lib/jobStatus";
 import type { Job } from "@/types";
 
 // Redesigned 2026-07-28 — was a literal green/blue/amber traffic light.
@@ -40,9 +41,13 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
   const [hidden, setHidden] = useState(job.is_hidden);
+  const [markedUnavailable, setMarkedUnavailable] = useState(Boolean(job.marked_unavailable_at));
   const [menuOpen, setMenuOpen] = useState(false);
   const [, startTransition] = useTransition();
   const menuRef = useRef<HTMLDivElement>(null);
+  const signal = markedUnavailable
+    ? { level: "confirmed" as const, label: "No longer available" }
+    : getListingSignal(job);
 
   useEffect(() => {
     function onClickOutside(event: MouseEvent) {
@@ -85,6 +90,16 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
     startTransition(async () => {
       const result = await toggleHideJob(job.id, next);
       if (!result.success) setHidden(!next);
+    });
+  }
+
+  function handleMarkUnavailable(event: React.MouseEvent): void {
+    stop(event);
+    setMenuOpen(false);
+    setMarkedUnavailable(true);
+    startTransition(async () => {
+      const result = await markJobUnavailable(job.id);
+      if (!result.success) setMarkedUnavailable(false);
     });
   }
 
@@ -152,6 +167,20 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
                   {tag}
                 </span>
               ))}
+            </div>
+          )}
+          {signal && (
+            <div
+              className={`mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                signal.level === "confirmed"
+                  ? "bg-warning text-warning-foreground"
+                  : signal.level === "likely"
+                    ? "bg-warning/15 text-warning"
+                    : "bg-surface-secondary text-text-muted"
+              }`}
+            >
+              <AlertTriangle className="h-3 w-3" />
+              {signal.label}
             </div>
           )}
           </div>
@@ -230,6 +259,15 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
                 >
                   <Check className="h-4 w-4" /> Already Applied
                 </button>
+                {!markedUnavailable && (
+                  <button
+                    type="button"
+                    onClick={handleMarkUnavailable}
+                    className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-warning/10 hover:text-warning"
+                  >
+                    <AlertTriangle className="h-4 w-4" /> No Longer Available
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={handleNotInterested}

@@ -2,81 +2,189 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
 import { formatDate } from "@/lib/utils";
-import { RESUME_THEMES, type ResumeTheme } from "@/components/documents/ResumePDF";
+import { mapRange, resolveTokens, SPACING_RANGES, type ThemeTokens } from "@/components/documents/ResumePDF";
 import type { Profile } from "@/types";
+import type { ResumeStyle } from "@/types/resumeEditor";
 
 type Props = {
   profile: Profile;
   company: string | null;
   letterBody: string;
-  theme?: ResumeTheme;
+  // Cover letters share the tailored résumé's exact ResumeStyle (same
+  // template+theme for one job application) rather than an independent
+  // style choice — researched via agy: real products (Novoresume, Enhancv,
+  // Zety) treat résumé+cover-letter as one visually matched suite, and
+  // mismatched styling across the two documents reads as unprofessional.
+  style: ResumeStyle;
+  // Null/omitted renders the computed default ("Hiring Team, {company}") —
+  // set to let the user address a specific hiring manager by name.
+  salutation?: string | null;
 };
 
-function createStyles(t: (typeof RESUME_THEMES)[ResumeTheme]) {
+function createStyles(t: ThemeTokens, style: ResumeStyle, headerAlign: "left" | "center" | "right") {
+  const margin = mapRange(style.spacing.margins, ...SPACING_RANGES.margins) + 18;
+  const lineHeight = mapRange(style.spacing.line, ...SPACING_RANGES.line);
   return StyleSheet.create({
     page: {
-      padding: 48,
+      padding: margin,
       fontFamily: t.fontFamily,
-      fontSize: 10.5,
+      fontSize: style.fontSizes.body,
       color: t.ink,
+    },
+    header: {
+      alignItems: headerAlign === "center" ? "center" : headerAlign === "right" ? "flex-end" : "flex-start",
     },
     name: {
-      fontSize: 16,
+      fontSize: style.fontSizes.name * 0.64,
       fontFamily: t.fontFamilyBold,
       color: t.ink,
+      letterSpacing: t.nameLetterSpacing,
+      textAlign: headerAlign,
     },
     contact: {
-      fontSize: 9,
+      fontSize: style.fontSizes.body - 1.5,
       color: t.textMuted,
       marginTop: 3,
+      textAlign: headerAlign,
     },
     date: {
-      fontSize: 10,
+      fontSize: style.fontSizes.body,
       color: t.textMuted,
       marginTop: 28,
+      textAlign: headerAlign,
     },
     recipient: {
-      fontSize: 10,
+      fontSize: style.fontSizes.body,
       color: t.textMuted,
       marginTop: 4,
+      textAlign: headerAlign,
     },
     paragraph: {
-      fontSize: 10.5,
+      fontSize: style.fontSizes.body,
       color: t.textSecondary,
       marginTop: 14,
-      lineHeight: 1.6,
+      lineHeight,
+    },
+    splitRow: {
+      flexDirection: "row",
+    },
+    sidebar: {
+      width: "30%",
+      paddingRight: 14,
+    },
+    sidebarTitle: {
+      fontSize: style.fontSizes.heading - 1,
+      fontFamily: t.fontFamilyBold,
+      color: t.accentDark,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      marginBottom: 6,
+    },
+    sidebarTitleSecond: {
+      fontSize: style.fontSizes.heading - 1,
+      fontFamily: t.fontFamilyBold,
+      color: t.accentDark,
+      letterSpacing: 1.2,
+      textTransform: "uppercase",
+      marginBottom: 6,
+      marginTop: 14,
+    },
+    sidebarLine: {
+      fontSize: style.fontSizes.body - 1,
+      color: t.textMuted,
+      marginBottom: 4,
+    },
+    main: {
+      width: "70%",
+      paddingLeft: 18,
     },
   });
 }
 
-export function CoverLetterPDF({ profile, company, letterBody, theme = "modern" }: Props) {
-  const styles = createStyles(RESUME_THEMES[theme]);
+type Styles = ReturnType<typeof createStyles>;
+
+function renderHeader(profile: Profile, styles: Styles) {
   const contactParts = [profile.email, profile.phone].filter(Boolean);
+  return (
+    <View style={styles.header}>
+      <Text style={styles.name}>{profile.full_name ?? ""}</Text>
+      {contactParts.length > 0 && <Text style={styles.contact}>{contactParts.join("  •  ")}</Text>}
+    </View>
+  );
+}
+
+function renderBody(company: string | null, salutation: string | null | undefined, paragraphs: string[], styles: Styles) {
+  return (
+    <>
+      <Text style={styles.date}>{formatDate(new Date())}</Text>
+      <Text style={styles.recipient}>{salutation?.trim() || `Hiring Team${company ? `, ${company}` : ""}`}</Text>
+      <View>
+        {paragraphs.map((paragraph, i) => (
+          <Text key={i} style={styles.paragraph}>
+            {paragraph}
+          </Text>
+        ))}
+      </View>
+    </>
+  );
+}
+
+export function CoverLetterPDF({ profile, company, letterBody, style, salutation }: Props) {
+  const tokens = resolveTokens(style);
+  // "centered"/"block" center the header, same as ResumePDF's own
+  // alwaysCentered logic; everything else honors the shared headerAlignment.
+  const headerAlign = style.template === "centered" || style.template === "block" ? "center" : style.headerAlignment;
+  const styles = createStyles(tokens, style, headerAlign);
+  const pageSize = style.pageSize === "a4" ? "A4" : "LETTER";
   const paragraphs = letterBody
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);
 
+  // "split" keeps a left sidebar (contact + a short skills list, pulled
+  // from the base profile — a cover letter isn't tied to one tailored
+  // résumé's specific edited skill set) — the one structural variant a
+  // letter's simple content genuinely supports well, per the research pass.
+  if (style.template === "split") {
+    const contactParts = [profile.email, profile.phone].filter(Boolean);
+    const skills = (profile.skills ?? []).slice(0, 8);
+    return (
+      <Document>
+        <Page size={pageSize} style={styles.page}>
+          <View style={styles.splitRow}>
+            <View style={styles.sidebar}>
+              <Text style={styles.sidebarTitle}>Contact</Text>
+              {contactParts.map((part, i) => (
+                <Text key={i} style={styles.sidebarLine}>
+                  {part}
+                </Text>
+              ))}
+              {skills.length > 0 && (
+                <>
+                  <Text style={styles.sidebarTitleSecond}>Core Skills</Text>
+                  {skills.map((skill) => (
+                    <Text key={skill} style={styles.sidebarLine}>
+                      {skill}
+                    </Text>
+                  ))}
+                </>
+              )}
+            </View>
+            <View style={styles.main}>
+              <Text style={styles.name}>{profile.full_name ?? ""}</Text>
+              {renderBody(company, salutation, paragraphs, styles)}
+            </View>
+          </View>
+        </Page>
+      </Document>
+    );
+  }
+
   return (
     <Document>
-      <Page size="A4" style={styles.page}>
-        <View>
-          <Text style={styles.name}>{profile.full_name ?? ""}</Text>
-          {contactParts.length > 0 && (
-            <Text style={styles.contact}>{contactParts.join("  •  ")}</Text>
-          )}
-        </View>
-
-        <Text style={styles.date}>{formatDate(new Date())}</Text>
-        <Text style={styles.recipient}>Hiring Team{company ? `, ${company}` : ""}</Text>
-
-        <View>
-          {paragraphs.map((paragraph, i) => (
-            <Text key={i} style={styles.paragraph}>
-              {paragraph}
-            </Text>
-          ))}
-        </View>
+      <Page size={pageSize} style={styles.page}>
+        {renderHeader(profile, styles)}
+        {renderBody(company, salutation, paragraphs, styles)}
       </Page>
     </Document>
   );

@@ -94,6 +94,10 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         // can scope "my last search" to exactly this batch instead of
         // showing the user's entire saved-job history.
         run_id: runId,
+        // This job is back in a fresh search's results — whatever earlier
+        // "dropped from search" flag it had (see below) no longer applies.
+        // A manual marked_unavailable_at is a user decision, left alone here.
+        dropped_from_search_at: null,
     }));
 
     const { data: savedJobs, error } = await insforge.database
@@ -127,6 +131,50 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
             .eq("id", runId);
         // Status stays "running" — evaluateJobsAsync marks it
         // completed/failed once the Inngest evaluation actually finishes.
+    }
+
+    // "Not in the list anymore" detection — cheap and precise, no extra
+    // scraping: find this user's PRIOR runs of this exact same (title,
+    // location) search (agent_runs.job_title_searched/location_searched are
+    // exact strings, not fuzzy-matched, avoiding the "Software Engineer" vs
+    // "Software Developer" mismatch problem noted below for jobsToInsert).
+    // Any job tied to one of those older runs that isn't in THIS run's
+    // result set was returned before and stopped being returned — Google
+    // Jobs itself dropped it, the strongest signal this app can get without
+    // re-fetching the source site (see lib/jobStatus.ts).
+    if (runId) {
+        const { data: previousRuns } = await insforge.database
+            .from("agent_runs")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("job_title_searched", title)
+            .eq("location_searched", location)
+            .neq("id", runId)
+            .returns<{ id: string }[]>();
+
+        const previousRunIds = (previousRuns ?? []).map((r) => r.id);
+        if (previousRunIds.length > 0) {
+            const currentJobIds = new Set(savedJobs.map((j) => j.id));
+            const { data: previousJobs } = await insforge.database
+                .from("jobs")
+                .select("id")
+                .eq("user_id", userId)
+                .in("run_id", previousRunIds)
+                .is("marked_unavailable_at", null)
+                .is("dropped_from_search_at", null)
+                .returns<{ id: string }[]>();
+
+            const droppedIds = (previousJobs ?? [])
+                .map((j) => j.id)
+                .filter((id) => !currentJobIds.has(id));
+
+            if (droppedIds.length > 0) {
+                await insforge.database
+                    .from("jobs")
+                    .update({ dropped_from_search_at: new Date().toISOString() })
+                    .in("id", droppedIds);
+            }
+        }
     }
 
     await inngest.send({

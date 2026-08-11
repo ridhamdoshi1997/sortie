@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 
 import { analyzeResume, applyResumeBulletFix, deleteResume, renameResume, type ResumeRow } from "@/actions/resumes";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { ResumeAnalysis, ResumeBulletIssue, ResumeSectionAnalysis } from "@/types";
 
 // Identifies a section without holding a stale snapshot of it — the drill-
@@ -359,6 +360,7 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
   const [error, setError] = useState<string | null>(null);
   const [drillDownKey, setDrillDownKey] = useState<SectionKey | null>(null);
   const [editOpen, setEditOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
   const liveDrillDownSection = findSection(analysis, drillDownKey);
 
@@ -401,9 +403,13 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
   }
 
   function handleDelete() {
-    if (!window.confirm(`Delete "${resume.name}"? This can't be undone.`)) return;
+    setDeleteConfirmOpen(true);
+  }
+
+  function handleConfirmDelete() {
     startDeleteTransition(async () => {
       const result = await deleteResume(resume.id);
+      setDeleteConfirmOpen(false);
       if (result.success) {
         router.push("/resume");
       } else {
@@ -588,6 +594,15 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
           onSaved={(name, targetJobTitle) => setResume((r) => ({ ...r, name, target_job_title: targetJobTitle }))}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        title="Delete résumé?"
+        description={`Delete "${resume.name}"? This can't be undone.`}
+        pending={isDeleting}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteConfirmOpen(false)}
+      />
     </div>
   );
 }

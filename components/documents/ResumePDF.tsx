@@ -2,7 +2,7 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
 import type { Profile } from "@/types";
-import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+import { sectionDisplayLabel, type ResumeSection, type ResumeStyle } from "@/types/resumeEditor";
 
 // Still the shape the AI generation/revision pipeline (agent/documents.ts)
 // produces — summary + work_experience are the only AI-authored content;
@@ -21,7 +21,7 @@ export type GeneratedContent = {
   }>;
 };
 
-export type ResumeTheme = "classic" | "modern" | "minimal";
+export type ResumeTheme = "classic" | "modern" | "minimal" | "slate" | "editorial" | "sage";
 
 type Props = {
   profile: Profile;
@@ -95,6 +95,51 @@ export const RESUME_THEMES: Record<ResumeTheme, ThemeTokens> = {
     skillStyle: "plain",
     nameLetterSpacing: 1.2,
   },
+  // Researched via agy 2026-08-06: a tech-forward, high-contrast theme —
+  // steel blue/dark slate accent, airy letter-spacing on the name.
+  slate: {
+    fontFamily: "Helvetica",
+    fontFamilyBold: "Helvetica-Bold",
+    accent: "#4682b4",
+    accentDark: "#2f4f4f",
+    ink: "#1a1a24",
+    textSecondary: "#4a5568",
+    textMuted: "#a0aec0",
+    rule: "#e2e8f0",
+    showHeaderRule: true,
+    skillStyle: "chip",
+    nameLetterSpacing: 1.5,
+  },
+  // A striking, authoritative serif theme — deep crimson accent on pure
+  // black ink, heavy rules, tight classic letter-spacing.
+  editorial: {
+    fontFamily: "Times-Roman",
+    fontFamilyBold: "Times-Bold",
+    accent: "#8b0000",
+    accentDark: "#5c0000",
+    ink: "#000000",
+    textSecondary: "#333333",
+    textMuted: "#666666",
+    rule: "#000000",
+    showHeaderRule: true,
+    skillStyle: "plain",
+    nameLetterSpacing: 0,
+  },
+  // An approachable, organic theme — sea green/forest accent, no header
+  // rule (softer than slate/editorial).
+  sage: {
+    fontFamily: "Helvetica",
+    fontFamilyBold: "Helvetica-Bold",
+    accent: "#2e8b57",
+    accentDark: "#004d26",
+    ink: "#222222",
+    textSecondary: "#555555",
+    textMuted: "#888888",
+    rule: "#d9d9d9",
+    showHeaderRule: false,
+    skillStyle: "chip",
+    nameLetterSpacing: 1.0,
+  },
 };
 
 function clamp(v: number, lo: number, hi: number): number {
@@ -102,26 +147,39 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 // Spacing sliders are stored 0-100 (simple for the UI) and mapped to real
-// point/line-height ranges only at render time.
-function mapRange(pct: number, lo: number, hi: number): number {
+// point/line-height ranges only at render time. Exported so StyleTab can
+// show the same real units (pt / line-height) next to each slider instead of
+// a meaningless raw 0-100 number.
+export function mapRange(pct: number, lo: number, hi: number): number {
   return lo + (hi - lo) * (clamp(pct, 0, 100) / 100);
 }
 
-function resolveTokens(style: ResumeStyle): ThemeTokens {
+export const SPACING_RANGES = {
+  section: [8, 32] as const,
+  entry: [4, 20] as const,
+  line: [1.2, 1.8] as const,
+  margins: [30, 60] as const,
+};
+
+// Exported so CoverLetterPDF can resolve the same accent-override logic
+// against the shared ResumeStyle it now takes instead of a bare theme name.
+export function resolveTokens(style: ResumeStyle): ThemeTokens {
   const base = RESUME_THEMES[style.theme];
   if (!style.accentColorOverride) return base;
   return { ...base, accent: style.accentColorOverride, accentDark: style.accentColorOverride };
 }
 
 function createStyles(t: ThemeTokens, style: ResumeStyle) {
-  const sectionGap = mapRange(style.spacing.section, 8, 32);
-  const entryGap = mapRange(style.spacing.entry, 4, 20);
-  const lineHeight = mapRange(style.spacing.line, 1.2, 1.8);
-  const margin = mapRange(style.spacing.margins, 30, 60);
-  // "centered" template always centers the header/section titles — that's
-  // the template's whole identity. The headerAlignment knob only applies to
-  // "structured"/"split", where the user picks it explicitly.
-  const headerAlign = style.template === "centered" ? "center" : style.headerAlignment;
+  const sectionGap = mapRange(style.spacing.section, ...SPACING_RANGES.section);
+  const entryGap = mapRange(style.spacing.entry, ...SPACING_RANGES.entry);
+  const lineHeight = mapRange(style.spacing.line, ...SPACING_RANGES.line);
+  const margin = mapRange(style.spacing.margins, ...SPACING_RANGES.margins);
+  // "centered" and "block" always center the header/section titles — that's
+  // core to both templates' identity (block's banner is designed centered).
+  // The headerAlignment knob only applies to the templates where the user
+  // actually picks it (structured/split/timeline/executive).
+  const alwaysCentered = style.template === "centered" || style.template === "block";
+  const headerAlign = alwaysCentered ? "center" : style.headerAlignment;
   const nameSize = style.fontSizes.name;
   const headingSize = style.fontSizes.heading;
   const subheadingSize = style.fontSizes.subheading;
@@ -191,9 +249,9 @@ function createStyles(t: ThemeTokens, style: ResumeStyle) {
       textTransform: "uppercase",
       paddingBottom: 5,
       marginBottom: 9,
-      borderBottomWidth: 1,
-      borderBottomColor: t.rule,
-      textAlign: style.template === "centered" ? "center" : "left",
+      borderBottomWidth: style.template === "block" ? 2.5 : 1,
+      borderBottomColor: style.template === "block" ? t.accent : t.rule,
+      textAlign: alwaysCentered ? "center" : "left",
     },
     summaryText: {
       fontSize: bodySize,
@@ -291,6 +349,81 @@ function createStyles(t: ThemeTokens, style: ResumeStyle) {
       width: "68%",
       paddingLeft: 18,
     },
+    // "executive" — mirrors split's two-column row, but sidebar on the
+    // RIGHT (65/35, not 32/68) and no contact block inside it — contact
+    // already lives in the full-width header rendered above this row.
+    executiveMain: {
+      width: "65%",
+      paddingRight: 18,
+    },
+    executiveSidebar: {
+      width: "35%",
+      paddingLeft: 14,
+    },
+    // "timeline" — work-experience entries get a dedicated date column
+    // instead of a title/dates header row.
+    timelineJobEntry: {
+      flexDirection: "row",
+      marginBottom: entryGap,
+    },
+    timelineDateCol: {
+      width: "20%",
+      paddingRight: 8,
+    },
+    timelineDateText: {
+      fontSize: bodySize - 1,
+      color: t.textMuted,
+      letterSpacing: 0.3,
+      textTransform: "uppercase",
+    },
+    timelineContentCol: {
+      width: "80%",
+    },
+    // "block" — solid-color header banner, inset within the page margins
+    // rather than full-bleed (react-pdf's Yoga layout doesn't handle
+    // negative-margin edge-bleed reliably, so this stays a "card" instead).
+    // Text is hardcoded white — it sits on accentDark regardless of theme,
+    // so it can't use the theme's normal ink/textMuted tokens.
+    blockHeader: {
+      backgroundColor: t.accentDark,
+      borderRadius: 4,
+      paddingVertical: 18,
+      paddingHorizontal: 20,
+      marginBottom: 16,
+      alignItems: headerAlign === "center" ? "center" : headerAlign === "right" ? "flex-end" : "flex-start",
+    },
+    blockName: {
+      fontSize: nameSize,
+      fontFamily: t.fontFamilyBold,
+      color: "#ffffff",
+      letterSpacing: t.nameLetterSpacing,
+      textAlign: headerAlign,
+    },
+    blockSubtitle: {
+      fontSize: subheadingSize + 1.5,
+      fontFamily: t.fontFamilyBold,
+      color: "#ffffff",
+      marginTop: 6,
+      textAlign: headerAlign,
+      opacity: 0.92,
+    },
+    blockContactRow: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      marginTop: 6,
+      justifyContent: headerAlign === "center" ? "center" : headerAlign === "right" ? "flex-end" : "flex-start",
+    },
+    blockContact: {
+      fontSize: bodySize - 1,
+      color: "#ffffff",
+      opacity: 0.85,
+    },
+    blockContactDivider: {
+      fontSize: bodySize - 1,
+      color: "#ffffff",
+      opacity: 0.5,
+      marginHorizontal: 6,
+    },
   });
 }
 
@@ -313,6 +446,34 @@ function renderHeader(profile: Profile, styles: Styles, tokens: ThemeTokens) {
             <React.Fragment key={i}>
               {i > 0 && <Text style={styles.contactDivider}>•</Text>}
               <Text style={styles.contact}>{part}</Text>
+            </React.Fragment>
+          ))}
+        </View>
+      )}
+    </View>
+  );
+}
+
+// "block" — a solid-color banner instead of a plain header. Text is
+// hardcoded white via the block* style keys (createStyles), not the theme's
+// normal ink/textMuted tokens, since it sits on accentDark regardless of
+// theme choice.
+function renderBlockHeader(profile: Profile, styles: Styles) {
+  const contactParts = [profile.email, profile.phone].filter(Boolean);
+  const linkParts = [profile.linkedin_url, profile.portfolio_url].filter(Boolean);
+  const allContactParts = [...contactParts, ...linkParts];
+  const subtitleParts = [profile.current_title, profile.location].filter(Boolean);
+
+  return (
+    <View style={styles.blockHeader}>
+      <Text style={styles.blockName}>{profile.full_name ?? ""}</Text>
+      {subtitleParts.length > 0 && <Text style={styles.blockSubtitle}>{subtitleParts.join("   |   ")}</Text>}
+      {allContactParts.length > 0 && (
+        <View style={styles.blockContactRow}>
+          {allContactParts.map((part, i) => (
+            <React.Fragment key={i}>
+              {i > 0 && <Text style={styles.blockContactDivider}>•</Text>}
+              <Text style={styles.blockContact}>{part}</Text>
             </React.Fragment>
           ))}
         </View>
@@ -350,14 +511,15 @@ function renderSplitSidebarContact(profile: Profile, styles: Styles) {
   );
 }
 
-function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeTokens, bulletMark: string) {
+function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeTokens, style: ResumeStyle) {
+  const bulletMark = style.bulletStyle;
   if (!section.visible) return null;
 
   if (section.type === "summary") {
     if (!section.content) return null;
     return (
       <View key={section.id} style={styles.section}>
-        <Text style={styles.sectionTitle}>Professional Summary</Text>
+        <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Professional Summary")}</Text>
         <Text style={styles.summaryText}>{section.content}</Text>
       </View>
     );
@@ -367,7 +529,7 @@ function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeToke
     if (section.items.length === 0) return null;
     return (
       <View key={section.id} style={styles.section}>
-        <Text style={styles.sectionTitle}>Skills</Text>
+        <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Skills")}</Text>
         {tokens.skillStyle === "chip" ? (
           <View style={styles.skillsRow}>
             {section.items.map((skill) => (
@@ -391,9 +553,38 @@ function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeToke
 
   if (section.type === "work_experience") {
     if (section.entries.length === 0) return null;
+    // "timeline" gets a dedicated date column per entry instead of a
+    // title/dates header row — everything else (title/company/bullets)
+    // stacks in the remaining content column.
+    if (style.template === "timeline") {
+      return (
+        <View key={section.id} style={styles.section}>
+          <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Work Experience")}</Text>
+          {section.entries.map((job, i) => (
+            <View key={i} style={styles.timelineJobEntry}>
+              <View style={styles.timelineDateCol}>
+                <Text style={styles.timelineDateText}>
+                  {job.start_date} – {job.is_current ? "Present" : (job.end_date ?? "")}
+                </Text>
+              </View>
+              <View style={styles.timelineContentCol}>
+                <Text style={styles.jobTitle}>{job.title}</Text>
+                <Text style={styles.jobCompany}>{job.company}</Text>
+                {job.bullets?.map((bullet, j) => (
+                  <View key={j} style={styles.bulletRow}>
+                    <Text style={styles.bulletMark}>{bulletMark}</Text>
+                    <Text style={styles.bulletText}>{bullet}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          ))}
+        </View>
+      );
+    }
     return (
       <View key={section.id} style={styles.section}>
-        <Text style={styles.sectionTitle}>Work Experience</Text>
+        <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Work Experience")}</Text>
         {section.entries.map((job, i) => (
           <View key={i} style={styles.jobEntry}>
             <View style={styles.jobHeader}>
@@ -415,19 +606,69 @@ function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeToke
     );
   }
 
-  // "education"
-  const entries = section.entries.filter((e) => e.degree);
+  if (section.type === "education") {
+    const entries = section.entries.filter((e) => e.degree);
+    if (entries.length === 0) return null;
+    return (
+      <View key={section.id} style={styles.section}>
+        <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Education")}</Text>
+        {entries.map((e, i) => (
+          <View key={i} style={styles.eduEntry}>
+            <Text style={styles.eduDegree}>
+              {e.degree}
+              {e.field ? ` in ${e.field}` : ""}
+            </Text>
+            <Text style={styles.eduDetails}>{[e.institution, e.graduation_year].filter(Boolean).join("   •   ")}</Text>
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  if (section.type === "certifications") {
+    const entries = section.entries.filter((e) => e.name);
+    if (entries.length === 0) return null;
+    return (
+      <View key={section.id} style={styles.section}>
+        <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Certifications")}</Text>
+        {entries.map((e, i) => (
+          <View key={i} style={styles.eduEntry}>
+            <Text style={styles.eduDegree}>{e.name}</Text>
+            {(e.issuer || e.date) && (
+              <Text style={styles.eduDetails}>{[e.issuer, e.date].filter(Boolean).join("   •   ")}</Text>
+            )}
+          </View>
+        ))}
+      </View>
+    );
+  }
+
+  // "custom" — a user-defined section (Projects/Languages/Awards/Volunteer
+  // Experience/blank). Reuses the same jobEntry-style layout as Work
+  // Experience (title/subtitle-date header + bullets), since that generic
+  // shape covers the large majority of real custom-section content without
+  // a bespoke data model per preset (per the research pass).
+  const entries = section.entries.filter((e) => e.title || e.subtitle || e.bullets.some(Boolean));
   if (entries.length === 0) return null;
   return (
     <View key={section.id} style={styles.section}>
-      <Text style={styles.sectionTitle}>Education</Text>
-      {entries.map((e, i) => (
-        <View key={i} style={styles.eduEntry}>
-          <Text style={styles.eduDegree}>
-            {e.degree}
-            {e.field ? ` in ${e.field}` : ""}
-          </Text>
-          <Text style={styles.eduDetails}>{[e.institution, e.graduation_year].filter(Boolean).join("   •   ")}</Text>
+      <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Custom Section")}</Text>
+      {entries.map((entry, i) => (
+        <View key={i} style={styles.jobEntry}>
+          <View style={styles.jobHeader}>
+            <Text style={styles.jobTitle}>{entry.title}</Text>
+            {entry.date && <Text style={styles.jobDates}>{entry.date}</Text>}
+          </View>
+          {entry.subtitle && <Text style={styles.jobCompany}>{entry.subtitle}</Text>}
+          {entry.bullets?.map(
+            (bullet, j) =>
+              bullet && (
+                <View key={j} style={styles.bulletRow}>
+                  <Text style={styles.bulletMark}>{bulletMark}</Text>
+                  <Text style={styles.bulletText}>{bullet}</Text>
+                </View>
+              ),
+          )}
         </View>
       ))}
     </View>
@@ -440,7 +681,7 @@ export function ResumePDF({ profile, sections, style }: Props) {
   const pageSize = style.pageSize === "a4" ? "A4" : "LETTER";
 
   if (style.template === "split") {
-    const sidebarTypes = new Set<ResumeSection["type"]>(["skills", "education"]);
+    const sidebarTypes = new Set<ResumeSection["type"]>(["skills", "education", "certifications"]);
     const sidebarSections = sections.filter((s) => sidebarTypes.has(s.type));
     const mainSections = sections.filter((s) => !sidebarTypes.has(s.type));
     return (
@@ -449,12 +690,33 @@ export function ResumePDF({ profile, sections, style }: Props) {
           <View style={styles.splitRow}>
             <View style={styles.sidebar}>
               {renderSplitSidebarContact(profile, styles)}
-              {sidebarSections.map((s) => renderSection(s, styles, tokens, style.bulletStyle))}
+              {sidebarSections.map((s) => renderSection(s, styles, tokens, style))}
             </View>
             <View style={styles.main}>
               {renderSplitMainHeader(profile, styles)}
-              {mainSections.map((s) => renderSection(s, styles, tokens, style.bulletStyle))}
+              {mainSections.map((s) => renderSection(s, styles, tokens, style))}
             </View>
+          </View>
+        </Page>
+      </Document>
+    );
+  }
+
+  // "executive" — like split, but the sidebar sits on the RIGHT (65/35) and
+  // the header is full-width, rendered ABOVE the two-column row rather than
+  // living inside the sidebar column (contact is already covered by the
+  // full-width header, so no separate sidebar-contact block is needed here).
+  if (style.template === "executive") {
+    const sidebarTypes = new Set<ResumeSection["type"]>(["skills", "education", "certifications"]);
+    const sidebarSections = sections.filter((s) => sidebarTypes.has(s.type));
+    const mainSections = sections.filter((s) => !sidebarTypes.has(s.type));
+    return (
+      <Document>
+        <Page size={pageSize} style={styles.page}>
+          {renderHeader(profile, styles, tokens)}
+          <View style={styles.splitRow}>
+            <View style={styles.executiveMain}>{mainSections.map((s) => renderSection(s, styles, tokens, style))}</View>
+            <View style={styles.executiveSidebar}>{sidebarSections.map((s) => renderSection(s, styles, tokens, style))}</View>
           </View>
         </Page>
       </Document>
@@ -464,8 +726,8 @@ export function ResumePDF({ profile, sections, style }: Props) {
   return (
     <Document>
       <Page size={pageSize} style={styles.page}>
-        {renderHeader(profile, styles, tokens)}
-        {sections.map((s) => renderSection(s, styles, tokens, style.bulletStyle))}
+        {style.template === "block" ? renderBlockHeader(profile, styles) : renderHeader(profile, styles, tokens)}
+        {sections.map((s) => renderSection(s, styles, tokens, style))}
       </Page>
     </Document>
   );

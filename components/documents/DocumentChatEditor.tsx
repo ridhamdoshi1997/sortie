@@ -3,17 +3,15 @@
 import { useState } from "react";
 import { Send, CheckCircle2 } from "lucide-react";
 
-import { useDocumentChat } from "@/components/documents/useDocumentChat";
-import type { ScoreJumpResult } from "@/lib/scoreJump";
-import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+import { useDocumentChat, type RevisedData } from "@/components/documents/useDocumentChat";
 
 type Props = {
   jobId: string;
   kind: "resume" | "cover_letter";
-  // Only meaningful for the résumé workspace, which keeps its own live
-  // sections/style state in sync with a revision — the job-details page's
-  // usage has no such state to update and simply omits this.
-  onRevised?: (data: { reply: string; sections?: ResumeSection[]; style?: ResumeStyle; scoreJump?: ScoreJumpResult | null }) => void;
+  // Only meaningful for a workspace that keeps its own live content/style
+  // state in sync with a revision — the job-details page's usage has no
+  // such state to update and simply omits this.
+  onRevised?: (data: RevisedData) => void;
 };
 
 export function DocumentChatEditor({ jobId, kind, onRevised }: Props) {

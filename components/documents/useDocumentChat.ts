@@ -8,11 +8,14 @@ import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
 
-type RevisedData = {
+export type RevisedData = {
   reply: string;
   sections?: ResumeSection[];
   style?: ResumeStyle;
   scoreJump?: ScoreJumpResult | null;
+  // Only meaningful for kind: "cover_letter" — CoverLetterWorkspace's own
+  // live content state, the equivalent of `sections` above.
+  letterBody?: string;
 };
 
 // Shared send/receive logic behind both DocumentChatEditor (the visible chat

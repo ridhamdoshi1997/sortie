@@ -35,6 +35,15 @@ export function buildDefaultSections(profile: Profile, generated: GeneratedConte
       visible: (profile.education ?? []).some((e) => e.degree),
       entries: profile.education ?? [],
     },
+    {
+      id: newId(),
+      type: "certifications",
+      // profile.certifications is only ever a flat string[] — issuer/date
+      // aren't captured anywhere upstream, so entries start with just a
+      // name and the user fills in the rest here if they want to.
+      visible: (profile.certifications?.length ?? 0) > 0,
+      entries: (profile.certifications ?? []).map((name) => ({ name, issuer: "", date: "" })),
+    },
   ];
 }
 

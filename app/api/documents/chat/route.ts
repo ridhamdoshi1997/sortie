@@ -156,7 +156,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     const contentColumn = kind === "resume" ? "generated_resume" : "generated_cover_letter";
     const { data: application, error: applicationError } = await insforge.database
       .from("applications")
-      .select(`${contentColumn},resume_sections,resume_style`)
+      .select(`${contentColumn},resume_sections,resume_style,cover_letter_salutation`)
       .eq("user_id", user.id)
       .eq("job_id", jobId)
       .maybeSingle<{
@@ -164,6 +164,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         generated_cover_letter?: string | null;
         resume_sections: ResumeSection[] | null;
         resume_style: ResumeStyle | null;
+        cover_letter_salutation: string | null;
       }>();
 
     const currentContentText = application?.[contentColumn as "generated_resume" | "generated_cover_letter"];
@@ -184,7 +185,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const dossier = job.company_research;
     const provider = resolveProvider(profile.preferred_model, profile.email);
-    const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;
@@ -225,12 +225,16 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
       reply = revised.reply;
       generatedContentText = revised.content;
+      // Shares the résumé's exact style (see CoverLetterPDF.tsx's comment) —
+      // already fetched above as part of `application`, no second query.
+      const coverLetterStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
       pdfBuffer = await renderToBuffer(
         React.createElement(CoverLetterPDF, {
           profile,
           company: job.company,
           letterBody: revised.content,
-          theme,
+          style: coverLetterStyle,
+          salutation: application?.cover_letter_salutation,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     }
@@ -267,10 +271,22 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     revalidatePath(`/find-jobs/${jobId}`);
     revalidatePath(`/resume/tailored/${jobId}`);
+    revalidatePath(`/cover-letter/tailored/${jobId}`);
 
     return NextResponse.json({
       success: true,
-      data: { reply, pdfUrl: persistResult.storagePath, scoreJump, sections: resumeSections, style: resumeStyle },
+      data: {
+        reply,
+        pdfUrl: persistResult.storagePath,
+        scoreJump,
+        sections: resumeSections,
+        style: resumeStyle,
+        // Only set for kind === "cover_letter" — CoverLetterWorkspace's own
+        // local `letterBody` state has no other way to pick up a chat
+        // revision (router.refresh() alone doesn't push new data into an
+        // already-initialized useState, same reasoning as `sections` above).
+        letterBody: kind === "cover_letter" ? generatedContentText : undefined,
+      },
     });
   } catch (error) {
     console.error("[api/documents/chat]", error);

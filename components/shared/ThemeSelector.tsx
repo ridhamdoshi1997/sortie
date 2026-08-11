@@ -11,6 +11,9 @@ const THEME_LABELS: Record<ResumeTheme, string> = {
   modern: "Modern",
   classic: "Classic",
   minimal: "Minimal",
+  slate: "Slate",
+  editorial: "Editorial",
+  sage: "Sage",
 };
 
 type Props = {

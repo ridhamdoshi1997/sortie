@@ -118,6 +118,10 @@ export interface Job {
   application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
   posted_at: string | null;
   found_at: string;
+  // "Is this listing still around?" signals — see lib/jobStatus.ts's
+  // getListingSignal. Both null means no signal yet, not "confirmed active."
+  marked_unavailable_at: string | null;
+  dropped_from_search_at: string | null;
 }
 
 export interface JobEvaluationDimension {

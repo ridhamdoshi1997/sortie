@@ -166,7 +166,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     // Only set for kind === "resume" — the résumé editor workspace's own
@@ -199,6 +198,19 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
+      // Cover letters share the tailored résumé's exact style (same
+      // template+theme, one visually matched suite per job — see
+      // CoverLetterPDF.tsx's own comment) — read whatever's already saved
+      // for this job's résumé, falling back to the user's preferred theme
+      // default if no résumé has been styled yet.
+      const { data: existingStyleRow } = await insforge.database
+        .from("applications")
+        .select("resume_style,cover_letter_salutation")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId)
+        .maybeSingle<{ resume_style: ResumeStyle | null; cover_letter_salutation: string | null }>();
+      const coverLetterStyle = existingStyleRow?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
+
       const letterBody = await generateCoverLetter({ job, profile, dossier, provider });
       generatedContentText = letterBody;
       pdfBuffer = await renderToBuffer(
@@ -206,7 +218,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           profile,
           company: job.company,
           letterBody,
-          theme,
+          style: coverLetterStyle,
+          salutation: existingStyleRow?.cover_letter_salutation,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     }

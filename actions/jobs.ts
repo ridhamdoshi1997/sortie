@@ -147,6 +147,66 @@ export async function markApplied(jobId: string): Promise<ActionResult> {
   }
 }
 
+// User-confirmed "this listing is gone" — the highest-confidence signal in
+// lib/jobStatus.ts's getListingSignal, above the automatic dropped-from-
+// search detection. Reversible (unmarkJobUnavailable below), same spirit as
+// toggleSaveJob/toggleHideJob rather than a one-way action.
+export async function markJobUnavailable(jobId: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ marked_unavailable_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] markJobUnavailable", error);
+      return { success: false, error: "Failed to update this listing" };
+    }
+
+    revalidatePath("/find-jobs");
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/saved-jobs");
+    revalidatePath("/jobs/applied");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] markJobUnavailable", error);
+    return { success: false, error: "Failed to update this listing" };
+  }
+}
+
+export async function unmarkJobUnavailable(jobId: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ marked_unavailable_at: null })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] unmarkJobUnavailable", error);
+      return { success: false, error: "Failed to update this listing" };
+    }
+
+    revalidatePath("/find-jobs");
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/saved-jobs");
+    revalidatePath("/jobs/applied");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] unmarkJobUnavailable", error);
+    return { success: false, error: "Failed to update this listing" };
+  }
+}
+
 // Lets the candidate fix a wrong AI call (e.g. "I actually do have this
 // skill") without re-running the evaluator — a data correction, not a new
 // AI call, so match_score/recommendation_score are deliberately left alone.

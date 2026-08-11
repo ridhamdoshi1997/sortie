@@ -2,9 +2,7 @@
 
 import { Sparkles } from "lucide-react";
 
-import { useDocumentChat } from "@/components/documents/useDocumentChat";
-import type { ScoreJumpResult } from "@/lib/scoreJump";
-import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+import { useDocumentChat, type RevisedData } from "@/components/documents/useDocumentChat";
 
 export type ChipPreset = { label: string; prompt: string };
 
@@ -17,18 +15,19 @@ const DEFAULT_PRESETS: ChipPreset[] = [
 
 type Props = {
   jobId: string;
+  kind?: "resume" | "cover_letter";
   // Defaults to generic quality-improvement presets; pass a custom list
-  // (e.g. one per missing keyword) to repurpose the same one-tap-chip
-  // mechanism for a different goal.
+  // (e.g. one per missing keyword, or cover-letter tone presets) to
+  // repurpose the same one-tap-chip mechanism for a different goal.
   presets?: ChipPreset[];
-  onRevised?: (data: { reply: string; sections?: ResumeSection[]; style?: ResumeStyle; scoreJump?: ScoreJumpResult | null }) => void;
+  onRevised?: (data: RevisedData) => void;
 };
 
 // One-tap presets routed through the exact same /api/documents/chat round
 // trip DocumentChatEditor uses (via the shared useDocumentChat hook) —
 // nearly free to build, far more discoverable than a blank text box.
-export function RefinementChips({ jobId, presets = DEFAULT_PRESETS, onRevised }: Props) {
-  const { isPending, send } = useDocumentChat({ jobId, kind: "resume", onRevised });
+export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRESETS, onRevised }: Props) {
+  const { isPending, send } = useDocumentChat({ jobId, kind, onRevised });
 
   return (
     <div className="flex flex-wrap gap-1.5">

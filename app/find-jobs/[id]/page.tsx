@@ -111,8 +111,10 @@ export default async function JobDetailsPage({ params }: Props) {
             initialSaved={job.is_saved}
             initialHidden={job.is_hidden}
             initialApplicationStatus={job.application_status}
-            postedAt={job.posted_at}
+            foundAt={job.found_at}
             isRemote={isRemote}
+            initialMarkedUnavailableAt={job.marked_unavailable_at}
+            droppedFromSearchAt={job.dropped_from_search_at}
           />
         </div>
         <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
@@ -207,6 +209,10 @@ export default async function JobDetailsPage({ params }: Props) {
             jobId={job.id}
             resumePdfUrl={application?.resume_pdf_url ?? null}
             coverLetterPdfUrl={application?.cover_letter_pdf_url ?? null}
+            applicationStatus={job.application_status}
+            markedUnavailableAt={job.marked_unavailable_at}
+            droppedFromSearchAt={job.dropped_from_search_at}
+            foundAt={job.found_at}
           />
         </div>
         <FloatingApplyButton applyUrl={applyUrl} company={company} />

@@ -262,6 +262,9 @@ export async function rewriteResumeBullet(
 }
 
 // Style never changes what the résumé says, only how it looks — no rescore.
+// Also the cover letter's own style — the two documents share one
+// applications.resume_style row per job (see CoverLetterPDF.tsx's comment),
+// so a style edit from either workspace revalidates both.
 export async function saveResumeStyle(jobId: string, style: ResumeStyle): Promise<{ success: boolean; error?: string }> {
   const user = await requireUser();
 
@@ -280,9 +283,105 @@ export async function saveResumeStyle(jobId: string, style: ResumeStyle): Promis
     }
 
     revalidatePath(`/resume/tailored/${jobId}`);
+    revalidatePath(`/cover-letter/tailored/${jobId}`);
     return { success: true };
   } catch (error) {
     console.error("[actions/documents] saveResumeStyle", error);
     return { success: false, error: "Failed to save your style changes" };
+  }
+}
+
+// Cover letter's own content edit — mirrors saveResumeSections' shape/scope
+// exactly: a plain DB update, no PDF re-render/re-upload (the live preview
+// renders fresh from this state directly; the downloadable PDF file only
+// refreshes on regenerate/AI-chat-revise, same standing behavior the
+// résumé side already has). `salutation` null means "use the computed
+// default" (see CoverLetterPDF.tsx).
+export async function saveCoverLetterContent(
+  jobId: string,
+  data: { letterBody: string; salutation: string | null },
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("applications")
+      .update({
+        generated_cover_letter: data.letterBody,
+        cover_letter_salutation: data.salutation,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("user_id", user.id)
+      .eq("job_id", jobId);
+
+    if (error) {
+      console.error("[actions/documents] saveCoverLetterContent", error);
+      return { success: false, error: "Failed to save your changes" };
+    }
+
+    revalidatePath(`/cover-letter/tailored/${jobId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/documents] saveCoverLetterContent", error);
+    return { success: false, error: "Failed to save your changes" };
+  }
+}
+
+// Mirrors actions/resumes.ts's deleteTailoredResume exactly (same
+// shared-row caveat): a résumé and cover letter for the same job can live
+// on the SAME `applications` row, so this only clears the cover-letter-
+// specific columns and storage file — deleting the whole row would
+// silently destroy an unrelated résumé. `resume_style` is deliberately
+// left untouched even though this document used it too, since the résumé
+// (if one still exists) still needs it. The row itself is only removed
+// once nothing (résumé or cover letter) references it anymore.
+export async function deleteTailoredCoverLetter(jobId: string): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: application } = await insforge.database
+      .from("applications")
+      .select("id,cover_letter_pdf_url,generated_resume,resume_pdf_url")
+      .eq("user_id", user.id)
+      .eq("job_id", jobId)
+      .maybeSingle<{
+        id: string;
+        cover_letter_pdf_url: string | null;
+        generated_resume: string | null;
+        resume_pdf_url: string | null;
+      }>();
+
+    if (!application) {
+      return { success: false, error: "Tailored cover letter not found" };
+    }
+
+    if (application.cover_letter_pdf_url) {
+      await insforge.storage.from("resumes").remove(application.cover_letter_pdf_url);
+    }
+
+    const hasResume = Boolean(application.generated_resume || application.resume_pdf_url);
+
+    const { error } = hasResume
+      ? await insforge.database
+          .from("applications")
+          .update({ generated_cover_letter: null, cover_letter_pdf_url: null, cover_letter_salutation: null })
+          .eq("id", application.id)
+      : await insforge.database.from("applications").delete().eq("id", application.id);
+
+    if (error) {
+      console.error("[actions/documents] deleteTailoredCoverLetter", error);
+      return { success: false, error: "Failed to delete this cover letter" };
+    }
+
+    revalidatePath("/resume");
+    revalidatePath(`/find-jobs/${jobId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/documents] deleteTailoredCoverLetter", error);
+    return { success: false, error: "Failed to delete this cover letter" };
   }
 }

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
 
-import { markApplied, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { markApplied, markJobUnavailable, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
+import { getListingSignal } from "@/lib/jobStatus";
+import { formatTimeAgo } from "@/lib/utils";
 
 type Props = {
   jobId: string;
@@ -13,8 +15,10 @@ type Props = {
   initialSaved: boolean;
   initialHidden: boolean;
   initialApplicationStatus?: string;
-  postedAt?: string | null;
+  foundAt?: string | null;
   isRemote?: boolean;
+  initialMarkedUnavailableAt?: string | null;
+  droppedFromSearchAt?: string | null;
 };
 
 export function JobActionBar({
@@ -24,13 +28,31 @@ export function JobActionBar({
   initialSaved,
   initialHidden,
   initialApplicationStatus,
-  postedAt,
+  foundAt,
   isRemote,
+  initialMarkedUnavailableAt,
+  droppedFromSearchAt,
 }: Props) {
   const [saved, setSaved] = useState(initialSaved);
   const [hidden, setHidden] = useState(initialHidden);
   const [applied, setApplied] = useState(initialApplicationStatus === "applied");
+  const [markedUnavailableAt, setMarkedUnavailableAt] = useState(initialMarkedUnavailableAt ?? null);
   const [isPending, startTransition] = useTransition();
+  const signal = getListingSignal({
+    marked_unavailable_at: markedUnavailableAt,
+    dropped_from_search_at: droppedFromSearchAt ?? null,
+    found_at: foundAt ?? null,
+  });
+
+  function handleToggleUnavailable(): void {
+    const wasMarked = Boolean(markedUnavailableAt);
+    const nowIso = new Date().toISOString();
+    setMarkedUnavailableAt(wasMarked ? null : nowIso);
+    startTransition(async () => {
+      const result = wasMarked ? await unmarkJobUnavailable(jobId) : await markJobUnavailable(jobId);
+      if (!result.success) setMarkedUnavailableAt(wasMarked ? nowIso : null);
+    });
+  }
 
   function handleMarkApplied(): void {
     if (applied) return;
@@ -77,9 +99,15 @@ export function JobActionBar({
       </Link>
 
       <div className="flex flex-wrap items-center gap-2">
-        {postedAt && (
+        {/* Not `job.posted_at` — that's Google Jobs' own relative text
+            ("2 days ago") frozen at scrape time, never refreshed, so it
+            would read as permanently fresh no matter how old the listing
+            actually gets (confirmed live — a real listing found weeks ago
+            still showed "Posted 2 days ago"). `foundAt` is a real DB
+            timestamp, safe to compute a live relative time from. */}
+        {foundAt && (
           <span className="rounded-full bg-surface-secondary px-3 py-1 text-xs font-medium text-text-muted">
-            Posted {postedAt}
+            Found {formatTimeAgo(foundAt)}
           </span>
         )}
         {isRemote && (
@@ -90,6 +118,20 @@ export function JobActionBar({
         {hidden && (
           <span className="rounded-full bg-surface-secondary px-3 py-1 text-xs font-medium text-text-muted">
             Hidden from your list
+          </span>
+        )}
+        {signal && (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+              signal.level === "confirmed"
+                ? "bg-warning text-warning-foreground"
+                : signal.level === "likely"
+                  ? "bg-warning/15 text-warning"
+                  : "bg-surface-secondary text-text-muted"
+            }`}
+          >
+            <AlertTriangle className="h-3.5 w-3.5" />
+            {signal.label}
           </span>
         )}
 
@@ -125,6 +167,18 @@ export function JobActionBar({
         >
           <Check className="h-4 w-4" />
           {applied ? "Applied" : "Mark as applied"}
+        </button>
+
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={handleToggleUnavailable}
+          className={`glass-pill inline-flex min-h-9 items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 ${
+            markedUnavailableAt ? "text-warning" : "text-text-secondary"
+          }`}
+        >
+          <AlertTriangle className="h-4 w-4" />
+          {markedUnavailableAt ? "Available again?" : "Mark unavailable"}
         </button>
 
         {applyUrl ? (

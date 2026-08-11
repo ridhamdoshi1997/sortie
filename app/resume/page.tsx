@@ -6,12 +6,20 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { ResumeManager } from "@/components/profile/ResumeManager";
-import { TailoredResumeCard } from "@/components/profile/TailoredResumeCard";
+import { ApplicationDocumentsCard } from "@/components/profile/ApplicationDocumentsCard";
 import { listResumes } from "@/actions/resumes";
+
+type ApplicationStatus = "draft" | "applied" | "interviewing" | "offered" | "rejected";
 
 type GeneratedResumeRow = {
   job_id: string;
-  jobs: { title: string | null; company: string | null } | null;
+  cover_letter_pdf_url: string | null;
+  jobs: {
+    title: string | null;
+    company: string | null;
+    company_logo_url: string | null;
+    application_status: ApplicationStatus | null;
+  } | null;
 };
 
 export default async function ResumePage() {
@@ -26,7 +34,7 @@ export default async function ResumePage() {
       .maybeSingle<{ resume_pdf_url: string | null }>(),
     insforge.database
       .from("applications")
-      .select("job_id, jobs(title, company)")
+      .select("job_id, cover_letter_pdf_url, jobs(title, company, company_logo_url, application_status)")
       .eq("user_id", user.id)
       .not("generated_resume", "is", null)
       .returns<GeneratedResumeRow[]>(),
@@ -69,11 +77,14 @@ export default async function ResumePage() {
               </a>
             )}
             {tailored.map((row) => (
-              <TailoredResumeCard
+              <ApplicationDocumentsCard
                 key={row.job_id}
                 jobId={row.job_id}
                 title={row.jobs?.title ?? "Tailored resume"}
                 company={row.jobs?.company ?? "Unknown company"}
+                companyLogoUrl={row.jobs?.company_logo_url ?? null}
+                applicationStatus={row.jobs?.application_status ?? "draft"}
+                hasCoverLetter={Boolean(row.cover_letter_pdf_url)}
               />
             ))}
           </div>

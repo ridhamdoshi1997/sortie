@@ -4,24 +4,21 @@ import { notFound, redirect } from "next/navigation";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { buildDefaultSections, buildDefaultStyle } from "@/lib/resumeSections";
+import { buildDefaultStyle } from "@/lib/resumeSections";
 import { Navbar } from "@/components/layout/Navbar";
-import { ResumeWorkspace } from "@/components/documents/ResumeWorkspace";
+import { CoverLetterWorkspace } from "@/components/documents/CoverLetterWorkspace";
 import { DocumentSwitcher } from "@/components/documents/DocumentSwitcher";
-import type { GeneratedContent } from "@/components/documents/ResumePDF";
-import type { Profile, ResumeAnalysis, ResumeGapAnalysisResult } from "@/types";
-import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
+import type { Profile } from "@/types";
+import type { ResumeStyle } from "@/types/resumeEditor";
 
 type ApplicationRow = {
-  generated_resume: string | null;
-  resume_sections: ResumeSection[] | null;
+  generated_cover_letter: string | null;
+  cover_letter_salutation: string | null;
   resume_style: ResumeStyle | null;
   updated_at: string | null;
-  quality_analysis: ResumeAnalysis | null;
-  quality_analyzed_at: string | null;
 };
 
-export default async function TailoredResumeEditorPage({
+export default async function TailoredCoverLetterEditorPage({
   params,
 }: {
   params: Promise<{ jobId: string }>;
@@ -33,29 +30,28 @@ export default async function TailoredResumeEditorPage({
   const [{ data: job }, { data: profile }, { data: application }] = await Promise.all([
     insforge.database
       .from("jobs")
-      .select("id,title,company,resume_analysis")
+      .select("id,title,company")
       .eq("id", jobId)
       .eq("user_id", user.id)
-      .maybeSingle<{ id: string; title: string | null; company: string | null; resume_analysis: ResumeGapAnalysisResult | null }>(),
+      .maybeSingle<{ id: string; title: string | null; company: string | null }>(),
     insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     insforge.database
       .from("applications")
-      .select("generated_resume,resume_sections,resume_style,updated_at,quality_analysis,quality_analyzed_at")
+      .select("generated_cover_letter,cover_letter_salutation,resume_style,updated_at")
       .eq("user_id", user.id)
       .eq("job_id", jobId)
       .maybeSingle<ApplicationRow>(),
   ]);
 
   if (!job || !profile) notFound();
-  if (!application?.generated_resume) redirect("/resume");
+  // No cover letter generated yet for this job — send back to the
+  // job-details page where "Generate" lives, same fallback shape as the
+  // résumé workspace's own guard.
+  if (!application?.generated_cover_letter) redirect(`/find-jobs/${jobId}`);
 
-  // Lazily upgrade an older row that predates this feature (only has the
-  // pre-editor generated_resume JSON, no resume_sections snapshot yet) — not
-  // persisted here (a page render shouldn't write), the first real edit's
-  // save action persists it for real.
-  const sections =
-    application.resume_sections ??
-    buildDefaultSections(profile, JSON.parse(application.generated_resume) as GeneratedContent);
+  // Shares the tailored résumé's exact style — see CoverLetterPDF.tsx's
+  // comment. Falls back to the user's preferred theme default only if no
+  // résumé has ever been styled for this job either.
   const style = application.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
 
   return (
@@ -65,22 +61,21 @@ export default async function TailoredResumeEditorPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h1 className="fade-in-up text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-              {job.title ?? "Tailored résumé"}
+              Cover letter — {job.title ?? "this role"}
             </h1>
             <p className="text-sm text-text-secondary">{job.company ?? "Unknown company"}</p>
           </div>
-          <DocumentSwitcher jobId={jobId} active="resume" />
+          <DocumentSwitcher jobId={jobId} active="cover_letter" />
         </div>
 
-        <ResumeWorkspace
+        <CoverLetterWorkspace
           jobId={jobId}
           profile={profile}
-          initialSections={sections}
+          company={job.company}
+          initialLetterBody={application.generated_cover_letter}
+          initialSalutation={application.cover_letter_salutation}
           initialStyle={style}
-          initialResumeAnalysis={job.resume_analysis}
           initialUpdatedAt={application.updated_at}
-          initialQualityAnalysis={application.quality_analysis}
-          initialQualityAnalyzedAt={application.quality_analyzed_at}
         />
       </main>
     </>

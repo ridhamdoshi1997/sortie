@@ -24,13 +24,15 @@ const jobsSubItems = [
   { href: "/jobs/external", label: "External" },
 ];
 
+// "Profile" lives under the profile icon in the right-hand cluster, not as
+// a top-level nav item — one fewer item competing for space in an already
+// full horizontal bar, and matches the icon's own obvious affordance.
 const navigationItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/jobs", label: "Jobs", sub: jobsSubItems },
   { href: "/resume", label: "Resume" },
   { href: "/agent", label: "Agent" },
   { href: "/interview", label: "Interview" },
-  { href: "/profile", label: "Profile" },
 ];
 
 function isItemActive(href: string, pathname: string): boolean {
@@ -156,7 +158,15 @@ export function Navbar({ isAuthenticated = false }: Props) {
 
           {isAuthenticated ? (
             <div className="hidden items-center gap-6 md:flex">
-              <UserCircle className="h-6 w-6 text-overlay-foreground/50" />
+              <Link
+                href="/profile"
+                aria-label="Profile"
+                className={`transition-colors duration-200 ease-in-out ${
+                  isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/50 hover:text-overlay-foreground"
+                }`}
+              >
+                <UserCircle className="h-6 w-6" />
+              </Link>
               <PostHogLogoutLink className="inline-flex items-center gap-2 text-sm font-medium text-overlay-foreground/70 transition-colors duration-200 ease-in-out hover:text-overlay-foreground">
                 <LogOut className="h-4 w-4" />
                 <span>Sign out</span>
@@ -215,6 +225,16 @@ export function Navbar({ isAuthenticated = false }: Props) {
               </div>
             ))}
             <div className="my-1 border-t border-overlay-foreground/10" />
+            {isAuthenticated && (
+              <Link
+                href="/profile"
+                className={`block rounded-lg px-3 py-2 text-sm font-medium hover:bg-overlay-foreground/5 ${
+                  isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/70"
+                }`}
+              >
+                Profile
+              </Link>
+            )}
             <button
               type="button"
               onClick={openSettings}

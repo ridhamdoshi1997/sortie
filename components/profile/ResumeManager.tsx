@@ -32,6 +32,7 @@ import {
   type SectionDiff,
 } from "@/actions/resumes";
 import { SYNC_SECTIONS, type SyncSection } from "@/lib/resumeSync";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const MAX_SLOTS = 5;
 
@@ -524,6 +525,10 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
   const [editFor, setEditFor] = useState<ResumeRow | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
+  // Confirmation target for delete — replaces window.confirm() with this
+  // app's own ConfirmDialog (components/ui/ConfirmDialog.tsx).
+  const [deleteTarget, setDeleteTarget] = useState<ResumeRow | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function refresh() {
     router.refresh();
@@ -545,15 +550,21 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
       return;
     }
     if (action === "delete") {
-      if (!window.confirm(`Delete "${resume.name}"? This can't be undone.`)) return;
-      setPendingAction(resume.id);
-      const result = await deleteResume(resume.id);
-      setPendingAction(null);
-      if (!result.success) {
-        window.alert(result.error ?? "Failed to delete résumé.");
-      }
-      refresh();
+      setDeleteError(null);
+      setDeleteTarget(resume);
     }
+  }
+
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    setPendingAction(deleteTarget.id);
+    const result = await deleteResume(deleteTarget.id);
+    setPendingAction(null);
+    setDeleteTarget(null);
+    if (!result.success) {
+      setDeleteError(result.error ?? "Failed to delete résumé.");
+    }
+    refresh();
   }
 
   return (
@@ -674,6 +685,20 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
         />
       )}
       {uploadOpen && <UploadModal onClose={() => setUploadOpen(false)} onUploaded={refresh} />}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title="Delete résumé?"
+        description={`Delete "${deleteTarget?.name}"? This can't be undone.`}
+        pending={pendingAction === deleteTarget?.id}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
+      {deleteError && (
+        <p className="px-5 pb-4 text-xs text-error" role="alert">
+          {deleteError}
+        </p>
+      )}
     </div>
   );
 }
