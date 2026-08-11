@@ -116,6 +116,20 @@ export interface Job {
   is_saved: boolean;
   is_hidden: boolean;
   application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
+  // Set whenever application_status changes (actions/jobs.ts's
+  // setApplicationStatus) — powers the Kanban board's "days in this stage"
+  // and is the real timing input lib/rejectionIntelligence.ts needs. Null
+  // for any job whose status has never been changed via the tracker.
+  application_status_updated_at: string | null;
+  // AI diagnosis of why an employer likely went silent — see
+  // lib/rejectionIntelligence.ts's header comment on why this is always
+  // framed as "possible explanations," never a real answer. Local shape
+  // mirroring lib/rejectionIntelligence.ts's RejectionDiagnosisResult
+  // (not imported, same precedent as JobEvaluationDimension above, since
+  // lib/rejectionIntelligence.ts itself imports from lib/evaluator.ts,
+  // which would create a circular import back into this file).
+  rejection_diagnosis: RejectionDiagnosis | null;
+  rejection_diagnosed_at: string | null;
   posted_at: string | null;
   found_at: string;
   // "Is this listing still around?" signals — see lib/jobStatus.ts's
@@ -128,6 +142,21 @@ export interface JobEvaluationDimension {
   dimension: string;
   grade: "A" | "B" | "C" | "D" | "F";
   note: string;
+}
+
+export interface RejectionDiagnosis {
+  possibleReasons: {
+    category:
+      | "skills_gap"
+      | "seniority_mismatch"
+      | "compensation_mismatch"
+      | "market_conditions"
+      | "application_volume"
+      | "unclear_from_available_data";
+    explanation: string;
+  }[];
+  suggestedNextAction: string;
+  confidenceNote: string;
 }
 
 // Whole-résumé quality analysis (distinct from ResumeGapAnalysisResult below,

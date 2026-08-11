@@ -8,8 +8,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ResumeManager } from "@/components/profile/ResumeManager";
 import { ApplicationDocumentsCard } from "@/components/profile/ApplicationDocumentsCard";
 import { listResumes } from "@/actions/resumes";
-
-type ApplicationStatus = "draft" | "applied" | "interviewing" | "offered" | "rejected";
+import type { ApplicationStatus } from "@/lib/applicationStatus";
 
 type GeneratedResumeRow = {
   job_id: string;

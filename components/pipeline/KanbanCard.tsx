@@ -1,0 +1,159 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import Link from "next/link";
+import { useSortable } from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import { AlertTriangle, ExternalLink, GripVertical, Loader2, Sparkles } from "lucide-react";
+
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { getListingSignal } from "@/lib/jobStatus";
+import { diagnoseRejection } from "@/actions/jobs";
+import { CATEGORY_LABELS, type RejectionReasonCategory } from "@/lib/rejectionIntelligence";
+import { formatTimeAgo } from "@/lib/utils";
+import type { Job } from "@/types";
+
+export type KanbanJob = Pick<
+  Job,
+  | "id"
+  | "title"
+  | "company"
+  | "company_logo_url"
+  | "match_score"
+  | "application_status"
+  | "application_status_updated_at"
+  | "marked_unavailable_at"
+  | "dropped_from_search_at"
+  | "found_at"
+  | "rejection_diagnosis"
+  | "rejection_diagnosed_at"
+>;
+
+export function KanbanCard({ job }: { job: KanbanJob }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
+  const signal = job.application_status === "draft" ? getListingSignal(job) : null;
+  const [diagnosis, setDiagnosis] = useState(job.rejection_diagnosis);
+  const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  function handleDiagnose(): void {
+    setDiagnosisError(null);
+    startTransition(async () => {
+      const result = await diagnoseRejection(job.id);
+      if (result.success && result.diagnosis) {
+        setDiagnosis(result.diagnosis);
+      } else {
+        setDiagnosisError(result.error ?? "Failed to generate a diagnosis");
+      }
+    });
+  }
+
+  return (
+    // Drag listeners/role live on a dedicated handle below, not this whole
+    // card — the card contains real interactive elements (the title link,
+    // "Why the silence?" button, "View job" link), and useSortable's
+    // `attributes` sets role="button" on whatever it's spread onto. Wrapping
+    // the whole card in that produced literally invalid HTML (a <button>
+    // nested inside a <button>), confirmed live: the nested button's clicks
+    // never fired. Same fix EditorTab.tsx's SortableList already applies
+    // for the same reason ("avoiding accidental parent-drag").
+    <div ref={setNodeRef} style={style} className="glass-panel flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card">
+      <div className="flex items-start gap-2">
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          aria-label="Drag to move"
+          className="mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-text-muted hover:text-text-secondary active:cursor-grabbing"
+        >
+          <GripVertical className="h-4 w-4" />
+        </button>
+        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="sm" />
+        <div className="min-w-0 flex-1">
+          <Link
+            href={`/find-jobs/${job.id}`}
+            className="block truncate text-sm font-semibold text-text-primary hover:text-accent"
+          >
+            {job.title ?? "Untitled role"}
+          </Link>
+          <p className="truncate text-xs text-text-muted">{job.company ?? "Unknown company"}</p>
+        </div>
+        {typeof job.match_score === "number" && (
+          <span className="shrink-0 rounded-full bg-agent-light px-2 py-0.5 text-[10px] font-semibold text-agent-dark">
+            {job.match_score}%
+          </span>
+        )}
+      </div>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {signal && (
+          <span
+            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${
+              signal.level === "confirmed"
+                ? "bg-warning text-warning-foreground"
+                : signal.level === "likely"
+                  ? "bg-warning/15 text-warning"
+                  : "bg-surface-secondary text-text-muted"
+            }`}
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {signal.label}
+          </span>
+        )}
+        {job.application_status_updated_at && (
+          <span className="text-[10px] text-text-muted">{formatTimeAgo(job.application_status_updated_at)}</span>
+        )}
+      </div>
+
+      {job.application_status === "rejected" && (
+        <div className="border-t border-border pt-2">
+          {diagnosis ? (
+            <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-2.5 py-2">
+              <p className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-agent-dark">
+                Agent read
+              </p>
+              <ul className="flex flex-col gap-1">
+                {diagnosis.possibleReasons.map((reason, i) => (
+                  <li key={i} className="text-[11px] leading-snug text-agent-dark">
+                    <span className="font-semibold">
+                      {CATEGORY_LABELS[reason.category as RejectionReasonCategory] ?? reason.category}:
+                    </span>{" "}
+                    {reason.explanation}
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[11px] font-medium leading-snug text-agent-dark">
+                Next: {diagnosis.suggestedNextAction}
+              </p>
+              <p className="mt-1 text-[10px] italic text-agent-dark/70">{diagnosis.confidenceNote}</p>
+            </div>
+          ) : (
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={handleDiagnose}
+              className="glass-pill inline-flex min-h-8 w-full items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors disabled:opacity-60"
+            >
+              {isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              Why the silence?
+            </button>
+          )}
+          {diagnosisError && <p className="mt-1 text-[10px] text-error">{diagnosisError}</p>}
+        </div>
+      )}
+
+      <Link
+        href={`/find-jobs/${job.id}`}
+        className="inline-flex items-center gap-1 self-start text-[11px] font-medium text-text-muted hover:text-accent"
+      >
+        View job <ExternalLink className="h-3 w-3" />
+      </Link>
+    </div>
+  );
+}

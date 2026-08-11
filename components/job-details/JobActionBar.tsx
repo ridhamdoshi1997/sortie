@@ -4,8 +4,9 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
 
-import { markApplied, markJobUnavailable, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
+import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
+import type { ApplicationStatus } from "@/lib/applicationStatus";
 import { formatTimeAgo } from "@/lib/utils";
 
 type Props = {
@@ -14,7 +15,7 @@ type Props = {
   company: string;
   initialSaved: boolean;
   initialHidden: boolean;
-  initialApplicationStatus?: string;
+  initialApplicationStatus?: ApplicationStatus;
   foundAt?: string | null;
   isRemote?: boolean;
   initialMarkedUnavailableAt?: string | null;
@@ -58,7 +59,7 @@ export function JobActionBar({
     if (applied) return;
     setApplied(true);
     startTransition(async () => {
-      const result = await markApplied(jobId);
+      const result = await setApplicationStatus(jobId, initialApplicationStatus ?? "draft", "applied");
       if (!result.success) setApplied(false);
     });
   }

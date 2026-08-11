@@ -19,6 +19,16 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (error || !data?.accessToken || !data.user) {
       const unverified = error?.statusCode === 403;
+      if (unverified) {
+        // The UI tells the user "we sent you a code" the moment it shows
+        // the verify screen — make that true here rather than relying on
+        // whatever code (if any) was sent during the original signup,
+        // which may be long expired or, like this project's first real
+        // signup attempt, never delivered at all (SMTP provider outage).
+        await insforge.auth
+          .resendVerificationEmail({ email, redirectTo: new URL("/login", request.url).toString() })
+          .catch(() => {});
+      }
       return NextResponse.json(
         {
           success: false,

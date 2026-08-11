@@ -9,27 +9,7 @@ import { deleteTailoredResume } from "@/actions/resumes";
 import { deleteTailoredCoverLetter } from "@/actions/documents";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-
-type ApplicationStatus = "draft" | "applied" | "interviewing" | "offered" | "rejected";
-
-const STATUS_LABELS: Record<ApplicationStatus, string> = {
-  draft: "Draft",
-  applied: "Applied",
-  interviewing: "Interviewing",
-  offered: "Offer",
-  rejected: "Rejected",
-};
-
-// Same token pairing pattern used everywhere else in this app for status-ish
-// badges (bg-X-light / text-X-foreground) — agent-teal for "interviewing"
-// since that's the active/in-motion state, not because it's AI content.
-const STATUS_CLASSES: Record<ApplicationStatus, string> = {
-  draft: "bg-surface-secondary text-text-muted",
-  applied: "bg-info-light text-info-foreground",
-  interviewing: "bg-agent-light text-agent-dark",
-  offered: "bg-success-lightest text-success-foreground",
-  rejected: "bg-error/10 text-error",
-};
+import { STATUS_CLASSES, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 
 type Props = {
   jobId: string;

@@ -58,6 +58,15 @@ type PostHogEventInput =
       properties: {
         userId: string;
       };
+    }
+  | {
+      event: "application_status_changed";
+      properties: {
+        userId: string;
+        jobId: string;
+        from: string;
+        to: string;
+      };
     };
 
 export function createPostHogServer(): PostHog | null {

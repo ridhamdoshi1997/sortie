@@ -6,6 +6,13 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { inngest } from "@/lib/inngest/client";
 import { fetchViaJinaReader } from "@/agent/research";
+import { trackPostHogEvent } from "@/lib/posthog-server";
+import { resolveProvider } from "@/lib/access";
+import { checkAndConsumeUsage } from "@/lib/usage";
+import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
+import type { ApplicationStatus } from "@/lib/applicationStatus";
+import type { EvaluationDimensionResult } from "@/lib/evaluator";
+import type { Profile } from "@/types";
 
 type ActionResult = { success: boolean; error?: string };
 
@@ -120,7 +127,18 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
   }
 }
 
-export async function markApplied(jobId: string): Promise<ActionResult> {
+// Reversible status transition — the Kanban board's drag-and-drop and every
+// other status-change surface (JobActionBar, JobResultCard) route through
+// this one action, following toggleSaveJob's optimistic-then-write shape
+// rather than the old markApplied's one-way write. `from` comes from the
+// caller's already-known client state (same idiom JobActionBar already uses
+// for its optimistic local state) rather than an extra fetch-before-write —
+// it's only used for the PostHog event, not for any server-side validation.
+export async function setApplicationStatus(
+  jobId: string,
+  from: ApplicationStatus,
+  to: ApplicationStatus,
+): Promise<ActionResult> {
   const user = await requireUser();
 
   try {
@@ -128,22 +146,27 @@ export async function markApplied(jobId: string): Promise<ActionResult> {
 
     const { error } = await insforge.database
       .from("jobs")
-      .update({ application_status: "applied" })
+      .update({ application_status: to, application_status_updated_at: new Date().toISOString() })
       .eq("id", jobId)
       .eq("user_id", user.id);
 
     if (error) {
-      console.error("[actions/jobs] markApplied", error);
-      return { success: false, error: "Failed to mark as applied" };
+      console.error("[actions/jobs] setApplicationStatus", error);
+      return { success: false, error: "Failed to update application status" };
     }
+
+    await trackPostHogEvent({
+      event: "application_status_changed",
+      properties: { userId: user.id, jobId, from, to },
+    });
 
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
-    revalidatePath("/jobs/applied");
+    revalidatePath("/pipeline");
     return { success: true };
   } catch (error) {
-    console.error("[actions/jobs] markApplied", error);
-    return { success: false, error: "Failed to mark as applied" };
+    console.error("[actions/jobs] setApplicationStatus", error);
+    return { success: false, error: "Failed to update application status" };
   }
 }
 
@@ -171,7 +194,7 @@ export async function markJobUnavailable(jobId: string): Promise<ActionResult> {
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
     revalidatePath("/saved-jobs");
-    revalidatePath("/jobs/applied");
+    revalidatePath("/pipeline");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] markJobUnavailable", error);
@@ -199,7 +222,7 @@ export async function unmarkJobUnavailable(jobId: string): Promise<ActionResult>
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
     revalidatePath("/saved-jobs");
-    revalidatePath("/jobs/applied");
+    revalidatePath("/pipeline");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] unmarkJobUnavailable", error);
@@ -257,5 +280,71 @@ export async function correctSkillTag(
   } catch (error) {
     console.error("[actions/jobs] correctSkillTag", error);
     return { success: false, error: "Failed to save correction" };
+  }
+}
+
+// "Why did this employer go silent?" — grounded entirely in the job's own
+// already-stored evaluation (see lib/rejectionIntelligence.ts's own header
+// comment on why this can never be a real answer, only a plausible one).
+// Gated by checkAndConsumeUsage since it's a real LLM call, same pattern as
+// every other AI-backed action in this codebase.
+export async function diagnoseRejection(
+  jobId: string,
+): Promise<ActionResult & { diagnosis?: RejectionDiagnosisResult }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "rejection_intelligence");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const [{ data: profile }, { data: job }] = await Promise.all([
+      insforge.database
+        .from("profiles")
+        .select("preferred_model")
+        .eq("id", user.id)
+        .maybeSingle<Pick<Profile, "preferred_model">>(),
+      insforge.database
+        .from("jobs")
+        .select("id,title,company,description,evaluation,missing_skills,application_status_updated_at")
+        .eq("id", jobId)
+        .eq("user_id", user.id)
+        .maybeSingle<{
+          id: string;
+          title: string | null;
+          company: string | null;
+          description: string | null;
+          evaluation: EvaluationDimensionResult[] | null;
+          missing_skills: string[] | null;
+          application_status_updated_at: string | null;
+        }>(),
+    ]);
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const diagnosis = await diagnoseRejectionForJob(job, provider);
+
+    const { error: updateError } = await insforge.database
+      .from("jobs")
+      .update({ rejection_diagnosis: diagnosis, rejection_diagnosed_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("[actions/jobs] diagnoseRejection persist", updateError);
+      return { success: false, error: "Diagnosis generated but failed to save" };
+    }
+
+    revalidatePath("/pipeline");
+    return { success: true, diagnosis };
+  } catch (error) {
+    console.error("[actions/jobs] diagnoseRejection", error);
+    return { success: false, error: "Failed to generate a diagnosis" };
   }
 }

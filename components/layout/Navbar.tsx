@@ -20,16 +20,20 @@ import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 const jobsSubItems = [
   { href: "/find-jobs", label: "Recommended" },
   { href: "/saved-jobs", label: "Liked" },
-  { href: "/jobs/applied", label: "Applied" },
   { href: "/jobs/external", label: "External" },
 ];
 
 // "Profile" lives under the profile icon in the right-hand cluster, not as
 // a top-level nav item — one fewer item competing for space in an already
 // full horizontal bar, and matches the icon's own obvious affordance.
+// "Pipeline" (the application tracker) is a top-level item, not folded into
+// the Jobs dropdown like the old /jobs/applied sub-item it replaces — it's
+// meant to be a daily-return surface (spine #1 feature), not a filtered
+// view of the job list.
 const navigationItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/jobs", label: "Jobs", sub: jobsSubItems },
+  { href: "/pipeline", label: "Pipeline" },
   { href: "/resume", label: "Resume" },
   { href: "/agent", label: "Agent" },
   { href: "/interview", label: "Interview" },

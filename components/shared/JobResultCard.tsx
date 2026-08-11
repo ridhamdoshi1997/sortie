@@ -6,7 +6,7 @@ import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, 
 
 import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
-import { markApplied, markJobUnavailable, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
 import type { Job } from "@/types";
 
@@ -78,7 +78,7 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
     stop(event);
     setMenuOpen(false);
     startTransition(async () => {
-      await markApplied(job.id);
+      await setApplicationStatus(job.id, job.application_status, "applied");
     });
   }
 

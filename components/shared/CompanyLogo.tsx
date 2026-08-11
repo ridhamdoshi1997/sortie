@@ -19,6 +19,7 @@ function guessCompanyDomain(company: string): string | null {
 }
 
 const sizeClasses = {
+  sm: { box: "h-9 w-9 rounded-lg", icon: "h-4.5 w-4.5", padding: "p-1" },
   md: { box: "h-14 w-14 rounded-xl", icon: "h-7 w-7", padding: "p-1.5" },
   lg: { box: "h-20 w-20 rounded-2xl", icon: "h-9 w-9", padding: "p-2" },
 } as const;

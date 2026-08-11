@@ -16,7 +16,8 @@ export type UsageAction =
   | "resume_quality_analysis"
   | "insider_connections"
   | "email_lookup"
-  | "bullet_rewrite";
+  | "bullet_rewrite"
+  | "rejection_intelligence";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -51,6 +52,10 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // generate a few more), so it gets a generous but real cap rather than
   // none at all.
   bullet_rewrite: 30,
+  // One structured call against data the app already has (a job's own
+  // stored evaluation) — cheap in the same way bullet_rewrite is, but capped
+  // tighter since it's a new, unvalidated feature rather than a proven one.
+  rejection_intelligence: 5,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -63,6 +68,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   insider_connections: "insider connection lookups",
   email_lookup: "email lookups",
   bullet_rewrite: "AI bullet rewrites/generations",
+  rejection_intelligence: "rejection diagnoses",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };
