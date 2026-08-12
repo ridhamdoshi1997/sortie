@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
 
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
@@ -42,6 +42,21 @@ export function JobActionBar({
   const [applied, setApplied] = useState(initialApplicationStatus === "applied");
   const [markedUnavailableAt, setMarkedUnavailableAt] = useState(initialMarkedUnavailableAt ?? null);
   const [isPending, startTransition] = useTransition();
+  // formatTimeAgo(foundAt) is time-dependent — computing it inline in JSX
+  // renders a different string at SSR-time than at client-hydration-time
+  // whenever real wall-clock time crosses a bucket boundary between those
+  // two moments (confirmed live: a slow page load, e.g. this page's own
+  // 24s "Get strategic briefing" round trip, is more than enough for
+  // "just now" to become "1 min ago"). Deferring to client-only via
+  // useEffect means SSR and initial hydration both render nothing for this
+  // span, so there's nothing for React to mismatch on — the real value
+  // fills in a tick after mount instead.
+  const [foundAtLabel, setFoundAtLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!foundAt) return;
+    const timer = setTimeout(() => setFoundAtLabel(formatTimeAgo(foundAt)), 0);
+    return () => clearTimeout(timer);
+  }, [foundAt]);
   const signal = getListingSignal({
     marked_unavailable_at: markedUnavailableAt,
     dropped_from_search_at: droppedFromSearchAt ?? null,
@@ -109,9 +124,9 @@ export function JobActionBar({
             actually gets (confirmed live — a real listing found weeks ago
             still showed "Posted 2 days ago"). `foundAt` is a real DB
             timestamp, safe to compute a live relative time from. */}
-        {foundAt && (
+        {foundAtLabel && (
           <span className="rounded-full bg-surface-secondary px-3 py-1 text-xs font-medium text-text-muted">
-            Found {formatTimeAgo(foundAt)}
+            Found {foundAtLabel}
           </span>
         )}
         {isRemote && (

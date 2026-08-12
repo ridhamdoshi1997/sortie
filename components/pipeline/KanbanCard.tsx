@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -35,6 +35,17 @@ export function KanbanCard({ job }: { job: KanbanJob }) {
   const [diagnosis, setDiagnosis] = useState(job.rejection_diagnosis);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Same hydration-mismatch fix as JobActionBar.tsx's foundAtLabel — a
+  // time-relative string computed inline in JSX renders differently at
+  // SSR-time vs. client-hydration-time whenever real time crosses a bucket
+  // boundary between those two moments.
+  const [stageAgeLabel, setStageAgeLabel] = useState<string | null>(null);
+  useEffect(() => {
+    const updatedAt = job.application_status_updated_at;
+    if (!updatedAt) return;
+    const timer = setTimeout(() => setStageAgeLabel(formatTimeAgo(updatedAt)), 0);
+    return () => clearTimeout(timer);
+  }, [job.application_status_updated_at]);
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -106,8 +117,8 @@ export function KanbanCard({ job }: { job: KanbanJob }) {
             {signal.label}
           </span>
         )}
-        {job.application_status_updated_at && (
-          <span className="text-[10px] text-text-muted">{formatTimeAgo(job.application_status_updated_at)}</span>
+        {stageAgeLabel && (
+          <span className="text-[10px] text-text-muted">{stageAgeLabel}</span>
         )}
       </div>
 

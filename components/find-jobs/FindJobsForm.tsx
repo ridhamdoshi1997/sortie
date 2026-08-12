@@ -37,6 +37,16 @@ export function FindJobsForm({
     const [jobIds, setJobIds] = useState<string[]>(
         initialJobs.filter((job) => job.match_score === null).map((job) => job.id)
     );
+    // Same hydration-mismatch fix as JobActionBar.tsx's foundAtLabel —
+    // formatTimeAgo(lastRunAt) computed inline in JSX renders a different
+    // string at SSR-time than at client-hydration-time whenever real time
+    // crosses a bucket boundary between those two moments.
+    const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
+    useEffect(() => {
+        if (!lastRunAt) return;
+        const timer = setTimeout(() => setLastRunLabel(formatTimeAgo(lastRunAt)), 0);
+        return () => clearTimeout(timer);
+    }, [lastRunAt]);
 
     const [filters, setFilters] = useState({
         visa_sponsorship: "",
@@ -230,7 +240,7 @@ export function FindJobsForm({
                     {lastRunAt && (
                         <div className="mt-6 flex items-center gap-2 font-mono text-xs text-text-muted">
                             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                            Last sortie · {formatTimeAgo(lastRunAt)}
+                            Last sortie · {lastRunLabel}
                         </div>
                     )}
                 </div>
