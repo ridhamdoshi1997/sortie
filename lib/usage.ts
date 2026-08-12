@@ -18,7 +18,8 @@ export type UsageAction =
   | "email_lookup"
   | "bullet_rewrite"
   | "rejection_intelligence"
-  | "strategic_moat";
+  | "strategic_moat"
+  | "interviewer_research";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -62,6 +63,10 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // when that comes up thin. Capped like company_research since it shares
   // the same worst-case cost profile.
   strategic_moat: 3,
+  // Same free-first-then-Perplexity cost profile as strategic_moat, capped
+  // the same way. Adding a panelist itself is free; only the "research
+  // background" action consumes this.
+  interviewer_research: 5,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -76,6 +81,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   bullet_rewrite: "AI bullet rewrites/generations",
   rejection_intelligence: "rejection diagnoses",
   strategic_moat: "strategic moat briefings",
+  interviewer_research: "interviewer background lookups",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

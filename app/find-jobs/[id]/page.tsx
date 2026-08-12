@@ -11,6 +11,8 @@ import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButto
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
+import { InterviewPanel } from "@/components/job-details/InterviewPanel";
+import { listInterviewPanel } from "@/actions/interviewPanel";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -94,6 +96,9 @@ export default async function JobDetailsPage({ params }: Props) {
     .eq("user_id", user.id);
   const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
 
+  const panelResult = job.application_status === "interviewing" ? await listInterviewPanel(job.id) : null;
+  const interviewPanelMembers = panelResult?.data ?? [];
+
   const isAdmin = isAdminUser(user.email);
   // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
   // or an admin allowlist change) so the selector never shows/persists a
@@ -169,6 +174,10 @@ export default async function JobDetailsPage({ params }: Props) {
                     <Benefits items={job.benefits ?? []} />
 
                     <HiringProcess items={job.hiring_process ?? []} />
+
+                    {job.application_status === "interviewing" && (
+                      <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
+                    )}
 
                     <NetworkSignals
                       company={company}

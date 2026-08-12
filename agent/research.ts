@@ -1309,6 +1309,70 @@ export async function researchStrategicMoat(
   }
 }
 
+// Interview Panel Topology — a named-person version of the same free-first-
+// then-Perplexity pattern researchStrategicMoat uses (not the company-
+// leadership Wikipedia waterfall below, which is the wrong shape for a
+// private individual who almost never has Wikipedia coverage). The name
+// comes from the candidate themselves (they were told who's interviewing
+// them) — this is the same normal, legitimate practice as looking someone
+// up on LinkedIn before a call, not surveillance of a stranger. Extraction
+// is deliberately conservative: genuinely public professional facts only,
+// never speculation about personality, bias, or anything not grounded in
+// real fetched content.
+export type InterviewerBackground = {
+  summary: string;
+  priorCompanies: string[];
+  interviewPrepNote: string;
+  sources: string[];
+};
+
+const interviewerBackgroundSchema = z.object({
+  summary: z.string().optional().default(""),
+  priorCompanies: z.array(z.string()).optional().default([]),
+  interviewPrepNote: z.string().optional().default(""),
+});
+
+export async function researchInterviewerBackground(
+  name: string,
+  company: string,
+): Promise<{ success: true; background: InterviewerBackground } | { success: false; error: string }> {
+  try {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${name}" "${company}" LinkedIn`)}`;
+    let sourceText = await fetchViaJinaReader(searchUrl);
+    let sources: string[] = [];
+
+    if (!sourceText || sourceText.length < 200) {
+      const perplexity = await fetchViaPerplexity(
+        `What is ${name}'s public professional background at ${company}? Focus only on their real career history — prior companies, role, and area of expertise. Do not speculate about personality or private details.`,
+      );
+      if (perplexity) {
+        sourceText = perplexity.text;
+        sources = perplexity.citations;
+      }
+    }
+
+    if (!sourceText) {
+      return { success: false, error: "No public professional information found for this person." };
+    }
+
+    const background = await extractStructured(
+      sourceText,
+      "This is real search content about a specific named professional. Extract only genuinely public professional facts: a short career summary, prior companies/roles, and one practical interview-prep note connecting their background to what to expect (e.g. an engineering background suggesting a technical interview). Never speculate about personality, bias, or anything not grounded in the actual content given. If the content doesn't clearly match this specific person at this specific company, return empty values rather than guessing.",
+      interviewerBackgroundSchema,
+      `{ "summary": string, "priorCompanies": string[], "interviewPrepNote": string }`,
+    );
+
+    if (!background || !background.summary) {
+      return { success: false, error: "Could not find enough public information about this person." };
+    }
+
+    return { success: true, background: { ...background, sources } };
+  } catch (error) {
+    console.error("[agent/research] researchInterviewerBackground", error);
+    return { success: false, error: "Interviewer research failed." };
+  }
+}
+
 export async function researchCompany({
   job,
   profile,
