@@ -133,6 +133,15 @@ export interface Job {
   // which would create a circular import back into this file).
   rejection_diagnosis: RejectionDiagnosis | null;
   rejection_diagnosed_at: string | null;
+  // Recent-news/strategic-priorities lens on the company — see
+  // agent/research.ts's researchStrategicMoat.
+  strategic_moat: {
+    strategicPriorities: string[];
+    existentialThreats: string[];
+    smartQuestions: string[];
+    sources: string[];
+  } | null;
+  strategic_moat_researched_at: string | null;
   posted_at: string | null;
   found_at: string;
   // "Is this listing still around?" signals — see lib/jobStatus.ts's

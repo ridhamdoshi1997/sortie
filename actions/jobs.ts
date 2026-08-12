@@ -10,6 +10,7 @@ import { trackPostHogEvent } from "@/lib/posthog-server";
 import { resolveProvider } from "@/lib/access";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
+import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/research";
 import type { ApplicationStatus } from "@/lib/applicationStatus";
 import type { EvaluationDimensionResult } from "@/lib/evaluator";
 import type { Profile } from "@/types";
@@ -346,5 +347,72 @@ export async function diagnoseRejection(
   } catch (error) {
     console.error("[actions/jobs] diagnoseRejection", error);
     return { success: false, error: "Failed to generate a diagnosis" };
+  }
+}
+
+// Distinct from the existing free CompanyResearch dossier — recent news,
+// strategic priorities, and existential threats, not culture/tech-stack.
+// Opt-in (button-triggered, not auto-loaded like CompanyResearchAutoLoader)
+// since this can fall to the real-cost Perplexity path (see
+// researchStrategicMoat's own comment) — an opt-in cost-bearing action
+// shouldn't fire without a click, same principle as Insider Connections.
+export async function getStrategicMoatBriefing(
+  jobId: string,
+): Promise<ActionResult & { briefing?: StrategicMoatBriefing }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "strategic_moat");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("id,title,company,source_url,external_apply_url,about_role,matched_skills,missing_skills")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{
+        id: string;
+        title: string | null;
+        company: string | null;
+        source_url: string | null;
+        external_apply_url: string | null;
+        about_role: string | null;
+        matched_skills: string[] | null;
+        missing_skills: string[] | null;
+      }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const result = await researchStrategicMoat({
+      ...job,
+      matched_skills: job.matched_skills ?? [],
+      missing_skills: job.missing_skills ?? [],
+    });
+    if (!result.success) {
+      return { success: false, error: result.error };
+    }
+
+    const { error: updateError } = await insforge.database
+      .from("jobs")
+      .update({ strategic_moat: result.briefing, strategic_moat_researched_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("[actions/jobs] getStrategicMoatBriefing persist", updateError);
+      return { success: false, error: "Briefing generated but failed to save" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, briefing: result.briefing };
+  } catch (error) {
+    console.error("[actions/jobs] getStrategicMoatBriefing", error);
+    return { success: false, error: "Failed to generate a strategic briefing" };
   }
 }

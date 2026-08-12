@@ -1237,6 +1237,78 @@ export async function findEmailForPerson(
   }
 }
 
+// Strategic Moat Briefing — a distinct lens from researchCompany's culture/
+// tech-stack dossier: recent news, current strategic priorities, and
+// existential threats/challenges, plus CEO-level questions grounded in
+// that. Real news synthesis genuinely needs a live search (there's no page
+// to crawl before you know what's newsworthy), unlike the homepage-crawl
+// pattern researchCompany starts with — so this tries a free Jina-Reader
+// fetch of a search-results page first, and only falls to the existing
+// Perplexity path (real ~$0.005/call, already used elsewhere in this file
+// for the same "free path came up empty" reason) if that's too thin.
+export type StrategicMoatBriefing = {
+  strategicPriorities: string[];
+  existentialThreats: string[];
+  smartQuestions: string[];
+  sources: string[];
+};
+
+const strategicMoatSchema = z.object({
+  strategicPriorities: z.array(z.string()).optional().default([]),
+  existentialThreats: z.array(z.string()).optional().default([]),
+  smartQuestions: z.array(z.string()).optional().default([]),
+});
+
+export async function researchStrategicMoat(
+  job: ResearchJob,
+  logger?: ResearchLogger,
+): Promise<{ success: true; briefing: StrategicMoatBriefing } | { success: false; error: string }> {
+  try {
+    const company = job.company ?? "this company";
+
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+      `${company} recent news strategic priorities 2026`,
+    )}`;
+    let sourceText = await fetchViaJinaReader(searchUrl);
+    let sources: string[] = [];
+
+    // Same "free path too thin, try Perplexity" threshold reasoning as
+    // tryPerplexityFallback above — a search page that mostly failed to
+    // render still returns *some* text, so a length floor catches that.
+    if (!sourceText || sourceText.length < 200) {
+      const perplexity = await fetchViaPerplexity(
+        `What are ${company}'s current strategic priorities, recent news, and any existential threats or business challenges they're facing right now? Be specific and current, not generic.`,
+      );
+      if (perplexity) {
+        sourceText = perplexity.text;
+        sources = perplexity.citations;
+        await log(logger, "Strategic moat briefing filled in via Perplexity web search.", "success");
+      }
+    }
+
+    if (!sourceText) {
+      return { success: false, error: "Could not find recent information about this company." };
+    }
+
+    const briefing = await extractStructured(
+      sourceText,
+      "This is real search/news content about a company. Extract their current strategic priorities, existential threats or business challenges, and 2-3 sharp, specific interview questions a candidate could ask that would signal genuine research (not generic questions). Ground every item in the actual content given — never invent a priority, threat, or fact not present in the source text. Empty arrays are fine if the content doesn't support a section.",
+      strategicMoatSchema,
+      `{ "strategicPriorities": string[], "existentialThreats": string[], "smartQuestions": string[] }`,
+    );
+
+    if (!briefing || (briefing.strategicPriorities.length === 0 && briefing.existentialThreats.length === 0)) {
+      return { success: false, error: "Could not extract a grounded briefing from available sources." };
+    }
+
+    await log(logger, "Strategic moat briefing generated.", "success");
+    return { success: true, briefing: { ...briefing, sources } };
+  } catch (error) {
+    console.error("[agent/research] researchStrategicMoat", error);
+    return { success: false, error: "Strategic moat research failed." };
+  }
+}
+
 export async function researchCompany({
   job,
   profile,

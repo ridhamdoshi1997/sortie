@@ -17,7 +17,8 @@ export type UsageAction =
   | "insider_connections"
   | "email_lookup"
   | "bullet_rewrite"
-  | "rejection_intelligence";
+  | "rejection_intelligence"
+  | "strategic_moat";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -56,6 +57,11 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // stored evaluation) — cheap in the same way bullet_rewrite is, but capped
   // tighter since it's a new, unvalidated feature rather than a proven one.
   rejection_intelligence: 5,
+  // Tries a free Jina-Reader search-page fetch first; only falls to the
+  // real ~$0.005/call Perplexity path (same as company_research's fallback)
+  // when that comes up thin. Capped like company_research since it shares
+  // the same worst-case cost profile.
+  strategic_moat: 3,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -69,6 +75,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   email_lookup: "email lookups",
   bullet_rewrite: "AI bullet rewrites/generations",
   rejection_intelligence: "rejection diagnoses",
+  strategic_moat: "strategic moat briefings",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

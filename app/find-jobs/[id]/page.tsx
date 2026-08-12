@@ -10,6 +10,7 @@ import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdow
 import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
+import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -187,6 +188,8 @@ export default async function JobDetailsPage({ params }: Props) {
                       jobId={job.id}
                       research={job.company_research}
                     />
+
+                    <StrategicMoatBriefing jobId={job.id} briefing={job.strategic_moat} />
 
                     {job.company_research && (
                       <InsiderConnections
