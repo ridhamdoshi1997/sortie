@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
-import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, ArrowLeft, Bookmark, ChevronDown, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
 
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
-import type { ApplicationStatus } from "@/lib/applicationStatus";
+import { STAGE_ORDER, STATUS_CLASSES, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import { formatTimeAgo } from "@/lib/utils";
 
@@ -39,7 +40,15 @@ export function JobActionBar({
 }: Props) {
   const [saved, setSaved] = useState(initialSaved);
   const [hidden, setHidden] = useState(initialHidden);
-  const [applied, setApplied] = useState(initialApplicationStatus === "applied");
+  const [status, setStatus] = useState<ApplicationStatus>(initialApplicationStatus ?? "draft");
+  // Fixed/portaled, not a plain absolute-positioned child — this page always
+  // has more content below the action bar (JobInfo, tabs, etc.), and a
+  // same-stacking-context absolute dropdown painted underneath that content
+  // instead of over it (confirmed live). Same fix already proven for
+  // StyleTab.tsx's Theme/Page-size dropdowns: portal to document.body,
+  // position:fixed computed from the trigger's real getBoundingClientRect(),
+  // close on scroll since a fixed panel doesn't track its trigger.
+  const [statusMenuPosition, setStatusMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [markedUnavailableAt, setMarkedUnavailableAt] = useState(initialMarkedUnavailableAt ?? null);
   const [isPending, startTransition] = useTransition();
   // formatTimeAgo(foundAt) is time-dependent — computing it inline in JSX
@@ -73,12 +82,14 @@ export function JobActionBar({
     });
   }
 
-  function handleMarkApplied(): void {
-    if (applied) return;
-    setApplied(true);
+  function handleSetStatus(next: ApplicationStatus): void {
+    setStatusMenuPosition(null);
+    if (next === status) return;
+    const previous = status;
+    setStatus(next);
     startTransition(async () => {
-      const result = await setApplicationStatus(jobId, initialApplicationStatus ?? "draft", "applied");
-      if (!result.success) setApplied(false);
+      const result = await setApplicationStatus(jobId, previous, next);
+      if (!result.success) setStatus(previous);
     });
   }
 
@@ -182,17 +193,34 @@ export function JobActionBar({
           {hidden ? "Unhide" : "Hide"}
         </button>
 
-        <button
-          type="button"
-          disabled={isPending || applied}
-          onClick={handleMarkApplied}
-          className={`glass-pill inline-flex min-h-9 items-center gap-2 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-100 ${
-            applied ? "text-success" : "text-text-secondary"
-          }`}
-        >
-          <Check className="h-4 w-4" />
-          {applied ? "Applied" : "Mark as applied"}
-        </button>
+        <div>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={(e) => {
+              if (statusMenuPosition) {
+                setStatusMenuPosition(null);
+                return;
+              }
+              const rect = e.currentTarget.getBoundingClientRect();
+              setStatusMenuPosition({ top: rect.bottom + 4, left: rect.left });
+            }}
+            aria-expanded={statusMenuPosition !== null}
+            className={`glass-pill inline-flex min-h-9 items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-60 ${STATUS_CLASSES[status]}`}
+          >
+            {STATUS_LABELS[status]}
+            <ChevronDown className="h-3.5 w-3.5" />
+          </button>
+
+          {statusMenuPosition && (
+            <StatusMenuPanel
+              position={statusMenuPosition}
+              status={status}
+              onSelect={handleSetStatus}
+              onClose={() => setStatusMenuPosition(null)}
+            />
+          )}
+        </div>
 
         <button
           type="button"
@@ -226,5 +254,60 @@ export function JobActionBar({
         )}
       </div>
     </div>
+  );
+}
+
+// Same portal/fixed-position pattern as StyleTab.tsx's DropdownPanel — see
+// the statusMenuPosition state comment above for why a plain absolute
+// child isn't enough on this particular page.
+function StatusMenuPanel({
+  position,
+  status,
+  onSelect,
+  onClose,
+}: {
+  position: { top: number; left: number };
+  status: ApplicationStatus;
+  onSelect: (stage: ApplicationStatus) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [onClose]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", onClose, true);
+    return () => window.removeEventListener("scroll", onClose, true);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: "fixed", top: position.top, left: position.left }}
+      className="glass-panel-strong animate-in fade-in-0 zoom-in-95 z-50 w-44 rounded-xl p-1.5 duration-150"
+    >
+      {STAGE_ORDER.map((stage) => (
+        <button
+          key={stage}
+          type="button"
+          onClick={() => onSelect(stage)}
+          className={`flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors hover:bg-surface-secondary ${
+            stage === status ? "text-text-primary" : "text-text-secondary"
+          }`}
+        >
+          <span className={`h-2 w-2 rounded-full ${STATUS_CLASSES[stage].split(" ")[0]}`} />
+          {STATUS_LABELS[stage]}
+        </button>
+      ))}
+    </div>,
+    document.body,
   );
 }
