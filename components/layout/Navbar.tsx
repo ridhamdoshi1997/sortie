@@ -29,11 +29,14 @@ const jobsSubItems = [
 // "Pipeline" (the application tracker) is a top-level item, not folded into
 // the Jobs dropdown like the old /jobs/applied sub-item it replaces — it's
 // meant to be a daily-return surface (spine #1 feature), not a filtered
-// view of the job list.
+// view of the job list. "Career" (spine #2, portable career identity) gets
+// the same top-level treatment for the same reason — it's meant to be
+// visited whether or not the user is actively job hunting, not buried.
 const navigationItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/jobs", label: "Jobs", sub: jobsSubItems },
   { href: "/pipeline", label: "Pipeline" },
+  { href: "/career", label: "Career" },
   { href: "/resume", label: "Resume" },
   { href: "/agent", label: "Agent" },
   { href: "/interview", label: "Interview" },
