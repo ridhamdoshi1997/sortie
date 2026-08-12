@@ -107,6 +107,9 @@ export interface Job {
   evaluation: JobEvaluationDimension[] | null;
   recommendation_score: number | null;
   overall_grade: "A" | "B" | "C" | "D" | "F" | null;
+  // Bait-and-Switch Risk Scorer — see lib/evaluator.ts's titleScopeMismatch
+  // field comment. Null for jobs evaluated before this feature shipped.
+  title_scope_mismatch: { flagged: boolean; note: string } | null;
   cover_letter: string | null;
   tailored_resume_url: string | null;
   tailored_match_score: number | null;

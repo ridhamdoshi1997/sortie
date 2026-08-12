@@ -127,6 +127,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 hiring_process: evalResult?.hiringProcess || [],
                                 seniority_level: evalResult?.seniorityLevel || null,
                                 years_experience_required: evalResult?.yearsExperienceRequired || null,
+                                title_scope_mismatch: evalResult?.titleScopeMismatch ?? null,
                                 // Fallback only — never overwrite a real
                                 // structured salary already on the row
                                 // (e.g. from the scraper's own source data).

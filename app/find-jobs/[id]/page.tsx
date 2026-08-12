@@ -133,6 +133,7 @@ export default async function JobDetailsPage({ params }: Props) {
                       matchReason={job.match_reason}
                       evaluation={job.evaluation}
                       recommendationScore={job.recommendation_score}
+                      titleScopeMismatch={job.title_scope_mismatch}
                     />
 
                     <EvaluationBreakdown

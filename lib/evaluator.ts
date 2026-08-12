@@ -72,6 +72,16 @@ export type JobEvaluationResult = {
   // from title alone.
   seniorityLevel: string;
   yearsExperienceRequired: string;
+  // Bait-and-Switch Risk Scorer — rides on this same call (title/
+  // seniorityLevel/responsibilities/requirements are already read for other
+  // fields above), zero marginal AI cost. Distinct from the Legitimacy
+  // dimension: that asks "is this a real job," this asks "does the
+  // advertised level actually match the described work" (e.g. a "Director"
+  // title whose responsibilities read as an individual-contributor role).
+  titleScopeMismatch: {
+    flagged: boolean;
+    note: string;
+  };
   // Not extracted from the posting — this is the model's own world
   // knowledge of the real company, used to build a reliable logo lookup.
   // Naive string-guessing (lowercase the company name, strip "inc"/"llc")
@@ -129,6 +139,12 @@ const jobEvaluationSchema = z.object({
   seniorityLevel: z.string().default(""),
   yearsExperienceRequired: z.string().default(""),
   companyDomain: z.string().default(""),
+  titleScopeMismatch: z
+    .object({
+      flagged: z.boolean(),
+      note: z.string(),
+    })
+    .default({ flagged: false, note: "" }),
 });
 
 const responseSchema = z.object({
@@ -197,6 +213,7 @@ function fallbackEvaluation(id: string): JobEvaluationResult {
     seniorityLevel: "",
     yearsExperienceRequired: "",
     companyDomain: "",
+    titleScopeMismatch: { flagged: false, note: "" },
   };
 }
 
@@ -229,6 +246,7 @@ Rules:
 - seniorityLevel: a short normalized label (e.g. "Entry-level", "Mid-level", "Senior", "Lead", "Executive") ONLY if the posting itself states or clearly implies a level (title or an explicit "Seniority Level" field) — extraction, not inference from tone. Return an empty string if the posting doesn't say.
 - yearsExperienceRequired: the posting's stated experience requirement as a short string (e.g. "5+ years", "2-4 years"), extracted directly from the text. Return an empty string if the posting doesn't state one — never estimate from seniority level or title alone.
 - companyDomain: the bare primary website domain of the company named in this posting (e.g. "bmo.com", "rbc.com", "scotiabank.com") — no protocol, no "www.", no path. Use your own real-world knowledge of the actual company, not a literal transformation of its name (Bank of Montreal is bmo.com, not bankofmontreal.com). Only return a domain you are genuinely confident is correct for THIS specific company — if you don't recognize the company or aren't sure, return an empty string. A wrong domain here would surface a completely different, unrelated company's logo, which is worse than showing no logo at all.
+- titleScopeMismatch: flag true ONLY if the posting's own title/seniority language clearly conflicts with what the responsibilities/requirements actually describe — e.g. a "Director"/"Lead"/"Head of" title whose listed duties read as an individual-contributor role with no scope, budget, or people-management signal; or a "Senior" title whose requirements list junior-level years of experience. This is extraction and comparison, not suspicion — do NOT flag borderline or ambiguous cases, only clear, defensible mismatches you could explain concretely. note must cite the specific conflicting phrases from the title and the responsibilities/requirements. If there's no real mismatch, return { "flagged": false, "note": "" }.
 
 Return ONLY valid JSON matching this exact shape:
 {
@@ -253,7 +271,8 @@ Return ONLY valid JSON matching this exact shape:
       "hiringProcess": string[],
       "seniorityLevel": "string",
       "yearsExperienceRequired": "string",
-      "companyDomain": "string"
+      "companyDomain": "string",
+      "titleScopeMismatch": { "flagged": boolean, "note": "string" }
     }
   ]
 }`;
@@ -341,6 +360,7 @@ ${jobs.map(buildJobText).join("\n\n---\n\n")}`;
       seniorityLevel: evaluation.seniorityLevel,
       yearsExperienceRequired: evaluation.yearsExperienceRequired,
       companyDomain: evaluation.companyDomain,
+      titleScopeMismatch: evaluation.titleScopeMismatch,
     };
   });
 }
