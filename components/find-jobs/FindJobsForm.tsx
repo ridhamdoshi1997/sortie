@@ -7,11 +7,13 @@ import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
 import { JobResultCard } from "@/components/shared/JobResultCard";
+import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
 type Props = {
     userId: string;
     initialJobs?: Job[];
+    reappearanceSignals?: Record<string, ReappearanceSignal>;
     lastRunAt?: string | null;
     initialTitle?: string | null;
     initialLocation?: string | null;
@@ -20,6 +22,7 @@ type Props = {
 export function FindJobsForm({
     userId,
     initialJobs = [],
+    reappearanceSignals = {},
     lastRunAt = null,
     initialTitle = "",
     initialLocation = "",
@@ -215,7 +218,12 @@ export function FindJobsForm({
                     )}
                     <div className="flex flex-col gap-4">
                         {visibleJobs.map((job, index) => (
-                            <JobResultCard key={job.id} job={job} index={index} />
+                            <JobResultCard
+                                key={job.id}
+                                job={job}
+                                index={index}
+                                reappearanceSignal={reappearanceSignals[job.id] ?? null}
+                            />
                         ))}
                     </div>
 

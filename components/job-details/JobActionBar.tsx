@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bookmark, Check, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
 
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
 import type { ApplicationStatus } from "@/lib/applicationStatus";
+import type { ReappearanceSignal } from "@/lib/churnSignal";
 import { formatTimeAgo } from "@/lib/utils";
 
 type Props = {
@@ -20,6 +21,7 @@ type Props = {
   isRemote?: boolean;
   initialMarkedUnavailableAt?: string | null;
   droppedFromSearchAt?: string | null;
+  reappearanceSignal?: ReappearanceSignal;
 };
 
 export function JobActionBar({
@@ -33,6 +35,7 @@ export function JobActionBar({
   isRemote,
   initialMarkedUnavailableAt,
   droppedFromSearchAt,
+  reappearanceSignal = null,
 }: Props) {
   const [saved, setSaved] = useState(initialSaved);
   const [hidden, setHidden] = useState(initialHidden);
@@ -133,6 +136,12 @@ export function JobActionBar({
           >
             <AlertTriangle className="h-3.5 w-3.5" />
             {signal.label}
+          </span>
+        )}
+        {reappearanceSignal && (
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/15 px-3 py-1 text-xs font-medium text-warning">
+            <Repeat className="h-3.5 w-3.5" />
+            {reappearanceSignal.label}
           </span>
         )}
 

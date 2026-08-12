@@ -24,6 +24,7 @@ import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
+import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import type { Profile } from "@/types";
 
 type Props = {
@@ -86,6 +87,12 @@ export default async function JobDetailsPage({ params }: Props) {
     profile?.education ?? null,
   );
 
+  const { data: allJobsForSignal } = await insforge.database
+    .from("jobs")
+    .select("company,title,found_at")
+    .eq("user_id", user.id);
+  const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
+
   const isAdmin = isAdminUser(user.email);
   // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
   // or an admin allowlist change) so the selector never shows/persists a
@@ -115,6 +122,7 @@ export default async function JobDetailsPage({ params }: Props) {
             isRemote={isRemote}
             initialMarkedUnavailableAt={job.marked_unavailable_at}
             droppedFromSearchAt={job.dropped_from_search_at}
+            reappearanceSignal={reappearanceSignal}
           />
         </div>
         <div className="fade-in-up" style={{ animationDelay: "60ms" }}>

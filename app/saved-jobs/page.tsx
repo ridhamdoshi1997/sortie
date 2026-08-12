@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { JobResultCard } from "@/components/shared/JobResultCard";
+import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
 export default async function SavedJobsPage() {
@@ -18,6 +19,12 @@ export default async function SavedJobsPage() {
     .order("found_at", { ascending: false });
 
   const jobs: Job[] = savedJobs ?? [];
+
+  const { data: allJobsForSignal } = await insforge.database
+    .from("jobs")
+    .select("company,title,found_at")
+    .eq("user_id", user.id);
+  const reappearanceCounts = computeReappearanceCounts(allJobsForSignal ?? []);
 
   return (
     <>
@@ -37,7 +44,12 @@ export default async function SavedJobsPage() {
         ) : (
           <div className="flex flex-col gap-4">
             {jobs.map((job, index) => (
-              <JobResultCard key={job.id} job={job} index={index} />
+              <JobResultCard
+                key={job.id}
+                job={job}
+                index={index}
+                reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
+              />
             ))}
           </div>
         )}

@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, Heart, MapPin, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, Heart, MapPin, Repeat, TrendingUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
+import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
 // Redesigned 2026-07-28 — was a literal green/blue/amber traffic light.
@@ -36,7 +37,15 @@ function jobTags(job: Job): string[] {
 // index drives an entrance stagger — optional so existing call sites don't
 // need to change, capped at 8 so a long list doesn't leave later cards
 // waiting nearly a second to appear.
-export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) {
+export function JobResultCard({
+  job,
+  index = 0,
+  reappearanceSignal = null,
+}: {
+  job: Job;
+  index?: number;
+  reappearanceSignal?: ReappearanceSignal;
+}) {
   const tags = jobTags(job);
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
@@ -181,6 +190,12 @@ export function JobResultCard({ job, index = 0 }: { job: Job; index?: number }) 
             >
               <AlertTriangle className="h-3 w-3" />
               {signal.label}
+            </div>
+          )}
+          {reappearanceSignal && (
+            <div className="mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-full bg-warning/15 px-2 py-0.5 text-[11px] font-medium text-warning">
+              <Repeat className="h-3 w-3" />
+              {reappearanceSignal.label}
             </div>
           )}
           </div>

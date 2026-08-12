@@ -2,6 +2,7 @@ import { requireUser } from "@/lib/auth"; // Ensure this import path is correct 
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
 import { Navbar } from "@/components/layout/Navbar";
+import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
 export default async function FindJobsPage() {
@@ -49,6 +50,20 @@ export default async function FindJobsPage() {
         initialJobs = fallbackJobs ?? [];
     }
 
+    // Reappearing Requisition Signal — needs the user's FULL job history
+    // (not just this page's scoped/limited initialJobs) to detect a role
+    // resurfacing across separate past searches. A lightweight 3-column
+    // fetch, computed once per page load, not per card.
+    const { data: allJobsForSignal } = await insforge.database
+        .from("jobs")
+        .select("company,title,found_at")
+        .eq("user_id", user.id);
+    const reappearanceCounts = computeReappearanceCounts(allJobsForSignal ?? []);
+    const reappearanceSignals: Record<string, ReappearanceSignal> = {};
+    for (const job of initialJobs) {
+        reappearanceSignals[job.id] = getReappearanceSignal(job, reappearanceCounts);
+    }
+
     return (
         <>
             <Navbar isAuthenticated />
@@ -65,6 +80,7 @@ export default async function FindJobsPage() {
                 <FindJobsForm
                     userId={user.id}
                     initialJobs={initialJobs}
+                    reappearanceSignals={reappearanceSignals}
                     lastRunAt={lastRunAt}
                     initialTitle={lastRun?.job_title_searched ?? ""}
                     initialLocation={lastRun?.location_searched ?? ""}
