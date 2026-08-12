@@ -6,7 +6,7 @@ import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable"
 
 import { setApplicationStatus } from "@/actions/jobs";
 import { STAGE_ORDER, STATUS_CLASSES, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
-import { KanbanCard, type KanbanJob } from "@/components/pipeline/KanbanCard";
+import { KanbanCard, type KanbanJob } from "@/components/missions/KanbanCard";
 
 // The first real cross-column @dnd-kit board in this codebase — every prior
 // use (components/documents/EditorTab.tsx's SortableList) is a single-list

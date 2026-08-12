@@ -26,16 +26,18 @@ const jobsSubItems = [
 // "Profile" lives under the profile icon in the right-hand cluster, not as
 // a top-level nav item — one fewer item competing for space in an already
 // full horizontal bar, and matches the icon's own obvious affordance.
-// "Pipeline" (the application tracker) is a top-level item, not folded into
-// the Jobs dropdown like the old /jobs/applied sub-item it replaces — it's
-// meant to be a daily-return surface (spine #1 feature), not a filtered
-// view of the job list. "Career" (spine #2, portable career identity) gets
-// the same top-level treatment for the same reason — it's meant to be
-// visited whether or not the user is actively job hunting, not buried.
+// "Missions" (the application tracker, renamed from "Pipeline" 2026-08-12 —
+// see MissionsView.tsx's own comment for the naming rationale) is a
+// top-level item, not folded into the Jobs dropdown like the old
+// /jobs/applied sub-item it replaces — it's meant to be a daily-return
+// surface (spine #1 feature), not a filtered view of the job list.
+// "Career" (spine #2, portable career identity) gets the same top-level
+// treatment for the same reason — it's meant to be visited whether or not
+// the user is actively job hunting, not buried.
 const navigationItems = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/jobs", label: "Jobs", sub: jobsSubItems },
-  { href: "/pipeline", label: "Pipeline" },
+  { href: "/missions", label: "Missions" },
   { href: "/career", label: "Career" },
   { href: "/resume", label: "Resume" },
   { href: "/agent", label: "Agent" },

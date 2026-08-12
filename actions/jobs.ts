@@ -163,7 +163,7 @@ export async function setApplicationStatus(
 
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
-    revalidatePath("/pipeline");
+    revalidatePath("/missions");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] setApplicationStatus", error);
@@ -195,7 +195,7 @@ export async function markJobUnavailable(jobId: string): Promise<ActionResult> {
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
     revalidatePath("/saved-jobs");
-    revalidatePath("/pipeline");
+    revalidatePath("/missions");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] markJobUnavailable", error);
@@ -223,7 +223,7 @@ export async function unmarkJobUnavailable(jobId: string): Promise<ActionResult>
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
     revalidatePath("/saved-jobs");
-    revalidatePath("/pipeline");
+    revalidatePath("/missions");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] unmarkJobUnavailable", error);
@@ -342,7 +342,7 @@ export async function diagnoseRejection(
       return { success: false, error: "Diagnosis generated but failed to save" };
     }
 
-    revalidatePath("/pipeline");
+    revalidatePath("/missions");
     return { success: true, diagnosis };
   } catch (error) {
     console.error("[actions/jobs] diagnoseRejection", error);

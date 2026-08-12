@@ -1038,9 +1038,9 @@ This isn't cosmetic — it's what a real ATS-autofill feature requires. Workday/
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| **Application tracker** | 📋 | Phase 15 (Kanban) — **spine #1** |
-| Kanban board UI (Applied / Interviewing / Offered) | 📋 | Phase 15 |
-| **Rejection intelligence** (diagnose employer silence) | 🆕 | Career OS — **spine #1** |
+| **Application tracker** | ✅ | Phase 15 (Kanban) — **spine #1**, shipped 2026-08-11 |
+| Kanban board UI (Applied / Interviewing / Offered) | ✅ | Phase 15 — page renamed "Missions" 2026-08-12 (`/missions`, was `/pipeline`), List view toggle added same day (researched via agy: real trackers use one unified view + filter, not per-stage pages) |
+| **Rejection intelligence** (diagnose employer silence) | ✅ | Career OS — **spine #1**, shipped 2026-08-11, `lib/rejectionIntelligence.ts` |
 | Application timeline view (per-job history) | 🆕 | Brainstorm (UI) |
 | Interview debrief capture | 🆕 | Brainstorm |
 | Deadline tracker / application calendar | 🆕 | Brainstorm |
@@ -1052,8 +1052,8 @@ Serves the 70% of the workforce who aren't actively job-hunting — the retentio
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| **Portable career identity** (own-your-data career record) | 🆕 | Built to Last (bet #2) — **spine #2** |
-| Data portability / full career-record export | 🆕 | Built to Last |
+| **Portable career identity** (own-your-data career record) | ✅ MVP | Built to Last (bet #2) — **spine #2**, shipped 2026-08-11 as `/career` — accomplishment log + merged timeline (profile history + accomplishments + real job outcomes). Richer sub-features below (warm-up mode, promotion prep, skill-gap/pathing, skills testing, career simulator, weekly briefing) deliberately deferred, not forgotten — need their own scoping pass on top of this base |
+| Data portability / full career-record export | ✅ | Built to Last — shipped 2026-08-11, `/api/career/export` (JSON) |
 | **Passive market-watch** ("A-grade only" pings) | 🆕 | Career OS — **spine #3** |
 | Always-warm résumé | 🆕 | Career OS |
 | Running accomplishment log | 🆕 | Career OS |
@@ -1221,6 +1221,19 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | White-label branding (logo, colors, subdomain) | 🆕 | Revenue Map |
 | Org admin / cohort management | 🆕 | Revenue Map |
 | Outcome reporting for institutions | 🆕 | Revenue Map |
+
+## M. Differentiation batch (agy research, 2026-08-11→12)
+
+Two agy research passes produced 13 candidate ideas total. First pass (7 ideas) mostly overlapped with items already elsewhere in this inventory, cross-checked and folded in rather than listed separately. Second pass (6 ideas) is tracked here — 3 needed honest rescoping before building (real turnover/funding data has no free source; posting-history tracking conflicts with this app's no-re-scrape design), confirmed with the user before starting. Also researched, same window: whether the tracker should have per-stage pages (agy: no, real trackers use one unified view + filter — see the Kanban board UI row above) and a rename for "Pipeline" (agy: "Missions", picked over "Radar"/"Ops"/"Flight Deck").
+
+| Feature | Status | Notes |
+| --- | --- | --- |
+| **Bait-and-Switch Risk Scorer** | ✅ | Rescoped from "posting rewritten multiple times" (needs history-tracking this app deliberately doesn't do) to a single-snapshot title-vs-responsibilities mismatch check riding on the existing evaluator call — zero marginal AI cost. `jobs.title_scope_mismatch` |
+| **Reappearing Requisition Signal** | ✅ | Rescoped from "Churn Seat Tracker" (needs LinkedIn data this app has already ruled out, or a paid API that doesn't exist) to: same (company, title) reappearing across a user's own search history over time — the one legally-clean free signal found. `lib/churnSignal.ts`, zero AI cost |
+| **Strategic Moat Briefing** | ✅ | Recent-news/strategic-priorities dossier lens, distinct from the existing culture/tech-stack one. `researchStrategicMoat()` in `agent/research.ts` |
+| **Interview Panel Topology** | ✅ | Named-interviewer background lookup (names come from the candidate, not discovered) — conservative extraction, public professional facts only. `interview_panel_members` table |
+| **Equity & Cap Table Decoder** | 🆕 | Rescoped from a funding-data lookup (needs Crunchbase, no free tier — already flagged as the one genuinely expensive gap in section H1) to a pure calculator on user-entered offer numbers. Not yet built |
+| **Post-Offer Leverage Synthesizer** | 🆕 | Same honesty-scoped shape as Rejection Intelligence — grounded only in real known data (posting age, days at Offer stage, stored evaluation), never fabricated "time-to-hire" benchmarks. Not yet built |
 
 ## Durable principles (constraints on *how* everything above gets built)
 

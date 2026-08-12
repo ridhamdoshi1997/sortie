@@ -18,6 +18,56 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### MissionsView + KanbanBoard/KanbanCard/KanbanBoardLoader (application tracker — renamed from "Pipeline" 2026-08-12)
+
+File: components/missions/MissionsView.tsx, KanbanBoard.tsx, KanbanCard.tsx, KanbanBoardLoader.tsx
+Route: app/missions/page.tsx
+Last updated: 2026-08-12
+
+**Pattern notes:**
+`MissionsView` is the page-level wrapper: a Board/List toggle (`inline-flex ... rounded-full border border-border bg-surface p-1`, active tab `bg-accent text-accent-foreground`) plus, in List mode, `STAGE_ORDER`-driven filter pills (`lib/applicationStatus.ts`). Board mode renders the existing `KanbanBoardLoader` unchanged; List mode reuses `JobResultCard` directly — same component Liked/External/Recommended already use, so a new list view never needs new card markup. `KanbanBoardLoader` MUST stay `next/dynamic(..., {ssr:false})` — `@dnd-kit`'s `DndContext` generates an instance-counter `aria-describedby` id that mismatches between SSR and client hydration otherwise (confirmed live, an explicit `id` prop does not fix it). `KanbanCard`'s drag handle is a small dedicated `GripVertical` button carrying `{...attributes}{...listeners}`, never the whole card — spreading `useSortable`'s `attributes` (which sets `role="button"`) onto a card containing real `<button>`/`<Link>` children produces invalid nested-button HTML whose inner clicks silently never fire (confirmed live, same failure mode `EditorTab.tsx`'s own comment already warns about).
+
+### PostHog `application_status_changed` event + status-change action pattern
+
+File: actions/jobs.ts (`setApplicationStatus`)
+Last updated: 2026-08-11
+
+**Pattern notes:**
+Reversible status transition, follows `toggleSaveJob`'s shape (not the old one-way `markApplied`, deleted). Signature `setApplicationStatus(jobId, from, to)` — `from` comes from the caller's already-known client state (same idiom `JobActionBar` already used for optimistic local state), not a server-side fetch-before-write. Every call site (Kanban drag, `JobActionBar`'s status dropdown, `JobResultCard`'s "Already Applied" menu item) follows the same optimistic-`setState`-then-`startTransition`-with-rollback idiom already established for `toggleSaveJob`/`toggleHideJob`.
+
+### JobActionBar status dropdown (portal/fixed-position pattern)
+
+File: components/job-details/JobActionBar.tsx (`StatusMenuPanel`)
+Last updated: 2026-08-12
+
+**Pattern notes:**
+**Read this before adding any dropdown menu on a page that has more content below the trigger.** A plain `position: absolute` child (the pattern `JobResultCard.tsx`'s "..." menu uses successfully) only works when the trigger sits at the bottom of its list/card with nothing below it. On this page, `JobActionBar` is followed by more cards (`JobInfo`, tabs, etc.) — a same-stacking-context absolute child painted *underneath* that later content instead of over it (confirmed live, a real bug). Fixed with the exact pattern already proven in `StyleTab.tsx`'s Theme/Page-size dropdowns: `createPortal` to `document.body`, `style={{position:"fixed", top, left}}` computed from the trigger's `getBoundingClientRect()` on click, close on `mousedown` outside AND on `window` scroll (`capture:true` — a fixed panel doesn't track its trigger if an ancestor scrolls). Reuse `StatusMenuPanel`'s shape, not a plain absolute div, for any future dropdown on a job-details-page-style layout.
+
+### Interview Panel (`InterviewPanel.tsx`)
+
+File: components/job-details/InterviewPanel.tsx
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Gated to render only when `job.application_status === "interviewing"` (same idiom `DocumentGenerator.tsx` already used for its draft-only warning banner). Add-panelist form is a plain inline two-input row (name + optional title), not a modal — this is a quick add, not a multi-field form. Per-panelist "Research background" result renders in the exact Agent Content teal-callout markup (`border-agent bg-agent-light`, "Agent read" label) — this is AI-generated content, must use this treatment per `ui-rules.md`, no exceptions for a "smaller" card.
+
+### Strategic Moat Briefing (`StrategicMoatBriefing.tsx`)
+
+File: components/job-details/StrategicMoatBriefing.tsx
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Same empty-state-button-then-dossier shape as `CompanyResearch.tsx`, living in the Company tab next to it. Opt-in button-triggered (not an auto-loader like `CompanyResearchAutoLoader.tsx`) since this one has a real, if usually free, cost path — matches the opt-in convention already used for Insider Connections/other paid-adjacent features.
+
+### Career Timeline + Add Accomplishment Modal
+
+File: components/career/CareerTimeline.tsx, AddAccomplishmentModal.tsx
+Route: app/career/page.tsx
+Last updated: 2026-08-11
+
+**Pattern notes:**
+`CareerTimeline` adapts `components/dashboard/RecentActivity.tsx`'s exact dotted-list visual idiom (colored dot + text + timestamp) rather than inventing new timeline markup — extended with per-kind dot colors (`work_experience`/`education` = info blue, `accomplishment` = **accent**, not agent-teal, since these are user-authored not AI-generated content, `job_outcome` = neutral). Only `accomplishment`-kind entries get edit/delete controls; profile-history and job-outcome entries are read-only (owned by Profile/the tracker, not duplicated here). `AddAccomplishmentModal` reuses `components/profile/SectionModal.tsx` directly, no new modal chrome.
+
 ### ConfirmDialog (new — reusable destructive-action confirmation)
 
 File: components/ui/ConfirmDialog.tsx

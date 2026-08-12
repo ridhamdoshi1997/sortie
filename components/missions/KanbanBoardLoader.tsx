@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 
-import type { KanbanJob } from "@/components/pipeline/KanbanCard";
+import type { KanbanJob } from "@/components/missions/KanbanCard";
 
 // @dnd-kit's DndContext generates its aria-describedby id from an internal
 // instance counter — confirmed live: this mismatched between the SSR pass
@@ -13,7 +13,7 @@ import type { KanbanJob } from "@/components/pipeline/KanbanCard";
 // component problem: `ssr:false` means this never participates in SSR at
 // all, so there's nothing for the client to mismatch against.
 const KanbanBoard = dynamic(
-  () => import("@/components/pipeline/KanbanBoard").then((mod) => mod.KanbanBoard),
+  () => import("@/components/missions/KanbanBoard").then((mod) => mod.KanbanBoard),
   { ssr: false },
 );
 
