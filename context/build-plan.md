@@ -1069,17 +1069,35 @@ Serves the 70% of the workforce who aren't actively job-hunting — the retentio
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| Interview story bank | 📋 | Phase 12 |
-| Per-job interview prep (incl. technical question prediction) | 📋 | Phase 12 |
 | Negotiation scripts | 📋 | Phase 12 |
-| Live mock-interview simulator (conversational, scored) | 🆕 | Brainstorm |
-| Offer evaluation & total-comp analysis | 🆕 | Career OS |
+| Offer evaluation & total-comp analysis | 🆕 | Career OS — see Equity & Cap Table Decoder, §M |
 | Multi-offer comparison | 🆕 | Career OS |
 | First-90-days success plan | 🆕 | Career OS |
 | Hiring contact discovery + outreach drafts | 📋 | Phase 13 |
-| **Interview question bank by company** (community-contributed, grouped by tier, per-company counts, "contribute a question") | 🎨 | Teardown — `/preview/more`. Their version is a real moat: 393 companies / 8,901 questions, gated behind upgrade. Ours would need seeding and moderation — a content problem, not just an engineering one |
+
+**Interview section fully rescoped 2026-08-12 (2 agy research passes) — see §N below for the full "Engagement War Room" plan.** Replaces the old "Interview story bank" / "Per-job interview prep" / "Live mock-interview simulator" / "Interview question bank by company" rows above with a concrete, buildable architecture.
 
 **Explicitly skipped (2026-07-21):** human 1-on-1 recruiter coaching, sold as a premium tier ("I'm trying to find my first job" / "I'm applying but hearing nothing" / "I have an interview coming up" → "Meet My Coach"). It's a real, well-designed problem-framed entry point — worth borrowing the *framing* for our own AI-powered equivalents (offer analysis, rejection intelligence, interview prep already cover the same three problems) — but the human-service delivery model doesn't scale the way software does and isn't something we're building for now.
+
+## N. Interview section — "Engagement War Room" (researched 2026-08-12, not yet built)
+
+Direct response to a live-observed JobRight feature: their `/interview` page is a static, human-moderated company question database (428 companies, 9,645 questions, gated paywall) — real content-ops work a small team can't replicate. Two agy research passes concluded: (1) genuinely legal/free sources to scrape or aggregate for this don't meaningfully exist at any useful scale (Reddit's API bans commercial/AI use without an enterprise deal, LeetCode/Blind explicitly ban scraping, Glassdoor/Indeed interview content sits behind a login wall with no API — CFAA risk, not just ToS — and unlicensed GitHub "awesome-interview-questions" repos are generic trivia, not company-specific); (2) the honest, legal, scalable answer is AI-generated content, cached and reused, clearly labeled as predicted rather than sourced from real interviews — same "generate once, persist, reuse" shape already used throughout this app (company research dossier, Strategic Moat Briefing, Interview Panel background all already work this way). This also becomes a real differentiation angle: JobRight's coverage is bounded by moderator bandwidth (428 companies); AI generation has no such ceiling.
+
+Structured as three phases, only one genuinely new data-generation pipeline (the Question Bank) — everything else synthesizes data this app already produces:
+
+| Phase | Feature | Status | Notes |
+| --- | --- | --- | --- |
+| 1. Reconnaissance | Strategic Moat Briefing | ✅ shipped 2026-08-12 | Already feeds this phase, see §M |
+| 1. Reconnaissance | Interview Panel Topology | ✅ shipped 2026-08-12 | Already feeds this phase, see §M |
+| 1. Reconnaissance | **Cached AI Question Bank** | 🆕 | Keyed on `(company, role-family, seniority)`, not per-job — genuinely reusable across users/postings. Generated once, persisted, instant on every later hit. UI must label honestly ("AI-predicted, based on known tech stack and role expectations"), never imply real leaked/sourced questions |
+| 2. Arsenal | **STAR Story Matrix** | 🆕 | Concrete version of the old "interview story bank" row — candidate enters real career stories once, AI maps each to the specific questions the Question Bank + job posting suggest are likely |
+| 2. Arsenal | **The Interrogation Plan** | 🆕 | Questions *for the candidate to ask*, synthesized from Moat Briefing + Panel Topology (both already-shipped data, zero new generation pipeline) |
+| 2. Arsenal | **Trap Door Predictor** | 🆕 | Cross-references company dossier + recent news for likely tough behavioral questions (e.g. a company that just did layoffs flagged for "grind culture" probing) |
+| 3. Live Fire | **Live-Fire Scenario Simulator** | 🆕 | Concrete version of the old "live mock-interview simulator" row — conversational, roleplays as the actual named interviewer from Panel Topology, questions rooted in the real Moat Briefing content, not generic prompts |
+
+**Explicitly not touched by this rescope**: negotiation scripts (separate, post-offer concern) and the Equity Decoder/Leverage Synthesizer work (§M, queued for this same next session before this Interview work starts).
+
+**Sequencing, per explicit user decision (2026-08-12)**: build Features 5-6 from §M (Equity & Cap Table Decoder, Post-Offer Leverage Synthesizer — already scoped, left unbuilt from the differentiation batch) first, finishing what was started this session, *then* start on this Interview section next session.
 
 ## G. Integrations & plugins
 
