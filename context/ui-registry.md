@@ -18,6 +18,15 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### CoverLetterATSAuditCard (cover letter ATS Compatibility Score)
+
+File: components/documents/CoverLetterATSAuditCard.tsx, lib/atsChecker.ts (`analyzeCoverLetterATS`)
+Route: components/documents/CoverLetterWorkspace.tsx — Editor tab, above the Salutation field
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Same visual recipe as `ATSAuditCard.tsx` below (score badge + `border-l-2` issue cards), but fully deterministic — no keyword-match half, since cover letters have no `scoreJump`-equivalent fit-score infrastructure to reuse, and adding a new AI call just for this would break the "reuse what's already computed, don't spend new AI budget" principle the résumé version established. 4 checks: word count (200-400 sweet spot), company-name mention in the letter body, generic-salutation phrase match, and the same multi-column `"split"`-template risk — confirmed real for cover letters too by reading `CoverLetterPDF.tsx` (it renders a genuine contact/skills sidebar for that template; `"executive"` does NOT trigger this for letters, unlike for résumés, so the check is template-specific, not reusing `MULTI_COLUMN_TEMPLATES` wholesale). Returns an early "write your letter to see a score" empty state when `letterBody` is blank, rather than showing a 0 score against nothing.
+
 ### ATSAuditCard (résumé ATS Compatibility Score)
 
 File: components/documents/ATSAuditCard.tsx, lib/atsChecker.ts

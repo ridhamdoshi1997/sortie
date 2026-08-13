@@ -5,6 +5,7 @@ import dynamic from "next/dynamic";
 import { Download } from "lucide-react";
 
 import { saveCoverLetterContent, saveResumeStyle } from "@/actions/documents";
+import { CoverLetterATSAuditCard } from "@/components/documents/CoverLetterATSAuditCard";
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { RefinementChips, type ChipPreset } from "@/components/documents/RefinementChips";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -182,6 +183,8 @@ export function CoverLetterWorkspace({
                     template, theme, or colors in the Style tab and both documents update together.
                   </p>
                 </div>
+
+                <CoverLetterATSAuditCard style={style} letterBody={letterBody} salutation={salutation} company={company} />
 
                 <div>
                   <FormLabel>Salutation</FormLabel>

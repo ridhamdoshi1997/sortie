@@ -148,3 +148,97 @@ export function computeATSScore(
     keywordMaxScore: 50,
   };
 }
+
+// Cover Letter ATS Score — same zero-cost, always-live philosophy as the
+// résumé version above, but cover letters have no equivalent to
+// scoreJump.matchedKeywords/missingKeywords to reuse (there's no existing
+// fit-score gauge for cover letters in this app), so building a *new* AI
+// call just to re-create that would break the "reuse what's already
+// computed" principle the résumé version relies on. Scoped instead to 4
+// fully deterministic checks — word count, whether the company is actually
+// named anywhere in the letter (a real, cheap proxy for "this wasn't mass-
+// blasted"), a generic-salutation phrase check, and the same multi-column
+// "split"-template sidebar risk CoverLetterPDF.tsx genuinely renders for
+// letters too (confirmed by reading that file, not assumed).
+export type CoverLetterATSResult = {
+  overallScore: number; // 0-100
+  issues: ATSIssue[];
+  wordCount: number;
+};
+
+const GENERIC_SALUTATION_PHRASES = ["to whom it may concern", "dear sir or madam", "dear sir/madam"];
+
+export function analyzeCoverLetterATS(
+  style: ResumeStyle,
+  letterBody: string,
+  salutation: string | null,
+  company: string | null,
+): CoverLetterATSResult {
+  const issues: ATSIssue[] = [];
+  let score = 100;
+
+  const wordCount = letterBody.trim().split(/\s+/).filter(Boolean).length;
+  if (wordCount === 0) {
+    // Nothing written yet — don't pile on every other check against an
+    // empty draft, just say so.
+    return { overallScore: 0, wordCount: 0, issues: [] };
+  }
+  if (wordCount < 100 || wordCount > 600) {
+    score -= 20;
+    issues.push({
+      id: "word-count-extreme",
+      severity: "critical",
+      title: `${wordCount} words — outside a realistic letter length`,
+      description: "A cover letter under 100 or over 600 words reads as either an unfinished draft or a wall of text most reviewers won't finish.",
+      howToFix: "Aim for 200-400 words — 3-4 short paragraphs.",
+    });
+  } else if (wordCount < 200 || wordCount > 400) {
+    score -= 10;
+    issues.push({
+      id: "word-count-offrange",
+      severity: "warning",
+      title: `${wordCount} words — outside the typical 200-400 range`,
+      description: "Not a hard rule, but most effective cover letters land in this range — long enough to make a real case, short enough to actually get read.",
+      howToFix: "Trim or expand toward 200-400 words.",
+    });
+  }
+
+  if (MULTI_COLUMN_TEMPLATES.has(style.template) && style.template === "split") {
+    score -= 30;
+    issues.push({
+      id: "multi-column-layout",
+      severity: "critical",
+      title: "Multi-column layout",
+      description: 'The "split" template puts your contact info and skills in a sidebar next to the letter body — the same left-to-right parsing risk as a multi-column résumé.',
+      howToFix: 'Switch to a single-column template ("Structured", "Centered", "Timeline", or "Block") in the Style tab.',
+    });
+  }
+
+  if (company && company.trim()) {
+    const mentionsCompany = letterBody.toLowerCase().includes(company.trim().toLowerCase());
+    if (!mentionsCompany) {
+      score -= 20;
+      issues.push({
+        id: "no-company-mention",
+        severity: "warning",
+        title: `Doesn't mention "${company}" anywhere`,
+        description: "A letter that never names the company it's addressed to reads as a generic template sent to every employer, not a real application to this one.",
+        howToFix: `Work the company name into the opening or closing paragraph at least once.`,
+      });
+    }
+  }
+
+  const salutationLower = (salutation ?? "").trim().toLowerCase();
+  if (GENERIC_SALUTATION_PHRASES.some((phrase) => salutationLower.includes(phrase))) {
+    score -= 15;
+    issues.push({
+      id: "generic-salutation",
+      severity: "warning",
+      title: "Generic salutation",
+      description: '"To Whom It May Concern" and similar phrases read as impersonal and dated to most reviewers.',
+      howToFix: 'Use "Dear Hiring Team" or a named contact if you have one — leave the field blank to use this app\'s own "Hiring Team, {Company}" default.',
+    });
+  }
+
+  return { overallScore: Math.max(0, score), wordCount, issues };
+}
