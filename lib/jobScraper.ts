@@ -115,6 +115,16 @@ export async function resolveCanonicalLocation(
     return null;
 }
 
+// SerpApi returns HTTP 200 + a `data.error` string for both "out of
+// searches this month" and unrelated issues (bad location, etc) — there's
+// no distinct status code to key off, so detect quota exhaustion by the
+// error text itself. Only this class of failure should burn a fallback
+// key; a real "no results for this query" shouldn't retry on a second key.
+function isQuotaExhaustedError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message : String(err);
+    return /run out of searches|out of searches|monthly limit|plan.*limit|429/i.test(message);
+}
+
 async function fetchSerpApiPages(
     jobTitle: string,
     location: string,
@@ -139,7 +149,7 @@ async function fetchSerpApiPages(
         const data = await response.json();
 
         if (data.error) {
-            throw new Error(data.error as string);
+            throw new Error(`${data.error}${!response.ok ? ` (HTTP ${response.status})` : ""}`);
         }
 
         const jobs = data.jobs_results || [];
@@ -171,47 +181,65 @@ async function fetchSerpApiPages(
     return allJobs;
 }
 
+async function searchWithSerpApiKey(
+    jobTitle: string,
+    location: string,
+    countryCode: string,
+    apiKey: string
+) {
+    const normalizedLocation = normalizeLocationForSerpApi(location);
+    let allJobs;
+    let resolvedLocation = normalizedLocation;
+    try {
+        allJobs = await fetchSerpApiPages(jobTitle, normalizedLocation, countryCode, apiKey);
+    } catch (err) {
+        // A quota-exhausted key will fail the location-resolution retry
+        // too (it's the same dead key) — let it propagate immediately so
+        // the caller can fail over to a different key instead of wasting
+        // a second doomed call.
+        if (isQuotaExhaustedError(err)) throw err;
+
+        // Informal/regional names ("Greater Toronto Area") have no
+        // direct canonical entry — resolve one via the Locations API
+        // and retry once before giving up.
+        const resolved = await resolveCanonicalLocation(location, apiKey);
+        if (!resolved || resolved === normalizedLocation) {
+            throw new Error(`Job search failed for location "${location}": ${(err as Error).message}`);
+        }
+        resolvedLocation = resolved;
+        allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey);
+    }
+
+    // Google Jobs broadens its geographic radius the deeper you
+    // paginate — keep a job only if its location matches the (possibly
+    // resolved) searched city, is unbound ("Anywhere"), or is
+    // explicitly titled remote.
+    const searchCity = resolvedLocation.split(",")[0].trim().toLowerCase();
+    return allJobs.filter((job) => {
+        const jobLocation = (job.location || "").toLowerCase();
+        const jobTitle = (job.title || "").toLowerCase();
+        return (
+            jobLocation.includes(searchCity) ||
+            jobLocation === "anywhere" ||
+            /\bremote\b/.test(jobTitle)
+        );
+    });
+}
+
 const serpApiProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
-        const apiKey = process.env.SERPAPI_KEY;
-        if (!apiKey) throw new Error("Missing SERPAPI_KEY");
+        const primaryKey = process.env.SERPAPI_KEY;
+        if (!primaryKey) throw new Error("Missing SERPAPI_KEY");
 
-        const normalizedLocation = normalizeLocationForSerpApi(location);
-        let allJobs;
-        let resolvedLocation = normalizedLocation;
         try {
-            allJobs = await fetchSerpApiPages(jobTitle, normalizedLocation, countryCode, apiKey);
+            return await searchWithSerpApiKey(jobTitle, location, countryCode, primaryKey);
         } catch (err) {
-            // Informal/regional names ("Greater Toronto Area") have no
-            // direct canonical entry — resolve one via the Locations API
-            // and retry once before giving up.
-            const resolved = await resolveCanonicalLocation(location, apiKey);
-            if (!resolved || resolved === normalizedLocation) {
-                throw new Error(`Job search failed for location "${location}": ${(err as Error).message}`);
-            }
-            resolvedLocation = resolved;
-            allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey);
-        }
+            const fallbackKey = process.env.SERPAPI_KEY_FALLBACK;
+            if (!fallbackKey || !isQuotaExhaustedError(err)) throw err;
 
-        // Google Jobs broadens its geographic radius the deeper you
-        // paginate — keep a job only if its location matches the (possibly
-        // resolved) searched city, is unbound ("Anywhere"), or is
-        // explicitly titled remote.
-        const searchCity = resolvedLocation.split(",")[0].trim().toLowerCase();
-        return allJobs.filter((job) => {
-            const jobLocation = (job.location || "").toLowerCase();
-            const jobTitle = (job.title || "").toLowerCase();
-            return (
-                jobLocation.includes(searchCity) ||
-                jobLocation === "anywhere" ||
-                /\bremote\b/.test(jobTitle)
-            );
-        });
-    }
-};
-const serperProvider: JobScraperProvider = {
-    async search() {
-        throw new Error("Serper integration is planned but not yet implemented.");
+            console.warn("Primary SerpApi key exhausted — retrying with fallback key.");
+            return await searchWithSerpApiKey(jobTitle, location, countryCode, fallbackKey);
+        }
     }
 };
 
@@ -219,15 +247,11 @@ export async function searchJobs(
     jobTitle: string,
     location: string,
     countryCode: string = "ca",
-    provider: "serpapi" | "serper" = "serpapi"
+    provider: "serpapi" = "serpapi"
 ): Promise<NormalizedJob[]> {
 
     if (provider === "serpapi") {
         return serpApiProvider.search(jobTitle, location, countryCode);
-    }
-
-    if (provider === "serper") {
-        return serperProvider.search(jobTitle, location, countryCode);
     }
 
     throw new Error("Invalid scraper provider selected.");
