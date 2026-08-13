@@ -20,7 +20,8 @@ export type UsageAction =
   | "rejection_intelligence"
   | "strategic_moat"
   | "interviewer_research"
-  | "leverage_synthesis";
+  | "leverage_synthesis"
+  | "interview_question_bank";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -72,6 +73,13 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // data the app already has (this job's own stored evaluation, timing, and
   // signals), no external lookup involved.
   leverage_synthesis: 5,
+  // Only consumed on a real cache MISS (lib/interviewQuestions.ts) — a hit
+  // against an already-generated (company, role_family, seniority) bank is
+  // a free read, no AI call, no usage consumed. Free-tier Gemini, capped
+  // like bullet_rewrite/strategic_moat rather than left unmetered, since a
+  // determined user could otherwise probe many company/role/seniority
+  // combinations in a row to force fresh generations.
+  interview_question_bank: 5,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -88,6 +96,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   strategic_moat: "strategic moat briefings",
   interviewer_research: "interviewer background lookups",
   leverage_synthesis: "leverage syntheses",
+  interview_question_bank: "interview question bank generations",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

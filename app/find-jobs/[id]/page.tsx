@@ -15,6 +15,7 @@ import { OfferWorkspace } from "@/components/job-details/OfferWorkspace";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { InterviewPanel } from "@/components/job-details/InterviewPanel";
 import { listInterviewPanel } from "@/actions/interviewPanel";
+import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -178,7 +179,15 @@ export default async function JobDetailsPage({ params }: Props) {
                     <HiringProcess items={job.hiring_process ?? []} />
 
                     {job.application_status === "interviewing" && (
-                      <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
+                      <>
+                        <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
+                        <QuestionBankPanel
+                          initialCompany={company}
+                          initialTitle={job.title ?? ""}
+                          initialSeniority={job.seniority_level ?? ""}
+                          locked
+                        />
+                      </>
                     )}
 
                     {job.application_status === "offered" && (

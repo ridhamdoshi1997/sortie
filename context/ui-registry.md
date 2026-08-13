@@ -18,6 +18,15 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### QuestionBankPanel (Cached AI Interview Question Bank)
+
+File: components/interview/QuestionBankPanel.tsx, lib/interviewQuestions.ts, actions/interviewQuestions.ts
+Route: app/interview/page.tsx (locked=false, editable search), app/find-jobs/[id]/page.tsx (locked=true, pre-filled embed, gated to application_status === "interviewing" alongside InterviewPanel)
+Last updated: 2026-08-13 (Phase 11 — new)
+
+**Pattern notes:**
+One component, two modes, matching the exact "same component, different props" recommendation from the `/interview` page-structure research (build-plan.md §N). `locked=false` shows editable Company/Role/Seniority text inputs + a "Get questions" button; `locked=true` hides the inputs and auto-fetches on mount, pre-filled from a job's own `company`/`title`/`seniority_level`. The AI-content disclosure uses the same "Agent read"-style callout as `InterviewPanel.tsx`'s researched-background block (`rounded-r-lg border-l-2 border-agent bg-agent-light`), but with copy specifically warning this is AI-*predicted*, not real leaked/sourced questions — never omit that framing if this pattern gets reused elsewhere. **Real lint bug from this component's auto-fetch effect**: calling `setState` synchronously before the first `await` inside a `useEffect`-triggered function trips `react-hooks/set-state-in-effect` — the fix is moving the ENTIRE function body, including any early-return validation, inside `startTransition()`, not just the async part. Same pattern `CompanyResearchAutoLoader.tsx` already uses for mount-triggered fetches; reach for that exact shape for any future auto-load-on-mount component instead of a plain `useState`-driven loading flag.
+
 ### FilterBar (Find & Evaluate filter bar)
 
 File: components/find-jobs/FilterBar.tsx, lib/jobFilters.ts

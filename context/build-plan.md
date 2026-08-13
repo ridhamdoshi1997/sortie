@@ -1102,7 +1102,9 @@ Structured as three phases, only one genuinely new data-generation pipeline (the
 | --- | --- | --- | --- |
 | 1. Reconnaissance | Strategic Moat Briefing | ✅ shipped 2026-08-12 | Already feeds this phase, see §M |
 | 1. Reconnaissance | Interview Panel Topology | ✅ shipped 2026-08-12 | Already feeds this phase, see §M |
-| 1. Reconnaissance | **Cached AI Question Bank** | 🆕 | Keyed on `(company, role-family, seniority)`, not per-job — genuinely reusable across users/postings. Generated once, persisted, instant on every later hit. UI must label honestly ("AI-predicted, based on known tech stack and role expectations"), never imply real leaked/sourced questions |
+| 1. Reconnaissance | **Cached AI Question Bank** | ✅ shipped 2026-08-13 | Keyed on `(company, role_family, seniority)`, not per-job — genuinely reusable across users/postings, first shared/non-user-owned table in the schema. `lib/interviewQuestions.ts` + `actions/interviewQuestions.ts` + `components/interview/QuestionBankPanel.tsx`. Live-verified: real Stripe/Mastercard generations, cache-hit confirmed via server logs (6.7s generate vs 1.25s cache read) |
+
+**`/interview` page structure, researched via `agy` 2026-08-13**: real competitor split — Glassdoor/LeetCode are purely browse libraries (great for research, no tracking), interviewing.io/Pramp are purely operational dashboards, JobRight blends a Kanban tracker with contextual per-role AI tools. Verdict for Sortie: **"data can be global, but the UX should be contextual."** ✅ Shipped: the global `/interview` page (replacing its `ComingSoon` placeholder) leads with an Active Missions list (jobs at `application_status = 'interviewing'`, linking into each job's own detail page) above the global Question Bank search — the same `QuestionBankPanel` component embeds pre-filled/locked on each job's own detail page. STAR Story Matrix (per the research, candidate-tied not company-tied) belongs on the global page too, once built. Panel Topology, Trap Door Predictor, and the Interrogation Plan all stay strictly job-scoped — they need the job's own specific context, not a global search.
 | 2. Arsenal | **STAR Story Matrix** | 🆕 | Concrete version of the old "interview story bank" row — candidate enters real career stories once, AI maps each to the specific questions the Question Bank + job posting suggest are likely |
 | 2. Arsenal | **The Interrogation Plan** | 🆕 | Questions *for the candidate to ask*, synthesized from Moat Briefing + Panel Topology (both already-shipped data, zero new generation pipeline) |
 | 2. Arsenal | **Trap Door Predictor** | 🆕 | Cross-references company dossier + recent news for likely tough behavioral questions (e.g. a company that just did layoffs flagged for "grind culture" probing) |
@@ -1136,6 +1138,27 @@ Direct response to JobRight's **"Orion"** copilot — researched via `agy`, not 
 **Concrete enhancements over Orion**, since Sortie already has real features JobRight's platform doesn't: Navigator can ground answers in Company Research dossiers, named-interviewer backgrounds (Interview Panel Topology), Rejection Intelligence's actual diagnosis for a specific application, and the Career Record — none of which Orion has an equivalent data source for. And where Orion (per the research) only gives advice, Navigator's action-confirm pattern lets it actually change real state in the user's account (log the accomplishment, draft the follow-up) rather than leaving the user to act on the advice elsewhere.
 
 **Not yet started — next session's real next step once the currently in-progress work ships.**
+
+## P. Dashboard redesign — "command center" (researched 2026-08-13, not yet built)
+
+Direct response to a user ask ("make the dashboard professional, spectacular, interactive"), researched via `agy` against the real current implementation (`app/dashboard/page.tsx`: a `ProfileAttentionBanner`, a 4-tile flat `StatsBar`, a `RecentActivity` list, and 3 static charts — `CompanyResearchChart`/`JobsOverTimeChart`/`MatchDistributionChart` — laid out as a stats bar + 2x2 grid, nothing clickable).
+
+**Core framing**: the current dashboard is a "rearview mirror" (what happened); a premium one is a "cockpit" (what you need to do next). Bento-grid layouts (variable-sized cards, not a uniform grid) establish visual hierarchy; nothing on a good dashboard is a dead end — every chart/stat should be clickable/drillable.
+
+**New hero pattern, replacing the 4 flat stat tiles**: an **AI Action Center** (spans 3 of 4 columns — 1-3 specific AI-generated prompts from real data, e.g. "3 applications in 'Applied' with no response for 14+ days — review Rejection Intelligence") next to a **Pipeline Funnel** (spans 1 column — Saved→Applied→Interviewing→Offered as a visual, clickable funnel, instantly diagnosing whether the bottleneck is résumé quality or search volume).
+
+**New widgets, ranked by value** (using data this app already has, not new data sources):
+1. **Pipeline Funnel** — consolidates the Kanban tracker into one health score
+2. **Rejection Intelligence / "Ghosting Radar"** — proactively surfaces silent applications + the AI diagnosis, addresses job-search anxiety directly
+3. **Upcoming Interviews + Question Bank** — dynamic, only appears when a real interview exists, 1-click into the new cached Question Bank (§N)
+4. Match Quality Histogram — the existing `MatchDistributionChart`, just tightened into a smaller bento card
+5. Career Record "Weekly Wins" — a small ticker of recent Career Record entries, bonus/motivational
+
+**Required interactivity** ("no dead ends" rule): clicking a funnel segment opens a slide-over listing those specific jobs; clicking a day on the jobs-over-time chart filters the adjacent activity feed; hovering a job in Recent Activity pops the AI's 10-dimension match breakdown without navigating away.
+
+**Concrete layout**: a 4-column CSS grid (`grid-template-columns: repeat(4, 1fr)`, collapsing to 1 column on mobile). Row 1: AI Action Center (span 3) + Pipeline Funnel (span 1). Row 2: Match Quality Histogram (span 1) + an activity heatmap replacing the day-of-week line charts (span 2, GitHub-commit-graph style) + Upcoming Interviews (span 1). Row 3: merged Recent Activity feed (span 2) + Rejection Intelligence Radar (span 2).
+
+**Not yet started.**
 
 ## G. Integrations & plugins
 
