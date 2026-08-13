@@ -1050,20 +1050,32 @@ This isn't cosmetic — it's what a real ATS-autofill feature requires. Workday/
 
 Serves the 70% of the workforce who aren't actively job-hunting — the retention engine.
 
-| Feature | Status | Source |
+**Deep-dive research pass, 2026-08-13, via the `agy` CLI** (not the `gemini-mcp-tool` MCP path — see `RESUME.md`'s tool-priority note). Grounded in the real shipped `/career` implementation (a single merged reverse-chronological timeline: profile work_experience + education, the user-maintained `accomplishments` table, and real job-outcome events from the tracker; a 60-day freshness nudge; a JSON export; no editing/adding from the page itself, no AI involvement at all today).
+
+**Core positioning takeaway**: LinkedIn is the closest real analog but is structurally public/performative — users can't be honest there (can't log a failed interview, a real reason for leaving, a messy in-progress win). `/career`'s actual opportunity is to be the **private, unvarnished system of record** LinkedIn structurally can't be — source material, not another public feed.
+
+**Structural UX finding, not a new feature — the highest-leverage fix to the page as it exists today**: a flat timeline is the wrong shape for career data. A career is epoch-based (accomplishments belong *inside* the job they happened during), not a flat equal-weight stream. Two concrete fixes: (1) group accomplishments/outcomes under their parent role rather than floating independently in one flat list; (2) the page currently has **no way to add anything from itself** — a real friction point for a retention feature; add a lightweight "what did you achieve today?" quick-add input directly on the page instead of requiring navigation elsewhere.
+
+**Per explicit user decision (2026-08-13): every idea below stays a real build candidate — "we will build all possible features."** agy's verdict (kept/rescope/cut) is recorded for context on data-honesty tradeoffs, not as a decision to drop anything — cut items still need their own honest-scoping pass before being built, same as the 3 items §M's differentiation batch had to rescope rather than build as originally pitched.
+
+| Feature | Status | Notes |
 | --- | --- | --- |
-| **Portable career identity** (own-your-data career record) | ✅ MVP | Built to Last (bet #2) — **spine #2**, shipped 2026-08-11 as `/career` — accomplishment log + merged timeline (profile history + accomplishments + real job outcomes). Richer sub-features below (warm-up mode, promotion prep, skill-gap/pathing, skills testing, career simulator, weekly briefing) deliberately deferred, not forgotten — need their own scoping pass on top of this base |
+| **Portable career identity** (own-your-data career record) | ✅ MVP | Built to Last (bet #2) — **spine #2**, shipped 2026-08-11 as `/career`. Structural fix above (epoch grouping + inline quick-add) is the next real pass on this base, not a new feature |
 | Data portability / full career-record export | ✅ | Built to Last — shipped 2026-08-11, `/api/career/export` (JSON) |
-| **Passive market-watch** ("A-grade only" pings) | 🆕 | Career OS — **spine #3** |
-| Always-warm résumé | 🆕 | Career OS |
-| Running accomplishment log | 🆕 | Career OS |
-| Personal-brand upkeep nudges | 🆕 | Career OS |
-| "Warm-up mode" (comp benchmarks + gap-to-target + get-ready plan) | 🆕 | Career OS |
-| Promotion / performance-review prep (brag docs, self-reviews) | 🆕 | Career OS |
-| Skill-gap tracking & career pathing | 🆕 | Career OS |
-| Skills verification & proficiency testing | 🆕 | Built to Last |
-| Career-path simulator (3-year trajectory comparison) | 🆕 | Brainstorm |
-| Weekly AI career briefing | 🆕 | Brainstorm |
+| **Promotion / performance-review prep** (Brag Doc generator) | 🆕 | agy: highest-value pick, build first — zero new data needed, one Gemini call synthesizes 6-12 months of the existing timeline into a drafted self-review (STAR-shaped). Same "real data in, honest AI synthesis out" pattern as the rest of this app |
+| **Always-warm résumé** | 🆕 | agy: same reasoning as Brag Doc — synthesize the existing timeline into fresh, impact-driven bullets on demand, no new data source |
+| **STAR Story Vault** (new idea from this research pass) | 🆕 | Tag a raw accomplishment as an interview "Story"; Gemini interviews the user via a short back-and-forth (Situation/Task/Action/Result) and saves the resulting narrative privately attached to that timeline entry. Zero external data, fits the "private record" thesis directly — related to but distinct from §N's STAR Story Matrix (that one maps stories to *predicted interview questions*; this one is about capturing the story in the first place) |
+| **"Why I Left" private log** (new idea from this research pass) | 🆕 | Prompted privately when a user marks a job "ended" — what they loved, what they never want again. A private filter for themselves next time they're evaluating a similar role. Zero external data |
+| **Passive market-watch** ("A-grade only" pings) | 🆕, rescope flagged | Career OS — **spine #3**. agy: real ongoing job-ingestion + matching for a *passive, not-currently-searching* user is a genuinely different (expensive) pipeline than this app's existing active-search flow — flagged for honest rescoping before building, not cut. agy's suggested pivot if a cheaper version is wanted first: **"Market Readiness"** — analyze accomplishment trends and surface an observation like "your last year skews toward Platform Engineering, not Full Stack — intentional?", using data already on hand instead of new job ingestion |
+| Running accomplishment log | ✅ (base) | The `accomplishments` table this already runs on, shipped 2026-08-11 — the epoch-layout/quick-add fix above is the real remaining work here, not a separate feature |
+| Personal-brand upkeep nudges | 🆕, low-confidence flagged | agy: reads as spam risk if not done carefully — needs real scoping on cadence/tone before building, not an auto-include |
+| **"Warm-up mode"** (comp benchmarks + gap-to-target + get-ready plan) | 🆕, data-source gap flagged | agy: real, current compensation benchmark data is genuinely locked behind paid enterprise sources (Radford) or ToS-restricted crowdsourced platforms (Levels.fyi, Blind) — same class of gap already hit and rescoped for Equity Decoder/§M and ruled out for Interview questions/§N. If built, the comp-benchmark piece specifically needs its own honest data-source pass (same rigor as those two) — gap-to-target and get-ready-plan pieces don't have this problem and can proceed on existing data |
+| Skill-gap tracking & career pathing | 🆕 | Career OS, not yet scoped |
+| Skills verification & proficiency testing | 🆕, low-confidence flagged | agy: high ongoing maintenance to keep tests relevant, uncertain user appetite for testing in downtime — needs real scoping before building |
+| **Career-path simulator** (3-year trajectory comparison) | 🆕, honesty-risk flagged | agy: real risk of reading as LLM invention rather than the "factual private record" this page is trying to be — if built, needs an explicit "this is a speculative projection, not a prediction" framing, same honesty-labeling discipline as §N's AI Question Bank |
+| Weekly AI career briefing | 🆕, low-confidence flagged | agy: real risk of reading as spam/low-value noise — needs real scoping on trigger conditions and content before building |
+
+**agy's suggested build order** (not binding, since every item above stays a candidate per the user's decision, but a reasonable default sequence): (1) the structural epoch-layout + quick-add fix to the existing page, (2) Brag Doc generator, (3) always-warm résumé export — each cheap, each zero-new-data, each provable the same way every other feature in this app has been (real math/real output, live-verified, not assumed).
 
 ## F. Interview, offer & negotiation
 
