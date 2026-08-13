@@ -4,8 +4,29 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+// A bare "YYYY-MM-DD" string (accomplishment dates, work_experience start/end
+// dates — a calendar day with no time-of-day, not a real timestamp) parses
+// via `new Date(string)` as UTC midnight, per the ISO-8601 spec. Formatting
+// that in a timezone behind UTC then rolls the displayed day back by one —
+// a real bug caught live (Phase 11, Career page epoch restructure): a
+// "2022-07-01" start date displayed as "June 30, 2022". Real timestamps
+// (found_at, application_status_updated_at) are NOT bare dates — they carry
+// genuine time-of-day info, and converting those to the viewer's local
+// timezone for display is correct, not a bug — only the date-only case
+// needs special handling, via the local-time Date(y, m, d) constructor
+// (which never anchors to UTC) instead of the string constructor.
+const BARE_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
 export function formatDate(date: Date | string) {
-    return new Date(date).toLocaleDateString("en-US", {
+    const parsed =
+        typeof date === "string" && BARE_DATE_PATTERN.test(date)
+            ? (() => {
+                  const [year, month, day] = date.split("-").map(Number);
+                  return new Date(year, month - 1, day);
+              })()
+            : new Date(date);
+
+    return parsed.toLocaleDateString("en-US", {
         month: "long",
         day: "numeric",
         year: "numeric",
