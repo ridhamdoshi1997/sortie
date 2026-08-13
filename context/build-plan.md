@@ -1112,6 +1112,31 @@ Structured as three phases, only one genuinely new data-generation pipeline (the
 
 **Sequencing, per explicit user decision (2026-08-12)**: build Features 5-6 from §M (Equity & Cap Table Decoder, Post-Offer Leverage Synthesizer — already scoped, left unbuilt from the differentiation batch) first, finishing what was started this session, *then* start on this Interview section next session.
 
+## O. Navigator — global AI agent copilot (researched 2026-08-13, not yet built)
+
+Direct response to JobRight's **"Orion"** copilot — researched via `agy`, not assumed. **Distinct from the separate "Jobright Agent [Beta]" auto-apply waitlist feature** already noted and explicitly ruled out elsewhere in this doc (§ "You're on the Waitlist" callout, line ~1169) — that one is auto-apply territory this project stays out of (§G's no-auto-apply decision). Orion is a conversational copilot, not an auto-apply agent — different feature, different verdict.
+
+**What Orion actually does** (per real research, not assumed): a dedicated chat interface within JobRight's dashboard — not a floating widget — grounded in the user's résumé and job listings only. Explains match scores, flags résumé gaps, gives salary-negotiation scripts, generates mock interview questions. Advice-output, not action-taking, as far as the research could confirm.
+
+**Per explicit user direction (2026-08-13), scope simplified from the initial hybrid recommendation** — build it the same *shape* as Orion (one dedicated full-page chat, not a floating launcher + Cmd+K palette), not JobRight's exact feature set:
+
+- **Name: Navigator ("Nav")** — fits the existing "Run a sortie" / "Active targets" / "Mission console" brand language (a navigator plots the course and keeps the mission on track).
+- **Route**: `/agent`, replacing the existing `ComingSoon` placeholder (`app/agent/page.tsx` — currently just says "A general AI chat co-pilot is coming here").
+- **Architecture, consistent with every other AI feature already in this codebase** (real data assembled server-side → one grounded AI call → structured or conversational output) — deliberately NOT an autonomous multi-turn tool-calling loop, which nothing else in this app uses:
+  - New `agent_messages` table (user_id, role, content, created_at) — one running conversation per user, same shape as the existing per-document chat.
+  - New `sendAgentMessage` server action: pulls a real snapshot (profile summary, active applications from the Kanban tracker, the current job's evaluation if the user arrived from a job page) into a system prompt naming the assistant "Navigator," sends one grounded call with the conversation history.
+  - Action-shaped replies (e.g. "log this accomplishment," "draft a follow-up") come back structured so the UI renders a real confirm button — Navigator never silently mutates data, matching this app's established consent pattern (the résumé sync diff checkboxes, the "Was/Now" bullet diff card).
+- **v1 scope, 3 of the 5 researched actions** (each reuses existing server logic, zero new AI pipelines):
+  1. Match-score diagnosis for whatever job is being discussed (reuses the Evaluator's stored payload)
+  2. Tracker triage ("what should I focus on today" — scans Kanban stages, flags applications silent N+ days)
+  3. Quick accomplishment logging (reuses the existing `addAccomplishment` action verbatim)
+- **v2, deferred**: Intel Briefing (synthesizes Company Research + Interview Panel Topology into one prep sheet) and Post-Offer Leverage handoff (routes offer details through the Equity Decoder + Tax Calculator) — both real value, more moving parts, held back until the v1 shell is proven.
+- **Relationship to `DocumentChatEditor.tsx`**: Navigator orchestrates, doesn't replace it. Asking Navigator for a cover letter should create the document record and hand the user off into the existing per-document chat editor with context pre-loaded, not try to render a full document inside the global chat.
+
+**Concrete enhancements over Orion**, since Sortie already has real features JobRight's platform doesn't: Navigator can ground answers in Company Research dossiers, named-interviewer backgrounds (Interview Panel Topology), Rejection Intelligence's actual diagnosis for a specific application, and the Career Record — none of which Orion has an equivalent data source for. And where Orion (per the research) only gives advice, Navigator's action-confirm pattern lets it actually change real state in the user's account (log the accomplishment, draft the follow-up) rather than leaving the user to act on the advice elsewhere.
+
+**Not yet started — next session's real next step once the currently in-progress work ships.**
+
 ## G. Integrations & plugins
 
 | Feature | Status | Source |
