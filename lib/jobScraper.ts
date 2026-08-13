@@ -245,20 +245,37 @@ async function searchWithSerpApiKey(
     });
 }
 
+// Ordered chain of SerpApi accounts to try — SERPAPI_KEY is the primary,
+// SERPAPI_KEY_FALLBACK/SERPAPI_KEY_FALLBACK_2 are separate accounts kept
+// specifically so a monthly-quota exhaustion on one doesn't take job
+// search down (Phase 11). Only a quota-exhausted error advances to the
+// next key — any other failure (bad location, network) surfaces
+// immediately rather than silently burning every account's quota on the
+// same doomed request.
+function getSerpApiKeyChain(): string[] {
+    return [process.env.SERPAPI_KEY, process.env.SERPAPI_KEY_FALLBACK, process.env.SERPAPI_KEY_FALLBACK_2].filter(
+        (key): key is string => Boolean(key)
+    );
+}
+
 const serpApiProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
-        const primaryKey = process.env.SERPAPI_KEY;
-        if (!primaryKey) throw new Error("Missing SERPAPI_KEY");
+        const keys = getSerpApiKeyChain();
+        if (keys.length === 0) throw new Error("Missing SERPAPI_KEY");
 
-        try {
-            return await searchWithSerpApiKey(jobTitle, location, countryCode, primaryKey);
-        } catch (err) {
-            const fallbackKey = process.env.SERPAPI_KEY_FALLBACK;
-            if (!fallbackKey || !isQuotaExhaustedError(err)) throw err;
-
-            console.warn("Primary SerpApi key exhausted — retrying with fallback key.");
-            return await searchWithSerpApiKey(jobTitle, location, countryCode, fallbackKey);
+        for (let i = 0; i < keys.length; i++) {
+            try {
+                return await searchWithSerpApiKey(jobTitle, location, countryCode, keys[i]);
+            } catch (err) {
+                const isLastKey = i === keys.length - 1;
+                if (isLastKey || !isQuotaExhaustedError(err)) throw err;
+                console.warn(`SerpApi key ${i + 1}/${keys.length} exhausted — retrying with the next account.`);
+            }
         }
+
+        // Unreachable (the loop above always returns or throws), but keeps
+        // TypeScript's control-flow analysis happy about a return on every path.
+        throw new Error("All configured SerpApi keys were exhausted.");
     }
 };
 
