@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Gauge, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { ActionPlan } from "@/components/documents/ActionPlan";
+import { ATSAuditCard } from "@/components/documents/ATSAuditCard";
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { QualityGradeCard } from "@/components/documents/QualityGradeCard";
 import { RefinementChips } from "@/components/documents/RefinementChips";
@@ -68,6 +69,9 @@ type Props = {
   onAnalyzeQuality: () => Promise<{ success: boolean; error?: string }>;
   onFocusBullet: (company: string, bulletText: string) => void;
   onRevised: (data: RevisedData) => void;
+  style: ResumeStyle;
+  sections: ResumeSection[];
+  contact: { email: string | null; phone: string | null; location: string | null };
 };
 
 // The mockup/reference for this tab groups the score, the changelog, one-tap
@@ -93,6 +97,9 @@ export function AIRewriteTab({
   onAnalyzeQuality,
   onFocusBullet,
   onRevised,
+  style,
+  sections,
+  contact,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [qualityError, setQualityError] = useState<string | null>(null);
@@ -166,6 +173,14 @@ export function AIRewriteTab({
           {error && <p className="text-xs text-error">{error}</p>}
         </div>
       )}
+
+      <ATSAuditCard
+        style={style}
+        sections={sections}
+        contact={contact}
+        matchedKeywords={scoreJump?.matchedKeywords ?? []}
+        missingKeywords={scoreJump?.missingKeywords ?? []}
+      />
 
       <div>
         <QualityGradeCard

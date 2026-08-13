@@ -18,6 +18,15 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### ATSAuditCard (résumé ATS Compatibility Score)
+
+File: components/documents/ATSAuditCard.tsx, lib/atsChecker.ts
+Route: components/documents/AIRewriteTab.tsx — inside `ResumeWorkspace`'s AI Rewrite tab, between the fit-score gauge and `QualityGradeCard`
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Same `rounded-xl border border-border bg-surface-secondary p-4` card recipe as `QualityGradeCard.tsx` — a colored score badge (`bg-agent`/`bg-warning/15`/`bg-error/10` at 80/60 thresholds) plus a stacked issue list. Deliberately zero-cost and always-live (`useMemo` on `style`/`sections`/`contact`/keyword props, no button, no usage cap, no DB persistence) rather than a usage-gated AI action like `QualityGradeCard` — see `lib/atsChecker.ts`'s header comment for why: the formatting half is pure computation on data the workspace already has, and the keyword half reuses `scoreJump.matchedKeywords`/`missingKeywords` instead of a second AI call re-deriving the same thing. Issues render as `border-l-2` callout cards (`border-error`/`border-warning` by severity) — NOT the "Agent read" agent-teal treatment from ui-rules.md's Agent Content section, since none of this is AI output (same precedent as `OfferWorkspace`'s two calculators below). `AIRewriteTab`/`ResumeWorkspace` had to grow 3 new props (`style`, `sections`, `contact`) to feed this — `contact` is `{email,phone,location}` lifted from `profile` in `ResumeWorkspace`, not fetched separately.
+
 ### OfferWorkspace + EquityDecoder + TakeHomeEstimator ("Offer Tools" tabbed calculator page tab)
 
 File: components/job-details/OfferWorkspace.tsx, EquityDecoder.tsx, TakeHomeEstimator.tsx

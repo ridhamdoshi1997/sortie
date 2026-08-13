@@ -249,6 +249,9 @@ export function ResumeWorkspace({
                 onAnalyzeQuality={handleAnalyzeQuality}
                 onFocusBullet={focusBullet}
                 onRevised={handleRevised}
+                style={style}
+                sections={sections}
+                contact={{ email: profile.email, phone: profile.phone, location: profile.location }}
               />
             )}
             {tab === "editor" && (
