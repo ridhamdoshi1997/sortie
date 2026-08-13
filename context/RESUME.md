@@ -4,7 +4,7 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-12 (Phase 10)
 
-**Committed** — Phase 10 work lands at `f7b4ce2` on `feature/my-experiment`, on top of Phase 9's `ae69dd9`. Not pushed to remote as of this note. Run `git status`/`git log -1` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
+**Committed and pushed** — Phase 10 spans `f7b4ce2` (Equity/Tax/Leverage + first production deployment) → `68d8ba4` (résumé ATS) → `6205481` (cover letter ATS) on `feature/my-experiment`, on top of Phase 9's `ae69dd9`. Pushed to `origin/feature/my-experiment` on GitHub. Run `git status`/`git log -1` to confirm before assuming otherwise; if this line is stale, trust the git commands over this file.
 
 **Phase 9's dev-server-cache issue is resolved** — a real process restart at the start of this session (killed a stray leftover `node` process that had port 3001, started fresh) confirmed the Missions rename, List/Board toggle, and 5-stage status dropdown all work correctly live, zero errors. **The same stale-Turbopack-graph class of bug recurred mid-session** after several rapid edits to `EquityDecoder.tsx` (a compile error citing a closing tag that had already been fixed on disk, confirmed via direct file read + a clean `tsc`) — resolved the same established way, a full stop/restart. If you hit a build error that doesn't match what's actually in the file, restart the dev server before debugging further — don't trust the error until you've ruled this out.
 
