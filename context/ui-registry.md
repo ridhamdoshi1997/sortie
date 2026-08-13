@@ -18,6 +18,24 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### OfferWorkspace + EquityDecoder + TakeHomeEstimator ("Offer Tools" tabbed calculator page tab)
+
+File: components/job-details/OfferWorkspace.tsx, EquityDecoder.tsx, TakeHomeEstimator.tsx
+Route: app/find-jobs/[id]/page.tsx — its own top-level page tab ("Offer Tools", alongside Overview/Company), **always visible regardless of `application_status`** (un-gated 2026-08-12 per explicit user request — was originally gated on `offered` only, at launch)
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Two pure-calculator features (Equity & Cap Table Decoder, Salary Tax & Take-Home Calculator) share ONE card via `Tabs.tsx` — same tab-switcher already used for the page's own Overview/Company split — rather than stacking as separate cards, per explicit user request. `OfferWorkspace` owns the outer `border border-border bg-surface shadow-card rounded-2xl p-6` card, no header of its own since it's the entire content of its own top-level page tab (that tab's label already says "Offer Tools" — an inner header would be redundant); each of its two inner tabs' content component ALSO has no outer section/header — just the description text + Save button row directly. Both are 100% user-entered-number calculators (no AI call), so they deliberately do NOT get the "Agent read" agent-teal treatment — ordinary `bg-surface-secondary` stat grid for computed results (`Stat` sub-component, `font-mono font-semibold tabular-nums`, red-ish `text-warning` only for a genuine warning value like an underwater ISO spread). Each tab persists to its own DB column (`jobs.offer_details` / `jobs.tax_estimate_inputs`) via its own server action so the two tabs' saves can never clobber each other. The Tax Calculator's default income prefill reads the Equity Decoder's last-*saved* total comp (computed server-side on the page, not live client state lifted across tabs).
+
+### LeverageSynthesizer (Post-Offer Leverage Synthesizer)
+
+File: components/job-details/LeverageSynthesizer.tsx
+Route: app/find-jobs/[id]/page.tsx (gated on `application_status === "offered"`, sits below `OfferWorkspace`)
+Last updated: 2026-08-12
+
+**Pattern notes:**
+Same opt-in button-triggered shape as `StrategicMoatBriefing.tsx`/`InterviewPanel.tsx` — own outer card (unlike the two calculators above, since this IS AI output). AI result gets the exact "Agent read" treatment from ui-rules.md's Agent Content section (`border-l-2 border-agent`, `bg-agent-light`, `text-agent-dark`, `rounded-r-lg`) — a leverage-level pill (`strong`→success, `moderate`→agent-teal, `limited`→warning, `unclear`→neutral) sits in the card header, then grounded factors, then a "Talking points" sub-list, then an italicized confidence-note line, mirroring `RejectionDiagnosis`'s card shape in `KanbanCard.tsx` almost exactly.
+
 ### MissionsView + KanbanBoard/KanbanCard/KanbanBoardLoader (application tracker — renamed from "Pipeline" 2026-08-12)
 
 File: components/missions/MissionsView.tsx, KanbanBoard.tsx, KanbanCard.tsx, KanbanBoardLoader.tsx

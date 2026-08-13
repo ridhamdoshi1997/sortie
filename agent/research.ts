@@ -295,6 +295,19 @@ function extractMarkdownLinks(markdown: string): Array<{ text: string; url: stri
   return links;
 }
 
+// Google actively CAPTCHA-blocks Jina Reader's requests to
+// google.com/search result pages when they come from cloud/datacenter IPs
+// (confirmed live from this app's own Vercel deployment, 2026-08-12) — the
+// block page itself is ~1000 characters, well past a plain length check, so
+// a length threshold alone can't distinguish "real search results" from
+// "Google's block wall." Any caller that scrapes a Google search URL via
+// fetchViaJinaReader must run its result through this before trusting it as
+// real content — see researchStrategicMoat/researchInterviewerBackground.
+function looksLikeSearchBlockPage(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes("unusual traffic") || lower.includes("maybe requiring captcha");
+}
+
 // Jina Reader (r.jina.ai) renders the page in a real browser on their
 // infrastructure and returns clean markdown — no browser to host ourselves,
 // genuinely free at this app's volume (10M free tokens with an API key,
@@ -674,13 +687,13 @@ JOB POSTING:
 Title: ${job.title ?? "Unknown"}
 Company: ${job.company ?? "Unknown"}
 Description: ${job.about_role ?? "No saved description"}
-Matched skills: ${job.matched_skills.join(", ") || "None recorded"}
-Missing skills: ${job.missing_skills.join(", ") || "None recorded"}
+Matched skills: ${(job.matched_skills ?? []).join(", ") || "None recorded"}
+Missing skills: ${(job.missing_skills ?? []).join(", ") || "None recorded"}
 
 CANDIDATE PROFILE:
 Current title: ${profile.current_title ?? "Unknown"}
 Experience: ${profile.years_experience ?? "Unknown"} years, level ${profile.experience_level ?? "Unknown"}
-Skills: ${profile.skills.join(", ") || "None saved"}
+Skills: ${(profile.skills ?? []).join(", ") || "None saved"}
 Work history: ${getWorkHistory(profile.work_experience)}`;
 
   const raw = await complete(getModel(provider, "smart"), {
@@ -1275,7 +1288,9 @@ export async function researchStrategicMoat(
     // Same "free path too thin, try Perplexity" threshold reasoning as
     // tryPerplexityFallback above — a search page that mostly failed to
     // render still returns *some* text, so a length floor catches that.
-    if (!sourceText || sourceText.length < 200) {
+    // Also checks for Google's own CAPTCHA block page, which is verbose
+    // enough to sail past a plain length check on its own.
+    if (!sourceText || sourceText.length < 200 || looksLikeSearchBlockPage(sourceText)) {
       const perplexity = await fetchViaPerplexity(
         `What are ${company}'s current strategic priorities, recent news, and any existential threats or business challenges they're facing right now? Be specific and current, not generic.`,
       );
@@ -1341,7 +1356,9 @@ export async function researchInterviewerBackground(
     let sourceText = await fetchViaJinaReader(searchUrl);
     let sources: string[] = [];
 
-    if (!sourceText || sourceText.length < 200) {
+    // See looksLikeSearchBlockPage's comment — Google's CAPTCHA wall is
+    // verbose enough to pass a plain length check on its own.
+    if (!sourceText || sourceText.length < 200 || looksLikeSearchBlockPage(sourceText)) {
       const perplexity = await fetchViaPerplexity(
         `What is ${name}'s public professional background at ${company}? Focus only on their real career history — prior companies, role, and area of expertise. Do not speculate about personality or private details.`,
       );

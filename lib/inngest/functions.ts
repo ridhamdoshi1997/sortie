@@ -101,8 +101,8 @@ export const evaluateJobsAsync = inngest.createFunction(
         const jobChunks = chunkArray(rawJobs, 5);
 
         try {
-            for (const chunk of jobChunks) {
-                await step.run(`Evaluate Chunk of ${chunk.length}`, async () => {
+            for (const [chunkIndex, chunk] of jobChunks.entries()) {
+                await step.run(`evaluate-chunk-${chunkIndex}`, async () => {
                     const evaluations = await evaluateJobCompatibility(chunk, filters, profile, provider);
 
                     for (const job of chunk) {
@@ -157,7 +157,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                     }
                 });
 
-                await step.sleep("delay-between-ai-calls", "3s");
+                await step.sleep(`delay-between-ai-calls-${chunkIndex}`, "3s");
             }
         } catch (err) {
             console.error("Chunk evaluation failed:", err);

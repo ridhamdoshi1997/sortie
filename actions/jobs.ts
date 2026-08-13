@@ -11,6 +11,10 @@ import { resolveProvider } from "@/lib/access";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
 import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/research";
+import { synthesizeLeverageForJob, type LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
+import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
+import type { OfferDetails } from "@/lib/equityDecoder";
+import type { TaxEstimateInputs } from "@/lib/taxCalculator";
 import type { ApplicationStatus } from "@/lib/applicationStatus";
 import type { EvaluationDimensionResult } from "@/lib/evaluator";
 import type { Profile } from "@/types";
@@ -414,5 +418,145 @@ export async function getStrategicMoatBriefing(
   } catch (error) {
     console.error("[actions/jobs] getStrategicMoatBriefing", error);
     return { success: false, error: "Failed to generate a strategic briefing" };
+  }
+}
+
+// Equity & Cap Table Decoder — plain data write, no AI/paid call involved
+// (lib/equityDecoder.ts's decodeOffer runs client-side on these same
+// numbers), so this isn't usage-gated like the AI actions above.
+export async function saveOfferDetails(jobId: string, details: OfferDetails): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ offer_details: details, offer_details_updated_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] saveOfferDetails", error);
+      return { success: false, error: "Failed to save offer details" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/missions");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] saveOfferDetails", error);
+    return { success: false, error: "Failed to save offer details" };
+  }
+}
+
+// Tax Calculator — same "plain data write, no AI/paid call" shape as
+// saveOfferDetails above (lib/taxCalculator.ts's calculateTakeHome runs
+// client-side). Kept in its own column so this tab's save can't clobber the
+// Equity Decoder tab's fields or vice versa.
+export async function saveTaxEstimateInputs(jobId: string, inputs: TaxEstimateInputs): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ tax_estimate_inputs: inputs, tax_estimate_inputs_updated_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] saveTaxEstimateInputs", error);
+      return { success: false, error: "Failed to save tax calculator inputs" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] saveTaxEstimateInputs", error);
+    return { success: false, error: "Failed to save tax calculator inputs" };
+  }
+}
+
+// Post-Offer Leverage Synthesizer — grounded entirely in this job's own
+// already-stored data (evaluation, timing, reappearance signal) — see
+// lib/leverageSynthesizer.ts's header comment on why this can never cite
+// real market data. Gated by checkAndConsumeUsage since it's a real LLM
+// call, same pattern as diagnoseRejection/getStrategicMoatBriefing above.
+export async function synthesizeLeverage(
+  jobId: string,
+): Promise<ActionResult & { synthesis?: LeverageSynthesisResult }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "leverage_synthesis");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const [{ data: profile }, { data: job }, { data: allJobsForSignal }] = await Promise.all([
+      insforge.database
+        .from("profiles")
+        .select("preferred_model")
+        .eq("id", user.id)
+        .maybeSingle<Pick<Profile, "preferred_model">>(),
+      insforge.database
+        .from("jobs")
+        .select(
+          "id,title,company,evaluation,missing_skills,match_score,title_scope_mismatch,found_at,application_status_updated_at,offer_details",
+        )
+        .eq("id", jobId)
+        .eq("user_id", user.id)
+        .maybeSingle<{
+          id: string;
+          title: string | null;
+          company: string | null;
+          evaluation: EvaluationDimensionResult[] | null;
+          missing_skills: string[] | null;
+          match_score: number | null;
+          title_scope_mismatch: { flagged: boolean; note: string } | null;
+          found_at: string | null;
+          application_status_updated_at: string | null;
+          offer_details: OfferDetails | null;
+        }>(),
+      insforge.database.from("jobs").select("company,title,found_at").eq("user_id", user.id),
+    ]);
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
+
+    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const synthesis = await synthesizeLeverageForJob(
+      {
+        ...job,
+        offerEntered: job.offer_details !== null,
+        reappearanceLabel: reappearanceSignal?.label ?? null,
+      },
+      provider,
+    );
+
+    const { error: updateError } = await insforge.database
+      .from("jobs")
+      .update({ leverage_synthesis: synthesis, leverage_synthesized_at: new Date().toISOString() })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("[actions/jobs] synthesizeLeverage persist", updateError);
+      return { success: false, error: "Synthesis generated but failed to save" };
+    }
+
+    revalidatePath("/missions");
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, synthesis };
+  } catch (error) {
+    console.error("[actions/jobs] synthesizeLeverage", error);
+    return { success: false, error: "Failed to generate a leverage synthesis" };
   }
 }

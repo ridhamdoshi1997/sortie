@@ -148,6 +148,26 @@ export interface Job {
   // getListingSignal. Both null means no signal yet, not "confirmed active."
   marked_unavailable_at: string | null;
   dropped_from_search_at: string | null;
+  // Equity & Cap Table Decoder — user-entered offer numbers, no funding-data
+  // lookup involved. Local shape mirroring lib/equityDecoder.ts's
+  // OfferDetails (not imported, kept consistent with the rest of this file's
+  // circular-import precedent even though equityDecoder.ts itself has no
+  // deps — see context/build-plan.md §M).
+  offer_details: OfferDetails | null;
+  offer_details_updated_at: string | null;
+  // Post-Offer Leverage Synthesizer — grounded only in this job's own
+  // already-stored data, see lib/leverageSynthesizer.ts's header comment.
+  // Local shape mirroring its LeverageSynthesisResult, same
+  // avoid-circular-import precedent as rejection_diagnosis above (it also
+  // imports lib/evaluator.ts).
+  leverage_synthesis: LeverageSynthesis | null;
+  leverage_synthesized_at: string | null;
+  // Salary Tax & Take-Home Calculator inputs — see lib/taxCalculator.ts's
+  // header comment for scope/accuracy caveats. Same avoid-circular-import
+  // precedent as OfferDetails above (taxCalculator.ts itself has no deps
+  // either, kept as a local mirror for consistency with this file).
+  tax_estimate_inputs: TaxEstimateInputs | null;
+  tax_estimate_inputs_updated_at: string | null;
 }
 
 export interface JobEvaluationDimension {
@@ -169,6 +189,33 @@ export interface RejectionDiagnosis {
   }[];
   suggestedNextAction: string;
   confidenceNote: string;
+}
+
+export interface OfferDetails {
+  baseSalary: number | null;
+  signingBonus: number | null;
+  annualBonusTarget: number | null;
+  equityType: "rsu" | "iso" | "nso" | "none";
+  numberOfShares: number | null;
+  strikePrice: number | null;
+  currentFmv: number | null;
+  totalSharesOutstanding: number | null;
+  vestingYears: number | null;
+  cliffMonths: number | null;
+}
+
+export interface LeverageSynthesis {
+  leverageLevel: "strong" | "moderate" | "limited" | "unclear";
+  factors: { label: string; explanation: string }[];
+  talkingPoints: string[];
+  confidenceNote: string;
+}
+
+export interface TaxEstimateInputs {
+  country: "us" | "ca";
+  annualGrossIncome: number | null;
+  usState: import("@/lib/taxCalculator").USState | null;
+  caProvince: import("@/lib/taxCalculator").CAProvince | null;
 }
 
 // Whole-résumé quality analysis (distinct from ResumeGapAnalysisResult below,

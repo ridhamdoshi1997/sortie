@@ -10,6 +10,8 @@ import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdow
 import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
+import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
+import { OfferWorkspace } from "@/components/job-details/OfferWorkspace";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { InterviewPanel } from "@/components/job-details/InterviewPanel";
 import { listInterviewPanel } from "@/actions/interviewPanel";
@@ -179,6 +181,10 @@ export default async function JobDetailsPage({ params }: Props) {
                       <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
                     )}
 
+                    {job.application_status === "offered" && (
+                      <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
+                    )}
+
                     <NetworkSignals
                       company={company}
                       previousEmployer={previousEmployer}
@@ -209,6 +215,17 @@ export default async function JobDetailsPage({ params }: Props) {
                       />
                     )}
                   </div>
+                ),
+              },
+              {
+                id: "offer-tools",
+                label: "Offer Tools",
+                content: (
+                  <OfferWorkspace
+                    jobId={job.id}
+                    offerDetails={job.offer_details}
+                    taxEstimateInputs={job.tax_estimate_inputs}
+                  />
                 ),
               },
             ]}

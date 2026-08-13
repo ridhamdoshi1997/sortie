@@ -19,7 +19,8 @@ export type UsageAction =
   | "bullet_rewrite"
   | "rejection_intelligence"
   | "strategic_moat"
-  | "interviewer_research";
+  | "interviewer_research"
+  | "leverage_synthesis";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -67,6 +68,10 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // the same way. Adding a panelist itself is free; only the "research
   // background" action consumes this.
   interviewer_research: 5,
+  // Same shape/cost as rejection_intelligence — one structured call against
+  // data the app already has (this job's own stored evaluation, timing, and
+  // signals), no external lookup involved.
+  leverage_synthesis: 5,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -82,6 +87,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   rejection_intelligence: "rejection diagnoses",
   strategic_moat: "strategic moat briefings",
   interviewer_research: "interviewer background lookups",
+  leverage_synthesis: "leverage syntheses",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };
