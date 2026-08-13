@@ -53,7 +53,7 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
     // the single scraping entry point, not a second copy of that logic.
     let rawJobs;
     try {
-        rawJobs = await searchJobs(title, location, "ca", "serpapi");
+        rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
     } catch (err) {
         if (runId) {
             await insforge.database
@@ -73,9 +73,26 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
     const uniqueJobs = Array.from(uniqueJobsMap.values());
 
+    // A genuinely empty search — most commonly a narrow Date Posted filter
+    // ("Past 24 hours") for a title/location combo with nothing that fresh —
+    // is a real, legitimate outcome, not a failure. Upserting an empty array
+    // and then treating "zero rows returned" as an error (below) used to
+    // conflate the two; this returns early instead, same "empty state, not
+    // an error" principle already applied to SerpApi's own no-results case
+    // in lib/jobScraper.ts.
+    if (uniqueJobs.length === 0) {
+        if (runId) {
+            await insforge.database
+                .from("agent_runs")
+                .update({ status: "completed", is_successful: true, jobs_found: 0, updated_at: new Date().toISOString() })
+                .eq("id", runId);
+        }
+        return [];
+    }
+
     // 1. DEBUG: Check what we are trying to insert
     console.log("🔍 [Scraper] Unique jobs to insert:", uniqueJobs.length);
-    if (uniqueJobs.length > 0) console.log("🔍 [Scraper] First job example:", uniqueJobs[0]);
+    console.log("🔍 [Scraper] First job example:", uniqueJobs[0]);
 
     const jobsToInsert = uniqueJobs.map(job => ({
         external_id: job.id,

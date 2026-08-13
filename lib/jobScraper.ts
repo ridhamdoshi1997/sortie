@@ -58,7 +58,7 @@ function pickApplyUrl(applyOptions: Array<{ link?: string }> | undefined): strin
 }
 
 export interface JobScraperProvider {
-    search(jobTitle: string, location: string, countryCode: string): Promise<NormalizedJob[]>;
+    search(jobTitle: string, location: string, countryCode: string, datePosted?: string): Promise<NormalizedJob[]>;
 }
 
 // SerpApi's `location` parameter must be a canonical name from its own
@@ -135,11 +135,25 @@ function isNoResultsError(err: unknown): boolean {
     return /hasn't returned any results/i.test(message);
 }
 
+// SerpApi's google_jobs engine takes recency as a `chips` value rather than
+// a separate parameter — passing it here narrows the search itself instead
+// of fetching everything and discarding stale postings client-side (Phase 11
+// filter-bar rebuild, agy research: "highly recommended to pass Date Posted
+// to SerpApi directly to avoid fetching stale jobs just to filter them
+// down").
+const DATE_POSTED_CHIPS: Record<string, string> = {
+    today: "date_posted:today",
+    "3days": "date_posted:3days",
+    week: "date_posted:week",
+    month: "date_posted:month",
+};
+
 async function fetchSerpApiPages(
     jobTitle: string,
     location: string,
     countryCode: string,
-    apiKey: string
+    apiKey: string,
+    datePosted?: string
 ) {
     const allJobs = [];
     let nextPageToken: string | undefined;
@@ -153,6 +167,9 @@ async function fetchSerpApiPages(
             hl: "en",
             api_key: apiKey,
         });
+        if (datePosted && DATE_POSTED_CHIPS[datePosted]) {
+            params.set("chips", DATE_POSTED_CHIPS[datePosted]);
+        }
         if (nextPageToken) params.set("next_page_token", nextPageToken);
 
         const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
@@ -195,13 +212,14 @@ async function searchWithSerpApiKey(
     jobTitle: string,
     location: string,
     countryCode: string,
-    apiKey: string
+    apiKey: string,
+    datePosted?: string
 ) {
     const normalizedLocation = normalizeLocationForSerpApi(location);
     let allJobs;
     let resolvedLocation = normalizedLocation;
     try {
-        allJobs = await fetchSerpApiPages(jobTitle, normalizedLocation, countryCode, apiKey);
+        allJobs = await fetchSerpApiPages(jobTitle, normalizedLocation, countryCode, apiKey, datePosted);
     } catch (err) {
         // A quota-exhausted key will fail the location-resolution retry
         // too (it's the same dead key) — let it propagate immediately so
@@ -222,7 +240,7 @@ async function searchWithSerpApiKey(
         }
         resolvedLocation = resolved;
         try {
-            allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey);
+            allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey, datePosted);
         } catch (retryErr) {
             if (isNoResultsError(retryErr)) return [];
             throw retryErr;
@@ -259,13 +277,13 @@ function getSerpApiKeyChain(): string[] {
 }
 
 const serpApiProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode) {
+    async search(jobTitle, location, countryCode, datePosted) {
         const keys = getSerpApiKeyChain();
         if (keys.length === 0) throw new Error("Missing SERPAPI_KEY");
 
         for (let i = 0; i < keys.length; i++) {
             try {
-                return await searchWithSerpApiKey(jobTitle, location, countryCode, keys[i]);
+                return await searchWithSerpApiKey(jobTitle, location, countryCode, keys[i], datePosted);
             } catch (err) {
                 const isLastKey = i === keys.length - 1;
                 if (isLastKey || !isQuotaExhaustedError(err)) throw err;
@@ -283,11 +301,12 @@ export async function searchJobs(
     jobTitle: string,
     location: string,
     countryCode: string = "ca",
-    provider: "serpapi" = "serpapi"
+    provider: "serpapi" = "serpapi",
+    datePosted?: string
 ): Promise<NormalizedJob[]> {
 
     if (provider === "serpapi") {
-        return serpApiProvider.search(jobTitle, location, countryCode);
+        return serpApiProvider.search(jobTitle, location, countryCode, datePosted);
     }
 
     throw new Error("Invalid scraper provider selected.");
