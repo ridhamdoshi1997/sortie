@@ -15,15 +15,21 @@ function todayIso(): string {
 
 export function AddAccomplishmentModal({
   initial,
+  defaultDate,
   onClose,
 }: {
   initial: AccomplishmentRow | null;
+  // Lets a "+" inside a specific role epoch pre-fill a date that falls
+  // within that role's range, so the new entry's date-range auto-bucketing
+  // (lib/careerTimeline.ts) naturally nests it there without needing an
+  // explicit role picker — no-op when editing an existing entry.
+  defaultDate?: string;
   onClose: () => void;
 }) {
   const router = useRouter();
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [date, setDate] = useState(initial?.date ?? todayIso());
+  const [date, setDate] = useState(initial?.date ?? defaultDate ?? todayIso());
   const [tagsInput, setTagsInput] = useState((initial?.tags ?? []).join(", "));
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

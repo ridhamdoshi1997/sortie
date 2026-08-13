@@ -18,6 +18,15 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### FilterBar (Find & Evaluate filter bar)
+
+File: components/find-jobs/FilterBar.tsx, lib/jobFilters.ts
+Route: app/find-jobs/page.tsx (via components/find-jobs/FindJobsForm.tsx)
+Last updated: 2026-08-13 (Phase 11 — new, replaces 2 loose free-text filter boxes)
+
+**Pattern notes:**
+Researched via `agy` against LinkedIn/Indeed/Wellfound/Otta/JobRight/Teal/Glassdoor/ZipRecruiter: the industry-standard shape is a horizontal row of dropdown-trigger pills below the search inputs, each becoming a highlighted chip with an inline "✕" once applied. `FilterPopover`/`FilterPanel` reuse the exact same portal + `position:fixed` recipe as `StyleTab.tsx`'s `Dropdown`/`DropdownPanel` (see that entry below) — computed from the trigger's own `getBoundingClientRect()`, closes on outside-mousedown and on any ancestor scroll (`capture:true`). **Real bug from this exact pattern, caught live**: the "More filters" panel (holding Min Match Score/Visa Sponsorship/Hide Keyword/Company) originally had its own *separate* outside-click listener checking the trigger's wrapper `<div>` instead of the portaled panel content — since the panel renders outside that div in the DOM, every click inside it (a button, a text input) read as "outside" and closed the panel before the interaction registered. Fixed by deleting the duplicate listener and relying on `FilterPanel`'s own already-correct one (same fix `onClose` prop already gets everywhere else). 9 filters total: Date Posted (`RadioOption`, single-select, the only one that costs a real SerpApi call — goes to `lib/jobScraper.ts`'s `chips` query param, debounced 700ms via a `useEffect` in `FindJobsForm.tsx` so settling on a value only fires once), Remote Policy/Job Type/Experience Level (`CheckboxOption`, multi-select), Min Salary/Min Match Score (`RadioOption`, preset buckets), Visa Sponsorship (a real on/off `role="switch"` toggle — needs an explicit `left-0.5` base position on the knob `<span>`, not just `translate-x`, or it reads as "just changes color" with no visible slide), Hide Keyword/Company (plain text inputs). Filter state syncs to the URL (`?remote=...&jobType=...`) via `lib/jobFilters.ts`'s `filtersToSearchParams`/`searchParamsToFilters`, matching every competitor's "shareable filtered search" convention. `applyClientFilters` is a pure function (jobs in, filtered jobs out) — everything except Date Posted filters already-fetched/scored jobs for free (`detected_extensions`, `jobs.seniority_level`, `match_score`, description text all already extracted at zero marginal AI cost).
+
 ### ResumeSlotWorkspace (new, 2026-08-13 Phase 11 — uploaded-résumé editing parity)
 
 File: `components/documents/ResumeSlotWorkspace.tsx`
@@ -110,14 +119,14 @@ Last updated: 2026-08-12
 **Pattern notes:**
 Same empty-state-button-then-dossier shape as `CompanyResearch.tsx`, living in the Company tab next to it. Opt-in button-triggered (not an auto-loader like `CompanyResearchAutoLoader.tsx`) since this one has a real, if usually free, cost path — matches the opt-in convention already used for Insider Connections/other paid-adjacent features.
 
-### Career Timeline + Add Accomplishment Modal
+### Career Timeline (epoch-nested) + Add Accomplishment Modal + Quick Add Bar
 
-File: components/career/CareerTimeline.tsx, AddAccomplishmentModal.tsx
+File: components/career/CareerTimeline.tsx, AddAccomplishmentModal.tsx, lib/careerTimeline.ts
 Route: app/career/page.tsx
-Last updated: 2026-08-11
+Last updated: 2026-08-13 (Phase 11 — restructured from a flat timeline to epoch nesting)
 
 **Pattern notes:**
-`CareerTimeline` adapts `components/dashboard/RecentActivity.tsx`'s exact dotted-list visual idiom (colored dot + text + timestamp) rather than inventing new timeline markup — extended with per-kind dot colors (`work_experience`/`education` = info blue, `accomplishment` = **accent**, not agent-teal, since these are user-authored not AI-generated content, `job_outcome` = neutral). Only `accomplishment`-kind entries get edit/delete controls; profile-history and job-outcome entries are read-only (owned by Profile/the tracker, not duplicated here). `AddAccomplishmentModal` reuses `components/profile/SectionModal.tsx` directly, no new modal chrome.
+Replaces the old flat dotted-list timeline (2026-08-11) after research (build-plan.md §E) found a flat equal-weight stream is the wrong shape for career data. `lib/careerTimeline.ts`'s `buildCareerEpochs` groups each `accomplishments` row under the work-experience role whose `[start_date, is_current ? today : end_date]` range contains the accomplishment's own `date` — auto-computed by date containment, deliberately no manual role picker (ambiguous overlaps resolve to the more recent role, checked in reverse-chronological order). An accomplishment whose date falls outside every role's range lands in a separate "Unassigned" section rather than being silently dropped or mis-bucketed. Education stays a flat list (no start/end range to test containment against, just a `graduation_year`) and job-search activity (tracker status changes) stays its own flat section — only work-experience roles get nested accomplishments. `EpochCard` (one per role, collapsible, `ChevronDown` rotate) reuses the same accent-dot item rendering the old flat list had, still user-authored-not-AI accent color per `ui-rules.md`'s Agent Content rule. New `QuickAddBar` — a single text input + Enter/send button, no modal — closes the page's old "no way to add anything from itself" gap flagged in the same research; always dates to today, which naturally nests it under whichever role is `is_current` via the same containment logic every other accomplishment uses. `AddAccomplishmentModal` gained an optional `defaultDate` prop so an epoch's own "Log here" button pre-fills a date inside that specific role's range (current role → today, past role → its end date) so the save naturally re-nests there without needing an explicit role field. Live-verified with real seeded test data (InsForge CLI raw SQL), not just `tsc`/`eslint`.
 
 ### ConfirmDialog (new — reusable destructive-action confirmation)
 
