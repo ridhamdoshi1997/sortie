@@ -11,6 +11,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { buildQualityAnalysisText, runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
+import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES } from "@/lib/writingStyle";
 import type { Job, Profile, ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -235,7 +236,7 @@ export async function rewriteResumeBullet(
 
     const raw = await complete(getModel(resolveProvider(profile?.preferred_model, user.email), "fast"), {
       systemPrompt:
-        "You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. Return only valid JSON.",
+        `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
       userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
       temperature: 0.5,
       maxTokens: 200,
