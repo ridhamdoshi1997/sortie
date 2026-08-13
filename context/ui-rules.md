@@ -24,6 +24,17 @@ System font stack, per the approved Sortie concept mockup (corrected 2026-07-18 
 
 ---
 
+## Mobile / Responsive
+
+**Added 2026-08-13 (Phase 11)** after a real, user-caught bug: `ResumeManager.tsx`'s résumé list used a plain `<table className="min-w-[640px]">` wrapped in `overflow-x-auto` — on any phone-width screen this forced horizontal scrolling just to reach the row-actions menu ("Sync to Profile" and friends), which was flagged live, not found in review. This is now a standing rule for every new component, not a one-off fix:
+
+- **Never ship a data table/grid as the only layout for a list of real items.** A `<table>` (or a fixed multi-column grid) needs a real mobile alternative — a stacked-card list below `sm:` (`hidden sm:block` on the table, a separate `sm:hidden` card list with the same data and actions) — not just `overflow-x-auto` as the mobile story. `ResumeManager.tsx`'s fix is the reference pattern: same data, same actions (including the row menu), zero horizontal scroll on either layout.
+- **If a component renders the same interactive controls twice for two layouts** (e.g. a "..." actions-menu trigger in both a mobile card and a desktop table row for the same item), any shared state driving which one is "open" needs to be tagged by which layout triggered it (see `menuState`'s `view: "mobile" | "desktop"` in `ResumeManager.tsx`) — both layouts render simultaneously in the DOM (one CSS-hidden), so untagged shared state opens the same menu twice at once.
+- **Any 2-column split layout** (a workspace with a live preview on one side and tabs/controls on the other, e.g. `ResumeWorkspace.tsx`/`ResumeSlotWorkspace.tsx`'s `lg:grid-cols-[...]`) already collapses to a single stacked column below `lg:` via `grid-cols-1` — keep this pattern for any new workspace-shaped component rather than inventing a new one.
+- Check new components at a real 375px viewport width before considering them done, not just at the default desktop preview size.
+
+---
+
 ## Navbar
 
 Three nav items: Dashboard, Find Jobs, Profile. Dark ink chrome (`bg-overlay`), per the approved concept mockup — corrected 2026-07-18 (was a plain white bar, which was never actually the approved design).

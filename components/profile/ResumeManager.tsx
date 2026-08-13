@@ -520,7 +520,14 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
 export function ResumeManager({ initialResumes, onSynced }: Props) {
   const router = useRouter();
   const resumes = initialResumes;
-  const [menuState, setMenuState] = useState<{ id: string; top: number; left: number } | null>(null);
+  // `view` distinguishes which layout (mobile card vs desktop table) opened
+  // the menu — both render the same résumé rows simultaneously (one
+  // CSS-hidden, not conditionally mounted), so without this tag a menuState
+  // matching a given résumé id would satisfy both layouts' render checks at
+  // once and mount two overlapping ActionsMenu portals for the same row.
+  const [menuState, setMenuState] = useState<{ id: string; top: number; left: number; view: "mobile" | "desktop" } | null>(
+    null,
+  );
   const [syncFor, setSyncFor] = useState<ResumeRow | null>(null);
   const [editFor, setEditFor] = useState<ResumeRow | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -591,21 +598,16 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
           <p className="text-sm text-text-secondary">No résumés yet — upload one to get started.</p>
         </div>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead>
-              <tr className="bg-surface-secondary">
-                {["Résumé", "Target role", "Last modified", "Created", ""].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {resumes.map((r) => (
-                <tr key={r.id} className="border-t border-border">
-                  <td className="px-5 py-4">
+        <>
+          {/* Below sm: a real table forces horizontal scroll to reach the
+             actions menu on any phone-width screen — confirmed as an actual
+             usability problem live, not a hypothetical. Stacked cards below
+             sm, the table from sm up — same data, no scroll needed either way. */}
+          <div className="flex flex-col divide-y divide-border sm:hidden">
+            {resumes.map((r) => (
+              <div key={r.id} className="flex flex-col gap-2 p-4">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex flex-col gap-1.5">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/resume/${r.id}`} className="font-medium text-text-primary hover:text-accent hover:underline">
                         {r.name}
@@ -621,48 +623,123 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
                       </span>
                     </div>
                     {r.persona && (
-                      <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-text-muted">
+                      <span className="inline-flex items-center gap-1 text-[11px] text-text-muted">
                         <Tag className="h-3 w-3" />
                         {r.persona} persona
                       </span>
                     )}
-                  </td>
-                  <td className="px-5 py-4 text-text-secondary">{r.target_job_title || "—"}</td>
-                  <td className="px-5 py-4 font-mono text-xs tabular-nums text-text-muted">{formatRelative(r.updated_at)}</td>
-                  <td className="px-5 py-4 font-mono text-xs tabular-nums text-text-muted">{formatRelative(r.created_at)}</td>
-                  <td className="px-5 py-4 text-right">
-                    {pendingAction === r.id ? (
-                      <Loader2 className="ml-auto h-4 w-4 animate-spin text-text-muted" />
-                    ) : (
-                      <button
-                        onClick={(e) => {
-                          if (menuState?.id === r.id) {
-                            setMenuState(null);
-                            return;
-                          }
-                          const rect = e.currentTarget.getBoundingClientRect();
-                          setMenuState({ id: r.id, top: rect.bottom + 4, left: rect.right - 192 });
-                        }}
-                        className="rounded-lg p-1.5 text-text-muted hover:bg-surface-secondary hover:text-text-primary"
-                      >
-                        <MoreHorizontal className="h-4 w-4" />
-                      </button>
-                    )}
-                    {menuState?.id === r.id && (
-                      <ActionsMenu
-                        position={menuState}
-                        isPrimary={r.is_primary}
-                        hasExtractedData={!!r.extracted_data}
-                        onClose={() => setMenuState(null)}
-                        onAction={(action) => handleAction(r, action)}
-                      />
-                    )}
-                  </td>
+                  </div>
+                  {pendingAction === r.id ? (
+                    <Loader2 className="mt-1 h-4 w-4 shrink-0 animate-spin text-text-muted" />
+                  ) : (
+                    <button
+                      onClick={(e) => {
+                        if (menuState?.id === r.id && menuState.view === "mobile") {
+                          setMenuState(null);
+                          return;
+                        }
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuState({ id: r.id, top: rect.bottom + 4, left: rect.right - 192, view: "mobile" });
+                      }}
+                      className="shrink-0 rounded-lg p-1.5 text-text-muted hover:bg-surface-secondary hover:text-text-primary"
+                      aria-label="Résumé actions"
+                    >
+                      <MoreHorizontal className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-text-muted">
+                  <span>Target role: {r.target_job_title || "—"}</span>
+                  <span className="font-mono tabular-nums">Modified {formatRelative(r.updated_at)}</span>
+                  <span className="font-mono tabular-nums">Created {formatRelative(r.created_at)}</span>
+                </div>
+                {menuState?.id === r.id && menuState.view === "mobile" && (
+                  <ActionsMenu
+                    position={menuState}
+                    isPrimary={r.is_primary}
+                    hasExtractedData={!!r.extracted_data}
+                    onClose={() => setMenuState(null)}
+                    onAction={(action) => handleAction(r, action)}
+                  />
+                )}
+              </div>
+            ))}
+          </div>
+
+          <div className="hidden overflow-x-auto sm:block">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="bg-surface-secondary">
+                  {["Résumé", "Target role", "Last modified", "Created", ""].map((h) => (
+                    <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                      {h}
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {resumes.map((r) => (
+                  <tr key={r.id} className="border-t border-border">
+                    <td className="px-5 py-4">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Link href={`/resume/${r.id}`} className="font-medium text-text-primary hover:text-accent hover:underline">
+                          {r.name}
+                        </Link>
+                        {r.is_primary && (
+                          <span className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
+                            <Star className="h-3 w-3" />
+                            Primary
+                          </span>
+                        )}
+                        <span className="rounded-full bg-success-lightest px-2 py-0.5 text-[10px] font-medium text-success-foreground">
+                          {r.status === "analysed" ? "Analysed" : "Uploaded"}
+                        </span>
+                      </div>
+                      {r.persona && (
+                        <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-text-muted">
+                          <Tag className="h-3 w-3" />
+                          {r.persona} persona
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-5 py-4 text-text-secondary">{r.target_job_title || "—"}</td>
+                    <td className="px-5 py-4 font-mono text-xs tabular-nums text-text-muted">{formatRelative(r.updated_at)}</td>
+                    <td className="px-5 py-4 font-mono text-xs tabular-nums text-text-muted">{formatRelative(r.created_at)}</td>
+                    <td className="px-5 py-4 text-right">
+                      {pendingAction === r.id ? (
+                        <Loader2 className="ml-auto h-4 w-4 animate-spin text-text-muted" />
+                      ) : (
+                        <button
+                          onClick={(e) => {
+                            if (menuState?.id === r.id && menuState.view === "desktop") {
+                              setMenuState(null);
+                              return;
+                            }
+                            const rect = e.currentTarget.getBoundingClientRect();
+                            setMenuState({ id: r.id, top: rect.bottom + 4, left: rect.right - 192, view: "desktop" });
+                          }}
+                          className="rounded-lg p-1.5 text-text-muted hover:bg-surface-secondary hover:text-text-primary"
+                          aria-label="Résumé actions"
+                        >
+                          <MoreHorizontal className="h-4 w-4" />
+                        </button>
+                      )}
+                      {menuState?.id === r.id && menuState.view === "desktop" && (
+                        <ActionsMenu
+                          position={menuState}
+                          isPrimary={r.is_primary}
+                          hasExtractedData={!!r.extracted_data}
+                          onClose={() => setMenuState(null)}
+                          onAction={(action) => handleAction(r, action)}
+                        />
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       {syncFor && (
