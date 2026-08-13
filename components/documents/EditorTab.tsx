@@ -29,7 +29,6 @@ import {
   X,
 } from "lucide-react";
 
-import { rewriteResumeBullet } from "@/actions/documents";
 import { TagInput, FormInput, FormSelect, FormLabel, DEGREE_OPTIONS } from "@/components/ui/FormControls";
 import type { Education } from "@/types";
 import {
@@ -92,10 +91,21 @@ function blankCustomEntry(): CustomEntry {
 
 export type FocusTarget = { company: string; bulletText: string };
 
+// Injected rather than hardcoded to a single server action — a tailored
+// résumé rewrites a bullet with real job context (rewriteResumeBullet), an
+// uploaded résumé slot has no job to pull that context from
+// (rewriteResumeSlotBullet). Same request/response shape either way.
+export type RewriteBulletFn = (
+  entryTitle: string,
+  entryCompany: string,
+  bulletText: string,
+  instruction?: string,
+) => Promise<{ success: boolean; text?: string; error?: string }>;
+
 type Props = {
-  jobId: string;
   sections: ResumeSection[];
   onChange: (next: ResumeSection[]) => void;
+  onRewriteBullet: RewriteBulletFn;
   // Set by ActionPlan (AI Rewrite tab) when the user clicks a specific
   // flagged bullet — auto-opens the Work Experience section and scrolls to
   // it, rather than making them hunt for it themselves.
@@ -103,7 +113,7 @@ type Props = {
   onFocusHandled?: () => void;
 };
 
-export function EditorTab({ jobId, sections, onChange, focusTarget, onFocusHandled }: Props) {
+export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, onFocusHandled }: Props) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [addSectionOpen, setAddSectionOpen] = useState(false);
   const addSectionRef = useRef<HTMLDivElement>(null);
@@ -188,8 +198,8 @@ export function EditorTab({ jobId, sections, onChange, focusTarget, onFocusHandl
     <div className="flex flex-col gap-4">
       <div className="rounded-xl bg-agent-light p-4">
         <p className="text-xs leading-6 text-agent-dark">
-          <strong>Edits here apply only to this tailored résumé.</strong> Your base profile is never touched —
-          for a change you want to carry into every future résumé, update your profile instead.
+          <strong>Edits here apply only to this copy.</strong> The résumé data this was built from is never
+          touched — for a change you want to carry into every future résumé, update your profile instead.
         </p>
       </div>
 
@@ -199,7 +209,7 @@ export function EditorTab({ jobId, sections, onChange, focusTarget, onFocusHandl
             {sections.map((section) => (
               <SortableSectionRow
                 key={section.id}
-                jobId={jobId}
+                onRewriteBullet={onRewriteBullet}
                 section={section}
                 isOpen={openId === section.id}
                 focusTarget={focusTarget}
@@ -269,7 +279,7 @@ export function EditorTab({ jobId, sections, onChange, focusTarget, onFocusHandl
 }
 
 function SortableSectionRow({
-  jobId,
+  onRewriteBullet,
   section,
   isOpen,
   focusTarget,
@@ -279,7 +289,7 @@ function SortableSectionRow({
   onRename,
   onRemove,
 }: {
-  jobId: string;
+  onRewriteBullet: RewriteBulletFn;
   section: ResumeSection;
   isOpen: boolean;
   focusTarget?: FocusTarget | null;
@@ -364,7 +374,7 @@ function SortableSectionRow({
       </div>
       {isOpen && (
         <div className="border-t border-border p-3">
-          <SectionEditor jobId={jobId} section={section} focusTarget={focusTarget} onUpdate={onUpdate} />
+          <SectionEditor onRewriteBullet={onRewriteBullet} section={section} focusTarget={focusTarget} onUpdate={onUpdate} />
         </div>
       )}
     </div>
@@ -444,12 +454,12 @@ function SortableListItem({ id, children }: { id: string; children: (dragHandle:
 }
 
 function SectionEditor({
-  jobId,
+  onRewriteBullet,
   section,
   focusTarget,
   onUpdate,
 }: {
-  jobId: string;
+  onRewriteBullet: RewriteBulletFn;
   section: ResumeSection;
   focusTarget?: FocusTarget | null;
   onUpdate: (next: ResumeSection) => void;
@@ -486,7 +496,7 @@ function SectionEditor({
           onReorder={(next) => onUpdate({ ...section, entries: next })}
           renderItem={(entry, i, dragHandle) => (
             <WorkEntryEditor
-              jobId={jobId}
+              onRewriteBullet={onRewriteBullet}
               entry={entry}
               focusTarget={focusTarget}
               dragHandle={dragHandle}
@@ -724,7 +734,7 @@ function MoveButtons({ onUp, onDown, disableUp, disableDown }: { onUp: () => voi
 }
 
 function WorkEntryEditor({
-  jobId,
+  onRewriteBullet,
   entry,
   focusTarget,
   dragHandle,
@@ -732,7 +742,7 @@ function WorkEntryEditor({
   onRemove,
   onDuplicate,
 }: {
-  jobId: string;
+  onRewriteBullet: RewriteBulletFn;
   entry: TailoredWorkEntry;
   focusTarget?: FocusTarget | null;
   dragHandle: DragHandleProps;
@@ -810,7 +820,7 @@ function WorkEntryEditor({
     setBulletError(null);
     try {
       const original = pending?.index === j ? pending.original : entry.bullets[j];
-      const result = await rewriteResumeBullet(jobId, entry.title, entry.company, original, instruction);
+      const result = await onRewriteBullet(entry.title, entry.company, original, instruction);
       if (result.success && result.text) {
         setPending({ index: j, original, suggested: result.text, instruction });
         setInstructingIndex(null);

@@ -1,4 +1,5 @@
-import type { Profile } from "@/types";
+import type { Education, Profile, WorkExperience } from "@/types";
+import type { ExtractedProfile } from "@/actions/profile";
 import type { ResumeSection, ResumeStyle, ResumeTemplate } from "@/types/resumeEditor";
 import type { GeneratedContent, ResumeTheme } from "@/components/documents/ResumePDF";
 
@@ -103,4 +104,76 @@ export function buildDefaultStyle(
     fontSizes: { name: 25, heading: 10.5, subheading: 9.5, body: 9.5 },
     spacing: { section: 40, entry: 35, line: 55, margins: 55 },
   };
+}
+
+// extracted_data (résumé slots) stores one free-text responsibilities blob
+// per role, not a bullets array — Gemini's extraction generally preserves
+// the source PDF's own line breaks for a bulleted résumé, so that's the
+// primary split. Falls back to sentence boundaries only when the whole
+// thing came back as one dense paragraph (no newlines at all), and never
+// fabricates a split for a short blob that's already effectively one bullet.
+export function splitResponsibilitiesIntoBullets(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+
+  const stripLeadingMarker = (line: string) =>
+    line.replace(/^[\s•▪◦\-*→]+/, "").replace(/^\d+[.)]\s*/, "").trim();
+
+  const byLine = trimmed
+    .split(/\r?\n/)
+    .map(stripLeadingMarker)
+    .filter(Boolean);
+  if (byLine.length > 1) return byLine;
+
+  if (trimmed.length > 150) {
+    const bySentence = trimmed
+      .split(/(?<=[.!?])\s+(?=[A-Z])/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (bySentence.length > 1) return bySentence;
+  }
+
+  return [trimmed];
+}
+
+// One-time conversion from an uploaded résumé slot's flat extracted_data
+// into the same ResumeSection[]/ResumeStyle shape a tailored per-job résumé
+// already uses — the direct precedent is buildDefaultSections above (profile
+// → sections), same idea for a résumé slot's own extraction instead of the
+// live profile. Called once, the first time a résumé slot's editing
+// workspace is opened with no `sections` saved yet; from that point on the
+// slot has its own independent snapshot (resumes.sections/style), same as a
+// tailored résumé's — this never re-reads extracted_data again afterward,
+// and editing it never writes back to extracted_data (which stays the raw
+// extraction used for profile sync).
+export function buildSectionsFromExtractedData(extracted: ExtractedProfile): ResumeSection[] {
+  return [
+    { id: newId(), type: "summary", visible: false, content: "" },
+    { id: newId(), type: "skills", visible: extracted.skills.length > 0, items: extracted.skills },
+    {
+      id: newId(),
+      type: "work_experience",
+      visible: extracted.work_experience.length > 0,
+      entries: extracted.work_experience.map((w: WorkExperience) => ({
+        company: w.company,
+        title: w.title,
+        start_date: w.start_date,
+        end_date: w.end_date,
+        is_current: w.is_current,
+        bullets: splitResponsibilitiesIntoBullets(w.responsibilities || ""),
+      })),
+    },
+    {
+      id: newId(),
+      type: "education",
+      visible: extracted.education.some((e: Education) => e.degree),
+      entries: extracted.education,
+    },
+    {
+      id: newId(),
+      type: "certifications",
+      visible: extracted.certifications.length > 0,
+      entries: extracted.certifications.map((name) => ({ name, issuer: "", date: "" })),
+    },
+  ];
 }

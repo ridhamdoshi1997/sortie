@@ -4,7 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Download, Loader2, RefreshCw } from "lucide-react";
 
-import { analyzeResumeFit, analyzeTailoredResumeQuality, saveResumeSections, saveResumeStyle } from "@/actions/documents";
+import {
+  analyzeResumeFit,
+  analyzeTailoredResumeQuality,
+  rewriteResumeBullet,
+  saveResumeSections,
+  saveResumeStyle,
+} from "@/actions/documents";
 import { AIRewriteTab } from "@/components/documents/AIRewriteTab";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -256,9 +262,11 @@ export function ResumeWorkspace({
             )}
             {tab === "editor" && (
               <EditorTab
-                jobId={jobId}
                 sections={sections}
                 onChange={commitSections}
+                onRewriteBullet={(title, company, text, instruction) =>
+                  rewriteResumeBullet(jobId, title, company, text, instruction)
+                }
                 focusTarget={focusTarget}
                 onFocusHandled={() => setFocusTarget(null)}
               />

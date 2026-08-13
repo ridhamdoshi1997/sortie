@@ -2,6 +2,7 @@
 
 import { useEffect, useImperativeHandle, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import {
   Award,
   Briefcase,
@@ -11,9 +12,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Contact,
+  FolderGit2,
   GraduationCap,
   GripVertical,
+  Link as LinkIcon,
   Loader2,
+  MapPin,
+  Phone,
   Plus,
   Split,
   RefreshCw,
@@ -24,8 +29,10 @@ import {
 
 import { generateBullets, rewriteBullet, saveProfile, splitBullet } from "@/actions/profile";
 import type { ExtractedProfile } from "@/actions/profile";
+import type { ResumeRow } from "@/actions/resumes";
 import type { Profile } from "@/types";
 import { SectionIcon, SectionModal } from "./SectionModal";
+import { ResumeManager } from "./ResumeManager";
 import { Tabs } from "@/components/ui/Tabs";
 import { DEGREE_OPTIONS, FormInput, FormLabel, FormSelect, TagInput } from "@/components/ui/FormControls";
 
@@ -52,6 +59,7 @@ export type ProfileFormHandle = {
 type Props = {
   profile: Profile | null;
   formRef?: React.Ref<ProfileFormHandle>;
+  initialResumes?: ResumeRow[];
 };
 
 const defaultWorkEntry = (): WorkExperienceEntry => ({
@@ -271,7 +279,8 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
 
 /* --------------------------------- form ---------------------------------- */
 
-export function ProfileForm({ profile, formRef }: Props) {
+export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
+  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [saveError, setSaveError] = useState<string | null>(null);
   const [editingSection, setEditingSection] = useState<SectionId | null>(null);
@@ -459,6 +468,18 @@ export function ProfileForm({ profile, formRef }: Props) {
 
   return (
     <>
+      <ResumeManager
+        initialResumes={initialResumes}
+        // The résumé sync flow can write real changes into this profile's
+        // own fields (Personal/Professional/Education/Work Experience) —
+        // this form's local state (fullName/phone/etc. below) was only
+        // ever initialized once from the `profile` prop at mount, so a
+        // plain revalidatePath server-side wouldn't be visible here
+        // without a real navigation. router.refresh() re-runs this page's
+        // Server Component with fresh data.
+        onSynced={() => router.refresh()}
+      />
+
       <Tabs
         defaultTabId="personal"
         tabs={[
@@ -471,22 +492,31 @@ export function ProfileForm({ profile, formRef }: Props) {
                   <p className="text-xl font-bold text-text-primary">{fullName || "Your name"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {phone && (
-                      <span className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                        <Phone className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />
                         {phone}
                       </span>
                     )}
                     {location && (
-                      <span className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                        <MapPin className="h-3.5 w-3.5 shrink-0 text-info" strokeWidth={2} />
                         {location}
                       </span>
                     )}
                     {linkedinUrl && (
-                      <span className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                        <LinkIcon className="h-3.5 w-3.5 shrink-0 text-linkedin" strokeWidth={2} />
                         {linkedinUrl}
                       </span>
                     )}
+                    {portfolioUrl && (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                        <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-accent-dark" strokeWidth={2} />
+                        {portfolioUrl}
+                      </span>
+                    )}
                   </div>
-                  {!phone && !location && !linkedinUrl && (
+                  {!phone && !location && !linkedinUrl && !portfolioUrl && (
                     <EmptyHint>Add your contact details.</EmptyHint>
                   )}
                 </SummaryCard>

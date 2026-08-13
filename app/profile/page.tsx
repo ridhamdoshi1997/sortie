@@ -7,17 +7,17 @@ import { ProfileForm } from "@/components/profile/ProfileForm";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompletion } from "@/lib/profile-utils";
+import { listResumes } from "@/actions/resumes";
 import type { Profile } from "@/types";
 
 export default async function ProfilePage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
-  const { data: profile } = await insforge.database
-    .from("profiles")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle<Profile>();
+  const [{ data: profile }, resumesResult] = await Promise.all([
+    insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
+    listResumes(),
+  ]);
 
   const { completionPercent, missingFields } = calculateCompletion({
     full_name: profile?.full_name ?? null,
@@ -49,7 +49,7 @@ export default async function ProfilePage() {
           completionPercent={completionPercent}
           missingFields={missingFields}
         />
-        <ProfileForm profile={profile ?? null} />
+        <ProfileForm profile={profile ?? null} initialResumes={resumesResult.data ?? []} />
       </main>
     </>
   );

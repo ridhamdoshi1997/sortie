@@ -18,6 +18,21 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### ResumeSlotWorkspace (new, 2026-08-13 Phase 11 — uploaded-résumé editing parity)
+
+File: `components/documents/ResumeSlotWorkspace.tsx`
+
+Résumé-slot counterpart to `ResumeWorkspace.tsx` (tailored per-job résumés) — same overall shell (`rounded-2xl border border-border bg-surface shadow-card`, 2-column grid `lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]`, right-side tab strip) but scoped to a résumé slot id instead of a job id. Tabs are **Insights / Editor / Style** (not AI Rewrite/Editor/Style — "Insights" holds `ATSAuditCard` + `QualityGradeCard`, no job-specific fit-score gauge or chat editor, since there's no job to revise against). `EditorTab.tsx` was refactored to accept an injected `onRewriteBullet` prop instead of a hardcoded `jobId`, so it serves both workspaces without duplicated UI.
+
+Preview pane has 2 states, not 1: before any edit is saved (`resumes.sections` still `null`), it shows the real originally-uploaded PDF via an iframe (`/api/resumes/[id]/download`, no query param) with an explanatory `bg-agent-light` banner — never silently substitutes the AI-reconstructed version for the real file. Once an edit is saved, the pane gets a pill toggle (`Live edit` / `Original upload`, same `rounded-full border border-border bg-surface p-1` chrome as `Tabs.tsx`) so the original stays reachable in-place — deliberately not a `target="_blank"` link (a first version used one, changed after direct user feedback that it should stay in the same view). `?original=1` on the download route always serves the raw upload regardless of edit state.
+
+### ATSAuditCard changes (2026-08-13 Phase 11)
+
+File: `components/documents/ATSAuditCard.tsx`. Two real bugs fixed, both apply to tailored résumés too since it's a shared component:
+1. New `noKeywordDataHint?: string` prop (context-specific copy — tailored résumés point at the fit-score button above, résumé slots explain there's no job to check against). When `matchedKeywords.length + missingKeywords.length === 0`, the displayed score/tone now come from `formatting.score * 2` (scaled to /100) instead of the combined `overallScore`, which silently caps at 50 with no keyword data — was making a perfectly clean résumé read as "High risk."
+2. Zero-formatting-issues case now renders an explicit confirmation message (`border-agent bg-agent/5` block, "No formatting issues found…") instead of just a bare `ShieldCheck` icon with no text.
+3. New manual "Recheck" button (`RefreshCw`, top-right next to the issue-count/ShieldCheck) — the card already recomputes live via `useMemo` on every real edit, so this is a genuine forced-recompute (via a `recheckKey` dependency) for visual parity with `QualityGradeCard`'s refresh button, not a fix for actual staleness.
+
 ### CoverLetterATSAuditCard (cover letter ATS Compatibility Score)
 
 File: components/documents/CoverLetterATSAuditCard.tsx, lib/atsChecker.ts (`analyzeCoverLetterATS`)

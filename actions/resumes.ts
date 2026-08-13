@@ -12,7 +12,9 @@ import { isFeatureEnabled, featureDisabledMessage } from "@/lib/features";
 import { runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { extractProfileFromBuffer, type ExtractedProfile } from "@/actions/profile";
 import { SYNC_SECTIONS, type SyncSection } from "@/lib/resumeSync";
+import { complete, getModel } from "@/lib/models";
 import type { Profile, ResumeAnalysis } from "@/types";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 // Real backend for the /preview/resume mockup's résumé manager. Scoped
 // deliberately: CRUD + résumé→profile sync (additive merge, never
@@ -854,5 +856,146 @@ export async function applyResumeBulletFix(
   } catch (error) {
     console.error("[actions/resumes] applyResumeBulletFix", error);
     return { success: false, error: "Failed to save this change" };
+  }
+}
+
+// Gives an uploaded résumé slot the same independent-snapshot editing
+// workspace a tailored per-job résumé already has — mirrors
+// actions/documents.ts's saveResumeSections exactly, minus the rescore
+// (there's no target job to rescore a résumé slot against). Editing this
+// never touches extracted_data, which stays the raw extraction used for
+// profile sync (getResumeProfileDiff/syncResumeToProfile above).
+export async function saveResumeSlotSections(
+  resumeId: string,
+  sections: ResumeSection[],
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("resumes")
+      .update({ sections, sections_updated_at: new Date().toISOString() })
+      .eq("id", resumeId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/resumes] saveResumeSlotSections", error);
+      return { success: false, error: "Failed to save your changes" };
+    }
+
+    revalidatePath("/resume");
+    revalidatePath(`/resume/${resumeId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/resumes] saveResumeSlotSections", error);
+    return { success: false, error: "Failed to save your changes" };
+  }
+}
+
+// Style never changes what the résumé says, only how it looks — same as
+// the tailored résumé's saveResumeStyle.
+export async function saveResumeSlotStyle(
+  resumeId: string,
+  style: ResumeStyle,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("resumes")
+      .update({ style, sections_updated_at: new Date().toISOString() })
+      .eq("id", resumeId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/resumes] saveResumeSlotStyle", error);
+      return { success: false, error: "Failed to save your style changes" };
+    }
+
+    revalidatePath("/resume");
+    revalidatePath(`/resume/${resumeId}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/resumes] saveResumeSlotStyle", error);
+    return { success: false, error: "Failed to save your style changes" };
+  }
+}
+
+// Same shape/cost/quota bucket as actions/documents.ts's rewriteResumeBullet
+// (bullet_rewrite, shared across every surface that rewrites one bullet) —
+// the only real difference is there's no specific job to pull context from,
+// so this falls back to the résumé slot's own free-text target_job_title
+// when one was set.
+export async function rewriteResumeSlotBullet(
+  resumeId: string,
+  entryTitle: string,
+  entryCompany: string,
+  bulletText: string,
+  instruction?: string,
+): Promise<{ success: boolean; text?: string; error?: string }> {
+  if (!isFeatureEnabled("bullet_rewrite")) {
+    return { success: false, error: featureDisabledMessage("bullet_rewrite") };
+  }
+
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "resumes/rewrite-bullet");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "bullet_rewrite");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const [{ data: profileRow }, { data: resume }] = await Promise.all([
+      insforge.database
+        .from("profiles")
+        .select("preferred_model")
+        .eq("id", user.id)
+        .maybeSingle<Pick<Profile, "preferred_model">>(),
+      insforge.database
+        .from("resumes")
+        .select("target_job_title")
+        .eq("id", resumeId)
+        .eq("user_id", user.id)
+        .maybeSingle<{ target_job_title: string | null }>(),
+    ]);
+
+    const jobContext = resume?.target_job_title ? `Target role: ${resume.target_job_title}` : "";
+
+    const raw = await complete(getModel(resolveProvider(profileRow?.preferred_model, user.email), "fast"), {
+      systemPrompt:
+        "You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. Return only valid JSON.",
+      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
+      temperature: 0.5,
+      maxTokens: 200,
+      jsonResponse: true,
+    });
+
+    let parsed: { rewritten?: string };
+    try {
+      parsed = JSON.parse(raw) as { rewritten?: string };
+    } catch (parseError) {
+      console.error("[actions/resumes] rewriteResumeSlotBullet JSON parse failed", parseError, raw.slice(0, 300));
+      return { success: false, error: "The AI response was incomplete. Please try again." };
+    }
+
+    if (!parsed.rewritten) {
+      return { success: false, error: "The AI didn't return a rewrite. Please try again." };
+    }
+
+    return { success: true, text: parsed.rewritten };
+  } catch (error) {
+    console.error("[actions/resumes] rewriteResumeSlotBullet", error);
+    return { success: false, error: "Failed to rewrite this bullet." };
   }
 }
