@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@insforge/sdk/ssr";
+import { toUserMessage } from "@/lib/errors";
 
 // resetPassword() returns only { message } — no session — so a successful
 // reset does NOT sign the user in. They go back to /login to sign in with
@@ -28,7 +29,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (exchangeError || !exchangeData?.token) {
       return NextResponse.json(
-        { success: false, error: exchangeError?.message ?? "Invalid or expired code." },
+        { success: false, error: toUserMessage(exchangeError?.message, "Invalid or expired code.") },
         { status: exchangeError?.statusCode ?? 400 },
       );
     }
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (resetError) {
       return NextResponse.json(
-        { success: false, error: resetError.message ?? "Could not reset password." },
+        { success: false, error: toUserMessage(resetError.message, "Could not reset password.") },
         { status: resetError.statusCode ?? 400 },
       );
     }

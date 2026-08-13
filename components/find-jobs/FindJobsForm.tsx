@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
+import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
@@ -31,6 +32,9 @@ export function FindJobsForm({
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
     const [searchError, setSearchError] = useState<string | null>(null);
+    // Distinguishes "haven't run a search this session yet" from "ran one,
+    // got zero matches" — the latter needs its own empty state, not silence.
+    const [hasSearched, setHasSearched] = useState(false);
     const [jobs, setJobs] = useState<Job[]>(initialJobs);
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
@@ -107,11 +111,10 @@ export function FindJobsForm({
             const savedJobs = await scrapeAndEvaluateJobs(title, location, filters, userId);
             setJobs(savedJobs ?? []);
             setJobIds((savedJobs ?? []).map((job) => job.id));
+            setHasSearched(true);
         } catch (error) {
             console.error("Pipeline failed:", error);
-            setSearchError(
-                error instanceof Error ? error.message : "Search failed. Please try again."
-            );
+            setSearchError(toUserMessage(error, "Search failed. Please try again."));
         } finally {
             setLoading(false);
         }
@@ -200,6 +203,18 @@ export function FindJobsForm({
                     )}
                 </form>
             </div>
+
+            {/* A completed search with zero matches is a real outcome, not
+                a failure — give it its own quiet empty state instead of
+                just rendering nothing where results would normally appear. */}
+            {hasSearched && !loading && jobs.length === 0 && (
+                <div className="border-t border-border pt-6 text-center">
+                    <p className="text-sm text-text-secondary">No listings matched that search.</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                        Try a broader role title or a nearby location.
+                    </p>
+                </div>
+            )}
 
             {/* Results */}
             {jobs.length > 0 && (

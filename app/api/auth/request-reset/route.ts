@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@insforge/sdk/ssr";
+import { toUserMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -18,7 +19,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     // reveal whether an email has an account via this endpoint's response.
     if (error && error.statusCode !== 404) {
       return NextResponse.json(
-        { success: false, error: error.message ?? "Could not send the reset email." },
+        { success: false, error: toUserMessage(error.message, "Could not send the reset email.") },
         { status: error.statusCode ?? 400 },
       );
     }

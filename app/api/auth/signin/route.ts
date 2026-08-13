@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
 
 import { getPostLoginRedirectPath } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -34,7 +35,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
           success: false,
           error: unverified
             ? "Please verify your email first."
-            : (error?.message ?? "Incorrect email or password."),
+            : toUserMessage(error?.message, "Incorrect email or password."),
           requireVerification: unverified,
         },
         { status: error?.statusCode ?? 401 },

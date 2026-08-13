@@ -16,6 +16,7 @@ import { complete, getModel, type ModelProvider } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { isRateLimitError, rateLimitMessage } from "@/lib/errors";
 import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
@@ -431,12 +432,8 @@ export async function extractProfile(): Promise<{
     // Distinguish provider rate limits from real failures — on the free
     // Gemini tier a burst of extractions returns 429, which previously
     // surfaced as a generic "failed" and looked like a broken feature.
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("429") || /quota|rate limit/i.test(message)) {
-      return {
-        success: false,
-        error: "The AI service is rate-limited right now. Please wait a minute and try again.",
-      };
+    if (isRateLimitError(error)) {
+      return { success: false, error: rateLimitMessage() };
     }
 
     return { success: false, error: "Failed to extract profile from resume." };
@@ -446,11 +443,7 @@ export async function extractProfile(): Promise<{
 type BulletContext = { title: string; company: string };
 
 function bulletRateLimitError(error: unknown): string | null {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("429") || /quota|rate limit/i.test(message)) {
-    return "The AI service is rate-limited right now. Please wait a minute and try again.";
-  }
-  return null;
+  return isRateLimitError(error) ? rateLimitMessage() : null;
 }
 
 // Free-tier Gemini (same key/quota as extractProfile) — no real $ cost, but

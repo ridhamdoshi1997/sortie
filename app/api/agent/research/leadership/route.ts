@@ -7,6 +7,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { toUserMessage } from "@/lib/errors";
 import type { AgentLog, CompanyResearchDossier, Job } from "@/types";
 
 type RequestBody = {
@@ -192,7 +193,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error("[api/agent/research/leadership]", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: toUserMessage(error) },
       { status: 500 },
     );
   }

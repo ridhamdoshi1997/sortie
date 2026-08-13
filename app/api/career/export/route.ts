@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { getCurrentUser } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 import type { Profile } from "@/types";
 
 // The literal deliverable behind "own your data" — a single JSON file
@@ -63,6 +64,6 @@ export async function GET(): Promise<NextResponse> {
     });
   } catch (error) {
     console.error("[api/career/export]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: toUserMessage(error) }, { status: 500 });
   }
 }

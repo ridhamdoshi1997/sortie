@@ -125,6 +125,16 @@ function isQuotaExhaustedError(err: unknown): boolean {
     return /run out of searches|out of searches|monthly limit|plan.*limit|429/i.test(message);
 }
 
+// SerpApi reports a genuine zero-match query as a `data.error` string
+// rather than an empty jobs_results array — that's a real, legitimate
+// search outcome (see agy research, Phase 11), not a failure. Only this
+// specific phrasing should collapse to an empty result set; any other
+// error (auth, network, malformed request) still needs to surface as one.
+function isNoResultsError(err: unknown): boolean {
+    const message = err instanceof Error ? err.message : String(err);
+    return /hasn't returned any results/i.test(message);
+}
+
 async function fetchSerpApiPages(
     jobTitle: string,
     location: string,
@@ -204,10 +214,19 @@ async function searchWithSerpApiKey(
         // and retry once before giving up.
         const resolved = await resolveCanonicalLocation(location, apiKey);
         if (!resolved || resolved === normalizedLocation) {
+            // A genuine zero-match query is a real search outcome, not a
+            // failure — return an empty set so the UI renders its normal
+            // empty state instead of an error banner.
+            if (isNoResultsError(err)) return [];
             throw new Error(`Job search failed for location "${location}": ${(err as Error).message}`);
         }
         resolvedLocation = resolved;
-        allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey);
+        try {
+            allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey);
+        } catch (retryErr) {
+            if (isNoResultsError(retryErr)) return [];
+            throw retryErr;
+        }
     }
 
     // Google Jobs broadens its geographic radius the deeper you

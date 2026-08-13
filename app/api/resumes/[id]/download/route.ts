@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { getCurrentUser } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 
 export async function GET(
   _request: Request,
@@ -45,6 +46,6 @@ export async function GET(
     });
   } catch (error) {
     console.error("[api/resumes/[id]/download]", error);
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return NextResponse.json({ error: toUserMessage(error) }, { status: 500 });
   }
 }

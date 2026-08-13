@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@insforge/sdk/ssr";
+import { toUserMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (error) {
       return NextResponse.json(
-        { success: false, error: error.message ?? "Could not resend the code." },
+        { success: false, error: toUserMessage(error.message, "Could not resend the code.") },
         { status: error.statusCode ?? 400 },
       );
     }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+import { toUserMessage } from "@/lib/errors";
 
 // Mirrors the shape/response style app/api/auth/oauth/[provider]/route.ts
 // and app/(auth)/callback/route.ts already use for OAuth — this project's
@@ -31,7 +32,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (error) {
       return NextResponse.json(
-        { success: false, error: error.message ?? "Sign up failed." },
+        { success: false, error: toUserMessage(error.message, "Sign up failed.") },
         { status: error.statusCode ?? 400 },
       );
     }

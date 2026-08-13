@@ -1,4 +1,5 @@
 import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { isRateLimitError, rateLimitMessage } from "@/lib/errors";
 import type { Profile, ResumeAnalysis, ResumeIssueSeverity } from "@/types";
 import type { ResumeSection } from "@/types/resumeEditor";
 
@@ -116,9 +117,8 @@ Provide exactly 10 dimensions. "sections" should only include sections that actu
     return { success: true, analysis };
   } catch (error) {
     console.error("[lib/resumeQuality] runResumeQualityAnalysis", error);
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes("429") || /quota|rate limit/i.test(message)) {
-      return { success: false, error: "The AI service is rate-limited right now. Please wait a minute and try again." };
+    if (isRateLimitError(error)) {
+      return { success: false, error: rateLimitMessage() };
     }
     return { success: false, error: "Failed to analyze this résumé." };
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
 
 import { getPostLoginRedirectPath } from "@/lib/auth";
+import { toUserMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
   try {
@@ -19,7 +20,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     if (error || !data?.accessToken || !data.user) {
       return NextResponse.json(
-        { success: false, error: error?.message ?? "Invalid or expired code." },
+        { success: false, error: toUserMessage(error?.message, "Invalid or expired code.") },
         { status: error?.statusCode ?? 400 },
       );
     }
