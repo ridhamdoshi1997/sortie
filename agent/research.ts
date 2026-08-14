@@ -617,7 +617,7 @@ function buildFallbackDossier(
     industryTags: [],
     recentUpdates: [],
     leadershipTeam: [],
-    techStack: [...job.matched_skills, ...job.missing_skills].slice(0, 8),
+    techStack: [...(job.matched_skills ?? []), ...(job.missing_skills ?? [])].slice(0, 8),
     culture: [
       "Use the job posting language to infer how the team collaborates and what outcomes they value.",
     ],
@@ -627,8 +627,8 @@ function buildFallbackDossier(
         ? [`Lead with your experience in ${skills.join(", ")}.`]
         : ["Lead with the strongest examples from your recent work."],
     gapsToAddress:
-      job.missing_skills.length > 0
-        ? job.missing_skills.map(
+      (job.missing_skills ?? []).length > 0
+        ? (job.missing_skills ?? []).map(
             (skill) =>
               `Prepare an honest story for ${skill}, connecting it to adjacent experience you already have.`,
           )
