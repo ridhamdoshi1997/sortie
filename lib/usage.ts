@@ -25,7 +25,8 @@ export type UsageAction =
   | "trap_door_prediction"
   | "interrogation_plan"
   | "star_story_matching"
-  | "question_detail_generation";
+  | "question_detail_generation"
+  | "agent_message";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -103,6 +104,11 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // interview_question_bank: only a genuine miss (details not yet generated
   // for that question) consumes this.
   question_detail_generation: 20,
+  // Navigator (§O) — a conversational feature, same reasoning as
+  // bullet_rewrite: free-tier Gemini, no external cost, and a real
+  // conversation plausibly needs several turns in a row, so it gets a
+  // generous cap rather than a tight one-shot-feature cap.
+  agent_message: 30,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -124,6 +130,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   interrogation_plan: "interrogation plan syntheses",
   star_story_matching: "STAR story matches",
   question_detail_generation: "question deep-dives",
+  agent_message: "Navigator messages",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

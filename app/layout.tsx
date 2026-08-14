@@ -4,6 +4,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { GlassCursorGlow } from "@/components/ui/GlassCursorGlow";
 import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
+import { NavigatorLauncherLoader } from "@/components/agent/NavigatorLauncherLoader";
 
 export const metadata: Metadata = {
   title: "Sortie",
@@ -23,6 +24,7 @@ export default function RootLayout({
           <GlassCursorGlow />
           {children}
           <SettingsModalLoader />
+          <NavigatorLauncherLoader />
         </ThemeProvider>
       </body>
     </html>

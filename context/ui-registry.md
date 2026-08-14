@@ -18,6 +18,19 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Navigator (global AI copilot — page + floating launcher)
+
+File: `app/agent/page.tsx`, `components/agent/NavigatorChat.tsx`, `components/agent/NavigatorLauncher.tsx`, `components/agent/NavigatorLauncherLoader.tsx`, `lib/agentAssistant.ts`, `actions/agent.ts`
+Route: `/agent` (full page) + globally floating on every other authenticated route (mounted in `app/layout.tsx`)
+Last updated: 2026-08-14 (Phase 12 — new)
+
+**Pattern notes:**
+`NavigatorChat.tsx` is shared verbatim between the full page and the floating popover (`compact` prop just tightens the max-height) — both read/write the same persisted `agent_messages` history, unlike `DocumentChatEditor.tsx`'s ephemeral per-session local state. Bubble styling copies `DocumentChatEditor.tsx` exactly (`bg-accent-muted` user bubbles right-aligned, `border-agent bg-agent-light text-agent-dark` assistant bubbles left-aligned). An action-proposal reply (currently only `log_accomplishment`) renders as an inline card matching `EditorTab.tsx`'s `BulletDiffCard` (`border-agent/30 bg-agent-light/50`, agent-teal Accept button, muted-text Discard) — not `ConfirmDialog`'s red destructive treatment, since this is a suggestion to review, not something dangerous.
+
+**Global floating launcher**: `NavigatorLauncherLoader.tsx` mounted in `app/layout.tsx` right after `SettingsModalLoader`, same `dynamic(..., { ssr: false })` wrapper — reuse this exact pattern for any future globally-mounted, root-layout-level interactive element. `NavigatorLauncher.tsx` itself gates on `usePathname()` against a small public-route allowlist (`/`, `/login`, `/waitlist`, `/preview/*`) plus `/agent` itself, since every Navigator action requires `requireUser()` and this app has no shared authenticated-layout to read real auth state from at the root (confirmed — every page composes its own `<Navbar isAuthenticated />`).
+
+**Real bug fixed before shipping — list rendering.** A flat `<p>{content}</p>` collapses newlines, so a multi-item AI reply (e.g. "what can you do?") rendered as one dense paragraph instead of a scannable list — caught live via a side-by-side comparison against JobRight's Orion. Fixed with a `renderMessageContent()` helper in `NavigatorChat.tsx` that parses contiguous `- `/`• `-prefixed lines into a real `<ul className="list-disc pl-4">`, falling back to `whitespace-pre-line` prose for everything else — paired with an explicit system-prompt instruction (`lib/agentAssistant.ts`) to actually format multi-item replies that way in the first place. Any future AI-chat surface that might return lists should use this same parse-don't-trust-whitespace approach rather than a plain `<p>`, since no markdown-rendering library exists in this codebase and adding one wasn't warranted for this.
+
 ### Interview Prep Room tab (job-detail page restructure)
 
 File: `app/find-jobs/[id]/page.tsx` (new `interview-prep` tab entry, conditionally spliced into the `Tabs` array only when `application_status === "interviewing"`, set as `defaultTabId` in that case)
