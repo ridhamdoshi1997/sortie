@@ -14,6 +14,8 @@ import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesize
 import { OfferWorkspace } from "@/components/job-details/OfferWorkspace";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { InterviewPanel } from "@/components/job-details/InterviewPanel";
+import { TrapDoorPredictor } from "@/components/job-details/TrapDoorPredictor";
+import { InterrogationPlan } from "@/components/job-details/InterrogationPlan";
 import { listInterviewPanel } from "@/actions/interviewPanel";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
@@ -108,6 +110,8 @@ export default async function JobDetailsPage({ params }: Props) {
   // provider a non-admin can no longer actually use.
   const modelValue = resolveProvider(profile?.preferred_model, user.email);
 
+  const isInterviewing = job.application_status === "interviewing";
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -140,6 +144,7 @@ export default async function JobDetailsPage({ params }: Props) {
 
         <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
           <Tabs
+            defaultTabId={isInterviewing ? "interview-prep" : undefined}
             tabs={[
               {
                 id: "overview",
@@ -178,18 +183,6 @@ export default async function JobDetailsPage({ params }: Props) {
 
                     <HiringProcess items={job.hiring_process ?? []} />
 
-                    {job.application_status === "interviewing" && (
-                      <>
-                        <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
-                        <QuestionBankPanel
-                          initialCompany={company}
-                          initialTitle={job.title ?? ""}
-                          initialSeniority={job.seniority_level ?? ""}
-                          locked
-                        />
-                      </>
-                    )}
-
                     {job.application_status === "offered" && (
                       <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
                     )}
@@ -226,6 +219,43 @@ export default async function JobDetailsPage({ params }: Props) {
                   </div>
                 ),
               },
+              ...(isInterviewing
+                ? [
+                    {
+                      id: "interview-prep",
+                      label: "Interview Prep Room",
+                      content: (
+                        // Risk -> Context -> Defense -> Offense reading order
+                        // (agy research, 2026-08-14). DOM order itself is
+                        // sidebar-first (Trap Door + Panel), then main
+                        // (Question Bank + Interrogation Plan) — CSS `order`
+                        // only changes VISUAL layout order, not the
+                        // accessibility-tree/DOM order a screen reader or
+                        // text-extraction follows, so getting Risk-first for
+                        // ALL users (not just sighted-desktop ones) requires
+                        // the real element order to already be risk-first.
+                        // Mobile then needs no reordering at all (DOM order =
+                        // visual order); only desktop needs `md:order-*` to
+                        // flip sidebar visually onto the right 35% column.
+                        <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_22rem] md:items-start">
+                          <div className="flex flex-col gap-6 md:order-2">
+                            <TrapDoorPredictor jobId={job.id} predictions={job.trap_door_predictions} />
+                            <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
+                          </div>
+                          <div className="flex flex-col gap-6 md:order-1">
+                            <QuestionBankPanel
+                              initialCompany={company}
+                              initialTitle={job.title ?? ""}
+                              initialSeniority={job.seniority_level ?? ""}
+                              locked
+                            />
+                            <InterrogationPlan jobId={job.id} plan={job.interrogation_plan} />
+                          </div>
+                        </div>
+                      ),
+                    },
+                  ]
+                : []),
               {
                 id: "offer-tools",
                 label: "Offer Tools",

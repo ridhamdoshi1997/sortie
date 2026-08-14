@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState, useTransition } from "react";
-import { BookOpen, Sparkles } from "lucide-react";
+import { createPortal } from "react-dom";
+import { BookOpen, Check, Copy, Sparkles, X } from "lucide-react";
 
-import { getOrGenerateQuestionBank } from "@/actions/interviewQuestions";
-import type { QuestionBank, QuestionCategory } from "@/lib/interviewQuestions";
+import { getOrGenerateQuestionBank, getQuestionDetails } from "@/actions/interviewQuestions";
+import type { InterviewQuestion, QuestionBank, QuestionCategory, QuestionDetails } from "@/lib/interviewQuestions";
 
 const CATEGORY_LABELS: Record<QuestionCategory, string> = {
   behavioral: "Behavioral",
@@ -20,6 +21,11 @@ const CATEGORY_LABELS: Record<QuestionCategory, string> = {
 // §N/§O). Cache-backed (actions/interviewQuestions.ts) — most lookups after
 // the first for any given (company, role_family, seniority) are instant,
 // free reads, not a new AI call.
+//
+// Category pills (progressive disclosure) + a Study View modal for each
+// question's deep content added 2026-08-14, per agy research: don't show
+// 10-15 questions flat, and don't inline-expand a card into a wall of
+// tips/code/text — a focused modal reading view keeps the list scannable.
 export function QuestionBankPanel({
   initialCompany = "",
   initialTitle = "",
@@ -37,6 +43,8 @@ export function QuestionBankPanel({
   const [bank, setBank] = useState<QuestionBank | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
+  const [activeCategory, setActiveCategory] = useState<QuestionCategory | "all">("all");
+  const [studyIndex, setStudyIndex] = useState<number | null>(null);
   const [loading, startTransition] = useTransition();
 
   function runLookup(): void {
@@ -53,6 +61,7 @@ export function QuestionBankPanel({
         return;
       }
       setBank(result.bank);
+      setActiveCategory("all");
     });
   }
 
@@ -65,6 +74,12 @@ export function QuestionBankPanel({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const presentCategories = bank
+    ? (Array.from(new Set(bank.questions.map((q) => q.category))) as QuestionCategory[])
+    : [];
+  const visibleQuestions =
+    bank && activeCategory !== "all" ? bank.questions.filter((q) => q.category === activeCategory) : (bank?.questions ?? []);
 
   return (
     <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
@@ -141,25 +156,323 @@ export function QuestionBankPanel({
             <p className="text-xs text-agent-dark">
               Based on {bank.company}&apos;s known industry, tech stack, and typical expectations for a{" "}
               {bank.roleFamily} role{bank.seniority !== "unspecified" ? ` at ${bank.seniority} level` : ""}.
-              No source claims to have leaked or sourced these from a real interview.
+              No source claims to have leaked or sourced these from a real interview. Click any question
+              for a full guided study card.
             </p>
           </div>
 
+          {presentCategories.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                type="button"
+                onClick={() => setActiveCategory("all")}
+                className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                  activeCategory === "all"
+                    ? "bg-accent-light text-accent"
+                    : "border border-border text-text-secondary hover:text-text-primary"
+                }`}
+              >
+                All
+              </button>
+              {presentCategories.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setActiveCategory(cat)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    activeCategory === cat
+                      ? "bg-accent-light text-accent"
+                      : "border border-border text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  {CATEGORY_LABELS[cat]}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex flex-col gap-2">
-            {bank.questions.map((q, i) => (
-              <div key={i} className="rounded-xl border border-border bg-surface-secondary p-4">
-                <div className="mb-1.5 flex items-center justify-between gap-2">
-                  <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
-                    {CATEGORY_LABELS[q.category]}
-                  </span>
-                </div>
-                <p className="text-sm font-medium leading-6 text-text-primary">{q.question}</p>
-                <p className="mt-1.5 text-xs text-text-muted">{q.rationale}</p>
-              </div>
-            ))}
+            {visibleQuestions.map((q) => {
+              const index = bank.questions.indexOf(q);
+              return (
+                <button
+                  key={index}
+                  type="button"
+                  onClick={() => setStudyIndex(index)}
+                  className="rounded-xl border border-border bg-surface-secondary p-4 text-left transition-colors hover:border-accent"
+                >
+                  <div className="mb-1.5 flex items-center justify-between gap-2">
+                    <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                      {CATEGORY_LABELS[q.category]}
+                    </span>
+                    {q.details !== undefined && (
+                      <span className="text-[10px] font-medium text-accent">Study card ready</span>
+                    )}
+                  </div>
+                  <p className="text-sm font-medium leading-6 text-text-primary">{q.question}</p>
+                  <p className="mt-1.5 text-xs text-text-muted">{q.rationale}</p>
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
+
+      {bank && studyIndex !== null && (
+        <StudyView
+          bankId={bank.id}
+          questionIndex={studyIndex}
+          question={bank.questions[studyIndex]}
+          onClose={() => setStudyIndex(null)}
+          onDetailsLoaded={(details) => {
+            setBank((prev) => {
+              if (!prev) return prev;
+              const questions = [...prev.questions];
+              questions[studyIndex] = { ...questions[studyIndex], details };
+              return { ...prev, questions };
+            });
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function StudyView({
+  bankId,
+  questionIndex,
+  question,
+  onClose,
+  onDetailsLoaded,
+}: {
+  bankId: string;
+  questionIndex: number;
+  question: InterviewQuestion;
+  onClose: () => void;
+  onDetailsLoaded: (details: QuestionDetails) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [loading, startTransition] = useTransition();
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (question.details === undefined) {
+      startTransition(async () => {
+        const result = await getQuestionDetails(bankId, questionIndex);
+        if (!result.success) {
+          setError(result.error);
+          return;
+        }
+        onDetailsLoaded(result.details);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function handleCopy(code: string): void {
+    navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  const details = question.details;
+
+  // Portaled to document.body — this panel can be mounted from deep inside
+  // a job-details page's `.fade-in-up`-animated tab tree (app/globals.css),
+  // and a `transform`-bearing ancestor with `animation-fill-mode: both`
+  // permanently establishes a new containing block, which silently breaks
+  // `position: fixed` for any descendant (confirmed live: the backdrop
+  // rendered at the ancestor's scroll-relative offset instead of the
+  // viewport). Portaling escapes that regardless of where this is mounted
+  // from — same fix class this codebase already uses for portal-clipping
+  // bugs elsewhere (see ui-rules.md / the Dropdown component's history).
+  return createPortal(
+    <div
+      className="animate-in fade-in-0 fixed inset-0 z-50 flex justify-end bg-black/40 backdrop-blur-sm duration-200"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="animate-in slide-in-from-right-8 flex h-full w-full max-w-xl flex-col overflow-y-auto bg-surface p-6 shadow-2xl duration-200 ease-out"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+              {CATEGORY_LABELS[question.category]}
+            </span>
+            <h2 className="mt-2 text-lg font-semibold leading-6 text-text-primary">{question.question}</h2>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface-secondary hover:text-text-primary"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <p className="mt-3 text-sm text-text-secondary">{question.rationale}</p>
+
+        {loading && <p className="mt-6 text-sm text-text-muted">Building your study card...</p>}
+        {error && <p className="mt-6 text-xs text-error">{error}</p>}
+
+        {details && (
+          <div className="mt-6 flex flex-col gap-4">
+            {details.type === "technical" && (
+              <>
+                <InsiderTipsBlock
+                  items={[
+                    ["What they're really testing", details.insiderTips.whatTheyTest],
+                    ["Common pitfall", details.insiderTips.commonPitfall],
+                  ]}
+                  bullets={details.insiderTips.edgeCases.length > 0 ? { label: "Edge cases", items: details.insiderTips.edgeCases } : undefined}
+                />
+                <ApproachSteps steps={details.approachSteps} />
+                <div className="rounded-xl border border-border bg-surface-secondary p-4">
+                  <div className="mb-2 flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                      AI reference implementation ({details.solution.language})
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => handleCopy(details.solution.code)}
+                      className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-[11px] font-medium text-text-secondary hover:bg-surface"
+                    >
+                      {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      {copied ? "Copied" : "Copy"}
+                    </button>
+                  </div>
+                  <pre className="overflow-x-auto rounded-lg bg-surface p-3 text-xs leading-5 text-text-primary">
+                    <code>{details.solution.code}</code>
+                  </pre>
+                  <p className="mt-2 text-xs text-text-muted">
+                    Time: {details.solution.timeComplexity} · Space: {details.solution.spaceComplexity}
+                  </p>
+                </div>
+              </>
+            )}
+
+            {details.type === "system_design" && (
+              <>
+                <InsiderTipsBlock
+                  items={[
+                    ["What they're really testing", details.insiderTips.whatTheyTest],
+                    ["Common pitfall", details.insiderTips.commonPitfall],
+                  ]}
+                />
+                <ApproachSteps steps={details.approachSteps} />
+                <div className="rounded-xl border border-border bg-surface-secondary p-4">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                    AI reference design walkthrough
+                  </p>
+                  <p className="text-sm leading-6 text-text-primary">{details.solutionOutline}</p>
+                </div>
+              </>
+            )}
+
+            {(details.type === "behavioral" || details.type === "culture_fit") && (
+              <>
+                <InsiderTipsBlock
+                  items={[["What they're looking for", details.insiderTips.whatTheyLookFor]]}
+                  bullets={
+                    details.insiderTips.redFlags.length > 0
+                      ? { label: "Red flags to avoid", items: details.insiderTips.redFlags }
+                      : undefined
+                  }
+                />
+                <div className="rounded-xl border border-border bg-surface-secondary p-4">
+                  <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                    Structuring your answer — AI strategy guide
+                  </p>
+                  <p className="text-sm font-medium text-text-primary">{details.starFramework.situationPrompt}</p>
+                  <p className="mt-3 text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Make sure your Action highlights
+                  </p>
+                  <ul className="mt-1 flex flex-col gap-1.5 text-sm text-text-primary">
+                    {details.starFramework.actionStrategies.map((s, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-3 text-xs font-medium uppercase tracking-wide text-text-muted">
+                    Quantify your Result with
+                  </p>
+                  <ul className="mt-1 flex flex-col gap-1.5 text-sm text-text-primary">
+                    {details.starFramework.impactMetrics.map((s, i) => (
+                      <li key={i} className="flex gap-2">
+                        <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-accent" />
+                        <span>{s}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </>
+            )}
+
+            <p className="text-xs text-text-muted">
+              Generated by Sortie AI. This is a synthesized reference based on common industry patterns
+              for this role, intended for practice purposes — not a verified real answer key.
+            </p>
+          </div>
+        )}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+function InsiderTipsBlock({
+  items,
+  bullets,
+}: {
+  items: [string, string][];
+  bullets?: { label: string; items: string[] };
+}) {
+  return (
+    <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
+      <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
+        Insider tips
+      </p>
+      {items.map(([label, value]) => (
+        <p key={label} className="mt-1.5 text-sm text-agent-dark">
+          <span className="font-medium">{label}:</span> {value}
+        </p>
+      ))}
+      {bullets && (
+        <div className="mt-2">
+          <p className="text-xs font-medium text-agent-dark">{bullets.label}:</p>
+          <ul className="mt-1 flex flex-col gap-1 text-xs text-agent-dark">
+            {bullets.items.map((b, i) => (
+              <li key={i}>• {b}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ApproachSteps({ steps }: { steps: string[] }) {
+  return (
+    <div className="rounded-xl border border-border bg-surface-secondary p-4">
+      <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">The approach</p>
+      <ol className="flex flex-col gap-2">
+        {steps.map((step, i) => (
+          <li key={i} className="flex gap-3">
+            <span className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full bg-accent-light text-[11px] font-semibold text-accent">
+              {i + 1}
+            </span>
+            <span className="text-sm leading-5 text-text-primary">{step}</span>
+          </li>
+        ))}
+      </ol>
+    </div>
   );
 }

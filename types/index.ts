@@ -162,6 +162,27 @@ export interface Job {
   // imports lib/evaluator.ts).
   leverage_synthesis: LeverageSynthesis | null;
   leverage_synthesized_at: string | null;
+  // Trap Door Predictor — tough/uncomfortable questions grounded only in
+  // this job's own already-stored research, see lib/trapDoorPredictor.ts's
+  // header comment. Local shape mirroring its TrapDoorPredictionResult.
+  trap_door_predictions: {
+    predictions: {
+      question: string;
+      category: "instability_signal" | "demanding_culture" | "scope_ambiguity" | "strategy_shift" | "unclear_from_available_data";
+      whyLikely: string;
+    }[];
+    confidenceNote: string;
+  } | null;
+  trap_door_predicted_at: string | null;
+  // The Interrogation Plan — questions to ASK the interviewers, synthesized
+  // from strategic_moat + interview_panel_members, see
+  // lib/interrogationPlan.ts's header comment. Local shape mirroring its
+  // InterrogationPlanResult.
+  interrogation_plan: {
+    generalQuestions: string[];
+    perInterviewer: { name: string; questions: string[]; rationale: string }[];
+  } | null;
+  interrogation_plan_generated_at: string | null;
   // Salary Tax & Take-Home Calculator inputs — see lib/taxCalculator.ts's
   // header comment for scope/accuracy caveats. Same avoid-circular-import
   // precedent as OfferDetails above (taxCalculator.ts itself has no deps

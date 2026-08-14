@@ -6,6 +6,8 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
+import { StarStoryMatrix } from "@/components/interview/StarStoryMatrix";
+import { listStarStories } from "@/actions/starStories";
 import { formatDate } from "@/lib/utils";
 
 type InterviewingJobRow = {
@@ -35,6 +37,9 @@ export default async function InterviewPage() {
     .returns<InterviewingJobRow[]>();
 
   const jobs = interviewingJobs ?? [];
+
+  const starStoriesResult = await listStarStories();
+  const starStories = starStoriesResult.data ?? [];
 
   return (
     <>
@@ -89,6 +94,8 @@ export default async function InterviewPage() {
         </div>
 
         <QuestionBankPanel />
+
+        <StarStoryMatrix initialStories={starStories} />
       </main>
     </>
   );

@@ -18,10 +18,53 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Interview Prep Room tab (job-detail page restructure)
+
+File: `app/find-jobs/[id]/page.tsx` (new `interview-prep` tab entry, conditionally spliced into the `Tabs` array only when `application_status === "interviewing"`, set as `defaultTabId` in that case)
+Last updated: 2026-08-14 (Phase 12 — new)
+
+**Pattern notes:**
+2-column "Command Center" layout researched via `agy`: `grid grid-cols-1 gap-6 md:grid-cols-[1fr_22rem] md:items-start`, main content (`QuestionBankPanel` + `InterrogationPlan`) at 65%-equivalent width, sidebar (`TrapDoorPredictor` + `InterviewPanel`) at a fixed 22rem. **Reading-order rule, learned the hard way**: CSS `order` utilities (`md:order-1`/`md:order-2`) only change *visual* layout order, never DOM/accessibility-tree order — a screen reader or any DOM-order-based extraction still encounters elements in literal JSX order. To get a real Risk → Context → Defense → Offense reading order for ALL users (not just sighted desktop ones), the sidebar div (Trap Door + Panel) must be written FIRST in JSX/DOM, with `md:order-2` only flipping it visually onto the right column on desktop; the main div goes second in DOM with `md:order-1`. On mobile (single column) this needs zero extra reordering since DOM order already matches the desired visual order. Get this backwards (order classes on divs in "visual" order instead of "DOM" order) and it'll still *look* right on desktop while reading wrong to every other consumer — verify with `get_page_text`/`read_page`, not just a screenshot, when building any risk-prioritized layout like this again.
+
+### TrapDoorPredictor
+
+File: `components/job-details/TrapDoorPredictor.tsx`, `lib/trapDoorPredictor.ts`
+Route: `app/find-jobs/[id]/page.tsx`'s "Interview Prep Room" tab (sidebar)
+Last updated: 2026-08-14 (Phase 12 — new)
+
+**Pattern notes:**
+Same opt-in button-triggered card shape as `StrategicMoatBriefing.tsx` (header + refresh/generate button + `border-l-2 border-error bg-error/10` confidence-note callout instead of the usual agent-teal one, since this is specifically risk content — category badges use `TRAP_DOOR_CATEGORY_LABELS`). The action (`getTrapDoorPredictions`, `actions/jobs.ts`) auto-chains `researchCompany` internally if `company_research` doesn't exist yet rather than blocking — see the "auto-chain prerequisites" note under InterrogationPlan below, same reasoning applies here.
+
+### InterrogationPlan
+
+File: `components/job-details/InterrogationPlan.tsx`, `lib/interrogationPlan.ts`
+Route: `app/find-jobs/[id]/page.tsx`'s "Interview Prep Room" tab (main column)
+Last updated: 2026-08-14 (Phase 12 — new)
+
+**Pattern notes:**
+Same opt-in card shape again, grouped output (`generalQuestions` list + one card per `perInterviewer` entry). **Auto-chain prerequisites, per explicit user direction (2026-08-14)**: the button is NEVER hard-disabled — earlier it was disabled + explained-with-copy when neither `strategic_moat` nor a researched panelist existed yet, but the user corrected this: "if it requires ... and there was no call, you can automatically call it unless it cost us." The action (`getInterrogationPlan`) now auto-runs `researchStrategicMoat` internally when `strategic_moat` is missing, persists it, then proceeds — justified because that call shares the same free-primary/paid-fallback cost profile already accepted elsewhere (Jina Reader first, Perplexity only if blocked). The click itself still stays manual — nothing auto-fires on mount. Apply this same "auto-chain the free-primary-path prerequisite, don't block the user with a redirect-elsewhere message" pattern to any future feature with a soft data dependency on another opt-in AI feature, as long as the dependency's cost profile is the same free-primary one — don't apply it to anything whose primary path is itself paid (e.g. Insider Connections).
+
+### StarStoryMatrix
+
+File: `components/interview/StarStoryMatrix.tsx`, `lib/starStoryMatcher.ts`, `actions/starStories.ts`
+Route: `app/interview/page.tsx` (global page, below `QuestionBankPanel`)
+Last updated: 2026-08-14 (Phase 12 — new)
+
+**Pattern notes:**
+Two independent halves in one card: a zero-AI CRUD story list (add/edit/delete via `SectionModal.tsx`, same glass-modal recipe as `AddAccomplishmentModal.tsx`) and an ephemeral on-demand matcher (company/role/seniority inputs, same look as `QuestionBankPanel`'s unlocked search form) that is NOT persisted to the DB — match results are a function of the user's current mutable story set, so they're returned straight to the client per-request rather than cached. `star_stories` is a new per-user-owned table (mirrors `accomplishments`' RLS/shape exactly), with an optional nullable `accomplishment_id` FK for provenance only (no AI auto-fill from an accomplishment into STAR fields in v1).
+
+### QuestionBankPanel — Study View (deep per-question guidance)
+
+File: `components/interview/QuestionBankPanel.tsx`, `lib/interviewQuestions.ts` (new `QuestionDetails` discriminated union + `generateQuestionDetails`), `actions/interviewQuestions.ts` (new `getQuestionDetails`)
+Last updated: 2026-08-14 (Phase 12 — major update, per direct user request after seeing a JobRight per-question detail screenshot)
+
+**Pattern notes:**
+Question cards are now clickable (category-pill-filterable list, `presentCategories` computed from the actual bank), opening a right-side "Study View" panel — `fixed inset-0 z-50 flex justify-end` backdrop + `slide-in-from-right-8 animate-in` panel, same visual recipe as `ConfirmDialog.tsx`'s modal chrome adapted to a drawer shape. Content branches on `QuestionDetails.type`: `technical` gets Insider Tips + a numbered Approach + a code "AI reference implementation" (plain `<pre><code>`, no syntax-highlighter dependency added) with a copy button; `system_design` gets the same tips/approach but a prose "AI reference design walkthrough" instead of code; `behavioral`/`culture_fit` get Insider Tips + a STAR framework outline ("Structuring your answer — AI strategy guide") rather than a canned model answer. Every section is explicitly labeled AI-generated/reference/strategy-guide, never "verified," per `agy` research on honest labeling — always keep the "not a verified real answer key" disclaimer line if this pattern gets reused. Details generate lazily (only on first expand, one small Gemini call per question, addressed by array index not a new id column) and persist back into the same shared `interview_question_banks.questions` jsonb row, so every subsequent user who expands that exact question gets a free cache-hit read. **Real bug, caught live, fixed before shipping**: the panel is `position: fixed`, but it's mounted deep inside this page's `.fade-in-up`-animated Tabs tree — any ancestor with `animation-fill-mode: both` and a `transform` in its keyframes permanently establishes a new containing block, which silently breaks `fixed` positioning for descendants (confirmed via `getBoundingClientRect()` — the backdrop rendered at the ancestor's scroll offset, not the viewport). Fixed with `createPortal(..., document.body)`. **Any future `position: fixed` element mounted anywhere inside a `.fade-in-up`-wrapped tree needs the same portal treatment** — this bug class is very likely still present in any pre-existing modal nested the same way (e.g. `ConfirmDialog` usages on this exact page), not audited/fixed here.
+
 ### QuestionBankPanel (Cached AI Interview Question Bank)
 
 File: components/interview/QuestionBankPanel.tsx, lib/interviewQuestions.ts, actions/interviewQuestions.ts
-Route: app/interview/page.tsx (locked=false, editable search), app/find-jobs/[id]/page.tsx (locked=true, pre-filled embed, gated to application_status === "interviewing" alongside InterviewPanel)
+Route: app/interview/page.tsx (locked=false, editable search), app/find-jobs/[id]/page.tsx (locked=true, pre-filled embed, inside the "Interview Prep Room" tab as of Phase 12)
 Last updated: 2026-08-13 (Phase 11 — new)
 
 **Pattern notes:**

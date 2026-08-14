@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { Plus, Sparkles, Trash2, Users } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Sparkles, Trash2, Users } from "lucide-react";
 
 import {
   addInterviewPanelMember,
@@ -31,6 +31,10 @@ export function InterviewPanel({ jobId, company, members }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InterviewPanelMemberRow | null>(null);
   const [researchingId, setResearchingId] = useState<string | null>(null);
+  // Collapsed by default — this card sits in a narrower sidebar column
+  // alongside Trap Door Predictor now (Interview Prep Room tab), where an
+  // always-expanded background block per panelist gets visually heavy fast.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleAdd(): void {
@@ -149,6 +153,20 @@ export function InterviewPanel({ jobId, company, members }: Props) {
                         ? "Refresh"
                         : "Research background"}
                   </button>
+                  {member.researched_background && (
+                    <button
+                      type="button"
+                      onClick={() => setExpandedId((id) => (id === member.id ? null : member.id))}
+                      aria-label={expandedId === member.id ? "Hide background" : "Show background"}
+                      className="rounded-lg p-1.5 text-text-muted transition-colors hover:bg-surface hover:text-text-primary"
+                    >
+                      {expandedId === member.id ? (
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      ) : (
+                        <ChevronDown className="h-3.5 w-3.5" />
+                      )}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => setDeleteTarget(member)}
@@ -160,7 +178,7 @@ export function InterviewPanel({ jobId, company, members }: Props) {
                 </div>
               </div>
 
-              {member.researched_background && (
+              {member.researched_background && expandedId === member.id && (
                 <div className="mt-3 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
                   <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
                     Agent read

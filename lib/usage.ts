@@ -21,7 +21,11 @@ export type UsageAction =
   | "strategic_moat"
   | "interviewer_research"
   | "leverage_synthesis"
-  | "interview_question_bank";
+  | "interview_question_bank"
+  | "trap_door_prediction"
+  | "interrogation_plan"
+  | "star_story_matching"
+  | "question_detail_generation";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -80,6 +84,25 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // determined user could otherwise probe many company/role/seniority
   // combinations in a row to force fresh generations.
   interview_question_bank: 5,
+  // Same shape/cost as rejection_intelligence/leverage_synthesis — one
+  // structured call on already-stored job data (company research, strategic
+  // moat, scope-mismatch flag), no external fetch of its own.
+  trap_door_prediction: 5,
+  // Same profile as trap_door_prediction — synthesizes already-stored
+  // strategic_moat + interview_panel_members data, no new external lookup.
+  interrogation_plan: 5,
+  // One structured call over the user's own star_stories plus a question
+  // bank list (that half is separately metered by interview_question_bank
+  // on a real cache miss) — same cost profile as rejection_intelligence.
+  star_story_matching: 5,
+  // Lazy per-question deep study content (lib/interviewQuestions.ts's
+  // generateQuestionDetails) — a small, focused call per question, cheaper
+  // than a full bank generation, and a natural per-click action while
+  // studying (a candidate might expand many questions in one session).
+  // Free-tier Gemini, shares the same cache-hit-is-free-read shape as
+  // interview_question_bank: only a genuine miss (details not yet generated
+  // for that question) consumes this.
+  question_detail_generation: 20,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -97,6 +120,10 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   interviewer_research: "interviewer background lookups",
   leverage_synthesis: "leverage syntheses",
   interview_question_bank: "interview question bank generations",
+  trap_door_prediction: "trap door predictions",
+  interrogation_plan: "interrogation plan syntheses",
+  star_story_matching: "STAR story matches",
+  question_detail_generation: "question deep-dives",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

@@ -201,7 +201,6 @@ Full width layout on all pages. No sidebar.
 - Scheduled agent runs — manually triggered only
 - Multiple saved resume versions — one active resume per user at a time
 - Payment or subscription system
-- Browser extension
 
 ---
 
