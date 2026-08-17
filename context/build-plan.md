@@ -951,7 +951,7 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | Job-description decoder (must-have vs. padding) | 🆕 | Brainstorm |
 | "Should I apply?" quick verdict | 🆕 | Brainstorm |
 | Skills-first evaluation (skills over titles) | 🆕 | Built to Last (bet #3) |
-| **Correctable skill tags — human-in-the-loop** | 🆕 | Competitor teardown — see note below |
+| **Correctable skill tags — human-in-the-loop** | ✅ | Competitor teardown — see note below. **Marker corrected 2026-08-17**: confirmed already shipped (`actions/jobs.ts`'s `correctSkillTag`, `components/job-details/Qualification.tsx`) — this row was stale at 🆕 for at least one full session. §Q2 (below) now builds correction *memory* on top of this existing action |
 | Job requirements split into **Required** vs **Preferred** | 🆕 | Competitor teardown |
 | Match sub-scores (experience / skill / industry, scored separately) | 🆕 | Competitor teardown |
 | **Conversational per-job AI chat ("Ask Orion")** — evidence-cited breakdown (Relevant Experience / Seniority / Education / Core Skills aligned vs. not-aligned, each citing the candidate's actual employers) + free-text follow-up + regenerate | 🆕 | Teardown (2026-07-21 deep pass). Genuinely richer than a static one-liner — reuses the chat-panel pattern we already built for `DocumentChatEditor`, just pointed at job-fit Q&A instead of document revision |
@@ -1220,6 +1220,8 @@ User-directed batch, explicitly framed around data moat / workflow moat / switch
 
 ### Q1. Structured Private Career Timeline / Graph
 
+**✅ First slice shipped 2026-08-17 (Phase 14)**: `application_events`/`interview_events`/`compensation_events` all built exactly as scoped below, plus the `JobActionBar` note prompt and the `CareerTimeline` flat-view toggle. `career_roles` (below) deliberately NOT built this slice — see the RESUME.md/progress-tracker.md Phase 14 entries for the reasoning. Nothing below is stale, this is just the current status marker.
+
 **v1 scope**: promote the implicit, scattered event data already spread across `jobs`/`accomplishments` into one queryable spine, not a general-purpose graph DB — a graph is overkill for a single-user linear-ish history.
 
 **New tables**:
@@ -1233,6 +1235,8 @@ User-directed batch, explicitly framed around data moat / workflow moat / switch
 **Backend**: `actions/careerEvents.ts` (new) — `logApplicationEvent`, `logInterviewEvent`, `logCompensationEvent`, all plain CRUD, no AI, mirrors `actions/accomplishments.ts`'s zero-AI pattern exactly. `setApplicationStatus` (existing action, wherever the Kanban drag-drop calls into) gets one added line: insert the matching `application_events` row in the same transaction/call.
 
 ### Q2. Correction Memory → Adaptive Fit Scoring
+
+**✅ Shipped 2026-08-17 (Phase 14)**, same session as Q1 — built exactly as scoped below. See `progress-tracker.md`'s Phase 14 entry for the live-verification detail (read side confirmed live, write side confirmed via code review after repeated browser-automation flakiness, not a code gap).
 
 **v1 scope**: log every skill-tag correction, then bias (not silently override) future evaluations for the same normalized role family.
 
@@ -1417,6 +1421,29 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Account deletion / data erasure | ✅ | Already built (`actions/account.ts`'s `deleteAccount()`, wired into Settings' Danger Zone), a real `resumes`-table gap fixed 2026-08-17 |
 | Multi-tenancy isolation test | ✅ done 2026-08-17 | Ground-truth `pg_class.relrowsecurity` + `pg_policies` audit — all 13 tables RLS-enabled, no cross-user gaps found |
 | Error monitoring (Sentry) | 🆕 | Launch Playbook |
+
+## R. Internal Admin Panel (researched 2026-08-17, not yet built)
+
+**Deliberately sequenced last** — user decision 2026-08-17: log the design now, build it only after the rest of the remaining feature/bug backlog is worked through. Two independent research passes (Perplexity, then a live agy cross-check) produced genuinely different architectures, not just a scope trim — read both takeaways before building.
+
+**Perplexity's pass** (generic SaaS-admin-panel best practices): global user search + account header, usage/cap controls, `is_admin`-on-`profiles` + RLS-based admin auth, full audit-log table, read-only user impersonation with a banner/timeout, a support-ticket system, a knowledge base, `/admin` route group with RBAC + MFA. Solid instincts, but sized for a team with a support function, not this project's current stage.
+
+**agy's independent cross-check** (grounded directly in this app's real InsForge/Next.js stack, not generic advice) pushed back hard on execution, not just scope:
+- **Auth**: skip `is_admin` + RLS entirely — a separate InsForge client instantiated with the **service-role key** bypasses RLS completely for everything under `/admin`, so user-facing RLS policies never have to know admin logic exists.
+- **Impersonation → "God-Mode Read-Only View"**: don't mint fake sessions (real session-pollution risk in Next.js App Router) — just build `/admin/users/[userId]` as a raw-data viewer (their `jobs`/`resumes`/`agent_runs`/`agent_messages`) via the service-role client. ~90% of the debugging value, ~10% of the effort.
+- **Nav/AI-usage front and center**: given OpenRouter's ~15 req/min ceiling is the real operational risk today, a "Top Users by AI runs (24h)" leaderboard on the admin home page is the fastest way to catch someone burning the shared rate limit.
+- Originally recommended killing the audit log and hardcoding a single `ADMIN_EMAIL` — both **overridden by the user this session**: this needs to work for someone else running it while the founder is away, and multi-person access without an audit trail is a real accountability gap, not a nice-to-have.
+
+**Actual v1 architecture to build (this session's synthesis, supersedes agy's single-admin assumption)**:
+- **`admin_users`** (id, user_id FK `auth.users`, role enum `owner`/`admin`/`support_readonly`, created_at) — a real table, not an env-var email check, so a second person can be granted access without a redeploy. `/admin` layout checks the current session's `user_id` against this table.
+- **`admin_audit_log`** (id, admin_user_id FK `admin_users`, action text, target_user_id FK `auth.users` nullable, target_table text nullable, target_id uuid nullable, before jsonb nullable, after jsonb nullable, note text nullable, created_at) — every admin write action logs a row. Kept in deliberately, against agy's original advice, once multi-admin is real.
+- **`admin_notes`** (id, user_id FK `auth.users`, note text, created_at) — agy's original minimal design, still right as-is.
+- **`profiles.is_suspended` / `profiles.custom_usage_multiplier`** — the actual intervention levers (suspend an abuser, dial a user's rate-limit multiplier up/down).
+- **`profiles.feature_flags`** (jsonb) — per-user experimental-feature toggles (Nav, voice interview, future rollouts), a lever both research passes independently flagged as valuable.
+- **UI, deliberately real** (user override of agy's "unstyled data tables" minimalism — this needs to be usable by someone who isn't the founder): a real nav shell, a dashboard home with actual charts (signups over time, AI usage over time, the top-users leaderboard, suspicious-usage flags), a searchable/filterable/sortable user table, and a per-user page with tabs — Overview / Usage / Documents / Career / Notes / Audit. Built with this app's existing design tokens (`ui-tokens.md`/`ui-rules.md`) so it reads as native, not a bolted-on generic admin theme.
+- **Structured for future integrations, per user request**: route-grouped modules under `/admin` (`/admin/users`, `/admin/usage`, `/admin/billing` — stub until §J ships, `/admin/integrations`), each self-contained, sharing one `lib/admin/` data layer (the service-role client + common queries) so a new module is additive, not a rewrite.
+
+**Sizing**: bigger than agy's original 3-session minimal plan once multi-admin + audit + real UI + module structure are added back in — treat as its own multi-session build when picked up, not a quick add-on.
 
 ## L. B2B / white-label (the durable revenue destination)
 

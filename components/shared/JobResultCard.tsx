@@ -227,12 +227,12 @@ export function JobResultCard({
           </div>
         )}
 
-        {/* Agent read — reserved teal treatment for AI-generated content,
-            never used for anything else in the app */}
+        {/* AI Navigator reads — reserved teal treatment for AI-generated
+            content, never used for anything else in the app */}
         {job.match_reason && (
           <div className="col-span-2 rounded-r-lg border-l-2 border-agent bg-agent-light px-3.5 py-2.5">
             <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-agent-dark">
-              Agent read
+              AI Navigator reads
             </p>
             <p className="text-xs leading-5 text-agent-dark">{job.match_reason}</p>
           </div>

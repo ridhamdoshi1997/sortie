@@ -191,7 +191,7 @@ border-left: 2px solid var(--color-agent)
 border-radius: 0 8px 8px 0 (rounded only on the non-border side)
 background: bg-agent-light
 padding: px-4 py-3
-label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark, reading "Agent read"
+label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark, reading "AI Navigator reads" (renamed from "Agent read" 2026-08-17, per direct user request)
 body: text-sm text-agent-dark
 ```
 

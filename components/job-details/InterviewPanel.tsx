@@ -181,7 +181,7 @@ export function InterviewPanel({ jobId, company, members }: Props) {
               {member.researched_background && expandedId === member.id && (
                 <div className="mt-3 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
                   <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-                    Agent read
+                    AI Navigator reads
                   </p>
                   <p className="text-sm text-agent-dark">{member.researched_background.summary}</p>
                   {member.researched_background.priorCompanies.length > 0 && (

@@ -178,7 +178,7 @@ Standard pattern (see `MatchScore.tsx` or `FindJobsForm.tsx` job cards for refer
 ```tsx
 <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
   <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-    Agent read
+    AI Navigator reads
   </p>
   <p className="text-sm text-agent-dark">{content}</p>
 </div>

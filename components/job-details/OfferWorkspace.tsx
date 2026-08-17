@@ -22,7 +22,7 @@ type Props = {
 // stays separate and IS still gated to application_status === "offered" —
 // unlike these two, it's grounded in real offer-stage timing data (days at
 // the Offer stage) that doesn't exist before an offer is made, and it's an
-// AI call with the distinct "Agent read" treatment, not a calculator.
+// AI call with the distinct "AI Navigator reads" treatment, not a calculator.
 export function OfferWorkspace({ jobId, offerDetails, taxEstimateInputs }: Props) {
   // Prefill the tax calculator's income field from the last-saved equity
   // numbers, not live unsaved edits in the other tab (that would need lifting

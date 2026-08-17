@@ -11,6 +11,14 @@ type Props = {
   missingSkills: string[] | null;
   requirements: string[];
   niceToHave: string[];
+  // §Q2 — how many skill_corrections rows exist for this job's own role
+  // family, and the role family label itself. Zero/undefined means either
+  // no corrections have been made yet or this job's evaluation predates
+  // §Q2 — either way, no line renders. Computed server-side (app/find-jobs/
+  // [id]/page.tsx), not fetched client-side, since it's a one-time read
+  // that doesn't need to react to anything on this page.
+  correctionsAppliedCount?: number;
+  roleFamily?: string;
 };
 
 // Required gets a solid accent-toned check (must-have, weighted heavier);
@@ -57,6 +65,8 @@ export function Qualification({
   missingSkills,
   requirements,
   niceToHave,
+  correctionsAppliedCount = 0,
+  roleFamily,
 }: Props) {
   const [matched, setMatched] = useState(matchedSkills ?? []);
   const [missing, setMissing] = useState(missingSkills ?? []);
@@ -105,6 +115,13 @@ export function Qualification({
         you can easily click on the tags to select or unselect skills to reflect your actual
         expertise.
       </p>
+
+      {correctionsAppliedCount > 0 && roleFamily && (
+        <p className="mb-4 text-xs text-text-muted">
+          Sortie remembered {correctionsAppliedCount} thing{correctionsAppliedCount === 1 ? "" : "s"} you
+          told it about your {roleFamily} skills.
+        </p>
+      )}
 
       {hasSkills ? (
         <div className="flex flex-wrap gap-2">

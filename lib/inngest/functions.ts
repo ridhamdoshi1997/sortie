@@ -1,6 +1,6 @@
 import { inngest } from "./client";
 import { resolveProvider } from "@/lib/access";
-import { evaluateJobCompatibility } from "@/lib/evaluator";
+import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator";
 import { createAdminClient } from '@insforge/sdk';
 import type { Profile } from "@/types";
 
@@ -90,6 +90,14 @@ export const evaluateJobsAsync = inngest.createFunction(
             throw new Error(message);
         }
 
+        // §Q2 correction memory — fetched once per run (typically a small
+        // table per user), filtered per-job by role family inside
+        // evaluateJobCompatibility rather than re-queried per chunk.
+        const { data: corrections } = await admin.database
+            .from("skill_corrections")
+            .select("role_family,skill,correction_type")
+            .eq("user_id", userId);
+
         const provider = resolveProvider(profile.preferred_model, profile.email);
         // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
         // the richer 2-3 sentence per-dimension notes cause the model to
@@ -103,7 +111,13 @@ export const evaluateJobsAsync = inngest.createFunction(
         try {
             for (const [chunkIndex, chunk] of jobChunks.entries()) {
                 await step.run(`evaluate-chunk-${chunkIndex}`, async () => {
-                    const evaluations = await evaluateJobCompatibility(chunk, filters, profile, provider);
+                    const evaluations = await evaluateJobCompatibility(
+                        chunk,
+                        filters,
+                        profile,
+                        provider,
+                        (corrections ?? []) as SkillCorrection[],
+                    );
 
                     for (const job of chunk) {
                         const evalResult = evaluations.find((e) => e.id === job.id);

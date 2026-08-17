@@ -57,7 +57,7 @@ function NumberField({
 // to a pure calculator on numbers the candidate types in themselves — see
 // lib/equityDecoder.ts's header comment and context/build-plan.md §M. This
 // is user-entered data, not AI output, so it deliberately does NOT get the
-// "Agent read" agent-teal treatment (ui-rules.md's Agent Content section) —
+// "AI Navigator reads" agent-teal treatment (ui-rules.md's Agent Content section) —
 // ordinary card/form styling only.
 export function EquityDecoder({ jobId, initialDetails }: Props) {
   const [details, setDetails] = useState<OfferDetails>(initialDetails ?? EMPTY_OFFER_DETAILS);

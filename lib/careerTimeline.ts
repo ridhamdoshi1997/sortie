@@ -1,5 +1,6 @@
 import type { Education, Profile, WorkExperience } from "@/types";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
+import type { ApplicationEventRow, ApplicationEventType } from "@/actions/careerEvents";
 import { STATUS_LABELS } from "@/lib/applicationStatus";
 
 // Epoch-based restructure of /career (Phase 11) — a flat, equal-weight
@@ -122,6 +123,83 @@ export function buildJobOutcomeEntries(jobOutcomes: JobOutcomeRow[]): JobOutcome
       sortDate: job.application_status_updated_at ?? job.found_at,
     }))
     .sort((a, b) => new Date(b.sortDate).getTime() - new Date(a.sortDate).getTime());
+}
+
+// §Q1 flat chronological view — the epoch view above is the default
+// (career data is epoch-based, per build-plan.md §E's structural finding),
+// but a toggle to a single merged timeline is where the real per-event
+// history (application_events) actually shows up: every logged status
+// transition with its optional note, not just each job's current status
+// the way the epoch view's "Job search activity" section shows it.
+
+export type TimelineEntryKind = "accomplishment" | "education" | "application_event";
+
+export type TimelineEntry = {
+  id: string;
+  date: string;
+  title: string;
+  subtitle: string | null;
+  kind: TimelineEntryKind;
+};
+
+const APPLICATION_EVENT_LABELS: Record<ApplicationEventType, string> = {
+  applied: "Applied",
+  interview_scheduled: "Interview scheduled",
+  interview_completed: "Interview completed",
+  offer_received: "Offer received",
+  rejected: "Rejected",
+  ghosted: "Went quiet",
+  withdrawn: "Withdrew application",
+};
+
+export type JobLookupRow = { id: string; title: string | null; company: string | null };
+
+export function buildFlatTimeline(
+  epochs: CareerEpoch[],
+  unassigned: AccomplishmentRow[],
+  education: EducationEntry[],
+  applicationEvents: ApplicationEventRow[],
+  jobs: JobLookupRow[],
+): TimelineEntry[] {
+  const jobsById = new Map(jobs.map((job) => [job.id, job]));
+  const entries: TimelineEntry[] = [];
+
+  for (const epoch of epochs) {
+    for (const accomplishment of epoch.accomplishments) {
+      entries.push({
+        id: accomplishment.id,
+        date: accomplishment.date,
+        title: accomplishment.title,
+        subtitle: accomplishment.description,
+        kind: "accomplishment",
+      });
+    }
+  }
+  for (const accomplishment of unassigned) {
+    entries.push({
+      id: accomplishment.id,
+      date: accomplishment.date,
+      title: accomplishment.title,
+      subtitle: accomplishment.description,
+      kind: "accomplishment",
+    });
+  }
+  for (const entry of education) {
+    entries.push({ id: entry.id, date: entry.sortDate, title: entry.title, subtitle: entry.subtitle, kind: "education" });
+  }
+  for (const event of applicationEvents) {
+    const job = jobsById.get(event.job_id);
+    const jobLabel = job ? [job.title, job.company].filter(Boolean).join(" at ") : "a role";
+    entries.push({
+      id: event.id,
+      date: event.event_date,
+      title: `${APPLICATION_EVENT_LABELS[event.event_type]} — ${jobLabel}`,
+      subtitle: event.notes,
+      kind: "application_event",
+    });
+  }
+
+  return entries.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }
 
 // Freshness nudge now checks the most recent event across every source

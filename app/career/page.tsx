@@ -9,10 +9,12 @@ import { CareerTimeline } from "@/components/career/CareerTimeline";
 import {
   buildCareerEpochs,
   buildEducationEntries,
+  buildFlatTimeline,
   buildJobOutcomeEntries,
   mostRecentActivityDate,
   type JobOutcomeRow,
 } from "@/lib/careerTimeline";
+import { listApplicationEvents } from "@/actions/careerEvents";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
 import type { Profile } from "@/types";
 
@@ -32,7 +34,7 @@ export default async function CareerPage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
-  const [{ data: profile }, { data: accomplishments }, { data: jobOutcomes }] = await Promise.all([
+  const [{ data: profile }, { data: accomplishments }, { data: jobOutcomes }, applicationEventsResult] = await Promise.all([
     insforge.database
       .from("profiles")
       .select("work_experience,education")
@@ -49,11 +51,14 @@ export default async function CareerPage() {
       .eq("user_id", user.id)
       .neq("application_status", "draft")
       .order("application_status_updated_at", { ascending: false }),
+    listApplicationEvents(),
   ]);
 
   const { epochs, unassigned } = buildCareerEpochs(profile, (accomplishments ?? []) as AccomplishmentRow[]);
   const education = buildEducationEntries(profile);
   const jobOutcomeEntries = buildJobOutcomeEntries((jobOutcomes ?? []) as JobOutcomeRow[]);
+  const applicationEvents = applicationEventsResult.data ?? [];
+  const flatTimeline = buildFlatTimeline(epochs, unassigned, education, applicationEvents, jobOutcomes ?? []);
   const nudge = freshnessNudge(mostRecentActivityDate(epochs, unassigned, jobOutcomeEntries));
 
   return (
@@ -84,7 +89,13 @@ export default async function CareerPage() {
           </div>
         )}
 
-        <CareerTimeline epochs={epochs} unassigned={unassigned} education={education} jobOutcomes={jobOutcomeEntries} />
+        <CareerTimeline
+          epochs={epochs}
+          unassigned={unassigned}
+          education={education}
+          jobOutcomes={jobOutcomeEntries}
+          flatTimeline={flatTimeline}
+        />
       </main>
     </>
   );

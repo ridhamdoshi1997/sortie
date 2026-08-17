@@ -118,6 +118,9 @@ export interface Job {
   resume_analysis: ResumeGapAnalysisResult | null;
   is_saved: boolean;
   is_hidden: boolean;
+  // Kanban card research (agy, 2026-08-17) — a user-toggled flag for "the
+  // ones I actually need to follow up on" within a crowded column.
+  is_priority: boolean;
   application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
   // Set whenever application_status changes (actions/jobs.ts's
   // setApplicationStatus) — powers the Kanban board's "days in this stage"

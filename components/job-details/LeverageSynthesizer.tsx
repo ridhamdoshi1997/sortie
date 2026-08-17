@@ -22,7 +22,7 @@ const LEVEL_CLASSES: Record<LeverageLevel, string> = {
 
 // Post-Offer Leverage Synthesizer — same honesty-scoped shape as
 // StrategicMoatBriefing.tsx/lib/rejectionIntelligence.ts's UI: opt-in,
-// button-triggered, and the AI output gets the exact "Agent read" treatment
+// button-triggered, and the AI output gets the exact "AI Navigator reads" treatment
 // from ui-rules.md's Agent Content section (border-agent/bg-agent-light/
 // text-agent-dark) — never reused for the Equity Decoder's plain form above,
 // which is user input, not AI content.
@@ -68,7 +68,7 @@ export function LeverageSynthesizer({ jobId, synthesis }: Props) {
       {synthesis ? (
         <div className="mt-4 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
           <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">Agent read</p>
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">AI Navigator reads</p>
             <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${LEVEL_CLASSES[synthesis.leverageLevel]}`}>
               {LEVERAGE_LABELS[synthesis.leverageLevel]}
             </span>

@@ -33,6 +33,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
+import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { Profile } from "@/types";
 
 type Props = {
@@ -112,6 +113,16 @@ export default async function JobDetailsPage({ params }: Props) {
 
   const isInterviewing = job.application_status === "interviewing";
 
+  // §Q2 — a lightweight count, not the full evaluator lookup (that happens
+  // server-side inside the evaluation call itself) — just enough to decide
+  // whether Qualification's "Sortie remembered..." line renders at all.
+  const roleFamily = normalizeRoleFamily(job.title ?? "");
+  const { count: correctionsAppliedCount } = await insforge.database
+    .from("skill_corrections")
+    .select("id", { count: "exact", head: true })
+    .eq("user_id", user.id)
+    .eq("role_family", roleFamily);
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -177,6 +188,8 @@ export default async function JobDetailsPage({ params }: Props) {
                       missingSkills={job.missing_skills}
                       requirements={job.requirements}
                       niceToHave={job.nice_to_have}
+                      correctionsAppliedCount={correctionsAppliedCount ?? 0}
+                      roleFamily={roleFamily}
                     />
 
                     <Benefits items={job.benefits ?? []} />

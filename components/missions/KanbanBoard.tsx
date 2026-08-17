@@ -32,7 +32,15 @@ const EMPTY_MESSAGES: Record<ApplicationStatus, string> = {
   rejected: "Nothing here — hopefully it stays that way.",
 };
 
-function KanbanColumn({ status, jobs }: { status: ApplicationStatus; jobs: KanbanJob[] }) {
+function KanbanColumn({
+  status,
+  jobs,
+  appliedAtByJobId,
+}: {
+  status: ApplicationStatus;
+  jobs: KanbanJob[];
+  appliedAtByJobId?: Record<string, string>;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -53,7 +61,7 @@ function KanbanColumn({ status, jobs }: { status: ApplicationStatus; jobs: Kanba
           {jobs.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-text-muted">{EMPTY_MESSAGES[status]}</p>
           ) : (
-            jobs.map((job) => <KanbanCard key={job.id} job={job} />)
+            jobs.map((job) => <KanbanCard key={job.id} job={job} appliedAt={appliedAtByJobId?.[job.id]} />)
           )}
         </SortableContext>
       </div>
@@ -61,7 +69,7 @@ function KanbanColumn({ status, jobs }: { status: ApplicationStatus; jobs: Kanba
   );
 }
 
-export function KanbanBoard({ jobs }: { jobs: KanbanJob[] }) {
+export function KanbanBoard({ jobs, appliedAtByJobId }: { jobs: KanbanJob[]; appliedAtByJobId?: Record<string, string> }) {
   const [columns, setColumns] = useState<ColumnsState>(() => groupByStatus(jobs));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -113,7 +121,7 @@ export function KanbanBoard({ jobs }: { jobs: KanbanJob[] }) {
     <DndContext id="pipeline-kanban" sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4">
         {STAGE_ORDER.map((status) => (
-          <KanbanColumn key={status} status={status} jobs={columns[status]} />
+          <KanbanColumn key={status} status={status} jobs={columns[status]} appliedAtByJobId={appliedAtByJobId} />
         ))}
       </div>
     </DndContext>

@@ -1,7 +1,17 @@
 import { z } from "zod";
 
 import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { Profile } from "@/types";
+
+// §Q2 correction memory — a bias via prompt context, not a hard override,
+// so a genuinely different job in the same role family can still disagree
+// if its actual requirements differ. See build-plan.md §Q2.
+export type SkillCorrection = {
+  role_family: string;
+  skill: string;
+  correction_type: "confirmed_have" | "confirmed_missing";
+};
 
 export type EvaluationGrade = "A" | "B" | "C" | "D" | "F";
 
@@ -173,7 +183,25 @@ function buildConstraintsText(constraints: Record<string, string>): string {
   return entries.map(([key, value]) => `- ${key.replace(/_/g, " ")}: ${value}`).join("\n");
 }
 
-function buildJobText(job: EvaluationJob): string {
+// §Q2 — corrections the user has previously made for this same kind of
+// role. Only ever a bias hint appended to the job's own text block, never
+// folded into the shared candidate-profile context, since which
+// corrections apply depends on THIS job's own role family.
+function buildCorrectionsHint(job: EvaluationJob, corrections: SkillCorrection[]): string {
+  if (corrections.length === 0) return "";
+  const roleFamily = normalizeRoleFamily(job.title ?? "");
+  const relevant = corrections.filter((c) => c.role_family === roleFamily);
+  if (relevant.length === 0) return "";
+
+  const has = relevant.filter((c) => c.correction_type === "confirmed_have").map((c) => c.skill);
+  const missing = relevant.filter((c) => c.correction_type === "confirmed_missing").map((c) => c.skill);
+  const parts: string[] = [];
+  if (has.length > 0) parts.push(`has: ${has.join(", ")}`);
+  if (missing.length > 0) parts.push(`does not have: ${missing.join(", ")}`);
+  return `\nCandidate has previously confirmed for this kind of role (${roleFamily}) — ${parts.join("; ")}. Treat this as reliable self-reported signal, not something to re-derive from the posting text alone.`;
+}
+
+function buildJobText(job: EvaluationJob, corrections: SkillCorrection[] = []): string {
   return `ID: ${job.id}
 Title: ${job.title ?? "Unknown"}
 Company: ${job.company ?? "Unknown"}
@@ -184,7 +212,7 @@ Description: ${job.about_role ?? job.description ?? "No description available"}
 Responsibilities: ${(job.responsibilities ?? []).join("; ") || "Not listed"}
 Requirements: ${(job.requirements ?? []).join("; ") || "Not listed"}
 Nice to have: ${(job.nice_to_have ?? []).join("; ") || "Not listed"}
-Benefits: ${(job.benefits ?? []).join("; ") || "Not listed"}`;
+Benefits: ${(job.benefits ?? []).join("; ") || "Not listed"}${buildCorrectionsHint(job, corrections)}`;
 }
 
 function fallbackEvaluation(id: string): JobEvaluationResult {
@@ -282,6 +310,7 @@ export async function evaluateJobCompatibility(
   constraints: Record<string, string>,
   profile: Profile,
   provider: ModelProvider = "gemini",
+  corrections: SkillCorrection[] = [],
 ): Promise<JobEvaluationResult[]> {
   const userPrompt = `CANDIDATE PROFILE:
 ${buildCandidateContext(profile)}
@@ -290,7 +319,7 @@ EXPLICIT CONSTRAINTS FOR THIS SEARCH:
 ${buildConstraintsText(constraints)}
 
 JOBS TO EVALUATE:
-${jobs.map(buildJobText).join("\n\n---\n\n")}`;
+${jobs.map((job) => buildJobText(job, corrections)).join("\n\n---\n\n")}`;
 
   const raw = await complete(getModel(provider, "smart"), {
     systemPrompt: SYSTEM_PROMPT,

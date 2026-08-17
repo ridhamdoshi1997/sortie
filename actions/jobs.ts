@@ -16,6 +16,8 @@ import { predictTrapDoorQuestions, type TrapDoorPredictionResult } from "@/lib/t
 import { synthesizeInterrogationPlan, type InterrogationPlanResult } from "@/lib/interrogationPlan";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import { listInterviewPanel } from "@/actions/interviewPanel";
+import { logApplicationEvent, type ApplicationEventType } from "@/actions/careerEvents";
+import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { OfferDetails } from "@/lib/equityDecoder";
 import type { TaxEstimateInputs } from "@/lib/taxCalculator";
 import type { ApplicationStatus } from "@/lib/applicationStatus";
@@ -151,6 +153,33 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
   }
 }
 
+// Kanban card research (agy, 2026-08-17) — same toggle shape as
+// toggleSaveJob/toggleHideJob, just a different boolean.
+export async function toggleJobPriority(jobId: string, priority: boolean): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ is_priority: priority })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] toggleJobPriority", error);
+      return { success: false, error: "Failed to update priority" };
+    }
+
+    revalidatePath("/missions");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] toggleJobPriority", error);
+    return { success: false, error: "Failed to update priority" };
+  }
+}
+
 // Reversible status transition — the Kanban board's drag-and-drop and every
 // other status-change surface (JobActionBar, JobResultCard) route through
 // this one action, following toggleSaveJob's optimistic-then-write shape
@@ -158,10 +187,21 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
 // caller's already-known client state (same idiom JobActionBar already uses
 // for its optimistic local state) rather than an extra fetch-before-write —
 // it's only used for the PostHog event, not for any server-side validation.
+// §Q1 — statuses that correspond to a real application_events entry. "draft"
+// has no matching event_type (going back to draft is a correction, not an
+// outcome), so it's the one stage transition that never logs an event.
+const APPLICATION_EVENT_TYPE_BY_STATUS: Partial<Record<ApplicationStatus, ApplicationEventType>> = {
+  applied: "applied",
+  interviewing: "interview_scheduled",
+  offered: "offer_received",
+  rejected: "rejected",
+};
+
 export async function setApplicationStatus(
   jobId: string,
   from: ApplicationStatus,
   to: ApplicationStatus,
+  note?: string,
 ): Promise<ActionResult> {
   const user = await requireUser();
 
@@ -179,6 +219,18 @@ export async function setApplicationStatus(
       return { success: false, error: "Failed to update application status" };
     }
 
+    // Best-effort — a failed event-log insert shouldn't roll back or fail an
+    // otherwise-successful status change. jobs.application_status stays the
+    // source of truth the Kanban board reads; this is the durable history
+    // record application_events exists to capture (build-plan.md §Q1).
+    const eventType = APPLICATION_EVENT_TYPE_BY_STATUS[to];
+    if (eventType) {
+      const eventResult = await logApplicationEvent(jobId, eventType, note);
+      if (!eventResult.success) {
+        console.error("[actions/jobs] setApplicationStatus: event log failed", eventResult.error);
+      }
+    }
+
     await trackPostHogEvent({
       event: "application_status_changed",
       properties: { userId: user.id, jobId, from, to },
@@ -187,6 +239,7 @@ export async function setApplicationStatus(
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
     revalidatePath("/missions");
+    revalidatePath("/career");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] setApplicationStatus", error);
@@ -269,10 +322,10 @@ export async function correctSkillTag(
 
     const { data: job, error: fetchError } = await insforge.database
       .from("jobs")
-      .select("matched_skills,missing_skills")
+      .select("title,matched_skills,missing_skills")
       .eq("id", jobId)
       .eq("user_id", user.id)
-      .maybeSingle<{ matched_skills: string[] | null; missing_skills: string[] | null }>();
+      .maybeSingle<{ title: string | null; matched_skills: string[] | null; missing_skills: string[] | null }>();
 
     if (fetchError || !job) {
       console.error("[actions/jobs] correctSkillTag fetch", fetchError);
@@ -297,6 +350,22 @@ export async function correctSkillTag(
     if (updateError) {
       console.error("[actions/jobs] correctSkillTag update", updateError);
       return { success: false, error: "Failed to save correction" };
+    }
+
+    // §Q2 correction memory — logged alongside the in-place mutation above,
+    // not instead of it. Best-effort: a failed insert here shouldn't fail an
+    // otherwise-successful correction the user just made.
+    const { error: correctionError } = await insforge.database.from("skill_corrections").insert([
+      {
+        user_id: user.id,
+        job_id: jobId,
+        role_family: normalizeRoleFamily(job.title ?? ""),
+        skill,
+        correction_type: moveTo === "matched" ? "confirmed_have" : "confirmed_missing",
+      },
+    ]);
+    if (correctionError) {
+      console.error("[actions/jobs] correctSkillTag: skill_corrections insert failed", correctionError);
     }
 
     revalidatePath("/find-jobs/[id]", "page");

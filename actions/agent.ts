@@ -220,7 +220,6 @@ export async function confirmAgentAction(messageId: string): Promise<ActionResul
     }
 
     revalidatePath("/career");
-    revalidatePath("/agent");
     return { success: true };
   } catch (error) {
     console.error("[actions/agent] confirmAgentAction", error);

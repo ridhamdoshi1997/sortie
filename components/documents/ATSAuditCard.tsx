@@ -31,7 +31,7 @@ function scoreTone(score: number): { badge: string; label: string } {
 // score-jump's matchedKeywords/missingKeywords for keyword density), not a
 // new AI call. Recomputes live via useMemo on every edit, same as the
 // Equity/Tax calculators earlier this project — ordinary card styling, no
-// "Agent read" treatment, since none of this is AI output.
+// "AI Navigator reads" treatment, since none of this is AI output.
 function formatRelative(iso: string | null): string | null {
   if (!iso) return null;
   const diffMs = Date.now() - new Date(iso).getTime();

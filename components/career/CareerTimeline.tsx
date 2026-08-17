@@ -8,8 +8,14 @@ import { addAccomplishment, deleteAccomplishment } from "@/actions/accomplishmen
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AddAccomplishmentModal } from "@/components/career/AddAccomplishmentModal";
 import { formatDate } from "@/lib/utils";
-import type { CareerEpoch, EducationEntry, JobOutcomeEntry } from "@/lib/careerTimeline";
+import type { CareerEpoch, EducationEntry, JobOutcomeEntry, TimelineEntry } from "@/lib/careerTimeline";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
+
+const TIMELINE_DOT_CLASSES: Record<TimelineEntry["kind"], string> = {
+  accomplishment: "bg-accent",
+  education: "bg-info",
+  application_event: "bg-agent",
+};
 
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
@@ -195,14 +201,21 @@ type Props = {
   unassigned: AccomplishmentRow[];
   education: EducationEntry[];
   jobOutcomes: JobOutcomeEntry[];
+  flatTimeline: TimelineEntry[];
 };
 
-export function CareerTimeline({ epochs, unassigned, education, jobOutcomes }: Props) {
+export function CareerTimeline({ epochs, unassigned, education, jobOutcomes, flatTimeline }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<AccomplishmentRow | null>(null);
   const [modalDefaultDate, setModalDefaultDate] = useState<string | undefined>(undefined);
   const [deleteTarget, setDeleteTarget] = useState<AccomplishmentRow | null>(null);
   const [isPending, startTransition] = useTransition();
+  // Epoch view stays the default (career data is epoch-based — build-plan.md
+  // §E's structural finding). Timeline view is the §Q1 addition: a single
+  // merged reverse-chronological list where the real application_events
+  // history (every logged status transition, with its optional note)
+  // actually shows up, instead of each job's current-status-only summary.
+  const [view, setView] = useState<"epoch" | "timeline">("epoch");
 
   function openAddFor(epoch: CareerEpoch | null): void {
     setEditing(null);
@@ -231,12 +244,54 @@ export function CareerTimeline({ epochs, unassigned, education, jobOutcomes }: P
     <div className="flex flex-col gap-6">
       <QuickAddBar />
 
+      {!isEmpty && (
+        <div className="flex w-fit items-center gap-1 rounded-full border border-border bg-surface p-1">
+          <button
+            type="button"
+            onClick={() => setView("epoch")}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === "epoch" ? "bg-accent text-accent-foreground" : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            Career view
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("timeline")}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              view === "timeline" ? "bg-accent text-accent-foreground" : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            Full timeline
+          </button>
+        </div>
+      )}
+
       {isEmpty ? (
         <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
           <p className="text-sm text-text-muted">
             Nothing here yet. Log a win — a project shipped, a skill learned, anything worth
             remembering — even when you&apos;re not job hunting.
           </p>
+        </div>
+      ) : view === "timeline" ? (
+        <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+          {flatTimeline.length > 0 ? (
+            <ul className="flex flex-col gap-4">
+              {flatTimeline.map((entry) => (
+                <li key={`${entry.kind}-${entry.id}`} className="flex items-start gap-3">
+                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${TIMELINE_DOT_CLASSES[entry.kind]}`} />
+                  <div>
+                    <p className="text-sm font-medium leading-5 text-text-primary">{entry.title}</p>
+                    {entry.subtitle && <p className="mt-1 text-sm text-text-secondary">{entry.subtitle}</p>}
+                    <p className="mt-1 text-xs text-text-muted">{formatDate(entry.date)}</p>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="text-sm text-text-muted">Nothing logged yet.</p>
+          )}
         </div>
       ) : (
         <>

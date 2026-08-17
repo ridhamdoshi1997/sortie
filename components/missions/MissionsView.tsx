@@ -1,16 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LayoutGrid, List } from "lucide-react";
 
 import { KanbanBoardLoader } from "@/components/missions/KanbanBoardLoader";
+import { MissionsFilterBar, type SortValue } from "@/components/missions/MissionsFilterBar";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import { STAGE_ORDER, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
+import { getListingSignal } from "@/lib/jobStatus";
 import type { Job } from "@/types";
 
 type ViewMode = "kanban" | "list";
 type FilterValue = "all" | ApplicationStatus;
+
+// Google Jobs' own raw location text sometimes tags a multi-location
+// posting with a "(+N other/others)" suffix (e.g. "Toronto, ON (+1 other)")
+// — same city, same underlying job, just a different literal string than a
+// single-location "Toronto, ON" posting. Left ungrouped, the location
+// filter showed these as separate options for what a user experiences as
+// one city — grouped here by stripping the suffix before dedup/matching.
+const LOCATION_SUFFIX_PATTERN = /\s*\(\+\d+\s+others?\)\s*$/i;
+
+function normalizeLocationForFilter(location: string): string {
+  return location.replace(LOCATION_SUFFIX_PATTERN, "").trim();
+}
 
 // Renamed from "Pipeline" (2026-08-12) — researched via agy for a name
 // fitting the app's aviation/precision-targeting metaphor ("Sortie" = one
@@ -22,12 +36,81 @@ type FilterValue = "all" | ApplicationStatus;
 // real trackers (Teal, Huntr) don't fragment the pipeline into separate
 // pages per stage; they use one unified Tracker view with a Kanban/list
 // toggle and status filtering instead. This component IS that toggle.
-export function MissionsView({ jobs }: { jobs: Job[] }) {
+export function MissionsView({
+  jobs,
+  appliedAtByJobId = {},
+}: {
+  jobs: Job[];
+  appliedAtByJobId?: Record<string, string>;
+}) {
   const [viewMode, setViewMode] = useState<ViewMode>("kanban");
   const [filter, setFilter] = useState<FilterValue>("all");
+  // Location/search/remote filters narrow which jobs show in EITHER view
+  // (unlike the stage filter above, which only makes sense in List — Kanban
+  // already groups by stage as its own columns). User-requested: applying to
+  // different-location roles at once meant no way to isolate one location
+  // on this page before this.
+  const [search, setSearch] = useState("");
+  const [location, setLocation] = useState("");
+  const [remoteOnly, setRemoteOnly] = useState(false);
+  // Kanban filter-bar research (agy, 2026-08-17) — a minimum match-score
+  // threshold and a "needs attention" toggle (reuses lib/jobStatus.ts's
+  // existing getListingSignal, no new staleness logic) plus a sort control,
+  // all per direct user follow-up request after the location filter shipped.
+  const [minMatchScore, setMinMatchScore] = useState<number | null>(null);
+  const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
+  const [sortBy, setSortBy] = useState<SortValue>("found");
 
-  const reappearanceCounts = computeReappearanceCounts(jobs);
-  const filteredJobs = filter === "all" ? jobs : jobs.filter((job) => job.application_status === filter);
+  const locations = useMemo(() => {
+    const unique = new Set(
+      jobs
+        .map((job) => job.location)
+        .filter((value): value is string => Boolean(value))
+        .map(normalizeLocationForFilter)
+        .filter(Boolean),
+    );
+    return Array.from(unique).sort((a, b) => a.localeCompare(b));
+  }, [jobs]);
+
+  const visibleJobs = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const matched = jobs.filter((job) => {
+      if (query) {
+        const haystack = `${job.title ?? ""} ${job.company ?? ""}`.toLowerCase();
+        if (!haystack.includes(query)) return false;
+      }
+      if (location && normalizeLocationForFilter(job.location ?? "") !== location) return false;
+      // Same isRemote idiom already used on the job-details page/JobActionBar
+      // — no structured work-mode field exists in the source data, so this
+      // is a best-effort text match against title/location, not a claim of
+      // precision this app doesn't have.
+      if (remoteOnly && !/\bremote\b/i.test(`${job.title ?? ""} ${job.location ?? ""}`)) return false;
+      if (minMatchScore !== null && (job.match_score ?? 0) < minMatchScore) return false;
+      if (needsAttentionOnly && !getListingSignal(job)) return false;
+      return true;
+    });
+
+    // Sort is separate from the filter pass above — it applies to whichever
+    // jobs already passed every filter, not a replacement for them.
+    const sorted = [...matched];
+    if (sortBy === "match") {
+      sorted.sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0));
+    } else if (sortBy === "stage") {
+      // Oldest stage-update first — the jobs that have gone quietest sort to
+      // the top, since those are the ones most likely to need a nudge.
+      sorted.sort(
+        (a, b) =>
+          new Date(a.application_status_updated_at ?? a.found_at).getTime() -
+          new Date(b.application_status_updated_at ?? b.found_at).getTime(),
+      );
+    } else {
+      sorted.sort((a, b) => new Date(b.found_at).getTime() - new Date(a.found_at).getTime());
+    }
+    return sorted;
+  }, [jobs, search, location, remoteOnly, minMatchScore, needsAttentionOnly, sortBy]);
+
+  const reappearanceCounts = computeReappearanceCounts(visibleJobs);
+  const filteredJobs = filter === "all" ? visibleJobs : visibleJobs.filter((job) => job.application_status === filter);
 
   return (
     <div className="flex flex-col gap-4">
@@ -55,6 +138,22 @@ export function MissionsView({ jobs }: { jobs: Job[] }) {
           </button>
         </div>
 
+        <MissionsFilterBar
+          search={search}
+          onSearchChange={setSearch}
+          location={location}
+          onLocationChange={setLocation}
+          locations={locations}
+          remoteOnly={remoteOnly}
+          onRemoteOnlyChange={setRemoteOnly}
+          minMatchScore={minMatchScore}
+          onMinMatchScoreChange={setMinMatchScore}
+          needsAttentionOnly={needsAttentionOnly}
+          onNeedsAttentionOnlyChange={setNeedsAttentionOnly}
+          sortBy={sortBy}
+          onSortByChange={setSortBy}
+        />
+
         {viewMode === "list" && (
           <div className="flex flex-wrap items-center gap-1.5">
             <FilterPill label="All" active={filter === "all"} onClick={() => setFilter("all")} />
@@ -71,11 +170,22 @@ export function MissionsView({ jobs }: { jobs: Job[] }) {
       </div>
 
       {viewMode === "kanban" ? (
-        <KanbanBoardLoader jobs={jobs} />
+        // Keyed on the active filter combo — KanbanBoard seeds its own
+        // internal drag state from `jobs` via a lazy useState initializer
+        // that only ever runs once (deliberate, so a completed drag's
+        // optimistic column move doesn't get clobbered by the next
+        // server-revalidated `jobs` prop). That means it never re-derives
+        // columns if `jobs` changes shape after mount — a filter change
+        // needs a fresh mount, not a prop update, to actually take effect.
+        <KanbanBoardLoader
+          key={`${search}|${location}|${remoteOnly}|${minMatchScore}|${needsAttentionOnly}|${sortBy}`}
+          jobs={visibleJobs}
+          appliedAtByJobId={appliedAtByJobId}
+        />
       ) : (
         <div className="flex flex-col gap-4">
           {filteredJobs.length === 0 ? (
-            <p className="text-sm text-text-muted">No jobs in this stage yet.</p>
+            <p className="text-sm text-text-muted">No jobs match these filters.</p>
           ) : (
             filteredJobs.map((job, index) => (
               <JobResultCard

@@ -17,6 +17,11 @@ const KanbanBoard = dynamic(
   { ssr: false },
 );
 
-export function KanbanBoardLoader({ jobs }: { jobs: KanbanJob[] }) {
-  return <KanbanBoard jobs={jobs} />;
+type Props = {
+  jobs: KanbanJob[];
+  appliedAtByJobId?: Record<string, string>;
+};
+
+export function KanbanBoardLoader({ jobs, appliedAtByJobId }: Props) {
+  return <KanbanBoard jobs={jobs} appliedAtByJobId={appliedAtByJobId} />;
 }

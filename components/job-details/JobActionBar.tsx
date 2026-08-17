@@ -49,6 +49,13 @@ export function JobActionBar({
   // position:fixed computed from the trigger's real getBoundingClientRect(),
   // close on scroll since a fixed panel doesn't track its trigger.
   const [statusMenuPosition, setStatusMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  // §Q1 "log outcome" step — a status landing on a real application_events
+  // type (not "draft", which is a correction rather than an outcome) opens
+  // a one-field optional/skippable note prompt instead of applying
+  // immediately, per build-plan.md §Q1's UX spec. Same portal/position
+  // idiom as statusMenuPosition, just a second panel keyed off its own state
+  // so the two never fight over one position value.
+  const [notePrompt, setNotePrompt] = useState<{ position: { top: number; left: number }; next: ApplicationStatus } | null>(null);
   const [markedUnavailableAt, setMarkedUnavailableAt] = useState(initialMarkedUnavailableAt ?? null);
   const [isPending, startTransition] = useTransition();
   // formatTimeAgo(foundAt) is time-dependent — computing it inline in JSX
@@ -82,15 +89,28 @@ export function JobActionBar({
     });
   }
 
-  function handleSetStatus(next: ApplicationStatus): void {
-    setStatusMenuPosition(null);
-    if (next === status) return;
+  function commitStatusChange(next: ApplicationStatus, note?: string): void {
     const previous = status;
     setStatus(next);
     startTransition(async () => {
-      const result = await setApplicationStatus(jobId, previous, next);
+      const result = await setApplicationStatus(jobId, previous, next, note);
       if (!result.success) setStatus(previous);
     });
+  }
+
+  // Statuses with a real application_events counterpart (see
+  // actions/jobs.ts's APPLICATION_EVENT_TYPE_BY_STATUS) get the note prompt;
+  // "draft" has no matching event type — going back to draft is a
+  // correction, not an outcome — so it applies immediately, same as before.
+  function handleChooseStatus(next: ApplicationStatus): void {
+    const position = statusMenuPosition;
+    setStatusMenuPosition(null);
+    if (next === status) return;
+    if (next === "draft" || !position) {
+      commitStatusChange(next);
+      return;
+    }
+    setNotePrompt({ position, next });
   }
 
   function handleSave(): void {
@@ -216,8 +236,31 @@ export function JobActionBar({
             <StatusMenuPanel
               position={statusMenuPosition}
               status={status}
-              onSelect={handleSetStatus}
+              onSelect={handleChooseStatus}
               onClose={() => setStatusMenuPosition(null)}
+            />
+          )}
+
+          {notePrompt && (
+            <NotePromptPanel
+              position={notePrompt.position}
+              nextStatus={notePrompt.next}
+              onSkip={() => {
+                commitStatusChange(notePrompt.next);
+                setNotePrompt(null);
+              }}
+              onLog={(note) => {
+                commitStatusChange(notePrompt.next, note);
+                setNotePrompt(null);
+              }}
+              onClose={() => {
+                // Dismissing without an explicit choice still counts as
+                // "skip" — the status change itself isn't optional, only
+                // the note is, so clicking away can't silently discard the
+                // status transition the user already picked.
+                commitStatusChange(notePrompt.next);
+                setNotePrompt(null);
+              }}
             />
           )}
         </div>
@@ -307,6 +350,81 @@ function StatusMenuPanel({
           {STATUS_LABELS[stage]}
         </button>
       ))}
+    </div>,
+    document.body,
+  );
+}
+
+// §Q1's "log outcome" step — one optional, skippable note attached to the
+// application_events row this status change already writes (see
+// actions/jobs.ts's setApplicationStatus). Same portal/fixed-position idiom
+// as StatusMenuPanel, rendered in its place once a real-event status is
+// chosen.
+function NotePromptPanel({
+  position,
+  nextStatus,
+  onSkip,
+  onLog,
+  onClose,
+}: {
+  position: { top: number; left: number };
+  nextStatus: ApplicationStatus;
+  onSkip: () => void;
+  onLog: (note: string) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  const [note, setNote] = useState("");
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [onClose]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", onClose, true);
+    return () => window.removeEventListener("scroll", onClose, true);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: "fixed", top: position.top, left: position.left }}
+      className="glass-panel-strong animate-in fade-in-0 zoom-in-95 z-50 w-72 rounded-xl p-3 duration-150"
+    >
+      <p className="mb-2 text-sm font-medium text-text-primary">
+        Marked as {STATUS_LABELS[nextStatus]} — add a note?
+      </p>
+      <textarea
+        autoFocus
+        value={note}
+        onChange={(e) => setNote(e.target.value)}
+        placeholder="Optional — what happened? (skippable)"
+        rows={3}
+        className="w-full resize-none rounded-lg border border-border bg-surface-primary px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
+      />
+      <div className="mt-2 flex items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={onSkip}
+          className="rounded-full px-3 py-1.5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary"
+        >
+          Skip
+        </button>
+        <button
+          type="button"
+          disabled={!note.trim()}
+          onClick={() => onLog(note.trim())}
+          className="rounded-full bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          Log note
+        </button>
+      </div>
     </div>,
     document.body,
   );

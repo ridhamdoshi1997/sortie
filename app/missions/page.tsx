@@ -19,6 +19,25 @@ export default async function MissionsPage() {
     .eq("is_hidden", false)
     .order("found_at", { ascending: false });
 
+  // Kanban card research (agy, 2026-08-17) — "days since applied" is
+  // genuinely different from the existing stage-age label (which only
+  // reflects time in the CURRENT stage, not the original application date).
+  // Sourced from application_events (§Q1, shipped earlier this session),
+  // not application_status_updated_at — only real for jobs applied to after
+  // that table existed; older jobs simply have no row here and the card
+  // omits the line rather than showing a fabricated number.
+  const { data: appliedEvents } = await insforge.database
+    .from("application_events")
+    .select("job_id,event_date")
+    .eq("user_id", user.id)
+    .eq("event_type", "applied")
+    .order("event_date", { ascending: true });
+  const appliedAtByJobId: Record<string, string> = {};
+  for (const event of appliedEvents ?? []) {
+    // First (earliest) "applied" event wins if a job was ever re-applied to.
+    if (!appliedAtByJobId[event.job_id]) appliedAtByJobId[event.job_id] = event.event_date;
+  }
+
   return (
     <>
       <Navbar isAuthenticated />
@@ -31,7 +50,7 @@ export default async function MissionsPage() {
           </p>
         </div>
 
-        <MissionsView jobs={(jobs ?? []) as Job[]} />
+        <MissionsView jobs={(jobs ?? []) as Job[]} appliedAtByJobId={appliedAtByJobId} />
       </main>
     </>
   );

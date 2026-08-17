@@ -40,7 +40,6 @@ const navigationItems = [
   { href: "/missions", label: "Missions" },
   { href: "/career", label: "Career" },
   { href: "/resume", label: "Resume" },
-  { href: "/agent", label: "Agent" },
   { href: "/interview", label: "Interview" },
 ];
 
