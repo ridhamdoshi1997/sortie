@@ -1413,9 +1413,9 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Rate limiting on AI routes | ✅ | Phase 0 |
 | Feature kill switches | ✅ | Phase 0 |
 | Signup cap / waitlist | ✅ | Phase 0 |
-| Privacy Policy + Terms | 📋 | Phase 0 |
-| Account deletion / data erasure | 📋 | Phase 0 |
-| Multi-tenancy isolation test | 📋 | Phase 0 |
+| Privacy Policy + Terms | ✅ shipped 2026-08-17 | Phase 0 — `app/privacy`, `app/terms`, real vendor list, no-auto-apply as a trust point |
+| Account deletion / data erasure | ✅ | Already built (`actions/account.ts`'s `deleteAccount()`, wired into Settings' Danger Zone), a real `resumes`-table gap fixed 2026-08-17 |
+| Multi-tenancy isolation test | ✅ done 2026-08-17 | Ground-truth `pg_class.relrowsecurity` + `pg_policies` audit — all 13 tables RLS-enabled, no cross-user gaps found |
 | Error monitoring (Sentry) | 🆕 | Launch Playbook |
 
 ## L. B2B / white-label (the durable revenue destination)

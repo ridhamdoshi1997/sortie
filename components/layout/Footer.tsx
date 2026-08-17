@@ -4,8 +4,8 @@ import { Logo } from "@/components/layout/Logo";
 
 const footerLinks = [
   { href: "/dashboard", label: "Dashboard" },
-  { href: "#", label: "Privacy Policy" },
-  { href: "#", label: "Terms & Condition" },
+  { href: "/privacy", label: "Privacy Policy" },
+  { href: "/terms", label: "Terms & Condition" },
 ];
 
 export function Footer() {

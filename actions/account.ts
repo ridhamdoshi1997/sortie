@@ -18,7 +18,7 @@ function adminClient() {
 // storage object that carries this user's data, then the auth.users row
 // itself. Irreversible; there is no undo.
 //
-// The four row-deletes run as ONE call, semicolon-separated, deliberately
+// The row-deletes run as ONE call, semicolon-separated, deliberately
 // WITHOUT explicit BEGIN/COMMIT — the rawsql endpoint rejects those with
 // "Transaction control statements are not allowed" (confirmed live). This
 // isn't a gap: Postgres's simple-query protocol already wraps a
@@ -38,11 +38,17 @@ function adminClient() {
 //     agent_runs and profiles, so it's covered either way.
 //   - jobs has no FK to profiles or auth.users at all (confirmed live), so
 //     nothing cascades this; must be explicit.
-//   - auth.users last — cascades auth.user_providers, applications,
-//     usage_daily, and rate_limit automatically (all confirmed ON DELETE
-//     CASCADE from auth.users live via pg_constraint). See
-//     lib/insforge-admin-sql.ts for why this goes through raw SQL rather
-//     than the SDK (no delete-user endpoint exists yet).
+//   - resumes has NO FK constraint at all (confirmed live via
+//     information_schema, 2026-08-17) — added since this action was first
+//     written. Nothing cascades it; must be explicit, same as jobs.
+//   - auth.users last — cascades user_providers, applications, usage_daily,
+//     rate_limit, accomplishments, interview_panel_members, star_stories,
+//     and agent_messages automatically (all confirmed ON DELETE CASCADE
+//     from auth.users live via information_schema.referential_constraints,
+//     2026-08-17 — the last 4 were added in later sessions with a direct
+//     auth.users(id) FK from the start, so no explicit delete needed for
+//     them). See lib/insforge-admin-sql.ts for why this goes through raw
+//     SQL rather than the SDK (no delete-user endpoint exists yet).
 //
 // Storage objects are a separate system (not part of the SQL transaction) —
 // deleted first, best-effort, from data read before anything is destroyed.
@@ -70,9 +76,16 @@ export async function deleteAccount(): Promise<ActionResult> {
       .eq("id", user.id)
       .maybeSingle<{ resume_pdf_url: string | null }>();
 
+    const { data: resumeRowsRaw } = await insforge.database
+      .from("resumes")
+      .select("storage_path")
+      .eq("user_id", user.id);
+    const resumeRows = (resumeRowsRaw ?? []) as Array<{ storage_path: string | null }>;
+
     const storagePaths = [
       profileRow?.resume_pdf_url,
       ...applicationDocs.flatMap((doc) => [doc.resume_pdf_url, doc.cover_letter_pdf_url]),
+      ...resumeRows.map((r) => r.storage_path),
     ].filter((path): path is string => Boolean(path));
 
     // Best-effort: a missing/already-gone file must never block deletion —
@@ -92,6 +105,7 @@ export async function deleteAccount(): Promise<ActionResult> {
     await runAdminSql(
       `DELETE FROM agent_runs WHERE user_id = '${user.id}';
        DELETE FROM jobs WHERE user_id = '${user.id}';
+       DELETE FROM resumes WHERE user_id = '${user.id}';
        DELETE FROM profiles WHERE id = '${user.id}';
        DELETE FROM auth.users WHERE id = '${user.id}';`,
     );
