@@ -1,0 +1,162 @@
+"use client";
+
+import { useState, useTransition } from "react";
+import { Sparkles, TrendingUp } from "lucide-react";
+
+import { generateOutcomeNarrativeAction } from "@/actions/outcomeInsights";
+import { CATEGORY_LABELS } from "@/lib/rejectionIntelligence";
+import type { OutcomeStats } from "@/actions/outcomeInsights";
+import type { OutcomeNarrativeResult } from "@/lib/outcomeNarrative";
+
+// §Q3 Application -> Outcome Loop. Deterministic stats (props, computed
+// server-side in app/career/page.tsx — zero AI, always shown) plus an
+// opt-in AI narrative (client-fetched on click, same "Agent Content"
+// agent-teal treatment as every other AI-generated summary in this app —
+// renamed from "Agent read" to "AI Navigator reads" per this session's
+// earlier label rename).
+function RateBar({ label, applied, interviewed, rate }: { label: string; applied: number; interviewed: number; rate: number }) {
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center justify-between text-xs">
+        <span className="font-medium text-text-secondary">{label}</span>
+        <span className="text-text-muted">
+          {interviewed}/{applied} interviewed · {rate}%
+        </span>
+      </div>
+      <div className="h-2 w-full rounded-full bg-border-light">
+        <div
+          className={`h-2 rounded-full ${rate >= 60 ? "bg-success" : rate >= 30 ? "bg-info" : "bg-warning"}`}
+          style={{ width: `${rate}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
+  const [narrative, setNarrative] = useState<OutcomeNarrativeResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isPending, startTransition] = useTransition();
+
+  function handleGenerate(): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await generateOutcomeNarrativeAction();
+      if (!result.success || !result.narrative) {
+        setError(result.error ?? "Failed to generate a summary");
+        return;
+      }
+      setNarrative(result.narrative);
+    });
+  }
+
+  if (!stats.hasEnoughData) {
+    return (
+      <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+        <div className="mb-1 flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
+            <TrendingUp className="h-4 w-4 text-text-secondary" />
+          </div>
+          <h2 className="text-base font-semibold text-text-primary">Outcome Insights</h2>
+        </div>
+        <p className="mt-3 text-sm text-text-muted">
+          Track a few more applications and this section will show real patterns from your own history — interview
+          rate by match score and grade, and your most common rejection reasons.
+        </p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+      <div className="mb-1 flex items-center gap-3">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
+          <TrendingUp className="h-4 w-4 text-text-secondary" />
+        </div>
+        <h2 className="text-base font-semibold text-text-primary">Outcome Insights</h2>
+      </div>
+      <p className="mb-4 mt-1 text-sm text-text-secondary">
+        Real patterns from your own tracked applications — never a market benchmark, just what&apos;s actually
+        happened for you.
+      </p>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        {stats.byMatchBand.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              Interview rate by match score
+            </h3>
+            <div className="flex flex-col gap-2.5">
+              {stats.byMatchBand.map((stat) => (
+                <RateBar key={stat.band} label={stat.band} applied={stat.applied} interviewed={stat.interviewed} rate={stat.rate} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {stats.byGrade.length > 0 && (
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+              Interview rate by evaluation grade
+            </h3>
+            <div className="flex flex-col gap-2.5">
+              {stats.byGrade.map((stat) => (
+                <RateBar
+                  key={stat.grade}
+                  label={`Grade ${stat.grade}`}
+                  applied={stat.applied}
+                  interviewed={stat.interviewed}
+                  rate={stat.rate}
+                />
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {stats.rejectionReasons.length > 0 && (
+        <div className="mt-6 border-t border-border pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Top rejection reasons</h3>
+          <ul className="flex flex-col gap-1.5">
+            {stats.rejectionReasons.map((stat) => (
+              <li key={stat.category} className="flex items-center justify-between text-sm">
+                <span className="text-text-secondary">{CATEGORY_LABELS[stat.category]}</span>
+                <span className="font-medium text-text-primary">
+                  {stat.count} rejection{stat.count === 1 ? "" : "s"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      <div className="mt-5 border-t border-border pt-4">
+        {narrative ? (
+          <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
+            <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
+              AI Navigator reads
+            </p>
+            <ul className="flex flex-col gap-1">
+              {narrative.observations.map((observation, i) => (
+                <li key={i} className="text-sm leading-6 text-agent-dark">
+                  {observation}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={handleGenerate}
+            className="glass-pill inline-flex min-h-9 items-center gap-2 px-4 py-2 text-sm font-medium text-text-secondary transition-colors disabled:opacity-60"
+          >
+            <Sparkles className="h-4 w-4" />
+            {isPending ? "Reading your history..." : "Get an AI summary of these patterns"}
+          </button>
+        )}
+        {error && <p className="mt-2 text-xs text-error">{error}</p>}
+      </div>
+    </section>
+  );
+}

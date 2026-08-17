@@ -1248,6 +1248,8 @@ User-directed batch, explicitly framed around data moat / workflow moat / switch
 
 ### Q3. Application → Outcome Loop (Per-User Result Intelligence)
 
+**✅ Shipped 2026-08-17 (Phase 14)**, minus the `job_decisions` table below (deliberately deferred — a real fast-follow, not built this pass, since it needs a new skip-reason capture flow that risks overlapping with the existing `is_hidden` toggle). Everything else built exactly as scoped: `lib/outcomeInsights.ts`, `lib/outcomeNarrative.ts`, `actions/outcomeInsights.ts`, `components/career/OutcomeInsights.tsx`. Live-verified with real seeded data, hand-checked math. See `progress-tracker.md`'s Phase 14 entry for full detail.
+
 **v1 scope**: depends on Q1's `application_events` table existing — build this second, not in parallel.
 
 **Schema**: reuses Q1's tables entirely, no new tables needed except one: `job_decisions` (id, user_id, job_id, decision enum('applied','skipped'), skip_reason text null, decided_at) — captures the "did you apply?" moment for jobs the user looked at but didn't act on, which `application_events` alone can't (that table only exists for jobs someone DID apply to).

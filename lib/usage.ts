@@ -26,7 +26,8 @@ export type UsageAction =
   | "interrogation_plan"
   | "star_story_matching"
   | "question_detail_generation"
-  | "agent_message";
+  | "agent_message"
+  | "outcome_narrative";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -109,6 +110,12 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // conversation plausibly needs several turns in a row, so it gets a
   // generous cap rather than a tight one-shot-feature cap.
   agent_message: 30,
+  // §Q3 — one structured call over stats this app already computed
+  // (lib/outcomeInsights.ts, zero AI), same cost/shape as
+  // rejection_intelligence/leverage_synthesis. Not eagerly generated on
+  // every /career visit — opt-in button click only, so the cap mainly
+  // guards against repeated re-generation for no new data.
+  outcome_narrative: 5,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -131,6 +138,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   star_story_matching: "STAR story matches",
   question_detail_generation: "question deep-dives",
   agent_message: "Navigator messages",
+  outcome_narrative: "outcome insight summaries",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

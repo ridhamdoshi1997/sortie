@@ -224,6 +224,19 @@ Replaces the old flat dotted-list timeline (2026-08-11) after research (build-pl
 
 **§Q1 addition (2026-08-17): "Career view" / "Full timeline" toggle.** Epoch view (above) stays the default. `lib/careerTimeline.ts`'s new `buildFlatTimeline` merges accomplishments + education + real `application_events` rows (with their optional notes) into one reverse-chronological `TimelineEntry[]`, computed server-side in `app/career/page.tsx` and passed as a prop — `CareerTimeline` itself just toggles which pre-built view to render, no client-side recomputation. Distinct dot color per entry kind (`bg-accent` accomplishment / `bg-info` education / `bg-agent` application event) reuses the plain-solid-dot convention already established for the epoch view's own list items — not the light/dark badge-pair tokens. This is the one place the real per-event application history (every logged status transition, not just the current one) is actually visible in the UI.
 
+### OutcomeInsights (§Q3 Application → Outcome Loop)
+
+File: components/career/OutcomeInsights.tsx, lib/outcomeInsights.ts, lib/outcomeNarrative.ts, actions/outcomeInsights.ts
+Route: app/career/page.tsx (renders above CareerTimeline)
+Last updated: 2026-08-17 (new)
+
+**Pattern notes:**
+Two deterministic rate-bar groups (interview rate by match-score band, interview rate by evaluation grade — plain `<div>` width-percentage bars, no charting library, matching `MatchScore.tsx`'s existing bar-fill pattern) plus a rejection-reason count list, always computed server-side on page load (`getOutcomeStats()`, zero AI, no usage cap — two DB reads + pure math). Every individual stat is gated on `MIN_SAMPLE_SIZE = 3` (`lib/outcomeInsights.ts`) — a band/grade with only 1-2 data points is silently omitted rather than shown as a misleadingly crisp percentage; the whole section falls back to an honest "track a few more applications" empty state below that threshold. **Interview-reached status is read from `application_events` (§Q1), never from `jobs.application_status` alone** — a job's current status is lossy (a job now "rejected" may well have genuinely interviewed first), only the real per-event log knows that reliably.
+
+**Optional AI narrative** (`lib/outcomeNarrative.ts`, `generateOutcomeNarrativeAction`) — opt-in button click only (never eager), same honesty-scoped shape as `rejectionIntelligence.ts`/`leverageSynthesizer.ts`: the model only ever sees the already-computed aggregate numbers, never raw job data or an outside benchmark, and every observation must cite a real number from the input. Renders in the standard `border-agent bg-agent-light` "AI Navigator reads" treatment once generated. New `outcome_narrative` usage key (5/day, `lib/usage.ts`).
+
+**Deliberately deferred from the full §Q3 spec**: a `job_decisions` table for explicitly capturing "applied vs. skipped, and why" on jobs looked at but never acted on. Needs a new skip-reason capture UI that risks overlapping/confusing with the already-existing `is_hidden` "not interested" toggle — a real fast-follow, not built this pass.
+
 ### ConfirmDialog (new — reusable destructive-action confirmation)
 
 File: components/ui/ConfirmDialog.tsx
