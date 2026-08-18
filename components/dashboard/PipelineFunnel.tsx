@@ -33,10 +33,17 @@ export function PipelineFunnel({ counts }: { counts: Record<ApplicationStatus, n
                 </span>
                 <span className="font-mono font-semibold text-text-primary">{count}</span>
               </div>
-              <div className="h-2.5 w-full overflow-hidden rounded-full bg-surface-secondary">
+              {/* Micro-bar (agy research, 2026-08-18) — thinned from the
+                  original h-2.5 track to a 3px "instrument" line with a
+                  soft glow on the fill, closer to how Linear/Vercel treat
+                  inline progress indicators than a thick utilitarian bar. */}
+              <div className="h-[3px] w-full overflow-hidden rounded-full bg-surface-secondary">
                 <div
-                  className="h-full rounded-full bg-accent transition-[width] group-hover:opacity-80"
-                  style={{ width: `${widthPercent}%` }}
+                  className="h-full rounded-full bg-accent transition-[width] group-hover:opacity-90"
+                  style={{
+                    width: `${widthPercent}%`,
+                    boxShadow: "0 0 6px color-mix(in srgb, var(--color-accent) 55%, transparent)",
+                  }}
                 />
               </div>
             </Link>

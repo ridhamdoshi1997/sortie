@@ -12,10 +12,18 @@ type DayCell = { date: string; count: number };
 // choice for this exact kind of plain informational count data — not
 // --color-agent (AI-content only) or --color-accent (primary actions/
 // wordmark), neither of which this data represents.
+//
+// Visual-hierarchy pass (2026-08-18, agy research) — zero-count cells now
+// recede almost entirely (a faint inset ring instead of a visible flat
+// fill), and the top intensity tier gets a lighter inner ring so it reads
+// as "lit" rather than just a flatter block of the same hue. The grid
+// itself sits in `.dashboard-well` (globals.css) — a slightly darker,
+// inset-shadowed container — so the colored cells look embedded rather
+// than floating on the same flat card surface as everything else.
 function intensityClass(count: number, maxCount: number): string {
-  if (count === 0) return "bg-surface-secondary";
+  if (count === 0) return "bg-transparent ring-1 ring-inset ring-border/40";
   const ratio = count / maxCount;
-  if (ratio >= 0.75) return "bg-info";
+  if (ratio >= 0.75) return "bg-info ring-1 ring-inset ring-info-light/60";
   if (ratio >= 0.5) return "bg-info/70";
   if (ratio >= 0.25) return "bg-info/45";
   return "bg-info/25";
@@ -65,20 +73,22 @@ export function ActivityHeatmap({ countsByDate }: { countsByDate: Record<string,
           <p className="text-sm text-text-muted">No jobs found yet — run a search to see activity here.</p>
         </div>
       ) : (
-        <div className="mt-5 flex gap-[3px] overflow-x-auto pb-1">
-          {weeks.map((week, weekIndex) => (
-            <div key={weekIndex} className="flex flex-col gap-[3px]">
-              {week.map((cell) => (
-                <div
-                  key={cell.date}
-                  onMouseEnter={() => setHovered(cell)}
-                  onMouseLeave={() => setHovered(null)}
-                  className={`h-3 w-3 rounded-[2px] transition-transform hover:scale-125 ${intensityClass(cell.count, maxCount)}`}
-                  aria-label={`${cell.count} job${cell.count === 1 ? "" : "s"} found on ${cell.date}`}
-                />
-              ))}
-            </div>
-          ))}
+        <div className="dashboard-well mt-5 overflow-x-auto p-3">
+          <div className="flex gap-[3px]">
+            {weeks.map((week, weekIndex) => (
+              <div key={weekIndex} className="flex flex-col gap-[3px]">
+                {week.map((cell) => (
+                  <div
+                    key={cell.date}
+                    onMouseEnter={() => setHovered(cell)}
+                    onMouseLeave={() => setHovered(null)}
+                    className={`h-3 w-3 rounded-[2px] transition-transform hover:scale-125 ${intensityClass(cell.count, maxCount)}`}
+                    aria-label={`${cell.count} job${cell.count === 1 ? "" : "s"} found on ${cell.date}`}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
       )}
     </div>

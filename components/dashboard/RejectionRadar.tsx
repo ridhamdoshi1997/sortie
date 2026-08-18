@@ -14,11 +14,24 @@ type RejectedJob = {
 // rejection_diagnosis generated at some earlier point (the job detail
 // page's own "Why the silence?" flow, lib/rejectionIntelligence.ts). This
 // widget just surfaces what already exists, it never diagnoses on its own.
+//
+// Visual-hierarchy pass (2026-08-18, agy research) — agy suggested a teal
+// "AI tinting" wash for any card touching AI content; adapted into a
+// restrained left-border accent (mirroring the app's own established
+// Agent-Content Callout convention, ui-tokens.md) rather than a gradient
+// wash. Also a real correctness fix, not just visual: the category badge
+// below is genuinely AI-generated output (rejection_diagnosis), so per this
+// app's strict Invariant ("if it came from the agent, it gets this
+// treatment; if it didn't, it never does") it belongs in agent-teal, not
+// the warning-orange it was using before — that was an inconsistency, not
+// a deliberate choice.
 export function RejectionRadar({ jobs }: { jobs: RejectedJob[] }) {
   const diagnosed = jobs.filter((j) => j.rejection_diagnosis !== null);
 
   return (
-    <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
+    <div
+      className={`border border-border bg-surface shadow-card rounded-2xl p-6 ${diagnosed.length > 0 ? "border-l-2 border-l-agent" : ""}`}
+    >
       <div className="flex items-center gap-2">
         <Radar className="h-4 w-4 text-warning" />
         <h2 className="text-base font-semibold leading-6 text-text-primary">Rejection Intelligence</h2>
@@ -43,7 +56,7 @@ export function RejectionRadar({ jobs }: { jobs: RejectedJob[] }) {
                     <p className="truncate text-xs text-text-muted">{job.company ?? "Unknown company"}</p>
                   </div>
                   {topReason && (
-                    <span className="shrink-0 rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
+                    <span className="shrink-0 rounded-full bg-agent-light px-2 py-0.5 text-[11px] font-medium text-agent-dark">
                       {CATEGORY_LABELS[topReason.category]}
                     </span>
                   )}

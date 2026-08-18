@@ -9,12 +9,27 @@ import type { DashboardInsight } from "@/lib/dashboardInsights";
 // lib/dashboardInsights.ts's header comment) — the "AI" in the name reflects
 // that these read like something an assistant would flag, not that a model
 // call happens on every dashboard load.
+//
+// Visual-hierarchy pass (2026-08-18, researched via agy) — this is the
+// grid's "anchor" card: `.dashboard-hero-card` (globals.css) gives it an
+// accent-tinted border + inset hairline instead of the plain flat
+// border+shadow every other card uses, larger padding (p-8 vs p-6), and a
+// bigger insight-count number to establish it as the heaviest element in
+// the grid — see that class's own comment for why a static gradient wash
+// (agy's literal suggestion) was substituted for this token-step approach.
 export function AIActionCenter({ insights }: { insights: DashboardInsight[] }) {
   return (
-    <div className="flex h-full flex-col border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="flex items-center gap-2">
-        <Sparkles className="h-4 w-4 text-accent" />
-        <h2 className="text-base font-semibold leading-6 text-text-primary">Action Center</h2>
+    <div className="dashboard-hero-card flex h-full flex-col rounded-2xl p-8">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-accent" />
+          <h2 className="text-base font-semibold leading-6 text-text-primary">Action Center</h2>
+        </div>
+        {insights.length > 0 && (
+          <span className="font-mono text-2xl font-semibold leading-none tracking-tight text-accent">
+            {insights.length}
+          </span>
+        )}
       </div>
 
       {insights.length === 0 ? (
@@ -22,7 +37,7 @@ export function AIActionCenter({ insights }: { insights: DashboardInsight[] }) {
           Nothing needs your attention right now — you&apos;re caught up.
         </p>
       ) : (
-        <ul className="mt-4 flex flex-1 flex-col gap-2.5">
+        <ul className="mt-5 flex flex-1 flex-col gap-2.5">
           {insights.map((insight) => {
             const Icon = insight.tone === "warning" ? AlertTriangle : Info;
             return (

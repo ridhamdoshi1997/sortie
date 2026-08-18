@@ -428,6 +428,60 @@ body {
   box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-overlay) 40%, transparent);
 }
 
+/* Dashboard visual-hierarchy pass (2026-08-18) — researched via agy against
+   real premium dashboards (Linear/Vercel/Stripe/Raycast) after the redesign
+   shipped flat and "8 identical gray boxes." Two of agy's literal
+   prescriptions were deliberately NOT taken: a static per-card ambient
+   radial-gradient "hero wash," and a noise-texture overlay. Both were
+   already tried at the page/body level and reverted 2026-07-27 after real
+   computed-style research against Raycast found zero ambient gradient wash
+   on its actual UI (see "Fully flat, no ambient gradient at all" above) —
+   this app's own settled answer is that elevation/hierarchy comes from
+   background/surface/border token steps, not decorative gradients. These
+   three classes achieve agy's actual goal (an anchor card that reads as
+   heavier than its neighbors, an inset "well" for the heatmap, distinct
+   from a "hero wash") using that same token-step approach instead.
+
+   card-interactive-glow above already establishes a real precedent for a
+   restrained *hover-only* radial glow on interactive cards — these classes
+   stay in that spirit (subtle, structural, no static decoration) rather
+   than reintroducing something already found not to match real references.
+
+   REAL GOTCHA HIT WHILE BUILDING THIS (confirmed live via getComputedStyle,
+   not assumed): the first version grouped `border`/`box-shadow` (both
+   color-mix()-based) together with plain `background` in one rule per
+   class — Lightning CSS's @supports(color-mix) rewrite silently dropped
+   BOTH box-shadow declarations entirely (computed style came back "none").
+   This is the exact documented gotcha further up this file ("Lightning CSS
+   silently drops properties that share a declaration block with a
+   color-mix() value") — fixed the same documented way: every color-mix()-
+   bearing property gets its own single-property rule, never combined with
+   another declaration in the same block. */
+.dashboard-hero-card {
+  background: var(--color-surface);
+}
+
+.dashboard-hero-card {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border) 76%);
+}
+
+.dashboard-hero-card {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.dashboard-well {
+  background: var(--color-background);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard-well {
+  box-shadow: inset 0 2px 6px color-mix(in srgb, var(--color-overlay) 10%, transparent);
+}
+
+.dark .dashboard-well {
+  box-shadow: inset 0 2px 8px color-mix(in srgb, var(--color-overlay-dark) 55%, transparent);
+}
+
 /* Secondary chrome bar (JobActionBar) — solid, not blurred (2026-07-27):
    Raycast's own sticky/floating chrome has zero backdrop-filter, relying on
    a solid background + hairline border instead. JobActionBar itself is no
