@@ -18,6 +18,13 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Practice Sandbox (inline code editor)
+
+Files: `components/interview/PracticeSandbox.tsx`, `lib/practiceSandbox.ts` (execution engines), `lib/interviewQuestions.ts`'s `PracticeKit` type + `generatePracticeKit()`, `actions/interviewQuestions.ts`'s `getPracticeKit()`
+Route: `/interview` and job-detail's Interview Prep Room tab, inside `QuestionBankPanel.tsx`'s Study View — "Practice this question" button appears only under `technical`-category questions, right below the existing "AI reference implementation" card
+Last updated: 2026-08-18. Monaco (`@monaco-editor/react`, the only new npm dependency) loaded via `next/dynamic(ssr:false)`, `theme="vs-dark"`. JavaScript executes in a plain isolated Web Worker; Python executes via Pyodide loaded from its own CDN (`cdn.jsdelivr.net/pyodide`, pinned version) *inside* a Worker via `importScripts` — not an npm dependency, since Pyodide's real payload is WASM/data files the npm package doesn't bundle either. Both paths share one `runInWorker()` helper with an 8s timeout that terminates the Worker.
+"Soft verification," not pass/fail grading: a test-case picker (pills, up to 3), a `callExpression` shown as plain code text (e.g. `findFailedDependency([...])`), a "Run Code" button that runs the SAME call against both the candidate's code and the AI's real reference solution, rendered side by side as `OutputPanel`s (`bg-surface` cards, error text in `text-error`, success output in a plain `<pre>`) — never a pass/fail badge. A `border-l-2 border-agent bg-agent-light` disclaimer sits above the test-case picker (this app's standard Agent-Content Callout).
+
 ### Dashboard bento-grid (redesign v1 + visual-hierarchy pass v2)
 
 Files: `components/dashboard/AIActionCenter.tsx`, `PipelineFunnel.tsx`, `ActivityHeatmap.tsx`, `UpcomingInterviews.tsx`, `RejectionRadar.tsx`; `lib/dashboardInsights.ts`; `.dashboard-hero-card`/`.dashboard-well` in `app/globals.css`

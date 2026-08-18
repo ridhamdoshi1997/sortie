@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, Check, Copy, Sparkles, X } from "lucide-react";
+import { BookOpen, Check, Code2, Copy, Loader2, Sparkles, X } from "lucide-react";
 
-import { getOrGenerateQuestionBank, getQuestionDetails } from "@/actions/interviewQuestions";
-import type { InterviewQuestion, QuestionBank, QuestionCategory, QuestionDetails } from "@/lib/interviewQuestions";
+import { getOrGenerateQuestionBank, getQuestionDetails, getPracticeKit } from "@/actions/interviewQuestions";
+import { PracticeSandbox } from "@/components/interview/PracticeSandbox";
+import type { InterviewQuestion, PracticeKit, QuestionBank, QuestionCategory, QuestionDetails } from "@/lib/interviewQuestions";
 
 const CATEGORY_LABELS: Record<QuestionCategory, string> = {
   behavioral: "Behavioral",
@@ -255,6 +256,18 @@ function StudyView({
   const [loading, startTransition] = useTransition();
   const [copied, setCopied] = useState(false);
 
+  // Practice Sandbox — separate load, only ever triggered by an explicit
+  // click on "Practice this question" (technical questions only), not
+  // auto-fetched alongside the study card's own details. Kept local to this
+  // one StudyView instance rather than lifted into the bank's own state
+  // (unlike `details` above) — a practice session is scratch/ephemeral UI
+  // state, not something worth persisting across a re-open the way the
+  // study card's text content is.
+  const [practiceKit, setPracticeKit] = useState<PracticeKit | null>(question.practiceKit ?? null);
+  const [practiceOpen, setPracticeOpen] = useState(false);
+  const [practiceError, setPracticeError] = useState<string | null>(null);
+  const [practiceLoading, startPracticeTransition] = useTransition();
+
   useEffect(() => {
     if (question.details === undefined) {
       startTransition(async () => {
@@ -268,6 +281,21 @@ function StudyView({
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  function handleOpenPractice(): void {
+    setPracticeError(null);
+    setPracticeOpen(true);
+    if (practiceKit) return;
+    startPracticeTransition(async () => {
+      const result = await getPracticeKit(bankId, questionIndex);
+      if (!result.success) {
+        setPracticeError(result.error);
+        setPracticeOpen(false);
+        return;
+      }
+      setPracticeKit(result.practiceKit);
+    });
+  }
 
   function handleCopy(code: string): void {
     navigator.clipboard.writeText(code).then(() => {
@@ -354,6 +382,22 @@ function StudyView({
                     Time: {details.solution.timeComplexity} · Space: {details.solution.spaceComplexity}
                   </p>
                 </div>
+
+                {!practiceOpen && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPractice}
+                    disabled={practiceLoading}
+                    className="inline-flex w-fit items-center gap-2 rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-muted disabled:opacity-60"
+                  >
+                    {practiceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
+                    {practiceLoading ? "Building exercise…" : "Practice this question"}
+                  </button>
+                )}
+                {practiceError && <p className="text-xs text-error">{practiceError}</p>}
+                {practiceOpen && practiceKit && (
+                  <PracticeSandbox practiceKit={practiceKit} onClose={() => setPracticeOpen(false)} />
+                )}
               </>
             )}
 

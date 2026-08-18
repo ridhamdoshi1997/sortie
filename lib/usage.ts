@@ -26,6 +26,7 @@ export type UsageAction =
   | "interrogation_plan"
   | "star_story_matching"
   | "question_detail_generation"
+  | "practice_kit_generation"
   | "agent_message"
   | "outcome_narrative"
   | "brag_doc"
@@ -107,6 +108,12 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // interview_question_bank: only a genuine miss (details not yet generated
   // for that question) consumes this.
   question_detail_generation: 20,
+  // Practice Sandbox (build-plan.md §N/§P, Tier 3) — same lazy-per-question,
+  // cache-hit-is-free-read shape as question_detail_generation above, just a
+  // separate action since it generates a different artifact (a runnable
+  // JS/Python exercise, not study text). Free-tier Gemini, same cap as its
+  // sibling.
+  practice_kit_generation: 20,
   // Navigator (§O) — a conversational feature, same reasoning as
   // bullet_rewrite: free-tier Gemini, no external cost, and a real
   // conversation plausibly needs several turns in a row, so it gets a
@@ -152,6 +159,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   interrogation_plan: "interrogation plan syntheses",
   star_story_matching: "STAR story matches",
   question_detail_generation: "question deep-dives",
+  practice_kit_generation: "practice sandbox exercises",
   agent_message: "Navigator messages",
   outcome_narrative: "outcome insight summaries",
   brag_doc: "brag doc generations",

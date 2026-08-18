@@ -9,8 +9,10 @@ import {
   buildCacheKey,
   generateQuestionBank,
   generateQuestionDetails,
+  generatePracticeKit,
   normalizeRoleFamily,
   type InterviewQuestion,
+  type PracticeKit,
   type QuestionBank,
   type QuestionDetails,
 } from "@/lib/interviewQuestions";
@@ -191,5 +193,73 @@ export async function getQuestionDetails(bankId: string, questionIndex: number):
   } catch (error) {
     console.error("[actions/interviewQuestions] getQuestionDetails", error);
     return { success: false, error: toUserMessage(error, "Failed to load question details.") };
+  }
+}
+
+type PracticeKitResult = { success: true; practiceKit: PracticeKit } | { success: false; error: string };
+
+// Practice Sandbox (build-plan.md §N/§P) — exact same lazy-generate-and-
+// persist shape as getQuestionDetails above, just a separate field
+// (practiceKit) and a separate usage action, since it's a distinct artifact
+// generated on a distinct trigger (opening the sandbox, not expanding the
+// study card).
+export async function getPracticeKit(bankId: string, questionIndex: number): Promise<PracticeKitResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: bank } = await insforge.database
+      .from("interview_question_banks")
+      .select("id,company,role_family,seniority,questions")
+      .eq("id", bankId)
+      .maybeSingle<QuestionBankRow>();
+
+    if (!bank) {
+      return { success: false, error: "Question bank not found" };
+    }
+
+    const question = bank.questions[questionIndex];
+    if (!question) {
+      return { success: false, error: "Question not found" };
+    }
+
+    if (question.practiceKit) {
+      return { success: true, practiceKit: question.practiceKit };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "practice_kit_generation");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const practiceKit = await generatePracticeKit(question, bank.company, bank.role_family);
+
+    // Same read-then-write race-window tolerance as getQuestionDetails above
+    // — this table is shared across every user, no user_id column.
+    const { data: fresh } = await insforge.database
+      .from("interview_question_banks")
+      .select("questions")
+      .eq("id", bankId)
+      .maybeSingle<{ questions: InterviewQuestion[] }>();
+
+    const questions = fresh?.questions ?? bank.questions;
+    if (questions[questionIndex]) {
+      questions[questionIndex] = { ...questions[questionIndex], practiceKit };
+    }
+
+    const { error: updateError } = await insforge.database
+      .from("interview_question_banks")
+      .update({ questions })
+      .eq("id", bankId);
+
+    if (updateError) {
+      console.error("[actions/interviewQuestions] getPracticeKit persist", updateError);
+    }
+
+    return { success: true, practiceKit };
+  } catch (error) {
+    console.error("[actions/interviewQuestions] getPracticeKit", error);
+    return { success: false, error: toUserMessage(error, "Failed to build the practice exercise.") };
   }
 }

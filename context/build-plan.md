@@ -1154,7 +1154,23 @@ Going direct is a genuine ~3-5x cost reduction over the orchestrator path, with 
 
 **Not started.** This remains a real recurring per-minute $ cost category — nothing else in this app has that cost shape (everything else is per-call) — worth its own explicit go/no-go on pricing/gating before any code gets written, but the cost floor is now known to be far lower (~$0.02-0.03/min direct-to-OpenAI) than the original ~$0.03-0.05/min orchestrator estimate implied once the markup is removed.
 
-### Inline code editor "Practice Sandbox" — feasibility research (2026-08-14, not built)
+### Inline code editor "Practice Sandbox" — ✅ v1 shipped 2026-08-18 (Phase 15, Tier 3)
+
+Built exactly to the v1 scope below, with one real deviation worth noting: only **one** new dependency was actually needed (`@monaco-editor/react`), not two. Python doesn't run via the `pyodide` npm package — Pyodide's real payload is its WASM/data files, which the npm package doesn't bundle either; it's loaded lazily from its own CDN (`cdn.jsdelivr.net/pyodide`) via `importScripts` *inside* a Web Worker, avoiding needing to self-host or webpack-configure ~10MB of static assets for a feature most users will only occasionally touch. JavaScript runs in a separate, plain isolated Worker.
+
+**What actually shipped**: `lib/practiceSandbox.ts` (the two Worker-based execution engines), `lib/interviewQuestions.ts`'s new `PracticeKit` type + `generatePracticeKit()` (lazy, per-question, same shape as the existing `QuestionDetails` generation), `actions/interviewQuestions.ts`'s new `getPracticeKit()` action (cache-check-then-generate-and-persist, new `practice_kit_generation` usage-metered action), and `components/interview/PracticeSandbox.tsx` (Monaco via `next/dynamic(ssr:false)`, test-case picker, "Run Code," side-by-side output). Wired into `QuestionBankPanel.tsx`'s existing Study View — a new "Practice this question" button appears only under the `technical`-category detail block, right below the existing AI reference implementation.
+
+**A real design question surfaced live, not assumed**: this app's "technical" category questions aren't always clean LeetCode-style algorithm problems — Stripe's own generated bank included "Describe a time you had to debug a production issue involving multiple microservices" tagged `technical`. Confirmed live that the AI handles this gracefully: asked to build a runnable exercise from that theme, it synthesized a genuinely testable, related function (`findFailedDependency(logs)` — given service logs, find the one that returned a 5xx) rather than failing or producing something nonsensical.
+
+**Gating decision, researched via `agy` per direct user request** ("make sure the coding board only appears for users who have it related background in the profile, or it's not feasible"): the practice-sandbox button is **NOT** gated by the viewing user's own profile (skills/title/experience_level). Real coding-practice products (LeetCode, HackerRank, Pramp, interviewing.io) gate the editor's visibility by the *question's* category, never by the *user's* profile — gating by inferred profile signals is a documented anti-pattern that produces real false negatives (career switchers, technical PMs/QA/data analysts without an "engineer" title, incomplete profiles) that read as "the app is broken," not as a helpful filter. The existing category-based gating (only `technical`-type questions ever show the button, and the AI only generates `technical` questions for roles where it makes sense in the first place) already achieves the intended outcome without that risk.
+
+**Live-verified end to end, not just compiled** — both execution paths independently confirmed via real code, not assumed from the source:
+- Full UI flow: opened a real Stripe/Senior-SWE question bank, clicked "Practice this question" on a real technical question, confirmed Monaco rendered with real syntax highlighting and 3 real AI-generated test cases, ran the unmodified starter code and confirmed the side-by-side comparison rendered real, different values (`null` for the incomplete starter vs `"payment"` for the real reference solution) — read directly from the DOM, not screenshot-guessed.
+- Python/Pyodide path independently verified via a direct Worker test (bypassing the AI-generation step, to isolate the execution mechanism itself): `add(2, 3)` correctly returned `"5"` via a real CDN load + WASM init + `runPythonAsync` round trip.
+
+**Deliberately not built (v1 scope, matches the original research)**: C++/Java/Go/Rust, strict pass/fail grading, multi-file support, timers/memory limits, a leaderboard.
+
+### Inline code editor "Practice Sandbox" — original feasibility research (2026-08-14)
 
 Researched via `agy`, prompted by a direct question during the Question Bank depth-upgrade work: is a HackerRank/LeetCode-style inline code editor (write code, run it against test cases) realistic to add for the Question Bank's technical questions.
 
