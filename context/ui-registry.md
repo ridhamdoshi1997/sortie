@@ -18,6 +18,47 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Application History (per-job event timeline)
+
+File: `components/job-details/ApplicationHistory.tsx`, `actions/careerEvents.ts`'s `listJobEventHistory`
+Route: job detail page (`/find-jobs/[id]`), outside the tabs, right after `JobInfo`
+Last updated: 2026-08-18. Renders `application_events`/`interview_events`/`compensation_events` scoped to one job (previously only ever writable from this page, only ever readable on the global `/career` flat timeline). Colored-dot list matching `CareerTimeline.tsx`'s visual language; returns `null` when empty (no empty-state card).
+
+### Tags & Notes (job detail)
+
+File: `components/job-details/JobTagsAndNotes.tsx`, `actions/jobs.ts`'s `updateJobTags`/`updateJobNotes`
+Route: job detail page, right after Application History
+Last updated: 2026-08-18. Reuses `TagInput` from `components/ui/FormControls.tsx` verbatim. Notes save on blur, tags save on every add/remove. User's own tags also render as accent-colored chips on `JobResultCard` (distinct styling from the card's existing auto-derived fit-pills, which use a plain border style).
+
+### Interview Debrief
+
+File: `components/job-details/InterviewDebrief.tsx`
+Route: job detail page's "Interview Prep Room" tab (only when `application_status === "interviewing"`), below `InterviewPanel`
+Last updated: 2026-08-18. First real UI ever calling `logInterviewEvent` (existed since §Q1, unused until now). Outcome select + optional panelist select (only shown if panel members exist) + notes textarea; supports logging more than once per job (multiple interview rounds).
+
+### STAR Vault (career-asset surfacing)
+
+File: `components/career/StarVault.tsx`
+Route: `/career`, between STAR-adjacent sections
+Last updated: 2026-08-17/18. Reuses `StarStoryMatrix.tsx`'s `StarStoryEditor` verbatim (exported for this purpose) rather than forking the add/edit UI. New link/unlink control against `interview_events` via `linkStarStoryToInterview`.
+
+### Brag Doc Generator
+
+File: `components/career/BragDocGenerator.tsx`, `components/documents/BragDocPDF.tsx`, `lib/bragDoc.ts`
+Route: `/career`
+Last updated: 2026-08-17. Date-range picker + Generate button; result held client-side (not persisted server-side) until "Download PDF" posts it to `/api/career/brag-doc`. PDF reuses `ResumePDF.tsx`'s `resolveTokens`/`mapRange` infra, single fixed theme (no template picker).
+
+### Résumé Suggestions Queue (always-warm résumé)
+
+File: `components/career/ResumeSuggestionsQueue.tsx`, `lib/resumeSuggestions.ts`, `lib/inngest/functions.ts`'s `generateResumeSuggestionAsync`
+Route: `/career`
+Last updated: 2026-08-17. Background-generated bullet suggestions from newly-logged accomplishments (Inngest, triggered on `accomplishments/logged`). Visually mirrors `EditorTab.tsx`'s private `BulletDiffCard` Was/Now language (parallel implementation, not shared — that component isn't exported). "Accept" copies to clipboard rather than writing into a résumé, since there's no single deterministic base-résumé target.
+
+### Sortie Browser Extension (Manifest V3)
+
+File: top-level `extension/` directory (`manifest.json`, `content.js`, `background.js`, `popup.html`/`.js`/`.css`) — **not** part of this Next.js app, excluded from its ESLint config
+Last updated: 2026-08-18 (v1.4). Inline Shadow-DOM widget (falls back to floating bottom-right if the site's Apply-button anchor selector doesn't match) with a live match-score badge (manual refresh button included) next to LinkedIn/Indeed job postings; context-aware popup; Greenhouse/Lever autofill adapters + fuzzy `<select>` matching + generic keyword-matching fallback. Full detail and known caveats in `extension/README.md` — read that before touching extension code, it documents 3 real bugs found and fixed live this session (CORS host_permissions gap, LinkedIn's hashed-CSS-class churn, a swallowed autofill error).
+
 ### Navigator (global AI copilot — floating-only)
 
 File: `components/agent/NavigatorChat.tsx`, `components/agent/NavigatorLauncher.tsx`, `components/agent/NavigatorLauncherLoader.tsx`, `lib/agentAssistant.ts`, `actions/agent.ts`

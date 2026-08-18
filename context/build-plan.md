@@ -1042,8 +1042,8 @@ This isn't cosmetic — it's what a real ATS-autofill feature requires. Workday/
 | **Application tracker** | ✅ | Phase 15 (Kanban) — **spine #1**, shipped 2026-08-11 |
 | Kanban board UI (Applied / Interviewing / Offered) | ✅ | Phase 15 — page renamed "Missions" 2026-08-12 (`/missions`, was `/pipeline`), List view toggle added same day (researched via agy: real trackers use one unified view + filter, not per-stage pages) |
 | **Rejection intelligence** (diagnose employer silence) | ✅ | Career OS — **spine #1**, shipped 2026-08-11, `lib/rejectionIntelligence.ts` |
-| Application timeline view (per-job history) | 🆕 | Brainstorm (UI) |
-| Interview debrief capture | 🆕 | Brainstorm |
+| Application timeline view (per-job history) | ✅ shipped 2026-08-18 | `components/job-details/ApplicationHistory.tsx` — scopes application_events/interview_events/compensation_events to one job on its own detail page |
+| Interview debrief capture | ✅ shipped 2026-08-18 | `components/job-details/InterviewDebrief.tsx` — first real UI ever calling the pre-existing `logInterviewEvent` action |
 | Deadline tracker / application calendar | 🆕 | Brainstorm |
 | Dashboard filter/sort/group parity | 📋 | Phase 14 |
 
@@ -1323,7 +1323,9 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | Detail drawer / split view (fast job browsing) | 🆕 | Brainstorm |
 | Global search | 🆕 | Brainstorm |
 | Rich filtering & sorting on Find Jobs | 📋 | v1 F11 (partial) |
-| Job card quick-actions (save/hide/generate inline) | 🆕 | Brainstorm |
+| Job card quick-actions (save/hide/generate inline) | ✅ save/hide pre-existed; "Generate Résumé" added 2026-08-18 | `JobResultCard.tsx`'s menu, deep-links into the existing `?generate=resume` trigger. Not click-verified (browser-automation ref friction), pattern-matched to proven sibling code |
+| Tags & personal notes on jobs | ✅ shipped 2026-08-18 | `jobs.tags`/`jobs.personal_notes`, `JobTagsAndNotes.tsx` on the job detail page, chips also on `JobResultCard` |
+| Recently viewed / pinned jobs | 🟡 pinned already covered by `jobs.is_priority`; "recently viewed" started 2026-08-18 | `jobs.last_viewed_at` column live, no app code uses it yet — see RESUME.md |
 | Job comparison view (side-by-side, 10 dimensions) | 🆕 | Brainstorm |
 | Bulk actions (multi-select archive/tag) | 🆕 | Brainstorm |
 | Tags & personal notes on jobs | 🆕 | Brainstorm |
