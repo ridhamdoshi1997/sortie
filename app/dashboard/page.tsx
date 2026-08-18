@@ -1,24 +1,20 @@
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
-import { StatsBar } from "@/components/dashboard/StatsBar";
+import { AIActionCenter } from "@/components/dashboard/AIActionCenter";
+import { PipelineFunnel } from "@/components/dashboard/PipelineFunnel";
+import { ActivityHeatmap } from "@/components/dashboard/ActivityHeatmap";
+import { UpcomingInterviews } from "@/components/dashboard/UpcomingInterviews";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
-import {
-  CompanyResearchChart,
-  JobsOverTimeChart,
-  MatchDistributionChart,
-} from "@/components/dashboard/AnalyticsCharts";
+import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
+import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
 import { Navbar } from "@/components/layout/Navbar";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompletion } from "@/lib/profile-utils";
 import { formatDate } from "@/lib/utils";
-import type { Profile } from "@/types";
-
-type JobStatsRow = {
-  match_score: number | null;
-  company_research: unknown;
-  found_at: string;
-};
+import { computeDashboardInsights } from "@/lib/dashboardInsights";
+import { STAGE_ORDER, type ApplicationStatus } from "@/lib/applicationStatus";
+import type { Job, Profile } from "@/types";
 
 type AgentRunRow = {
   id: string;
@@ -33,10 +29,19 @@ type ResearchedJobRow = {
   found_at: string;
 };
 
-const DAYS_ORDER = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
-const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 const MATCH_BUCKETS = ["50-60%", "60-70%", "70-80%", "80-90%", "90-100%"] as const;
 
+// Redesigned 2026-08-18 (build-plan.md §P, "command center" bento-grid) —
+// replaces the old flat 4-stat-tile + 2x2-chart layout ("rearview mirror":
+// what happened) with an Action Center + Pipeline Funnel hero row
+// ("cockpit": what needs attention next) and click-through widgets. Full
+// research/layout spec in build-plan.md §P; this is the real v1 slice of
+// it — the "no dead ends" rule is honored for the Pipeline Funnel (links
+// into a matching pre-filtered Missions list) and Upcoming Interviews/
+// Rejection Radar (link straight to the job), not for every interaction the
+// original research described (e.g. inline hover-popups of the 10-dimension
+// breakdown) — real navigation covers the same underlying need without a
+// second, parallel drill-down UI to build and maintain.
 export default async function DashboardPage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
@@ -54,9 +59,9 @@ export default async function DashboardPage() {
         .maybeSingle<Profile>(),
       insforge.database
         .from("jobs")
-        .select("match_score, company_research, found_at")
+        .select("*")
         .eq("user_id", user.id)
-        .returns<JobStatsRow[]>(),
+        .returns<Job[]>(),
       insforge.database
         .from("agent_runs")
         .select("id, job_title_searched, jobs_found, completed_at")
@@ -75,15 +80,7 @@ export default async function DashboardPage() {
         .returns<ResearchedJobRow[]>(),
     ]);
 
-  // Stats
   const jobs = jobRows ?? [];
-  const totalJobs = jobs.length;
-  const avgMatchRate =
-    totalJobs > 0
-      ? Math.round(jobs.reduce((sum, j) => sum + (j.match_score ?? 0), 0) / totalJobs)
-      : 0;
-  const companiesResearched = jobs.filter((j) => j.company_research !== null).length;
-  const jobsThisWeek = jobs.filter((j) => new Date(j.found_at) >= weekAgo).length;
 
   // Recent activity — merge agent_runs + researched jobs, sort by time, take top 10
   type ActivityItem = {
@@ -117,33 +114,16 @@ export default async function DashboardPage() {
     .slice(0, 10)
     .map(({ id, text, time, type }) => ({ id, text, time, type }));
 
-  // Chart data — derived from DB jobs rows
-
-  // Jobs found per day of week (last 7 days)
-  const jobsByDay: Record<string, number> = {};
+  // Jobs-found-per-day heatmap data (last 12 weeks)
+  const jobsByDate: Record<string, number> = {};
   for (const j of jobs) {
-    const d = new Date(j.found_at);
-    if (d >= weekAgo) {
-      const label = DAY_LABELS[d.getDay()];
-      jobsByDay[label] = (jobsByDay[label] ?? 0) + 1;
-    }
+    if (!j.found_at) continue;
+    const iso = new Date(j.found_at).toISOString().slice(0, 10);
+    jobsByDate[iso] = (jobsByDate[iso] ?? 0) + 1;
   }
-  const jobsOverTimeData = DAYS_ORDER.map((d) => ({ day: d, count: jobsByDay[d] ?? 0 }));
 
-  // Company research activity per day of week (last 7 days)
-  const researchByDay: Record<string, number> = {};
-  for (const j of jobs) {
-    if (j.company_research !== null) {
-      const d = new Date(j.found_at);
-      if (d >= weekAgo) {
-        const label = DAY_LABELS[d.getDay()];
-        researchByDay[label] = (researchByDay[label] ?? 0) + 1;
-      }
-    }
-  }
-  const researchActivityData = DAYS_ORDER.map((d) => ({ day: d, count: researchByDay[d] ?? 0 }));
-
-  // Match score distribution (all time, scores >= 50)
+  // Match score distribution (all time, scores >= 50) — unchanged from the
+  // pre-redesign dashboard, MatchDistributionChart is still a real widget.
   const matchCounts: Record<string, number> = {};
   for (const j of jobs) {
     const score = j.match_score ?? 0;
@@ -162,6 +142,19 @@ export default async function DashboardPage() {
   }
   const matchDistributionData = MATCH_BUCKETS.map((r) => ({ range: r, count: matchCounts[r] ?? 0 }));
 
+  // Pipeline Funnel counts
+  const funnelCounts = Object.fromEntries(
+    STAGE_ORDER.map((stage) => [stage, jobs.filter((j) => j.application_status === stage && !j.is_hidden).length]),
+  ) as Record<ApplicationStatus, number>;
+
+  const interviewingJobs = jobs
+    .filter((j) => j.application_status === "interviewing" && !j.is_hidden)
+    .map((j) => ({ id: j.id, title: j.title, company: j.company, company_logo_url: j.company_logo_url }));
+
+  const rejectedJobs = jobs
+    .filter((j) => j.application_status === "rejected")
+    .map((j) => ({ id: j.id, title: j.title, company: j.company, rejection_diagnosis: j.rejection_diagnosis }));
+
   // Profile completion
   const { completionPercent, missingFields } = calculateCompletion(
     profile ?? {
@@ -177,6 +170,8 @@ export default async function DashboardPage() {
     },
   );
 
+  const insights = computeDashboardInsights(jobs, completionPercent);
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -189,21 +184,27 @@ export default async function DashboardPage() {
           />
         )}
 
-        <StatsBar
-          totalJobs={totalJobs}
-          avgMatchRate={avgMatchRate}
-          companiesResearched={companiesResearched}
-          jobsThisWeek={jobsThisWeek}
-        />
-
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <RecentActivity items={activityItems} />
-          <CompanyResearchChart data={researchActivityData} />
+        {/* Row 1 — hero: what needs attention next, not what already happened */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+          <div className="lg:col-span-3">
+            <AIActionCenter insights={insights} />
+          </div>
+          <PipelineFunnel counts={funnelCounts} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <JobsOverTimeChart data={jobsOverTimeData} />
+        {/* Row 2 — match quality, activity trend, and (only if real) upcoming interviews */}
+        <div className={`grid grid-cols-1 gap-4 ${interviewingJobs.length > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
           <MatchDistributionChart data={matchDistributionData} />
+          <div className="lg:col-span-2">
+            <ActivityHeatmap countsByDate={jobsByDate} />
+          </div>
+          {interviewingJobs.length > 0 && <UpcomingInterviews jobs={interviewingJobs} />}
+        </div>
+
+        {/* Row 3 — recent activity + rejection intelligence, both real reuse of existing data */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <RecentActivity items={activityItems} />
+          <RejectionRadar jobs={rejectedJobs} />
         </div>
       </main>
     </>

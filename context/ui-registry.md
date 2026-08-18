@@ -18,6 +18,16 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Dashboard bento-grid (redesign v1)
+
+Files: `components/dashboard/AIActionCenter.tsx`, `PipelineFunnel.tsx`, `ActivityHeatmap.tsx`, `UpcomingInterviews.tsx`, `RejectionRadar.tsx`; `lib/dashboardInsights.ts`
+Route: `/dashboard`, replacing the old `StatsBar`/`CompanyResearchChart`/`JobsOverTimeChart` (all deleted)
+Last updated: 2026-08-18. 3-row grid: Row 1 = `AIActionCenter` (lg:col-span-3) + `PipelineFunnel` (lg:col-span-1). Row 2 = `MatchDistributionChart` + `ActivityHeatmap` (lg:col-span-2) + `UpcomingInterviews` (only rendered when interviewing jobs exist, row becomes 3-col instead of 4-col when absent). Row 3 = `RecentActivity` + `RejectionRadar`.
+- **AIActionCenter**: `Sparkles` icon in `text-accent` (not `text-agent` — insights are deterministic, not live AI output, so the AI-content-reserved token doesn't apply). Rows: `border-warning/20 bg-warning/5 text-warning` or `border-info/20 bg-info-lightest text-info-foreground` depending on `DashboardInsight.tone`.
+- **PipelineFunnel**: bars use `bg-accent` (matches `JobsOverTimeChart`'s prior precedent for plain non-AI count data), width scaled to the max stage count, each row links to `/missions?stage={stage}`.
+- **ActivityHeatmap**: 12-week × 7-day CSS grid, cells `h-3 w-3 rounded-[2px]`, intensity via `bg-info` at 25/45/70/100% opacity steps (0 = `bg-surface-secondary`). Hover updates a header label to `"{count} on {date}"`; no tooltip library.
+- **UpcomingInterviews** / **RejectionRadar**: plain card lists, `CompanyLogo` size `sm`, link straight to the job detail page — no drill-down modal.
+
 ### Command Palette (Cmd+K)
 
 File: `components/ui/CommandPalette.tsx`, `components/ui/CommandPaletteLoader.tsx` (ssr:false wrapper, mounted once in `app/layout.tsx`)

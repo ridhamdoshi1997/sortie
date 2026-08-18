@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { LayoutGrid, List } from "lucide-react";
 
 import { KanbanBoardLoader } from "@/components/missions/KanbanBoardLoader";
@@ -44,8 +45,16 @@ export function MissionsView({
   jobs: Job[];
   appliedAtByJobId?: Record<string, string>;
 }) {
-  const [viewMode, setViewMode] = useState<ViewMode>("kanban");
-  const [filter, setFilter] = useState<FilterValue>("all");
+  // Dashboard Pipeline Funnel (build-plan.md §P) links here as
+  // `/missions?stage=applied` etc. — read once on mount as the initial
+  // filter/view so a funnel-segment click lands directly on the matching
+  // filtered List, not the default unfiltered Board ("no dead ends" rule
+  // from the dashboard redesign research). Only ever used as an initial
+  // value, same idiom as FindJobsForm.tsx's own searchParams-seeded state.
+  const searchParams = useSearchParams();
+  const stageParam = searchParams.get("stage") as FilterValue | null;
+  const [viewMode, setViewMode] = useState<ViewMode>(stageParam ? "list" : "kanban");
+  const [filter, setFilter] = useState<FilterValue>(stageParam && STAGE_ORDER.includes(stageParam as ApplicationStatus) ? stageParam : "all");
   // Location/search/remote filters narrow which jobs show in EITHER view
   // (unlike the stage filter above, which only makes sense in List — Kanban
   // already groups by stage as its own columns). User-requested: applying to
