@@ -3,6 +3,7 @@ import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { GlassCursorGlow } from "@/components/ui/GlassCursorGlow";
+import { CommandPaletteLoader } from "@/components/ui/CommandPaletteLoader";
 import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
 import { NavigatorLauncherLoader } from "@/components/agent/NavigatorLauncherLoader";
 
@@ -25,6 +26,7 @@ export default function RootLayout({
           {children}
           <SettingsModalLoader />
           <NavigatorLauncherLoader />
+          <CommandPaletteLoader />
         </ThemeProvider>
       </body>
     </html>

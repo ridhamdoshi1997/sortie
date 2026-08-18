@@ -24,6 +24,87 @@
 // agent/research.ts's looksLikeSearchBlockPage) and the jobs panel itself is
 // a complex, frequently-changing dynamic widget, not a stable page. Revisit
 // only if a real, legitimate way to read it turns up.
+//
+// v1.5 (2026-08-18) — 8 more platforms added (SimplyHired, Dice,
+// CareerBuilder, RemoteOK, ZipRecruiter, We Work Remotely, Built In,
+// Monster), per real research into feasibility (context/build-plan.md §Q5,
+// extension/README.md's "Future platform expansion" section) plus live
+// verification of each site's actual DOM before writing any selector —
+// same discipline as the LinkedIn v1.3 rewrite above. Glassdoor and
+// Wellfound were explicitly excluded: both hard-gate full job details
+// behind a login wall on THEIR site (not just Sortie), a real dependency
+// this extension doesn't ask for anywhere else. Most of the new sites embed
+// real schema.org JobPosting structured data (`<script type="application/
+// ld+json">`) — Google's own rich-snippet requirement for search visibility,
+// so most job boards that want SEO traffic already publish it — which is
+// far more stable than any CSS selector since it doesn't care what the
+// visual DOM looks like. `extractFromJsonLd()` below is a shared helper for
+// every site that has it; only the sites that don't (We Work Remotely,
+// Built In, ZipRecruiter — confirmed live, not assumed) get bespoke DOM
+// selectors. **Monster's selectors were NOT independently verified** — live
+// verification hit Monster's own bot-detection challenge mid-research
+// ("Verification Required... Use of developer or inspection tools"),
+// blocking a real look at its DOM. Built instead on CareerBuilder's
+// confirmed-working JobPosting JSON-LD pattern, since the two share the
+// same underlying job listings (confirmed live: an identical job UUID
+// appeared in both sites' search results for the same posting) — a
+// documented best-effort, same honesty tier as the LinkedIn logged-in
+// fallback selectors, not independently confirmed against Monster itself.
+
+// Strips HTML tags from a job-description string. Several sites' JobPosting
+// JSON-LD ships `description` as raw HTML (SimplyHired/Dice/CareerBuilder/
+// RemoteOK/Monster all confirmed live to do this), not plain text — a
+// detached element's textContent is the standard, safe way to convert
+// HTML to plain text in a browser content-script context (never
+// document.write or innerHTML-then-read-back on a LIVE node, which would
+// execute the page's own embedded scripts).
+function stripHtml(html) {
+  const el = document.createElement("div");
+  el.innerHTML = html;
+  return el.textContent.trim();
+}
+
+// Reads schema.org JobPosting data from a page's own `application/ld+json`
+// script tags — Google Jobs rich-snippet SEO markup, present on most job
+// boards regardless of their visual DOM's stability. Handles both a bare
+// JobPosting object and one wrapped in an array (`@graph`-style pages).
+// Some sites' JSON-LD is technically malformed (We Work Remotely's contains
+// raw unescaped control characters inside string values, confirmed live) —
+// JSON.parse throws on those, so each script tag is tried independently and
+// a parse failure just moves on to the next one rather than aborting.
+function extractFromJsonLd(source) {
+  const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+  for (const script of scripts) {
+    let parsed;
+    try {
+      parsed = JSON.parse(script.textContent);
+    } catch {
+      continue;
+    }
+    const candidates = Array.isArray(parsed) ? parsed : [parsed];
+    const jobPosting = candidates.find((c) => c && c["@type"] === "JobPosting");
+    if (!jobPosting || !jobPosting.title || !jobPosting.description) continue;
+
+    const company = jobPosting.hiringOrganization?.name ?? null;
+    if (!company) continue;
+
+    const locationObj = jobPosting.jobLocation?.address ?? jobPosting.jobLocation;
+    const location =
+      typeof locationObj === "string"
+        ? locationObj
+        : [locationObj?.addressLocality, locationObj?.addressRegion].filter(Boolean).join(", ") || null;
+
+    return {
+      title: jobPosting.title,
+      company,
+      location,
+      description: stripHtml(jobPosting.description),
+      url: window.location.href,
+      source,
+    };
+  }
+  return null;
+}
 
 function text(selector) {
   const el = document.querySelector(selector);
@@ -93,7 +174,7 @@ function extractLinkedIn() {
     ".topcard__flavor--bullet",
   ]);
 
-  return { title: fromTitle.title, company: fromTitle.company, location, description, url: window.location.href };
+  return { title: fromTitle.title, company: fromTitle.company, location, description, url: window.location.href, source: "linkedin" };
 }
 
 function extractIndeed() {
@@ -103,12 +184,110 @@ function extractIndeed() {
   const description = text("#jobDescriptionText");
 
   if (!title || !company || !description) return null;
-  return { title, company, location, description, url: window.location.href };
+  return { title, company, location, description, url: window.location.href, source: "indeed" };
+}
+
+// JobPosting JSON-LD confirmed live on real job postings (2026-08-18) —
+// same shape as extractFromJsonLd's contract.
+function extractSimplyHired() {
+  return extractFromJsonLd("simplyhired");
+}
+function extractDice() {
+  return extractFromJsonLd("dice");
+}
+function extractCareerBuilder() {
+  return extractFromJsonLd("careerbuilder");
+}
+function extractRemoteOK() {
+  return extractFromJsonLd("remoteok");
+}
+// Not independently verified — see the v1.5 header comment above.
+// CareerBuilder's confirmed-working extractor reused as a documented
+// best-effort, since the two sites share the same underlying job listings.
+function extractMonster() {
+  return extractFromJsonLd("monster");
+}
+
+// No JobPosting JSON-LD (confirmed live) — the whole site is remote-only by
+// definition, so location is always "Remote" rather than parsed from the
+// page. Title+company come from document.title's reliable "X at Company"
+// format (same trick as LinkedIn, confirmed live: "Remote {title} at
+// {company}"), not the sidebar company-name element, which isn't its own
+// isolated leaf node in the real DOM (confirmed live — it's a bare text
+// node alongside a "View company" link, not worth a fragile selector over
+// the already-reliable document.title parse).
+function extractWeWorkRemotely() {
+  const raw = document.title.replace(/^Remote\s+/i, "");
+  const atIndex = raw.lastIndexOf(" at ");
+  if (atIndex === -1) return null;
+  const title = raw.slice(0, atIndex).trim();
+  const company = raw.slice(atIndex + 4).trim();
+  if (!title || !company) return null;
+
+  const description = text(".lis-container__job__content__description");
+  if (!description) return null;
+
+  return { title, company, location: "Remote", description, url: window.location.href, source: "weworkremotely" };
+}
+
+// No JobPosting JSON-LD (confirmed live). Real, semantic h1 for title;
+// company confirmed live via the first `/company/<slug>` link (Built In's
+// own company-profile link, present in the job header). Description
+// confirmed live via `.html-parsed-content` — the specific class Built In
+// gives the container it renders the employer's submitted HTML into
+// (distinct from several other large-but-irrelevant containers on the page,
+// e.g. "What the Team is Saying"/culture sections).
+function extractBuiltIn() {
+  const title = text("h1");
+  if (!title) return null;
+
+  const companyLink = document.querySelector('a[href*="/company/"]');
+  const company = companyLink ? companyLink.textContent.trim() : null;
+  if (!company) return null;
+
+  const description = text(".html-parsed-content");
+  if (!description) return null;
+
+  return { title, company, location: null, description, url: window.location.href, source: "builtin" };
+}
+
+// No JobPosting JSON-LD on the search/detail split-pane view (confirmed
+// live — the page's own <h1> stays the search-results heading, not the
+// selected job). ZipRecruiter's generated CSS classes churn (confirmed
+// live: page-wide Tailwind-style utility classes, nothing job-specific),
+// but real `data-testid` attributes are present and far more durable —
+// `job-details-scroll-container` scopes every selector below to the
+// currently-open job's right-hand pane specifically, not the left-hand
+// results list.
+function extractZipRecruiter() {
+  const pane = document.querySelector('[data-testid="job-details-scroll-container"]');
+  if (!pane) return null;
+
+  const title = pane.querySelector("h2")?.textContent.trim() ?? null;
+  if (!title) return null;
+
+  const companyLink = pane.querySelector('a[href*="ziprecruiter.com/co/"]');
+  const company = companyLink ? companyLink.textContent.trim() : null;
+  if (!company) return null;
+
+  const description = pane.innerText.trim();
+  if (!description) return null;
+
+  return { title, company, location: null, description, url: window.location.href, source: "ziprecruiter" };
 }
 
 function extractJob() {
-  if (window.location.hostname.includes("linkedin.com")) return extractLinkedIn();
-  if (window.location.hostname.includes("indeed.com")) return extractIndeed();
+  const host = window.location.hostname;
+  if (host.includes("linkedin.com")) return extractLinkedIn();
+  if (host.includes("indeed.com")) return extractIndeed();
+  if (host.includes("simplyhired.com")) return extractSimplyHired();
+  if (host.includes("dice.com")) return extractDice();
+  if (host.includes("careerbuilder.com")) return extractCareerBuilder();
+  if (host.includes("remoteok.com")) return extractRemoteOK();
+  if (host.includes("monster.com")) return extractMonster();
+  if (host.includes("weworkremotely.com")) return extractWeWorkRemotely();
+  if (host.includes("builtin.com")) return extractBuiltIn();
+  if (host.includes("ziprecruiter.com")) return extractZipRecruiter();
   return null;
 }
 

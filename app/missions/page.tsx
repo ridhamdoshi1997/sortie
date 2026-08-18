@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { MissionsView } from "@/components/missions/MissionsView";
+import { UpcomingDeadlines } from "@/components/missions/UpcomingDeadlines";
 import type { Job } from "@/types";
 
 export default async function MissionsPage() {
@@ -49,6 +50,8 @@ export default async function MissionsPage() {
             move it, or switch to a filtered list.
           </p>
         </div>
+
+        <UpcomingDeadlines jobs={(jobs ?? []) as Job[]} />
 
         <MissionsView jobs={(jobs ?? []) as Job[]} appliedAtByJobId={appliedAtByJobId} />
       </main>

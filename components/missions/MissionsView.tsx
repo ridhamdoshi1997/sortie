@@ -9,6 +9,7 @@ import { JobResultCard } from "@/components/shared/JobResultCard";
 import { STAGE_ORDER, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import { getListingSignal } from "@/lib/jobStatus";
+import { SOURCE_FILTER_OPTIONS } from "@/lib/jobSource";
 import type { Job } from "@/types";
 
 type ViewMode = "kanban" | "list";
@@ -60,6 +61,15 @@ export function MissionsView({
   const [minMatchScore, setMinMatchScore] = useState<number | null>(null);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortValue>("found");
+  // "" = all sources. Values match jobs.source directly (see lib/jobSource.ts)
+  // — lets a user isolate extension-captured jobs (LinkedIn/Indeed) from the
+  // default scraped majority, or from a manual paste, directly on this page.
+  const [sourceFilter, setSourceFilter] = useState("");
+
+  const availableSources = useMemo(() => {
+    const present = new Set<string>(jobs.map((job) => job.source));
+    return SOURCE_FILTER_OPTIONS.filter((option) => present.has(option.value));
+  }, [jobs]);
 
   const locations = useMemo(() => {
     const unique = new Set(
@@ -87,6 +97,7 @@ export function MissionsView({
       if (remoteOnly && !/\bremote\b/i.test(`${job.title ?? ""} ${job.location ?? ""}`)) return false;
       if (minMatchScore !== null && (job.match_score ?? 0) < minMatchScore) return false;
       if (needsAttentionOnly && !getListingSignal(job)) return false;
+      if (sourceFilter && job.source !== sourceFilter) return false;
       return true;
     });
 
@@ -107,7 +118,7 @@ export function MissionsView({
       sorted.sort((a, b) => new Date(b.found_at).getTime() - new Date(a.found_at).getTime());
     }
     return sorted;
-  }, [jobs, search, location, remoteOnly, minMatchScore, needsAttentionOnly, sortBy]);
+  }, [jobs, search, location, remoteOnly, minMatchScore, needsAttentionOnly, sortBy, sourceFilter]);
 
   const reappearanceCounts = computeReappearanceCounts(visibleJobs);
   const filteredJobs = filter === "all" ? visibleJobs : visibleJobs.filter((job) => job.application_status === filter);
@@ -152,6 +163,9 @@ export function MissionsView({
           onNeedsAttentionOnlyChange={setNeedsAttentionOnly}
           sortBy={sortBy}
           onSortByChange={setSortBy}
+          sourceFilter={sourceFilter}
+          onSourceFilterChange={setSourceFilter}
+          availableSources={availableSources}
         />
 
         {viewMode === "list" && (
@@ -178,7 +192,7 @@ export function MissionsView({
         // columns if `jobs` changes shape after mount — a filter change
         // needs a fresh mount, not a prop update, to actually take effect.
         <KanbanBoardLoader
-          key={`${search}|${location}|${remoteOnly}|${minMatchScore}|${needsAttentionOnly}|${sortBy}`}
+          key={`${search}|${location}|${remoteOnly}|${minMatchScore}|${needsAttentionOnly}|${sortBy}|${sourceFilter}`}
           jobs={visibleJobs}
           appliedAtByJobId={appliedAtByJobId}
         />

@@ -21,7 +21,17 @@ import { NextRequest, NextResponse } from "next/server";
 // Only a small, explicit host allowlist may be fetched here — this is a
 // server-side fetch of a caller-supplied URL, which would otherwise be an
 // open SSRF proxy.
-const ALLOWED_HOSTS = ["unavatar.io"];
+//
+// www.indeed.com added 2026-08-18 for PlatformLogo.tsx's real Indeed logo
+// badge — unavatar.io itself returns a real, reproducible 429 for
+// indeed.com specifically (confirmed live via direct curl, not a one-off:
+// retried after a delay, still 429; linkedin.com hit the same 429 through
+// unavatar, which is why that one stays on the existing hand-authored
+// LinkedInGlyph.tsx instead of a fetch). Indeed's own favicon.ico, fetched
+// directly, returns a normal 200 image with no such block — PlatformLogo.tsx
+// hardcodes the exact target URL itself (not client-supplied), so this
+// isn't opening the proxy to arbitrary Indeed paths.
+const ALLOWED_HOSTS = ["unavatar.io", "www.indeed.com"];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const target = request.nextUrl.searchParams.get("url");

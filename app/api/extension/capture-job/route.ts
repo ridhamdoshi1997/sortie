@@ -16,6 +16,26 @@ const bodySchema = z.object({
   location: z.string().optional(),
   description: z.string().min(1),
   url: z.string().optional(),
+  // Which site this was captured from — set by extension/content.js's
+  // extractLinkedIn()/extractIndeed(), previously extracted then silently
+  // discarded (every extension capture collapsed into the same generic
+  // "url" source the manual paste-a-URL flow uses, indistinguishable from
+  // it or from each other). Absent entirely for older extension builds —
+  // createExternalJob falls back to "url" when this isn't sent.
+  source: z
+    .enum([
+      "linkedin",
+      "indeed",
+      "simplyhired",
+      "dice",
+      "careerbuilder",
+      "remoteok",
+      "monster",
+      "weworkremotely",
+      "builtin",
+      "ziprecruiter",
+    ])
+    .optional(),
   // The popup's stage picker (2026-08-18 v1.2) — lets the user mark a job
   // Applied at the moment they save it, instead of always landing in Draft.
   // Deliberately just this one extra state, not the full 5-stage pipeline —

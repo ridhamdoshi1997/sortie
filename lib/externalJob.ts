@@ -9,6 +9,20 @@ export type ExternalJobInput = {
   location?: string;
   description: string;
   url?: string;
+  // Which platform this was captured from (extension only) — absent for
+  // the manual "paste a job from anywhere" flow, which has no platform to
+  // detect and keeps the original generic "url" source.
+  source?:
+    | "linkedin"
+    | "indeed"
+    | "simplyhired"
+    | "dice"
+    | "careerbuilder"
+    | "remoteok"
+    | "monster"
+    | "weworkremotely"
+    | "builtin"
+    | "ziprecruiter";
 };
 
 export type CreateExternalJobResult =
@@ -30,7 +44,7 @@ export async function createExternalJob(
     .insert([
       {
         user_id: userId,
-        source: "url",
+        source: input.source ?? "url",
         external_id: crypto.randomUUID(),
         title: input.title,
         company: input.company,

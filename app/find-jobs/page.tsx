@@ -1,6 +1,7 @@
 import { requireUser } from "@/lib/auth"; // Ensure this import path is correct for your project
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
+import { RecentlyViewed } from "@/components/find-jobs/RecentlyViewed";
 import { Navbar } from "@/components/layout/Navbar";
 import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job, Profile } from "@/types";
@@ -85,6 +86,17 @@ export default async function FindJobsPage() {
         reappearanceSignals[job.id] = getReappearanceSignal(job, reappearanceCounts);
     }
 
+    // Recently Viewed strip — most-recently-opened job detail pages, not
+    // most-recently-found. Separate from initialJobs/lastRun above (that's
+    // scoped to one search run; this spans the user's whole history).
+    const { data: recentlyViewedJobs } = await insforge.database
+        .from("jobs")
+        .select("id,title,company,company_logo_url,match_score,last_viewed_at")
+        .eq("user_id", user.id)
+        .not("last_viewed_at", "is", null)
+        .order("last_viewed_at", { ascending: false })
+        .limit(6);
+
     return (
         <>
             <Navbar isAuthenticated />
@@ -102,6 +114,8 @@ export default async function FindJobsPage() {
                         Source new opportunities and run them through the job search engine.
                     </p>
                 </div>
+
+                <RecentlyViewed jobs={recentlyViewedJobs ?? []} />
 
                 {/* 2. Pass the user.id and any existing jobs to the form */}
                 <FindJobsForm

@@ -72,7 +72,24 @@ export interface Job {
   id: string;
   run_id: string | null;
   user_id: string;
-  source: "search" | "url";
+  // Corrected 2026-08-18 (Phase 15) — was typed "search" | "url", stale
+  // against the actual runtime values (lib/jobScraper.ts writes "SerpApi",
+  // never "search"; the type was never checked against real data). The 8
+  // platform values below (v1.5, same day) mirror extension/content.js's
+  // extractJob() dispatcher — see lib/externalJob.ts.
+  source:
+    | "SerpApi"
+    | "url"
+    | "linkedin"
+    | "indeed"
+    | "simplyhired"
+    | "dice"
+    | "careerbuilder"
+    | "remoteok"
+    | "monster"
+    | "weworkremotely"
+    | "builtin"
+    | "ziprecruiter";
   source_url: string | null;
   external_apply_url: string | null;
   // Not part of the original migration's schema — this is what the actual
@@ -200,6 +217,11 @@ export interface Job {
   // this on job-detail-page load + a "Recently Viewed" widget) not yet
   // built. See context/RESUME.md.
   last_viewed_at: string | null;
+  // Deadline tracker / application calendar (build-plan.md §D) — a real
+  // user-entered future timestamp, not derived from interview_events (that's
+  // a log of the past, not a schedule of the future). One slot per job.
+  next_deadline_at: string | null;
+  next_deadline_label: string | null;
 }
 
 export interface JobEvaluationDimension {

@@ -83,6 +83,14 @@
   --color-linkedin-light: #dce6f1;
   --color-linkedin-foreground: #ffffff;
 
+  /* Indeed brand — #003A9B confirmed via research (agy, 2026-08-18) against
+     current brand guidelines, not guessed. Same token shape as LinkedIn
+     above: base/light-tint/foreground + a dark-mode override for the light
+     tier only (see the .dark block). */
+  --color-indeed: #003a9b;
+  --color-indeed-light: #dbe4f3;
+  --color-indeed-foreground: #ffffff;
+
   --color-overlay: #111213;
   --color-overlay-dark: #0a0b0c;
   /* Fixed — the overlay chrome stays dark in both app themes, so its
@@ -650,6 +658,7 @@ body {
   --color-error-foreground: #2e1c18;
 
   --color-linkedin-light: #16232f;
+  --color-indeed-light: #16202f;
 
   /* Reverted the "converge with background" attempt from earlier the same
      day (2026-07-27) — that made the floating navbar card invisible: with

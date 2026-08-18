@@ -54,3 +54,22 @@ export function formatTimeAgo(date: Date | string) {
     const days = Math.round(hours / 24);
     return `${days}d ago`;
 }
+
+// Mirror of formatTimeAgo for a future timestamp — powers the deadline
+// tracker widget (UpcomingDeadlines.tsx). A deadline in the past isn't
+// hidden (the user may not have gotten to it yet), just labeled "Overdue"
+// rather than a nonsensical "in -2 days".
+export function formatTimeUntil(date: Date | string) {
+    const diffMs = new Date(date).getTime() - Date.now();
+    if (diffMs <= 0) return "Overdue";
+
+    const minutes = Math.round(diffMs / 60_000);
+    if (minutes < 60) return minutes <= 1 ? "In 1 min" : `In ${minutes} min`;
+
+    const hours = Math.round(minutes / 60);
+    if (hours < 24) return `In ${hours} hr`;
+
+    const days = Math.round(hours / 24);
+    if (days === 1) return "Tomorrow";
+    return `In ${days}d`;
+}

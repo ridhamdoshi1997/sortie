@@ -949,11 +949,11 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | Cross-application pattern analytics (personal funnel diagnosis) | 🆕 | Brainstorm |
 | Live salary / comp benchmarking | 🆕 | Career OS + Brainstorm |
 | Job-description decoder (must-have vs. padding) | 🆕 | Brainstorm |
-| "Should I apply?" quick verdict | 🆕 | Brainstorm |
+| "Should I apply?" quick verdict | ✅ shipped 2026-08-18 (Phase 15) | `lib/applyVerdict.ts` + `components/job-details/ApplyVerdict.tsx` — deterministic, zero AI cost, synthesizes overall_grade/legitimacy/scope-mismatch/listing-staleness into one Apply/Consider/Long shot/Skip verdict at the top of the job detail page. Live-verified across 3 real grade tiers |
 | Skills-first evaluation (skills over titles) | 🆕 | Built to Last (bet #3) |
 | **Correctable skill tags — human-in-the-loop** | ✅ | Competitor teardown — see note below. **Marker corrected 2026-08-17**: confirmed already shipped (`actions/jobs.ts`'s `correctSkillTag`, `components/job-details/Qualification.tsx`) — this row was stale at 🆕 for at least one full session. §Q2 (below) now builds correction *memory* on top of this existing action |
-| Job requirements split into **Required** vs **Preferred** | 🆕 | Competitor teardown |
-| Match sub-scores (experience / skill / industry, scored separately) | 🆕 | Competitor teardown |
+| Job requirements split into **Required** vs **Preferred** | ✅ | Competitor teardown. **Marker corrected 2026-08-18 (Phase 15)**: confirmed already shipped — `lib/evaluator.ts` extracts `requirements`/`niceToHave` as genuinely separate AI-derived fields, `components/job-details/Qualification.tsx`'s `BulletColumn` renders them as distinct "Required"/"Preferred" columns with different icon/weight treatment. Stale 🆕 marker, same class of staleness as the correctable-skill-tags row above |
+| Match sub-scores (experience / skill / industry, scored separately) | ✅ | Competitor teardown. **Marker corrected 2026-08-18 (Phase 15)**: confirmed already shipped, and in a richer form than the teardown source — `components/job-details/EvaluationBreakdown.tsx` renders all 10 evaluation dimensions (not just 3) each with its own letter grade + one-line grounded reason, not just a bare percentage. See §A's row 2 note (line 42) — this was flagged as a deliberate differentiator, just never had its build-plan.md status corrected until now |
 | **Conversational per-job AI chat ("Ask Orion")** — evidence-cited breakdown (Relevant Experience / Seniority / Education / Core Skills aligned vs. not-aligned, each citing the candidate's actual employers) + free-text follow-up + regenerate | 🆕 | Teardown (2026-07-21 deep pass). Genuinely richer than a static one-liner — reuses the chat-panel pattern we already built for `DocumentChatEditor`, just pointed at job-fit Q&A instead of document revision |
 
 > **Correctable skill tags deserve their own note.** The competitor renders every skill the AI *thinks* you have as a clickable tag, with the instruction: *"If anything seems off, you can easily click on the tags to select or unselect skills to reflect your actual expertise."* The user corrects the model, and the match re-scores.
@@ -1044,7 +1044,7 @@ This isn't cosmetic — it's what a real ATS-autofill feature requires. Workday/
 | **Rejection intelligence** (diagnose employer silence) | ✅ | Career OS — **spine #1**, shipped 2026-08-11, `lib/rejectionIntelligence.ts` |
 | Application timeline view (per-job history) | ✅ shipped 2026-08-18 | `components/job-details/ApplicationHistory.tsx` — scopes application_events/interview_events/compensation_events to one job on its own detail page |
 | Interview debrief capture | ✅ shipped 2026-08-18 | `components/job-details/InterviewDebrief.tsx` — first real UI ever calling the pre-existing `logInterviewEvent` action |
-| Deadline tracker / application calendar | 🆕 | Brainstorm |
+| Deadline tracker / application calendar | ✅ shipped 2026-08-18 (Phase 15) | `jobs.next_deadline_at`/`next_deadline_label` (migration `20260818020000`) — a real, user-entered future timestamp, deliberately separate from `interview_events` (a log of the past, not a schedule of the future — see `RESUME.md`). `components/job-details/JobDeadline.tsx` (set/edit/clear on the job detail page), `components/missions/UpcomingDeadlines.tsx` (sorted strip on `/missions`, overdue items stay visible in warning color rather than disappearing). One slot per job, not a full events table — v1 scope |
 | Dashboard filter/sort/group parity | 📋 | Phase 14 |
 
 ## E. Career identity & post-hire (the Career OS)
@@ -1274,6 +1274,10 @@ User-directed batch, explicitly framed around data moat / workflow moat / switch
 
 **✅ Fully shipped 2026-08-17/18 (Phase 14).** `user_api_keys` table, key generation/management UI (Settings → "Browser extension"), the bearer-token-authed `/api/extension/capture-job` endpoint, AND the actual Manifest V3 extension (`extension/` — content script, floating button, background service worker, popup) are all real. See `progress-tracker.md`'s Phase 14 §Q5 entries (two — backend, then the extension itself) for what got built and how it was verified. **Real deviation from the plan below**: Google Jobs was dropped from v1 (Google actively CAPTCHA-blocks automated access to its jobs search UI — confirmed directly, same wall this app's own scraper already avoids working around), so this ships LinkedIn + Indeed only. The extension was never loaded into a real Chrome profile and click-tested — see `extension/README.md` for exactly what was and wasn't verified before a first real load.
 
+**Phase 15 follow-up (2026-08-18), triggered by a direct user question**: every captured job now carries which platform it came from (`jobs.source` — `linkedin`/`indeed`, previously silently collapsed into a generic `"url"` value shared with the manual paste flow), surfaced as a brand-colored, real-logo badge on both Missions views and filterable via a new "Source" control on `/missions`. Full write-up in `progress-tracker.md`'s Phase 15 entry and `extension/README.md`'s "v1.5" note.
+
+**Phase 15, same day: 8 more job platforms shipped, per direct user request** ("add the best 3 you have plus everything else, skip Glassdoor and Wellfound for now") — following a real research pass (via `agy`) into 10 more job platforms' feasibility (login walls, DOM stability, ATS-behind-Apply). SimplyHired, Dice, CareerBuilder, RemoteOK, and Monster extract via a new shared `extractFromJsonLd()` helper (`content.js`) reading each site's real schema.org `JobPosting` structured data (Google Jobs' own SEO markup, present on most job boards) — Monster's specifically was NOT independently verified (hit a real bot-detection challenge mid-research) and instead reuses CareerBuilder's confirmed pattern, since the two share the same underlying job listings. We Work Remotely, Built In, and ZipRecruiter got bespoke DOM selectors (no JobPosting JSON-LD on those, confirmed live) — same real-live-page verification discipline as the original LinkedIn/Indeed extractors. Glassdoor and Wellfound stay excluded (hard login walls). Live-verified end to end via 8 real `curl` calls against the actual capture API, confirmed correct `source` storage and badge rendering. Full write-up in `extension/README.md`'s "v1.5" and research sections.
+
 **v1 scope, deliberately narrow — a save button, not a scraping engine.** Confirmed genuinely greenfield (§G's Chrome-extension row has been 🆕 this whole time) — but the backend side is NOT greenfield: `addExternalJob` (`actions/jobs.ts`, already built for the existing "paste a job from anywhere" flow) already does exactly what a captured job needs — create a job row from title/company/location/description/url with no scan required. The extension's only new backend work is an auth path that doesn't depend on browser cookies.
 
 **New**: `user_api_keys` table (id, user_id, key_hash, label text, created_at, last_used_at) — a personal API key generated from Settings, since a Manifest V3 extension's content script can't cleanly share the web app's session cookie. New route `app/api/extension/capture-job/route.ts`, bearer-token-authed against `user_api_keys`, thin wrapper calling the same logic `addExternalJob` already runs.
@@ -1319,7 +1323,7 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| Command palette (Cmd+K) | 🆕 | Brainstorm |
+| Command palette (Cmd+K) | ✅ shipped 2026-08-18 (Phase 15) | `components/ui/CommandPalette.tsx` — navigation + a couple of common actions (Settings, theme toggle), typeahead filter, full keyboard nav (↑↓/Enter/Esc), global `Cmd/Ctrl+K` shortcut plus a discoverable trigger button in `Navbar.tsx`. Shipped combined with the "Keyboard shortcuts" row below — a palette's core value already IS its keyboard interaction |
 | Detail drawer / split view (fast job browsing) | 🆕 | Brainstorm |
 | Global search | 🆕 | Brainstorm |
 | Rich filtering & sorting on Find Jobs | 📋 | v1 F11 (partial) |
@@ -1338,7 +1342,7 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | **Loading states that teach + time expectations** ("usually 10–20 seconds") | 🎨 | Turns dead wait time into feature discovery |
 | Skeleton loaders + optimistic UI + toast system | 🆕 | Brainstorm |
 | Contextual tooltips explaining the 10 dimensions | 🆕 | Brainstorm |
-| Keyboard shortcuts | 🆕 | Brainstorm |
+| Keyboard shortcuts | ✅ shipped 2026-08-18 (Phase 15) | See the Command palette row above — shipped as one combined feature, not a separate broader shortcut-everywhere system |
 | Analytics dashboard (funnel, score distribution, skills radar, heatmap) | 📋/🆕 | v1 F17 + Brainstorm |
 | "Today" / focus view | 🆕 | Brainstorm |
 | Customizable dashboard widgets | 🆕 | Brainstorm |

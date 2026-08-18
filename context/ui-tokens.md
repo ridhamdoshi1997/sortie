@@ -116,6 +116,11 @@ className="bg-purple-500 text-gray-600"
   --color-linkedin-light: #dce6f1;
   --color-linkedin-foreground: #ffffff;
 
+  /* Indeed brand — #003A9B confirmed via research (agy, 2026-08-18) */
+  --color-indeed: #003a9b;
+  --color-indeed-light: #dbe4f3;
+  --color-indeed-foreground: #ffffff;
+
   /* Ink — dark chrome (nav frame, "mission console" hero backgrounds).
      This chrome stays dark in BOTH light and dark app themes, so its
      content color is a fixed token, not a themed one. */
@@ -214,10 +219,15 @@ Reference implementations: `components/shared/JobResultCard.tsx`'s `scoreTierCla
 
 ### Source Badges
 
-| Source   | Background             | Text                  |
-| -------- | ------------------------ | ------------------------ |
-| LinkedIn | `bg-linkedin-light`    | `text-linkedin`       |
-| URL      | `bg-surface-secondary` | `text-text-secondary` |
+Reference implementation: `lib/jobSource.ts`'s `getSourceBadge()`, rendered on `components/shared/JobResultCard.tsx` and `components/missions/KanbanCard.tsx`. Icon: `LinkedInGlyph.tsx` (hand-authored, currentColor vector) for LinkedIn, `PlatformLogo.tsx` (real fetched favicon, see below) for Indeed. `SerpApi` (the default/majority source) gets no badge at all — that's the expected default, not a distinguishing fact.
+
+| Source   | Background             | Text                  | Icon |
+| -------- | ------------------------ | ------------------------ | ---- |
+| LinkedIn | `bg-linkedin-light`    | `text-linkedin`       | `LinkedInGlyph` |
+| Indeed   | `bg-indeed-light`      | `text-indeed`         | `PlatformLogo source="indeed"` |
+| Pasted (URL) | `bg-surface-secondary` | `text-text-secondary` | none |
+
+**Real logos, not hand-drawn approximations (2026-08-18).** `PlatformLogo.tsx` fetches Indeed's actual current favicon through this app's own `/api/logo` proxy (`app/api/logo/route.ts`) — same mechanism `CompanyLogo.tsx` uses for company logos, just a different explicitly-allowlisted upstream. **Real gotcha, confirmed live, not guessed**: `unavatar.io` (this app's usual logo upstream) returns a reproducible `429` for both `indeed.com` and `linkedin.com` specifically when fetched (retried after a delay — still 429; other domains like `stripe.com` resolve fine at 200) — so LinkedIn stays on the existing hand-authored `LinkedInGlyph.tsx` (already proven, already in production use), and Indeed's badge fetches `https://www.indeed.com/favicon.ico` directly instead (confirmed live: real 200, real 32×32 image, no block) — `www.indeed.com` was added to `/api/logo`'s host allowlist for exactly this one fixed URL, not opened to arbitrary Indeed paths.
 
 ### Status Badges
 
@@ -448,6 +458,7 @@ Confirmed **three separate times** while building this system — this will recu
 - `--agent` (#2E7D82) is reserved *exclusively* for AI-generated content — never use it for anything else, and never use another color for AI-generated content
 - Match score bars always use color tokens based on score range — never hardcoded colors
 - LinkedIn badge always uses `--linkedin` (#0A66C2) — never generic blue
+- Indeed badge always uses `--indeed` (#003A9B, confirmed via research 2026-08-18 against current brand guidelines) — never generic blue, and never the same blue as LinkedIn's token
 - All borders default to `--border` (#D8DBD6) — never use `border-gray-*`
 - Numbers that represent scores, timestamps, or status always render in `font-mono` with `tabular-nums`
 - Tailwind v4 only auto-generates `font-*` utilities for the canonical `sans`/`serif`/`mono` theme keys — a custom key like `--font-display` needs a hand-written `.font-display { font-family: var(--font-display); }` class (see `app/globals.css`); it will NOT get a utility class for free the way `--color-*` keys do

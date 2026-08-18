@@ -8,6 +8,7 @@ import {
   ChevronDown,
   LogOut,
   Menu,
+  Search,
   Settings,
   UserCircle,
   X,
@@ -98,6 +99,13 @@ export function Navbar({ isAuthenticated = false }: Props) {
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
+  // CommandPalette.tsx (mounted once in app/layout.tsx) is the only
+  // listener — a plain window event is simpler here than lifting state or
+  // adding a context provider for one global boolean toggle.
+  function openCommandPalette() {
+    window.dispatchEvent(new CustomEvent("sortie:open-command-palette"));
+  }
+
   return (
     <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
       <div className="glass-panel-overlay mx-auto grid h-16 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-2xl px-4 sm:px-6 lg:px-8">
@@ -147,6 +155,15 @@ export function Navbar({ isAuthenticated = false }: Props) {
         </nav>
 
         <div className="flex items-center justify-end gap-4">
+          <button
+            type="button"
+            onClick={openCommandPalette}
+            aria-label="Open command palette"
+            className="hidden items-center gap-1.5 rounded-full border border-overlay-foreground/15 px-2.5 py-1 text-overlay-foreground/60 transition-colors duration-200 ease-in-out hover:border-overlay-foreground/30 hover:text-overlay-foreground sm:inline-flex"
+          >
+            <Search className="h-3.5 w-3.5" />
+            <kbd className="font-mono text-[10px]">&#8984;K</kbd>
+          </button>
           <button
             type="button"
             onClick={openSettings}

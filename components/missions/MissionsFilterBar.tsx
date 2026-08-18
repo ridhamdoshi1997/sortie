@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ArrowUpDown, ChevronDown, MapPin, Search, Target, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, ChevronDown, MapPin, Puzzle, Search, Target, X } from "lucide-react";
 
 // Mirrors components/find-jobs/FilterBar.tsx's FilterPopover/FilterPanel/
 // RadioOption pattern (portal + position:fixed trigger popover) — kept as
@@ -172,6 +172,9 @@ type Props = {
   onNeedsAttentionOnlyChange: (value: boolean) => void;
   sortBy: SortValue;
   onSortByChange: (value: SortValue) => void;
+  sourceFilter: string;
+  onSourceFilterChange: (value: string) => void;
+  availableSources: { value: string; label: string }[];
 };
 
 export function MissionsFilterBar({
@@ -188,9 +191,17 @@ export function MissionsFilterBar({
   onNeedsAttentionOnlyChange,
   sortBy,
   onSortByChange,
+  sourceFilter,
+  onSourceFilterChange,
+  availableSources,
 }: Props) {
   const hasActive =
-    search.trim() !== "" || location !== "" || remoteOnly || minMatchScore !== null || needsAttentionOnly;
+    search.trim() !== "" ||
+    location !== "" ||
+    remoteOnly ||
+    minMatchScore !== null ||
+    needsAttentionOnly ||
+    sourceFilter !== "";
 
   return (
     <div className="flex flex-wrap items-center gap-2">
@@ -229,6 +240,40 @@ export function MissionsFilterBar({
                   checked={location === loc}
                   onSelect={() => {
                     onLocationChange(loc);
+                    close();
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </FilterPopover>
+      )}
+
+      {availableSources.length > 0 && (
+        <FilterPopover
+          label="Source"
+          icon={<Puzzle className="h-3.5 w-3.5 shrink-0" />}
+          isActive={sourceFilter !== ""}
+          activeLabel={availableSources.find((s) => s.value === sourceFilter)?.label}
+          onClear={() => onSourceFilterChange("")}
+        >
+          {(close) => (
+            <div className="flex flex-col gap-0.5">
+              <RadioOption
+                label="All sources"
+                checked={sourceFilter === ""}
+                onSelect={() => {
+                  onSourceFilterChange("");
+                  close();
+                }}
+              />
+              {availableSources.map((option) => (
+                <RadioOption
+                  key={option.value}
+                  label={option.label}
+                  checked={sourceFilter === option.value}
+                  onSelect={() => {
+                    onSourceFilterChange(option.value);
                     close();
                   }}
                 />
@@ -320,6 +365,7 @@ export function MissionsFilterBar({
             onRemoteOnlyChange(false);
             onMinMatchScoreChange(null);
             onNeedsAttentionOnlyChange(false);
+            onSourceFilterChange("");
           }}
           className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-text-muted transition-colors hover:text-text-primary"
         >

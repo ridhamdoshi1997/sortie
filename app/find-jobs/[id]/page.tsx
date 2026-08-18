@@ -1,6 +1,7 @@
 export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
+import { after } from "next/server";
 
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
 import { ApplicationHistory } from "@/components/job-details/ApplicationHistory";
@@ -21,7 +22,9 @@ import { InterrogationPlan } from "@/components/job-details/InterrogationPlan";
 import { listInterviewPanel } from "@/actions/interviewPanel";
 import { listJobEventHistory } from "@/actions/careerEvents";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
+import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
+import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
 import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
@@ -37,6 +40,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
+import { computeApplyVerdict } from "@/lib/applyVerdict";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { Profile } from "@/types";
 
@@ -60,6 +64,21 @@ export default async function JobDetailsPage({ params }: Props) {
     if (!job) {
         notFound();
     }
+
+  // Recently Viewed jobs (find-jobs page widget) — fire-and-forget via
+  // after() so this write never adds latency to the page response. Reuses
+  // the `insforge` client already constructed above (during render) rather
+  // than calling createInsforgeServer() again inside the callback — that
+  // would call cookies() internally, and Server Component after() callbacks
+  // can't call request-time APIs themselves (Next.js docs).
+  after(async () => {
+    const { error: viewError } = await insforge.database
+      .from("jobs")
+      .update({ last_viewed_at: new Date().toISOString() })
+      .eq("id", job.id)
+      .eq("user_id", user.id);
+    if (viewError) console.error("[find-jobs/[id]] last_viewed_at update", viewError);
+  });
 
   const company = job.company ?? "this company";
   // external_apply_url/source_url are the originally-designed columns but
@@ -130,6 +149,8 @@ export default async function JobDetailsPage({ params }: Props) {
     .eq("user_id", user.id)
     .eq("role_family", roleFamily);
 
+  const applyVerdict = computeApplyVerdict(job);
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
@@ -142,6 +163,9 @@ export default async function JobDetailsPage({ params }: Props) {
             growing a delay prop. Respects prefers-reduced-motion via the
             class itself. */}
         <div className="fade-in-up">
+          <ApplyVerdictBadge verdict={applyVerdict} />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: "20ms" }}>
           <JobActionBar
             jobId={job.id}
             applyUrl={applyUrl}
@@ -168,6 +192,10 @@ export default async function JobDetailsPage({ params }: Props) {
 
         <div className="fade-in-up" style={{ animationDelay: "100ms" }}>
           <JobTagsAndNotes jobId={job.id} initialTags={job.tags ?? []} initialNotes={job.personal_notes} />
+        </div>
+
+        <div className="fade-in-up" style={{ animationDelay: "110ms" }}>
+          <JobDeadline jobId={job.id} initialDeadlineAt={job.next_deadline_at} initialLabel={job.next_deadline_label} />
         </div>
 
         <div className="fade-in-up" style={{ animationDelay: "120ms" }}>

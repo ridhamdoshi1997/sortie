@@ -7,7 +7,10 @@ import { CSS } from "@dnd-kit/utilities";
 import { AlertTriangle, DollarSign, ExternalLink, GripVertical, Home, Loader2, MapPin, Sparkles, Star } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
+import { PlatformLogo } from "@/components/shared/PlatformLogo";
 import { getListingSignal } from "@/lib/jobStatus";
+import { getSourceBadge } from "@/lib/jobSource";
 import { diagnoseRejection, toggleJobPriority } from "@/actions/jobs";
 import { CATEGORY_LABELS, type RejectionReasonCategory } from "@/lib/rejectionIntelligence";
 import { formatTimeAgo } from "@/lib/utils";
@@ -22,6 +25,7 @@ export type KanbanJob = Pick<
   | "location"
   | "salary"
   | "job_type"
+  | "source"
   | "is_priority"
   | "match_score"
   | "application_status"
@@ -46,6 +50,7 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
   // that's the constraint research flagged as actually decision-relevant;
   // silence reads as "unspecified/onsite", not asserted either way.
   const isRemote = /\bremote\b/i.test(`${job.title ?? ""} ${job.location ?? ""}`);
+  const sourceBadge = getSourceBadge(job.source);
   // Same hydration-mismatch fix as JobActionBar.tsx's foundAtLabel — a
   // time-relative string computed inline in JSX renders differently at
   // SSR-time vs. client-hydration-time whenever real time crosses a bucket
@@ -144,7 +149,7 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
         )}
       </div>
 
-      {(job.salary || isRemote) && (
+      {(job.salary || isRemote || sourceBadge) && (
         <div className="flex flex-wrap items-center gap-1.5">
           {job.salary && (
             <span className="inline-flex items-center gap-1 rounded-full bg-surface-secondary px-2 py-0.5 text-[10px] font-medium text-text-secondary">
@@ -156,6 +161,13 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
             <span className="inline-flex items-center gap-1 rounded-full bg-info-lightest px-2 py-0.5 text-[10px] font-medium text-info">
               <Home className="h-2.5 w-2.5" />
               Remote
+            </span>
+          )}
+          {sourceBadge && (
+            <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${sourceBadge.badgeClassName}`}>
+              {job.source === "linkedin" && <LinkedInGlyph className="h-2.5 w-2.5" />}
+              {job.source === "indeed" && <PlatformLogo source="indeed" className="h-2.5 w-2.5 rounded-[1.5px]" />}
+              {sourceBadge.label}
             </span>
           )}
         </div>

@@ -9,6 +9,9 @@ import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
+import { getSourceBadge } from "@/lib/jobSource";
+import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
+import { PlatformLogo } from "@/components/shared/PlatformLogo";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
@@ -49,6 +52,7 @@ export function JobResultCard({
 }) {
   const router = useRouter();
   const tags = jobTags(job);
+  const sourceBadge = getSourceBadge(job.source);
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
   const [hidden, setHidden] = useState(job.is_hidden);
@@ -143,15 +147,20 @@ export function JobResultCard({
           <CompanyLogo company={job.company} logoUrl={job.company_logo_url} />
           <div className="min-w-0">
           <p className="text-[15px] font-semibold leading-tight text-text-primary">{job.title}</p>
-          <p className="mt-1 flex items-center gap-1 text-sm text-text-secondary">
+          <p className="mt-1 flex flex-wrap items-center gap-1.5 text-sm text-text-secondary">
             {job.company}
             {job.location && (
-              <>
+              <span className="flex items-center gap-1 text-accent">
                 <span aria-hidden="true">·</span>
-                <span className="flex items-center gap-1 text-accent">
-                  <MapPin className="h-3.5 w-3.5" /> {job.location}
-                </span>
-              </>
+                <MapPin className="h-3.5 w-3.5" /> {job.location}
+              </span>
+            )}
+            {sourceBadge && (
+              <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${sourceBadge.badgeClassName}`}>
+                {job.source === "linkedin" && <LinkedInGlyph className="h-3 w-3" />}
+                {job.source === "indeed" && <PlatformLogo source="indeed" className="h-3 w-3 rounded-[2px]" />}
+                {sourceBadge.label}
+              </span>
             )}
           </p>
           {(job.job_type || job.salary || job.seniority_level || job.years_experience_required) && (

@@ -18,6 +18,42 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Command Palette (Cmd+K)
+
+File: `components/ui/CommandPalette.tsx`, `components/ui/CommandPaletteLoader.tsx` (ssr:false wrapper, mounted once in `app/layout.tsx`)
+Trigger: global `Cmd/Ctrl+K`, or the "⌘K" pill button in `Navbar.tsx` (dispatches a `sortie:open-command-palette` window event — a plain event rather than lifting state/context, since `CommandPalette` is the only listener)
+Last updated: 2026-08-18. Same modal recipe as `ConfirmDialog.tsx` (`bg-black/40 backdrop-blur-sm` scrim + `glass-panel-strong` card, `animate-in fade-in-0 zoom-in-95`), but top-anchored (`pt-[12vh]`) rather than centered — standard command-palette positioning. Groups: "Navigate" (all top-level routes) and "Actions" (Settings, theme toggle). Plain case-insensitive substring filter on label + a `keywords` field (no fuzzy-match library). Full keyboard nav: ↑↓ moves the highlighted row (also mouse-hover-synced), Enter runs it, Escape closes. **Real bug caught and fixed during verification**: an early version's Escape/Cmd+K-to-close handlers set `open` false directly without resetting `query`/`activeIndex`, so a query typed before closing was still there — silently prepended onto — the next time the palette opened. Both handlers now always reset all three fields on close, confirmed live via a re-open check.
+State-reset pattern: uses the "adjust state during render" idiom (`Navbar.tsx`'s own `pathname !== prevPathname` check is the precedent) to reset `activeIndex` when `query` changes, not a `setState`-in-effect — the project's eslint config actively flags the effect-based version as an error.
+
+### Apply Verdict (job detail, top of page)
+
+File: `lib/applyVerdict.ts` (`computeApplyVerdict`), `components/job-details/ApplyVerdict.tsx` (`ApplyVerdictBadge`)
+Route: job detail page (`/find-jobs/[id]`), first element on the page, above `JobActionBar`
+Last updated: 2026-08-18. Deterministic (no AI call) — synthesizes `overall_grade`/Legitimacy dimension/`title_scope_mismatch`/listing-staleness into one `apply`/`consider`/`long-shot`/`skip`/`unscored` tier. Reuses Match Score Colors tiering: `bg-agent-light text-agent-dark` (apply), `bg-surface-secondary text-text-primary` (consider), `bg-warning/10 text-warning` (long-shot), `bg-error/10 text-error` (skip), `bg-surface-secondary text-text-muted` (unscored). Icon per tier: `CheckCircle2`/`HelpCircle`/`AlertTriangle`/`XCircle`/`HelpCircle`.
+
+### Job source badge (JobResultCard / KanbanCard)
+
+File: `lib/jobSource.ts`'s `getSourceBadge()`, `components/shared/PlatformLogo.tsx` (real fetched Indeed logo)
+Route: `components/shared/JobResultCard.tsx` (List view, own pill next to location), `components/missions/KanbanCard.tsx` (small pill alongside salary/Remote)
+Last updated: 2026-08-18 (v2 — brand-colored, real logos, and a Missions filter added same day; v1 was plain-gray text-only). Renders a brand-colored pill ("via LinkedIn"/"via Indeed"/"Pasted") for `job.source` values `linkedin`/`indeed`/`url`; renders nothing for `SerpApi` (the default/majority case — not a distinguishing fact). LinkedIn uses `bg-linkedin-light text-linkedin` + the existing `LinkedInGlyph.tsx`; Indeed uses `bg-indeed-light text-indeed` + `PlatformLogo.tsx` (Indeed's real current favicon, fetched through `/api/logo` — see ui-tokens.md's "Source Badges" section for the `unavatar.io` 429 gotcha that shaped this). Filterable on `/missions` via `MissionsFilterBar.tsx`'s new "Source" popover (only shows options actually present in the loaded jobs, via `SOURCE_FILTER_OPTIONS`).
+
+### Platform logo (real, fetched)
+
+File: `components/shared/PlatformLogo.tsx`
+Last updated: 2026-08-18. `"use client"`, takes a `source` key (currently only `"indeed"` registered) and fetches that platform's real current logo/favicon through `/api/logo`, falling back to rendering nothing (not a placeholder) on a failed load — same graceful-degradation shape as `CompanyLogo.tsx`. Add a new platform by adding its fixed logo URL to `PLATFORM_LOGO_URLS` and allowlisting the host in `app/api/logo/route.ts` if it isn't `unavatar.io`.
+
+### Deadline tracker (job detail + Missions strip)
+
+File: `components/job-details/JobDeadline.tsx` (set/edit/clear), `components/missions/UpcomingDeadlines.tsx` (upcoming strip)
+Route: job detail page (`JobDeadline`, right after Tags & Notes), `/missions` (`UpcomingDeadlines`, above the Board/List toggle)
+Last updated: 2026-08-18. `JobDeadline` — label `Input` + `type="datetime-local"` `Input`, `Save` disabled until changed, a `ghost` `X` `Button` to clear (only shown once a deadline exists). `UpcomingDeadlines` — server component, horizontal-scroll `w-64 flex-shrink-0` cards matching `RecentlyViewed`'s shape (see below), sorted ascending by `next_deadline_at`, overdue items shown in `text-warning` instead of `text-accent`, up to 8. Section header reuses the same `font-mono text-[11px] uppercase tracking-widest text-text-muted` treatment as "Active targets"/"Recently viewed".
+
+### Recently Viewed (find-jobs strip)
+
+File: `components/find-jobs/RecentlyViewed.tsx`
+Route: `/find-jobs`, above the search form (`FindJobsForm`), below the page header
+Last updated: 2026-08-18. Server component (not client) — up to 6 jobs by `jobs.last_viewed_at desc`, horizontal-scroll strip of `w-64 flex-shrink-0` cards (`CompanyLogo` size `sm`, title/company/`formatTimeAgo` label/match score), `overflow-x-auto` container. Written to by `app/find-jobs/[id]/page.tsx` on every job-detail page load via `after()` (`next/server`) — fire-and-forget, doesn't delay the page response. Section header uses the same `font-mono text-[11px] uppercase tracking-widest text-text-muted` treatment as "Active targets" elsewhere on this page.
+
 ### Application History (per-job event timeline)
 
 File: `components/job-details/ApplicationHistory.tsx`, `actions/careerEvents.ts`'s `listJobEventHistory`

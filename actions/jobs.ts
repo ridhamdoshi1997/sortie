@@ -213,6 +213,41 @@ export async function updateJobNotes(jobId: string, notes: string): Promise<Acti
   }
 }
 
+// Deadline tracker / application calendar (build-plan.md §D) — one real,
+// user-entered future timestamp per job (interview date, application
+// deadline, follow-up), not derived from interview_events (that's a log of
+// what already happened, not a schedule of what's coming). deadlineAt=null
+// clears it — same "set or clear via one action" shape as updateJobNotes.
+export async function setJobDeadline(
+  jobId: string,
+  deadlineAt: string | null,
+  label: string | null,
+): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ next_deadline_at: deadlineAt, next_deadline_label: deadlineAt ? label || null : null })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] setJobDeadline", error);
+      return { success: false, error: "Failed to save the deadline" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/missions");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] setJobDeadline", error);
+    return { success: false, error: "Failed to save the deadline" };
+  }
+}
+
 // Reversible status transition — the Kanban board's drag-and-drop and every
 // other status-change surface (JobActionBar, JobResultCard) route through
 // this one action, following toggleSaveJob's optimistic-then-write shape

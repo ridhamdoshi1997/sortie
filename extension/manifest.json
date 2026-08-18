@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Sortie — Save to Tracker",
-  "version": "1.4.0",
-  "description": "Save job postings from LinkedIn and Indeed straight into your Sortie tracker.",
+  "version": "1.5.0",
+  "description": "Save job postings from LinkedIn, Indeed, and 8 more job boards straight into your Sortie tracker.",
   "icons": {
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
@@ -20,6 +20,14 @@
   "host_permissions": [
     "https://www.linkedin.com/*",
     "https://www.indeed.com/*",
+    "https://www.simplyhired.com/*",
+    "https://www.dice.com/*",
+    "https://www.careerbuilder.com/*",
+    "https://remoteok.com/*",
+    "https://www.monster.com/*",
+    "https://weworkremotely.com/*",
+    "https://builtin.com/*",
+    "https://www.ziprecruiter.com/*",
     "https://jobpilot-experiment.vercel.app/*",
     "http://localhost:3001/*"
   ],
@@ -30,7 +38,15 @@
     {
       "matches": [
         "https://www.linkedin.com/jobs/*",
-        "https://www.indeed.com/*"
+        "https://www.indeed.com/*",
+        "https://www.simplyhired.com/*",
+        "https://www.dice.com/*",
+        "https://www.careerbuilder.com/*",
+        "https://remoteok.com/*",
+        "https://www.monster.com/*",
+        "https://weworkremotely.com/*",
+        "https://builtin.com/*",
+        "https://www.ziprecruiter.com/*"
       ],
       "js": ["content.js"],
       "css": ["content.css"],
