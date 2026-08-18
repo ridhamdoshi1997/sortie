@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useState } from "react";
 import { Loader2, Play, X } from "lucide-react";
 
-import { runJavaScript, runPython, type SandboxResult } from "@/lib/practiceSandbox";
+import { runJavaScript, runPython, runRuby, runSQL, runTypeScript, type SandboxResult } from "@/lib/practiceSandbox";
 import type { PracticeKit } from "@/lib/interviewQuestions";
 
 // Monaco touches window/document directly and crashes under SSR — must load
@@ -15,6 +15,17 @@ const Editor = dynamic(() => import("@monaco-editor/react").then((mod) => mod.de
   ssr: false,
   loading: () => <div className="h-60 animate-pulse rounded-lg bg-surface-secondary" />,
 });
+
+const LANGUAGE_CONFIG: Record<
+  PracticeKit["language"],
+  { label: string; monacoLanguage: string; run: (code: string, callExpression: string) => Promise<SandboxResult> }
+> = {
+  javascript: { label: "JavaScript", monacoLanguage: "javascript", run: runJavaScript },
+  typescript: { label: "TypeScript", monacoLanguage: "typescript", run: runTypeScript },
+  python: { label: "Python", monacoLanguage: "python", run: runPython },
+  ruby: { label: "Ruby", monacoLanguage: "ruby", run: runRuby },
+  sql: { label: "SQL", monacoLanguage: "sql", run: runSQL },
+};
 
 // "Soft verification," not strict pass/fail grading (build-plan.md §N) —
 // an LLM asked to generate test cases for its own AI-generated question is
@@ -29,17 +40,21 @@ export function PracticeSandbox({ practiceKit, onClose }: { practiceKit: Practic
   const [userResult, setUserResult] = useState<SandboxResult | null>(null);
   const [referenceResult, setReferenceResult] = useState<SandboxResult | null>(null);
 
+  const config = LANGUAGE_CONFIG[practiceKit.language];
   const activeTest = practiceKit.testCases[activeTestIndex];
-  const runFn = practiceKit.language === "python" ? runPython : runJavaScript;
-  const monacoLanguage = practiceKit.language === "python" ? "python" : "javascript";
+  // SQL has no meaningful "call a function with these arguments" test case —
+  // the candidate's query is the last statement in `code` itself, and the
+  // whole buffer runs as one script (see runSQL's own comment). Only
+  // function-based languages show the test-case picker/call-expression line.
+  const isSql = practiceKit.language === "sql";
 
   async function handleRun(): Promise<void> {
     setRunning(true);
     setUserResult(null);
     setReferenceResult(null);
     const [user, reference] = await Promise.all([
-      runFn(code, activeTest.callExpression),
-      runFn(practiceKit.referenceSolution, activeTest.callExpression),
+      config.run(code, activeTest.callExpression),
+      config.run(practiceKit.referenceSolution, activeTest.callExpression),
     ]);
     setUserResult(user);
     setReferenceResult(reference);
@@ -49,9 +64,7 @@ export function PracticeSandbox({ practiceKit, onClose }: { practiceKit: Practic
   return (
     <div className="mt-3 flex flex-col gap-3 rounded-xl border border-border bg-surface-secondary p-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm font-semibold text-text-primary">
-          Practice Sandbox — {practiceKit.language === "python" ? "Python" : "JavaScript"}
-        </p>
+        <p className="text-sm font-semibold text-text-primary">Practice Sandbox — {config.label}</p>
         <button
           type="button"
           onClick={onClose}
@@ -69,37 +82,43 @@ export function PracticeSandbox({ practiceKit, onClose }: { practiceKit: Practic
         </p>
       </div>
 
-      {practiceKit.testCases.length > 1 && (
-        <div className="flex flex-wrap gap-1.5">
-          {practiceKit.testCases.map((tc, i) => (
-            <button
-              key={i}
-              type="button"
-              onClick={() => {
-                setActiveTestIndex(i);
-                setUserResult(null);
-                setReferenceResult(null);
-              }}
-              className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                i === activeTestIndex
-                  ? "bg-accent-light text-accent"
-                  : "border border-border text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              Test {i + 1}
-            </button>
-          ))}
-        </div>
-      )}
-      <div>
+      {isSql ? (
         <p className="text-xs text-text-secondary">{activeTest.description}</p>
-        <code className="mt-1 block truncate font-mono text-xs text-text-muted">{activeTest.callExpression}</code>
-      </div>
+      ) : (
+        <>
+          {practiceKit.testCases.length > 1 && (
+            <div className="flex flex-wrap gap-1.5">
+              {practiceKit.testCases.map((tc, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => {
+                    setActiveTestIndex(i);
+                    setUserResult(null);
+                    setReferenceResult(null);
+                  }}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
+                    i === activeTestIndex
+                      ? "bg-accent-light text-accent"
+                      : "border border-border text-text-secondary hover:text-text-primary"
+                  }`}
+                >
+                  Test {i + 1}
+                </button>
+              ))}
+            </div>
+          )}
+          <div>
+            <p className="text-xs text-text-secondary">{activeTest.description}</p>
+            <code className="mt-1 block truncate font-mono text-xs text-text-muted">{activeTest.callExpression}</code>
+          </div>
+        </>
+      )}
 
       <div className="overflow-hidden rounded-lg border border-border">
         <Editor
           height="240px"
-          language={monacoLanguage}
+          language={config.monacoLanguage}
           value={code}
           onChange={(value) => setCode(value ?? "")}
           theme="vs-dark"

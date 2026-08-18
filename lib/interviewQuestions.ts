@@ -38,23 +38,35 @@ export type InterviewQuestion = {
   practiceKit?: PracticeKit | null;
 };
 
-// v1 scope, per the 2026-08-14 feasibility research: JS + Python only,
-// 100% client-side execution (lib/practiceSandbox.ts), no strict pass/fail
-// grading — the AI's own test-case-generation reliability for arbitrary
-// problems isn't trustworthy enough for a binary verdict, so this is "soft
-// verification": run the same call against the user's code AND a real
-// reference solution, show both outputs side by side, let the user judge.
+// v1 scope, per the 2026-08-14 feasibility research: 100% client-side
+// execution (lib/practiceSandbox.ts), no strict pass/fail grading — the
+// AI's own test-case-generation reliability for arbitrary problems isn't
+// trustworthy enough for a binary verdict, so this is "soft verification":
+// run the same call against the user's code AND a real reference solution,
+// show both outputs side by side, let the user judge.
+//
+// Expanded 2026-08-18 from JS/Python to 5 languages (typescript/ruby/sql
+// added) — each has a real, verified-live, genuinely-client-side execution
+// engine (lib/practiceSandbox.ts). C#/Java were researched and deliberately
+// excluded — both are technically buildable but carry a 20-30MB cold-boot
+// payload, a meaningfully worse experience than everything else here.
+//
+// `functionName` is optional because SQL doesn't have one — its `code` is a
+// schema-setup script (CREATE/INSERT), not a function definition, and its
+// `testCases[].callExpression` is a SELECT query, not a function call. The
+// contract still generalizes: `code` is "run first," `callExpression` is
+// "run second, show its result" — true for every language here.
 export type PracticeKit = {
-  language: "javascript" | "python";
-  functionName: string;
+  language: "javascript" | "typescript" | "python" | "ruby" | "sql";
+  functionName?: string;
   starterCode: string;
   referenceSolution: string;
   testCases: { callExpression: string; description: string }[];
 };
 
 const practiceKitSchema = z.object({
-  language: z.enum(["javascript", "python"]),
-  functionName: z.string().min(1),
+  language: z.enum(["javascript", "typescript", "python", "ruby", "sql"]),
+  functionName: z.string().min(1).optional(),
   starterCode: z.string().min(1),
   referenceSolution: z.string().min(1),
   testCases: z.array(z.object({ callExpression: z.string().min(1), description: z.string().min(1) })).min(1).max(3),
@@ -289,14 +301,22 @@ export async function generatePracticeKit(
   roleFamily: string,
 ): Promise<PracticeKit> {
   const raw = await complete(getModel("gemini", "smart"), {
-    systemPrompt: `You are building a runnable coding-practice exercise for ONE specific technical interview question. This will execute in a real, isolated sandbox (a Web Worker for JavaScript, or Pyodide for Python) — the code must actually run correctly, not just look plausible.
+    systemPrompt: `You are building a runnable coding-practice exercise for ONE specific technical interview question. This will execute in a real, isolated client-side sandbox — the code must actually run correctly, not just look plausible.
 
-Pick whichever of JavaScript or Python fits the problem better (default to JavaScript if either would work equally well). Produce:
+Pick the single best-fitting language from: javascript, typescript, python, ruby, sql. Default to javascript if several would fit equally well. Only pick sql if the question is genuinely about data/database/query design (schema design, joins, aggregation, query optimization) — never force an unrelated algorithm question into SQL just for variety.
+
+**For javascript / typescript / python / ruby** (function-based):
 1. A single self-contained function (no imports, no external calls, no network/filesystem access, no classes/generators) that solves the problem.
 2. functionName: the exact function name, consistent between starterCode and referenceSolution.
-3. starterCode: the function signature with a short comment describing the task, and the body either empty or with a single placeholder return/pass — the candidate writes the real logic themselves.
+3. starterCode: the function signature with a short comment describing the task, and the body either empty or with a single placeholder return/pass/nil — the candidate writes the real logic themselves.
 4. referenceSolution: a complete, correct, working implementation with the SAME function name/signature.
-5. 1-3 testCases, each a "callExpression" — a literal, directly-executable call to the function with concrete argument values (e.g. "twoSum([2,7,11,15], 9)" or "two_sum([2, 7, 11, 15], 9)" for Python), plus a one-sentence description of what that case covers (e.g. "standard case with exactly one valid pair"). Use only built-in types (numbers, strings, lists/arrays, dicts/objects, booleans) as arguments and return values — nothing that won't render as a clean, readable string when printed.
+5. 1-3 testCases, each a "callExpression" — a literal, directly-executable call to the function with concrete argument values (e.g. "twoSum([2,7,11,15], 9)" for JS/TS, "two_sum([2, 7, 11, 15], 9)" for Python, "two_sum([2, 7, 11, 15], 9)" for Ruby), plus a one-sentence description of what that case covers. Use only built-in types (numbers, strings, lists/arrays, dicts/objects/hashes, booleans) as arguments and return values.
+
+**For sql** (schema-based, one editable block — do NOT set functionName):
+There is no separate "call the function" step for SQL — the candidate edits and runs ONE combined block, and only the LAST statement's result is shown. So:
+1. starterCode: CREATE TABLE + INSERT statements with realistic sample data (SQLite dialect, since that's what actually executes), followed by a comment "-- Write your query below" and a trivial placeholder final statement like "SELECT 1;" that the candidate replaces with their real query.
+2. referenceSolution: the SAME schema-setup statements, followed by the actual correct query as the final statement.
+3. Exactly 1 testCase — its "callExpression" field is unused for SQL (put a short placeholder like "(see the editor)") and its "description" states what the query should return (e.g. "should return each department's average salary, highest first").
 
 Return only valid JSON.`,
     userPrompt: `Company: ${company}
@@ -306,8 +326,8 @@ Question: ${question.question}
 Return JSON matching this exact shape:
 {
   "practiceKit": {
-    "language": "javascript" | "python",
-    "functionName": "string",
+    "language": "javascript" | "typescript" | "python" | "ruby" | "sql",
+    "functionName": "string (omit entirely for sql)",
     "starterCode": "string",
     "referenceSolution": "string",
     "testCases": [{ "callExpression": "string", "description": "string" }]
