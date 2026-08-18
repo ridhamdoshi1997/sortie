@@ -1,8 +1,8 @@
 import { serve } from "inngest/next";
 import { inngest } from "../../../lib/inngest/client";
-import { evaluateJobsAsync } from "../../../lib/inngest/functions";
+import { evaluateJobsAsync, generateResumeSuggestionAsync } from "../../../lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
     client: inngest,
-    functions: [evaluateJobsAsync],
+    functions: [evaluateJobsAsync, generateResumeSuggestionAsync],
 });

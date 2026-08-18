@@ -178,6 +178,21 @@ export function JobResultCard({
               ))}
             </div>
           )}
+          {/* User's own tags (job.tags) — distinct from the auto-derived fit
+              pills above (Remote/matched-skills). Accent-colored so the two
+              never read as the same kind of signal. */}
+          {Array.isArray(job.tags) && job.tags.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {job.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-[5px] bg-accent-muted px-2 py-0.5 text-[11px] font-medium text-accent"
+                >
+                  {tag}
+                </span>
+              ))}
+            </div>
+          )}
           {signal && (
             <div
               className={`mt-2.5 inline-flex w-fit items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${

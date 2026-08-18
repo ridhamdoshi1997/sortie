@@ -7,6 +7,9 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { CareerTimeline } from "@/components/career/CareerTimeline";
 import { OutcomeInsights } from "@/components/career/OutcomeInsights";
+import { StarVault } from "@/components/career/StarVault";
+import { BragDocGenerator } from "@/components/career/BragDocGenerator";
+import { ResumeSuggestionsQueue } from "@/components/career/ResumeSuggestionsQueue";
 import {
   buildCareerEpochs,
   buildEducationEntries,
@@ -15,8 +18,10 @@ import {
   mostRecentActivityDate,
   type JobOutcomeRow,
 } from "@/lib/careerTimeline";
-import { listApplicationEvents } from "@/actions/careerEvents";
+import { listApplicationEvents, listInterviewEventsWithJob } from "@/actions/careerEvents";
 import { getOutcomeStats } from "@/actions/outcomeInsights";
+import { listStarStories } from "@/actions/starStories";
+import { listPendingResumeSuggestions } from "@/actions/resumeSuggestions";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
 import type { Profile } from "@/types";
 
@@ -36,27 +41,38 @@ export default async function CareerPage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
-  const [{ data: profile }, { data: accomplishments }, { data: jobOutcomes }, applicationEventsResult, outcomeStatsResult] =
-    await Promise.all([
-      insforge.database
-        .from("profiles")
-        .select("work_experience,education")
-        .eq("id", user.id)
-        .maybeSingle<Pick<Profile, "work_experience" | "education">>(),
-      insforge.database
-        .from("accomplishments")
-        .select("id,title,description,date,tags,related_job_id,source,created_at,updated_at")
-        .eq("user_id", user.id)
-        .order("date", { ascending: false }),
-      insforge.database
-        .from("jobs")
-        .select("id,title,company,application_status,application_status_updated_at,found_at")
-        .eq("user_id", user.id)
-        .neq("application_status", "draft")
-        .order("application_status_updated_at", { ascending: false }),
-      listApplicationEvents(),
-      getOutcomeStats(),
-    ]);
+  const [
+    { data: profile },
+    { data: accomplishments },
+    { data: jobOutcomes },
+    applicationEventsResult,
+    outcomeStatsResult,
+    starStoriesResult,
+    interviewEventsResult,
+    resumeSuggestionsResult,
+  ] = await Promise.all([
+    insforge.database
+      .from("profiles")
+      .select("work_experience,education")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "work_experience" | "education">>(),
+    insforge.database
+      .from("accomplishments")
+      .select("id,title,description,date,tags,related_job_id,source,created_at,updated_at")
+      .eq("user_id", user.id)
+      .order("date", { ascending: false }),
+    insforge.database
+      .from("jobs")
+      .select("id,title,company,application_status,application_status_updated_at,found_at")
+      .eq("user_id", user.id)
+      .neq("application_status", "draft")
+      .order("application_status_updated_at", { ascending: false }),
+    listApplicationEvents(),
+    getOutcomeStats(),
+    listStarStories(),
+    listInterviewEventsWithJob(),
+    listPendingResumeSuggestions(),
+  ]);
 
   const { epochs, unassigned } = buildCareerEpochs(profile, (accomplishments ?? []) as AccomplishmentRow[]);
   const education = buildEducationEntries(profile);
@@ -93,6 +109,8 @@ export default async function CareerPage() {
           </div>
         )}
 
+        <ResumeSuggestionsQueue initialSuggestions={resumeSuggestionsResult.data ?? []} />
+
         <OutcomeInsights
           stats={
             outcomeStatsResult.data ?? {
@@ -103,6 +121,13 @@ export default async function CareerPage() {
             }
           }
         />
+
+        <StarVault
+          initialStories={starStoriesResult.data ?? []}
+          interviewEvents={interviewEventsResult.data ?? []}
+        />
+
+        <BragDocGenerator />
 
         <CareerTimeline
           epochs={epochs}

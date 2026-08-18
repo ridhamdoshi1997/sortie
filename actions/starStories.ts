@@ -20,11 +20,13 @@ export type StarStoryRow = {
   result: string;
   tags: string[];
   accomplishment_id: string | null;
+  interview_event_id: string | null;
   created_at: string;
   updated_at: string;
 };
 
-const STAR_STORY_COLUMNS = "id,title,situation,task,action,result,tags,accomplishment_id,created_at,updated_at";
+const STAR_STORY_COLUMNS =
+  "id,title,situation,task,action,result,tags,accomplishment_id,interview_event_id,created_at,updated_at";
 
 export async function listStarStories(): Promise<{ success: boolean; data?: StarStoryRow[]; error?: string }> {
   const user = await requireUser();
@@ -141,6 +143,50 @@ export async function deleteStarStory(id: string): Promise<ActionResult> {
   } catch (error) {
     console.error("[actions/starStories] deleteStarStory", error);
     return { success: false, error: "Failed to delete this story" };
+  }
+}
+
+// §Q4a STAR Vault — optional provenance link to the specific interview_events
+// row a story was used for, surfaced on /career independent of the
+// job-matching flow above. Ownership double-checked on both rows (the FK
+// alone doesn't stop linking someone else's interview event id).
+export async function linkStarStoryToInterview(
+  storyId: string,
+  interviewEventId: string | null,
+): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    if (interviewEventId) {
+      const { data: event } = await insforge.database
+        .from("interview_events")
+        .select("id")
+        .eq("id", interviewEventId)
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (!event) {
+        return { success: false, error: "That interview couldn't be found." };
+      }
+    }
+
+    const { error } = await insforge.database
+      .from("star_stories")
+      .update({ interview_event_id: interviewEventId, updated_at: new Date().toISOString() })
+      .eq("id", storyId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/starStories] linkStarStoryToInterview", error);
+      return { success: false, error: "Failed to update this story's link" };
+    }
+
+    revalidatePath("/career");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/starStories] linkStarStoryToInterview", error);
+    return { success: false, error: "Failed to update this story's link" };
   }
 }
 

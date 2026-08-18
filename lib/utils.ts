@@ -4,6 +4,14 @@ import { twMerge } from "tailwind-merge"
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
 }
+
+// Profile URL fields (LinkedIn/portfolio-or-GitHub) are stored as the user
+// typed them ("linkedin.com/in/x", no scheme) — a bare href like that is
+// treated as relative by both <a> tags and @react-pdf/renderer's <Link>,
+// which would navigate within this app instead of out to the real site.
+export function toHref(url: string): string {
+  return /^https?:\/\//i.test(url) ? url : `https://${url}`
+}
 // A bare "YYYY-MM-DD" string (accomplishment dates, work_experience start/end
 // dates — a calendar day with no time-of-day, not a real timestamp) parses
 // via `new Date(string)` as UTC midnight, per the ISO-8601 spec. Formatting

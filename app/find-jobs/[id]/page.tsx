@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { notFound } from "next/navigation";
 
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
+import { ApplicationHistory } from "@/components/job-details/ApplicationHistory";
 import { Benefits } from "@/components/job-details/Benefits";
 import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
@@ -17,10 +18,12 @@ import { InterviewPanel } from "@/components/job-details/InterviewPanel";
 import { TrapDoorPredictor } from "@/components/job-details/TrapDoorPredictor";
 import { InterrogationPlan } from "@/components/job-details/InterrogationPlan";
 import { listInterviewPanel } from "@/actions/interviewPanel";
+import { listJobEventHistory } from "@/actions/careerEvents";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
+import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
 import { MatchScore } from "@/components/job-details/MatchScore";
 import { Qualification } from "@/components/job-details/Qualification";
 import { Responsibilities } from "@/components/job-details/Responsibilities";
@@ -105,6 +108,9 @@ export default async function JobDetailsPage({ params }: Props) {
   const panelResult = job.application_status === "interviewing" ? await listInterviewPanel(job.id) : null;
   const interviewPanelMembers = panelResult?.data ?? [];
 
+  const eventHistoryResult = await listJobEventHistory(job.id);
+  const eventHistory = eventHistoryResult.data ?? [];
+
   const isAdmin = isAdminUser(user.email);
   // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
   // or an admin allowlist change) so the selector never shows/persists a
@@ -151,6 +157,16 @@ export default async function JobDetailsPage({ params }: Props) {
         </div>
         <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
           <JobInfo job={job} />
+        </div>
+
+        {eventHistory.length > 0 && (
+          <div className="fade-in-up" style={{ animationDelay: "90ms" }}>
+            <ApplicationHistory history={eventHistory} />
+          </div>
+        )}
+
+        <div className="fade-in-up" style={{ animationDelay: "100ms" }}>
+          <JobTagsAndNotes jobId={job.id} initialTags={job.tags ?? []} initialNotes={job.personal_notes} />
         </div>
 
         <div className="fade-in-up" style={{ animationDelay: "120ms" }}>

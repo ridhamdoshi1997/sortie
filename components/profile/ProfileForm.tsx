@@ -30,6 +30,7 @@ import {
 import { generateBullets, rewriteBullet, saveProfile, splitBullet } from "@/actions/profile";
 import type { ExtractedProfile } from "@/actions/profile";
 import type { ResumeRow } from "@/actions/resumes";
+import { toHref } from "@/lib/utils";
 import type { Profile } from "@/types";
 import { SectionIcon, SectionModal } from "./SectionModal";
 import { ResumeManager } from "./ResumeManager";
@@ -492,28 +493,46 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
                   <p className="text-xl font-bold text-text-primary">{fullName || "Your name"}</p>
                   <div className="mt-3 flex flex-wrap gap-2">
                     {phone && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <a
+                        href={`tel:${phone.trim().startsWith("+") ? "+" : ""}${phone.replace(/\D/g, "")}`}
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent hover:text-accent"
+                      >
                         <Phone className="h-3.5 w-3.5 shrink-0 text-accent" strokeWidth={2} />
                         {phone}
-                      </span>
+                      </a>
                     )}
                     {location && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(location)}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-info hover:text-info"
+                      >
                         <MapPin className="h-3.5 w-3.5 shrink-0 text-info" strokeWidth={2} />
                         {location}
-                      </span>
+                      </a>
                     )}
                     {linkedinUrl && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <a
+                        href={toHref(linkedinUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-linkedin hover:text-linkedin"
+                      >
                         <LinkIcon className="h-3.5 w-3.5 shrink-0 text-linkedin" strokeWidth={2} />
                         {linkedinUrl}
-                      </span>
+                      </a>
                     )}
                     {portfolioUrl && (
-                      <span className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <a
+                        href={toHref(portfolioUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:border-accent-dark hover:text-accent-dark"
+                      >
                         <FolderGit2 className="h-3.5 w-3.5 shrink-0 text-accent-dark" strokeWidth={2} />
                         {portfolioUrl}
-                      </span>
+                      </a>
                     )}
                   </div>
                   {!phone && !location && !linkedinUrl && !portfolioUrl && (

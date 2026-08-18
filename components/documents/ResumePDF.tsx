@@ -1,6 +1,8 @@
 import React from "react";
-import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
+import { Document, Page, Text, View, StyleSheet, Link } from "@react-pdf/renderer";
+import type { Style } from "@react-pdf/types";
 
+import { toHref } from "@/lib/utils";
 import type { Profile } from "@/types";
 import { sectionDisplayLabel, type ResumeSection, type ResumeStyle } from "@/types/resumeEditor";
 
@@ -429,10 +431,35 @@ function createStyles(t: ThemeTokens, style: ResumeStyle) {
 
 type Styles = ReturnType<typeof createStyles>;
 
+// Résumé header contact info mixes plain text (email/phone) with real URLs
+// (LinkedIn/portfolio-or-GitHub) — carrying an optional href alongside each
+// part lets every render site below wrap only the link entries in
+// @react-pdf/renderer's <Link>, leaving the plain-text entries untouched.
+// The visible text is unchanged either way, so this doesn't affect ATS
+// text-extraction, only adds a clickable annotation on top of it.
+type ContactPart = { text: string; href?: string };
+
+function contactPartsWithLinks(profile: Profile): ContactPart[] {
+  const plain: ContactPart[] = [profile.email, profile.phone].filter((v): v is string => Boolean(v)).map((text) => ({ text }));
+  const links: ContactPart[] = [profile.linkedin_url, profile.portfolio_url]
+    .filter((v): v is string => Boolean(v))
+    .map((text) => ({ text, href: toHref(text) }));
+  return [...plain, ...links];
+}
+
+function ContactText({ part, style }: { part: ContactPart; style: Style }) {
+  if (part.href) {
+    return (
+      <Link src={part.href} style={style}>
+        {part.text}
+      </Link>
+    );
+  }
+  return <Text style={style}>{part.text}</Text>;
+}
+
 function renderHeader(profile: Profile, styles: Styles, tokens: ThemeTokens) {
-  const contactParts = [profile.email, profile.phone].filter(Boolean);
-  const linkParts = [profile.linkedin_url, profile.portfolio_url].filter(Boolean);
-  const allContactParts = [...contactParts, ...linkParts];
+  const allContactParts = contactPartsWithLinks(profile);
   const subtitleParts = [profile.current_title, profile.location].filter(Boolean);
 
   return (
@@ -445,7 +472,7 @@ function renderHeader(profile: Profile, styles: Styles, tokens: ThemeTokens) {
           {allContactParts.map((part, i) => (
             <React.Fragment key={i}>
               {i > 0 && <Text style={styles.contactDivider}>•</Text>}
-              <Text style={styles.contact}>{part}</Text>
+              <ContactText part={part} style={styles.contact} />
             </React.Fragment>
           ))}
         </View>
@@ -459,9 +486,7 @@ function renderHeader(profile: Profile, styles: Styles, tokens: ThemeTokens) {
 // normal ink/textMuted tokens, since it sits on accentDark regardless of
 // theme choice.
 function renderBlockHeader(profile: Profile, styles: Styles) {
-  const contactParts = [profile.email, profile.phone].filter(Boolean);
-  const linkParts = [profile.linkedin_url, profile.portfolio_url].filter(Boolean);
-  const allContactParts = [...contactParts, ...linkParts];
+  const allContactParts = contactPartsWithLinks(profile);
   const subtitleParts = [profile.current_title, profile.location].filter(Boolean);
 
   return (
@@ -473,7 +498,7 @@ function renderBlockHeader(profile: Profile, styles: Styles) {
           {allContactParts.map((part, i) => (
             <React.Fragment key={i}>
               {i > 0 && <Text style={styles.blockContactDivider}>•</Text>}
-              <Text style={styles.blockContact}>{part}</Text>
+              <ContactText part={part} style={styles.blockContact} />
             </React.Fragment>
           ))}
         </View>
@@ -497,15 +522,13 @@ function renderSplitMainHeader(profile: Profile, styles: Styles) {
 }
 
 function renderSplitSidebarContact(profile: Profile, styles: Styles) {
-  const contactParts = [profile.email, profile.phone, profile.linkedin_url, profile.portfolio_url].filter(Boolean);
+  const contactParts = contactPartsWithLinks(profile);
   if (contactParts.length === 0) return null;
   return (
     <View>
       <Text style={styles.sectionTitle}>Contact</Text>
       {contactParts.map((part, i) => (
-        <Text key={i} style={styles.sidebarContactLine}>
-          {part}
-        </Text>
+        <ContactText key={i} part={part} style={styles.sidebarContactLine} />
       ))}
     </View>
   );

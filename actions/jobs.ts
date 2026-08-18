@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { inngest } from "@/lib/inngest/client";
+import { createExternalJob } from "@/lib/externalJob";
 import { fetchViaJinaReader, researchCompany } from "@/agent/research";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { resolveProvider } from "@/lib/access";
@@ -65,36 +65,14 @@ export async function addExternalJob(input: AddExternalJobInput): Promise<Action
 
   try {
     const insforge = await createInsforgeServer();
+    const result = await createExternalJob(insforge, user.id, input);
 
-    const { data: job, error } = await insforge.database
-      .from("jobs")
-      .insert([
-        {
-          user_id: user.id,
-          source: "url",
-          external_id: crypto.randomUUID(),
-          title: input.title,
-          company: input.company,
-          location: input.location || null,
-          description: input.description,
-          url: input.url || null,
-        },
-      ])
-      .select("id")
-      .single<{ id: string }>();
-
-    if (error || !job) {
-      console.error("[actions/jobs] addExternalJob", error);
-      return { success: false, error: "Failed to save job" };
+    if (!result.success) {
+      return result;
     }
 
-    await inngest.send({
-      name: "jobs/evaluate",
-      data: { jobIds: [job.id], filters: {}, userId: user.id, runId: null },
-    });
-
     revalidatePath("/jobs/external");
-    return { success: true, jobId: job.id };
+    return result;
   } catch (error) {
     console.error("[actions/jobs] addExternalJob", error);
     return { success: false, error: "Failed to save job" };
@@ -177,6 +155,61 @@ export async function toggleJobPriority(jobId: string, priority: boolean): Promi
   } catch (error) {
     console.error("[actions/jobs] toggleJobPriority", error);
     return { success: false, error: "Failed to update priority" };
+  }
+}
+
+// Plain user-authored tracker metadata — no AI, mirrors accomplishments.tags's
+// shape. Kept as two separate actions (not one combined "update job meta")
+// since the tag editor and notes field are two independent, separately-saved
+// UI controls on the job detail page.
+export async function updateJobTags(jobId: string, tags: string[]): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ tags })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] updateJobTags", error);
+      return { success: false, error: "Failed to update tags" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/missions");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] updateJobTags", error);
+    return { success: false, error: "Failed to update tags" };
+  }
+}
+
+export async function updateJobNotes(jobId: string, notes: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ personal_notes: notes || null })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] updateJobNotes", error);
+      return { success: false, error: "Failed to save your note" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] updateJobNotes", error);
+    return { success: false, error: "Failed to save your note" };
   }
 }
 

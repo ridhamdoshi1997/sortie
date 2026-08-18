@@ -1,0 +1,10 @@
+/* Styles for the widget HOST element only (light DOM) — everything inside
+   the widget itself lives in a Shadow DOM (see content.js's WIDGET_STYLES)
+   and is isolated from the page's own CSS by the shadow boundary. This host
+   rule exists because the boundary itself doesn't protect the host element
+   FROM the page's own CSS (e.g. LinkedIn's own flex/grid ancestor rules) —
+   an inline `!important` reset here is the actual isolation for that half. */
+#sortie-widget-host {
+  display: inline-block !important;
+  all: revert !important;
+}

@@ -27,7 +27,9 @@ export type UsageAction =
   | "star_story_matching"
   | "question_detail_generation"
   | "agent_message"
-  | "outcome_narrative";
+  | "outcome_narrative"
+  | "brag_doc"
+  | "extension_score_preview";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -116,6 +118,19 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // every /career visit — opt-in button click only, so the cap mainly
   // guards against repeated re-generation for no new data.
   outcome_narrative: 5,
+  // §Q4 — one structured call over the user's own logged accomplishments +
+  // compensation events within a picked date range, same shape/cost as
+  // outcome_narrative/leverage_synthesis. Not persisted, so re-opening the
+  // same period later costs another call — capped the same way as those.
+  brag_doc: 5,
+  // The extension's inline match-score badge — fires while the user is just
+  // BROWSING job postings, not applying, so it needs a higher cap than a
+  // deliberate one-shot action like brag_doc. Most of the real cost is
+  // avoided anyway: a genuine cache hit (a job with this exact title+company
+  // already tracked with a score) never reaches this action at all — see
+  // app/api/extension/score-preview/route.ts. This only bounds the
+  // remaining genuine-miss case (browsing new postings never seen before).
+  extension_score_preview: 40,
 };
 
 const ACTION_LABELS: Record<UsageAction, string> = {
@@ -139,6 +154,8 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   question_detail_generation: "question deep-dives",
   agent_message: "Navigator messages",
   outcome_narrative: "outcome insight summaries",
+  brag_doc: "brag doc generations",
+  extension_score_preview: "extension match-score previews",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

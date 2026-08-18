@@ -1,6 +1,11 @@
 import type { Education, Profile, WorkExperience } from "@/types";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
-import type { ApplicationEventRow, ApplicationEventType } from "@/actions/careerEvents";
+import type {
+  ApplicationEventRow,
+  ApplicationEventType,
+  CompensationEventType,
+  InterviewEventOutcome,
+} from "@/actions/careerEvents";
 import { STATUS_LABELS } from "@/lib/applicationStatus";
 
 // Epoch-based restructure of /career (Phase 11) — a flat, equal-weight
@@ -142,7 +147,7 @@ export type TimelineEntry = {
   kind: TimelineEntryKind;
 };
 
-const APPLICATION_EVENT_LABELS: Record<ApplicationEventType, string> = {
+export const APPLICATION_EVENT_LABELS: Record<ApplicationEventType, string> = {
   applied: "Applied",
   interview_scheduled: "Interview scheduled",
   interview_completed: "Interview completed",
@@ -150,6 +155,20 @@ const APPLICATION_EVENT_LABELS: Record<ApplicationEventType, string> = {
   rejected: "Rejected",
   ghosted: "Went quiet",
   withdrawn: "Withdrew application",
+};
+
+export const INTERVIEW_OUTCOME_LABELS: Record<InterviewEventOutcome, string> = {
+  pending: "Pending",
+  passed: "Passed",
+  rejected: "Rejected",
+  no_show: "No show",
+};
+
+export const COMPENSATION_EVENT_LABELS: Record<CompensationEventType, string> = {
+  offer: "Offer received",
+  raise: "Raise",
+  bonus: "Bonus",
+  equity_grant: "Equity grant",
 };
 
 export type JobLookupRow = { id: string; title: string | null; company: string | null };

@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, CreditCard, LogOut, Shield, Ticket, Trash2 } from "lucide-react";
+import { Bell, Check, Copy, CreditCard, KeyRound, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
 
 import { deleteAccount } from "@/actions/account";
+import { generateApiKey, listApiKeys, revokeApiKey, type ApiKeyRow } from "@/actions/apiKeys";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 
 type Props = {
@@ -12,13 +13,14 @@ type Props = {
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "extension";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
   { key: "subscription", icon: CreditCard, label: "Subscription" },
   { key: "credits", icon: Ticket, label: "Credits & usage" },
   { key: "alerts", icon: Bell, label: "Job alerts" },
+  { key: "extension", icon: Plug, label: "Browser extension" },
 ];
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -196,6 +198,133 @@ function LoginSecurityTab({ email, providers }: Props) {
   );
 }
 
+// §Q5 Capture Layer — a personal API key lets the (not-yet-published)
+// browser extension save a job without sharing this app's session cookie.
+// The raw key is only ever visible right after generation, in a
+// dismiss-once banner — after that, only the stored prefix is shown, same
+// pattern most API-key-issuing products use since the app itself only ever
+// stores a hash.
+function ExtensionTab() {
+  const [keys, setKeys] = useState<ApiKeyRow[] | null>(null);
+  const [newRawKey, setNewRawKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isGenerating, startGenerateTransition] = useTransition();
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    listApiKeys().then((result) => {
+      if (result.success) setKeys(result.data ?? []);
+    });
+  }, []);
+
+  function handleGenerate(): void {
+    setError(null);
+    startGenerateTransition(async () => {
+      const result = await generateApiKey("Browser extension");
+      if (!result.success || !result.rawKey) {
+        setError(result.error ?? "Failed to generate a key");
+        return;
+      }
+      setNewRawKey(result.rawKey);
+      const refreshed = await listApiKeys();
+      if (refreshed.success) setKeys(refreshed.data ?? []);
+    });
+  }
+
+  function handleCopy(): void {
+    if (!newRawKey) return;
+    navigator.clipboard.writeText(newRawKey).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  }
+
+  async function handleRevoke(id: string): Promise<void> {
+    setRevokingId(id);
+    await revokeApiKey(id);
+    setKeys((prev) => prev?.filter((k) => k.id !== id) ?? null);
+    setRevokingId(null);
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h3 className="text-base font-semibold text-text-primary">Browser extension</h3>
+        <p className="mt-1 text-xs leading-5 text-text-secondary">
+          Generate a personal key to connect Sortie&apos;s browser extension — it lets the extension save a job
+          on your behalf without sharing your login session.
+        </p>
+      </div>
+
+      {newRawKey && (
+        <div className="flex flex-col gap-2 rounded-xl border border-agent/30 bg-agent-light/50 p-4">
+          <p className="text-xs font-medium text-agent-dark">
+            Copy this key now — you won&apos;t be able to see it again.
+          </p>
+          <div className="flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2">
+            <code className="min-w-0 flex-1 truncate text-xs text-text-primary">{newRawKey}</code>
+            <button
+              type="button"
+              onClick={handleCopy}
+              className="inline-flex shrink-0 items-center gap-1 rounded-md bg-agent px-2.5 py-1 text-[11px] font-medium text-agent-foreground transition-opacity hover:opacity-90"
+            >
+              {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {keys === null ? (
+          <p className="text-xs text-text-muted">Loading your keys…</p>
+        ) : keys.length === 0 ? (
+          <p className="text-xs text-text-muted">No keys yet — generate one to connect the extension.</p>
+        ) : (
+          keys.map((key) => (
+            <div
+              key={key.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-border bg-surface-secondary px-3 py-2.5"
+            >
+              <div className="flex min-w-0 items-center gap-2">
+                <KeyRound className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                <div className="min-w-0">
+                  <p className="truncate text-sm text-text-primary">{key.label}</p>
+                  <p className="truncate text-[11px] text-text-muted">
+                    {key.key_prefix}… · {key.last_used_at ? "used" : "never used"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={revokingId === key.id}
+                onClick={() => handleRevoke(key.id)}
+                className="shrink-0 rounded-lg p-1.5 text-text-muted transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
+                aria-label="Revoke key"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      {error && <p className="text-xs text-error">{error}</p>}
+
+      <button
+        type="button"
+        disabled={isGenerating}
+        onClick={handleGenerate}
+        className="inline-flex min-h-9 w-fit items-center gap-2 rounded-lg border border-border px-4 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-60"
+      >
+        <KeyRound className="h-4 w-4" />
+        {isGenerating ? "Generating…" : "Generate new key"}
+      </button>
+    </div>
+  );
+}
+
 export function SettingsPanel({ email, providers }: Props) {
   const [tab, setTab] = useState<TabKey>("security");
 
@@ -230,6 +359,7 @@ export function SettingsPanel({ email, providers }: Props) {
         {tab === "subscription" && <NotYetAvailable label="Subscription" />}
         {tab === "credits" && <NotYetAvailable label="Credits & usage" />}
         {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
+        {tab === "extension" && <ExtensionTab />}
       </div>
     </div>
   );

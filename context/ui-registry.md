@@ -237,6 +237,30 @@ Two deterministic rate-bar groups (interview rate by match-score band, interview
 
 **Deliberately deferred from the full §Q3 spec**: a `job_decisions` table for explicitly capturing "applied vs. skipped, and why" on jobs looked at but never acted on. Needs a new skip-reason capture UI that risks overlapping/confusing with the already-existing `is_hidden` "not interested" toggle — a real fast-follow, not built this pass.
 
+### StarVault + BragDocGenerator + ResumeSuggestionsQueue (§Q4 Always-Warm Résumé + STAR Vault + Brag Doc)
+
+File: `components/career/StarVault.tsx`, `components/career/BragDocGenerator.tsx`, `components/documents/BragDocPDF.tsx`, `components/career/ResumeSuggestionsQueue.tsx`, `lib/bragDoc.ts`, `lib/resumeSuggestions.ts`, `actions/bragDoc.ts`, `actions/resumeSuggestions.ts`, `app/api/career/brag-doc/route.ts`
+Route: `app/career/page.tsx` (renders `ResumeSuggestionsQueue` → `OutcomeInsights` → `StarVault` → `BragDocGenerator` → `CareerTimeline`, in that order)
+Last updated: 2026-08-17 (new)
+
+**Pattern notes:**
+**StarVault** — reuses `star_stories`' existing full CRUD (`actions/starStories.ts`, originally built for the STAR Story Matrix on `/interview`) rather than a new table; resurfaces the same rows on `/career` as a standalone Career Asset, independent of that page's job-matching flow. Reuses `StarStoryMatrix.tsx`'s private `StarStoryEditor` verbatim (newly exported) for add/edit — zero new editing pattern. New: a "link this story to the interview it was used for" control (`interview_event_id` nullable FK, applied via `db query` directly since it references `public.interview_events`, not `auth.users`) — a plain `<select>` when unlinked, a `Link2`/`Unlink` badge row when linked, matching this codebase's small-inline-control convention rather than a modal.
+
+**BragDocGenerator + BragDocPDF** — a date-range-scoped self-review draft (`lib/bragDoc.ts`, one Gemini call over `accomplishments`+`compensation_events`, same honesty-scoped/grounded-only shape as `rejectionIntelligence.ts`/`leverageSynthesizer.ts`, XYZ-formula bullets via the existing `writingStyle.ts` rules). Result renders in the standard `border-agent bg-agent-light` "AI Navigator reads" card for the summary, plain `border-border bg-surface-secondary` cards for each highlight (not agent-teal — these are direct restatements of the user's own accomplishments, not synthesized commentary). Not persisted server-side — `BragDocPDF.tsx` reuses `ResumePDF.tsx`'s own `resolveTokens`/`mapRange`/`SPACING_RANGES` exports (a fixed single "modern" layout, no template/theme picker — this is an internal draft, not a per-employer document) and `/api/career/brag-doc` (POST, zod-validated body) renders on demand from whatever the client already holds in state. New `brag_doc` usage key (5/day, `lib/usage.ts`).
+
+**ResumeSuggestionsQueue** — review queue for `resume_update_suggestions`, a background-generated bullet-suggestion table populated by a new Inngest function (`lib/inngest/functions.ts`'s `generateResumeSuggestionAsync`, triggered by an `accomplishments/logged` event sent from `actions/accomplishments.ts`'s `addAccomplishment`). Card styling deliberately mirrors `EditorTab.tsx`'s private `BulletDiffCard` Was/Now language (that component isn't exported, so this is a parallel implementation, not a shared import) — but "Accept" here copies the bullet to the clipboard rather than silently inserting it into a résumé slot, since there's no single deterministic "base résumé" target in this app and a silent document write would break the Navigator-style action-confirm convention. Renders `null` (not an empty state) when the queue is empty — this is background-populated, ambient content, not something a user needs an explicit "nothing here yet" message for.
+
+### Settings — "Browser extension" tab (§Q5 Capture Layer backend)
+
+File: `components/settings/SettingsPanel.tsx` (`ExtensionTab`), `actions/apiKeys.ts`, `app/api/extension/capture-job/route.ts`, `lib/externalJob.ts`
+Route: Settings modal (`?settings=1`) → "Browser extension" nav item, same `NAV`/`TabKey` pattern as the other 4 tabs
+Last updated: 2026-08-17 (new)
+
+**Pattern notes:**
+Self-fetches its own data (`listApiKeys()`) via a `useEffect` on mount rather than through `SettingsModal.tsx`'s existing `/api/settings/me` prefetch — that endpoint's shape predates this feature and API keys are a distinct enough concern not to fold in. "Generate new key" shows the raw value exactly once in an agent-teal `border-agent bg-agent-light/50` banner with a Copy button (same visual language as every other "AI-adjacent, needs a second look" surface in this app, even though nothing here is AI-generated — reused for its "pay attention, this is important and transient" connotation) — after that it's gone from the UI forever, only the stored `key_prefix` shows in the list below. Revoke is a direct delete, no `ConfirmDialog` step (unlike account deletion) — a leaked/unused key has low blast radius and regenerating is free, so the extra confirmation friction wasn't worth it here.
+
+**Backend split, for reuse**: `createExternalJob` (`lib/externalJob.ts`) holds the actual job-insert-plus-evaluation-trigger logic, called by both `actions/jobs.ts`'s cookie-authed `addExternalJob` (existing "paste a job from anywhere" flow) and the new bearer-token-authed `/api/extension/capture-job` route — same job creation, two different ways of resolving which user it's for. See `progress-tracker.md`'s Phase 14 §Q5 entry for a real bug this extraction surfaced and fixed (an unguarded `inngest.send()` failure used to fail the whole call even after the job row had already saved).
+
 ### ConfirmDialog (new — reusable destructive-action confirmation)
 
 File: components/ui/ConfirmDialog.tsx

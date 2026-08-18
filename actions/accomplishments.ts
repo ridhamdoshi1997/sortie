@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { inngest } from "@/lib/inngest/client";
 
 type ActionResult = { success: boolean; error?: string };
 
@@ -60,19 +61,36 @@ export async function addAccomplishment(input: AccomplishmentInput): Promise<Act
 
   try {
     const insforge = await createInsforgeServer();
-    const { error } = await insforge.database.from("accomplishments").insert([
-      {
-        user_id: user.id,
-        title: input.title,
-        description: input.description || null,
-        date: input.date,
-        tags: input.tags,
-      },
-    ]);
+    const { data: accomplishment, error } = await insforge.database
+      .from("accomplishments")
+      .insert([
+        {
+          user_id: user.id,
+          title: input.title,
+          description: input.description || null,
+          date: input.date,
+          tags: input.tags,
+        },
+      ])
+      .select("id")
+      .single<{ id: string }>();
 
-    if (error) {
+    if (error || !accomplishment) {
       console.error("[actions/accomplishments] addAccomplishment", error);
       return { success: false, error: "Failed to save this accomplishment" };
+    }
+
+    // §Q4c Always-warm résumé — fire-and-forget, never blocks the save. A
+    // failed send here shouldn't fail the accomplishment log itself (the
+    // suggestion is a nice-to-have queued in the background, not a
+    // required side effect of logging real career history).
+    try {
+      await inngest.send({
+        name: "accomplishments/logged",
+        data: { accomplishmentId: accomplishment.id, userId: user.id },
+      });
+    } catch (sendError) {
+      console.error("[actions/accomplishments] failed to queue résumé suggestion", sendError);
     }
 
     revalidatePath("/career");

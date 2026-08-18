@@ -1,0 +1,55 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Sortie</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="header">
+      <div class="logo-mark"></div>
+      <span class="title">Sortie</span>
+    </div>
+
+    <div id="disconnected-view" class="view">
+      <p class="body-text">
+        Connect your Sortie account to save jobs straight from LinkedIn and Indeed.
+      </p>
+      <label class="field-label" for="api-key-input">Personal API key</label>
+      <input id="api-key-input" type="password" placeholder="sortie_..." />
+      <button id="connect-button" class="primary-button">Connect</button>
+      <p id="connect-error" class="error-text"></p>
+      <a id="generate-key-link" class="link" target="_blank" rel="noopener noreferrer">
+        Get a key from Sortie Settings →
+      </a>
+    </div>
+
+    <div id="connected-view" class="view hidden">
+      <p class="status-row"><span class="status-dot"></span> Connected</p>
+
+      <div id="job-context" class="job-context hidden">
+        <div class="job-context-row">
+          <div class="job-context-text">
+            <p class="job-context-title" id="job-context-title"></p>
+            <p class="job-context-company" id="job-context-company"></p>
+          </div>
+          <span class="sortie-badge-popup" id="job-context-score" hidden></span>
+        </div>
+        <label class="field-label" for="stage-select">Save as</label>
+        <select id="stage-select">
+          <option value="draft">Draft (just tracking)</option>
+          <option value="applied">Applied</option>
+        </select>
+      </div>
+
+      <button id="save-now-button" class="primary-button">Save this page to Sortie</button>
+      <p id="save-status" class="body-text"></p>
+      <button id="fill-now-button" class="secondary-button">Fill my info on this page</button>
+      <p id="fill-status" class="body-text"></p>
+      <button id="disconnect-button" class="link-button">Disconnect</button>
+    </div>
+
+    <script src="config.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

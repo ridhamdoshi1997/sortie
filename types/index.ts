@@ -192,6 +192,10 @@ export interface Job {
   // either, kept as a local mirror for consistency with this file).
   tax_estimate_inputs: TaxEstimateInputs | null;
   tax_estimate_inputs_updated_at: string | null;
+  // User-authored tracker metadata — plain CRUD, no AI. tags mirrors
+  // accomplishments.tags's array shape.
+  tags: string[];
+  personal_notes: string | null;
 }
 
 export interface JobEvaluationDimension {

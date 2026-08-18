@@ -223,7 +223,7 @@ export function StarStoryMatrix({ initialStories }: { initialStories: StarStoryR
   );
 }
 
-function StarStoryEditor({
+export function StarStoryEditor({
   initial,
   onClose,
   onSaved,
@@ -270,6 +270,7 @@ function StarStoryEditor({
         result,
         tags,
         accomplishment_id: initial?.accomplishment_id ?? null,
+        interview_event_id: initial?.interview_event_id ?? null,
         created_at: initial?.created_at ?? new Date().toISOString(),
         updated_at: new Date().toISOString(),
       });

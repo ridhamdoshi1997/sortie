@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { APPLICATION_EVENT_LABELS, COMPENSATION_EVENT_LABELS, INTERVIEW_OUTCOME_LABELS } from "@/lib/careerTimeline";
 
 type ActionResult = { success: boolean; error?: string };
 
@@ -196,6 +197,67 @@ export async function logCompensationEvent(input: {
   }
 }
 
+export type InterviewEventWithJobRow = {
+  id: string;
+  event_date: string;
+  outcome: InterviewEventOutcome | null;
+  job_title: string | null;
+  job_company: string | null;
+};
+
+// §Q4a STAR Vault linking — a display-friendly list (job title/company
+// resolved) for the "link this story to an interview" picker on /career.
+// insforge-js's embedded-relation select syntax isn't used elsewhere in this
+// codebase, so this stays a plain two-query join like buildFlatTimeline's
+// jobsById pattern, done server-side instead of shipping both raw lists to
+// the client.
+export async function listInterviewEventsWithJob(): Promise<{
+  success: boolean;
+  data?: InterviewEventWithJobRow[];
+  error?: string;
+}> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+    const { data: events, error } = await insforge.database
+      .from("interview_events")
+      .select("id,job_id,event_date,outcome")
+      .eq("user_id", user.id)
+      .order("event_date", { ascending: false });
+
+    if (error) {
+      console.error("[actions/careerEvents] listInterviewEventsWithJob", error);
+      return { success: false, error: "Failed to load your interview history" };
+    }
+
+    const jobIds = [...new Set((events ?? []).map((e) => e.job_id))];
+    const jobsById = new Map<string, { title: string | null; company: string | null }>();
+    if (jobIds.length > 0) {
+      const { data: jobs } = await insforge.database
+        .from("jobs")
+        .select("id,title,company")
+        .in("id", jobIds);
+      for (const job of jobs ?? []) {
+        jobsById.set(job.id, { title: job.title, company: job.company });
+      }
+    }
+
+    const result: InterviewEventWithJobRow[] = (events ?? []).map((e) => ({
+      id: e.id,
+      event_date: e.event_date,
+      outcome: e.outcome,
+      job_title: jobsById.get(e.job_id)?.title ?? null,
+      job_company: jobsById.get(e.job_id)?.company ?? null,
+    }));
+
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("[actions/careerEvents] listInterviewEventsWithJob", error);
+    return { success: false, error: "Failed to load your interview history" };
+  }
+}
+
 export async function listCompensationEvents(): Promise<{
   success: boolean;
   data?: CompensationEventRow[];
@@ -220,5 +282,87 @@ export async function listCompensationEvents(): Promise<{
   } catch (error) {
     console.error("[actions/careerEvents] listCompensationEvents", error);
     return { success: false, error: "Failed to load your compensation history" };
+  }
+}
+
+export type JobEventHistoryItem = {
+  id: string;
+  date: string;
+  kind: "application" | "interview" | "compensation";
+  label: string;
+  notes: string | null;
+};
+
+// Per-job event history — application_events/interview_events/compensation_events
+// have only ever been WRITTEN from the job detail page (JobActionBar's status
+// changes), never read back on it; the only place a user could see this data
+// before was the global /career flat timeline, mixed in with every other job.
+// This scopes the same three tables to one job_id for display right where a
+// user is actually looking when they want "what's happened on this application."
+export async function listJobEventHistory(jobId: string): Promise<{
+  success: boolean;
+  data?: JobEventHistoryItem[];
+  error?: string;
+}> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+    const [applicationResult, interviewResult, compensationResult] = await Promise.all([
+      insforge.database
+        .from("application_events")
+        .select("id,event_type,event_date,notes")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId),
+      insforge.database
+        .from("interview_events")
+        .select("id,outcome,event_date,notes")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId),
+      insforge.database
+        .from("compensation_events")
+        .select("id,event_type,effective_date,notes")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId),
+    ]);
+
+    if (applicationResult.error || interviewResult.error || compensationResult.error) {
+      console.error(
+        "[actions/careerEvents] listJobEventHistory",
+        applicationResult.error,
+        interviewResult.error,
+        compensationResult.error,
+      );
+      return { success: false, error: "Failed to load this job's history" };
+    }
+
+    const items: JobEventHistoryItem[] = [
+      ...(applicationResult.data ?? []).map((e: { id: string; event_type: ApplicationEventType; event_date: string; notes: string | null }) => ({
+        id: e.id,
+        date: e.event_date,
+        kind: "application" as const,
+        label: APPLICATION_EVENT_LABELS[e.event_type],
+        notes: e.notes,
+      })),
+      ...(interviewResult.data ?? []).map((e: { id: string; outcome: InterviewEventOutcome | null; event_date: string; notes: string | null }) => ({
+        id: e.id,
+        date: e.event_date,
+        kind: "interview" as const,
+        label: e.outcome ? `Interview — ${INTERVIEW_OUTCOME_LABELS[e.outcome]}` : "Interview logged",
+        notes: e.notes,
+      })),
+      ...(compensationResult.data ?? []).map((e: { id: string; event_type: CompensationEventType; effective_date: string; notes: string | null }) => ({
+        id: e.id,
+        date: e.effective_date,
+        kind: "compensation" as const,
+        label: COMPENSATION_EVENT_LABELS[e.event_type],
+        notes: e.notes,
+      })),
+    ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+    return { success: true, data: items };
+  } catch (error) {
+    console.error("[actions/careerEvents] listJobEventHistory", error);
+    return { success: false, error: "Failed to load this job's history" };
   }
 }
