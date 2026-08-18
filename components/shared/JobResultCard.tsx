@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Flag, Heart, MapPin, Repeat, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, FileText, Flag, Heart, MapPin, Repeat, TrendingUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -46,6 +47,7 @@ export function JobResultCard({
   index?: number;
   reappearanceSignal?: ReappearanceSignal;
 }) {
+  const router = useRouter();
   const tags = jobTags(job);
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
@@ -100,6 +102,16 @@ export function JobResultCard({
       const result = await toggleHideJob(job.id, next);
       if (!result.success) setHidden(!next);
     });
+  }
+
+  // Deep-links into the job detail page's DocumentGenerator, which already
+  // supports a `?generate=resume` auto-trigger (originally built for the
+  // "+ Add cover letter" ghost-slot flow) — reusing it here rather than
+  // duplicating the generation call on this card.
+  function handleGenerateResume(event: React.MouseEvent): void {
+    stop(event);
+    setMenuOpen(false);
+    router.push(`/find-jobs/${job.id}?generate=resume`);
   }
 
   function handleMarkUnavailable(event: React.MouseEvent): void {
@@ -282,6 +294,13 @@ export function JobResultCard({
 
             {menuOpen && (
               <div className="glass-panel-strong absolute bottom-full right-0 z-10 mb-2 w-44 rounded-xl p-1.5">
+                <button
+                  type="button"
+                  onClick={handleGenerateResume}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                >
+                  <FileText className="h-4 w-4" /> Generate Résumé
+                </button>
                 <button
                   type="button"
                   onClick={handleAlreadyApplied}

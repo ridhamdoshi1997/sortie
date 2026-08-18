@@ -151,6 +151,7 @@ export async function logInterviewEvent(input: {
     }
 
     revalidatePath("/career");
+    revalidatePath("/find-jobs/[id]", "page");
     return { success: true };
   } catch (error) {
     console.error("[actions/careerEvents] logInterviewEvent", error);

@@ -196,6 +196,10 @@ export interface Job {
   // accomplishments.tags's array shape.
   tags: string[];
   personal_notes: string | null;
+  // "Recently viewed jobs" — column exists live, app-code wiring (updating
+  // this on job-detail-page load + a "Recently Viewed" widget) not yet
+  // built. See context/RESUME.md.
+  last_viewed_at: string | null;
 }
 
 export interface JobEvaluationDimension {
