@@ -2,7 +2,25 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 18 session — all 4 items in the "AI heavy admin panel" queue built, plus a new referral system; NOT YET committed/pushed/deployed)
+Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system deployed, then a 5-item user-side batch also deployed: email drafts, negotiation scripts, per-contact outreach drafts, job-description decoder, real Credits & Usage tab)
+
+## Phase 18, second half — user-side batch, deployed
+
+After the admin-queue work below shipped, the user redirected to the consumer/user-facing side of `build-plan.md`. A full pass through the Master Feature Inventory (§A-§Q, excluding Admin/§R and Monetization/§J) produced a prioritized shortlist; the user said to proceed autonomously. Shipped, live-verified on real production, and deployed (commit `586faee`, hotfix `9635ef0`):
+
+1. **Application email drafts** (§C) — 3 types (cold application/follow-up/thank-you), grounded in real job+profile data, `EmailDrafts.tsx` on the job detail page.
+2. **Per-contact outreach drafts on Insider Connections** (§F) — closes the "discovery without drafting" gap Phase 13 left open. Verified the underlying `pastEmployer` field is always a genuine candidate-contact overlap (traced through `agent/research.ts`), not an arbitrary fact, before trusting the AI to phrase it as shared history.
+3. **Negotiation scripts** (§F, Phase 12) — converts the existing Leverage Synthesizer output into an actual opening ask/pushback-responses/closing line, auto-chains a leverage synthesis if one doesn't exist yet (same pattern as Trap Door Predictor).
+4. **Job-description decoder** (§B) — classifies a job's own Required list into must-have vs likely padding.
+5. **Settings → Credits & usage**, now real — per-action `usage_daily` data against real limits, replacing the static placeholder.
+
+**A real bug caught and fixed via live testing, not by `tsc`/`eslint`**: the job-description decoder's DB query selected `preferred_model` from the `jobs` table (a copy-paste mistake — that column lives on `profiles`), causing every real call to fail with a false "Job not found." Caught immediately by checking the actual server-action response body after the first deploy, not just trusting the 200 status code. Fixed, redeployed, re-verified with a real 7-requirement posting.
+
+**Full detail, including exactly how each feature was live-verified** (a job temporarily flipped to `offered` for the negotiation-script test, then fully reverted; a clearly-labeled test fixture used for the outreach-message test instead of spending real Apify money on a fresh lookup; the Credits & Usage tab cross-checked against the exact real actions fired during testing) is in `progress-tracker.md`'s newest Phase 18 entry — read that before touching any of these five again.
+
+**Next session should pick up wherever the user directs from here** — the original full inventory pass (still valid) flagged these as the next tier: Settings' remaining two dead-end tabs (Subscription, Job alerts — Subscription is tied up with the still-deferred §J monetization work, Job alerts has no trigger mechanism yet), a free ATS score checker (public/no-login lead magnet, bigger scope — needs real abuse/rate-limit design since it's unauthenticated), and the résumé version manager's base-vs-tailored data model decision.
+
+---
 
 ## Phase 18 — start here for next session
 

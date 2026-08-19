@@ -18,6 +18,36 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Email Drafts (job detail)
+
+Files: `components/job-details/EmailDrafts.tsx`
+Route: job detail page, below Application Documents
+Last updated: 2026-08-19. Type-picker pills (`bg-accent`/`border-border` toggle group, same convention as `ReferralsTab`'s channel picker) + a `bg-agent-light text-agent-dark` Generate button (this app's standard AI-draft-CTA treatment). Result card is a plain `bg-surface-secondary` box with per-field (subject/body) Copy buttons, same copy-with-Check-icon-flip pattern as `ExtensionTab`'s API key copy.
+
+### Negotiation Script (job detail, offer-stage)
+
+Files: `components/job-details/NegotiationScript.tsx`
+Route: job detail page Overview tab, right after `LeverageSynthesizer`, same `application_status === "offered"` gate
+Last updated: 2026-08-19. Identical shell/treatment to `LeverageSynthesizer.tsx` (border-agent/bg-agent-light "AI Navigator reads" block) — deliberately matching since this is genuinely a continuation of that same synthesis, not a new visual language.
+
+### Requirement Decoder (job detail)
+
+Files: `components/job-details/JobDescriptionDecoder.tsx`
+Route: nested inside `Qualification.tsx`, below the Required/Preferred columns
+Last updated: 2026-08-19. Per-requirement `bg-surface-secondary` rows, classification pill uses `bg-accent-muted text-accent` for must-have vs plain `bg-surface-secondary text-text-muted` for likely-padding — deliberately NOT warning/error-toned, since "likely padding" isn't a problem to fix, just a read.
+
+### Outreach Message button (Insider Connections)
+
+Files: `components/job-details/OutreachMessageButton.tsx`
+Route: `InsiderConnections.tsx`'s `PersonRow`, next to the email-lookup button
+Last updated: 2026-08-19. Same small-icon-button-with-popover shape as `EmailLookupButton.tsx`, but agent-toned (`border-agent/40 bg-agent-light`) since the button itself triggers AI generation (the email-lookup button is a plain data lookup, not AI).
+
+### Credits & Usage tab (Settings)
+
+Files: `components/settings/CreditsUsageTab.tsx`
+Route: `/settings`, replaces the old `NotYetAvailable` placeholder for the `credits` tab
+Last updated: 2026-08-19. Per-action progress bars — `bg-accent` fill normally, flips to `bg-warning` fill + `text-warning` count label at ≥80% of the daily limit. No new visual pattern beyond a plain thin progress bar, matching this panel's overall plain/utilitarian tone (distinct from the AI-content agent-teal treatment used elsewhere, since this is plain account data).
+
 ### Success story drafts queue (admin, /admin/marketing)
 
 Files: `components/admin/SocialDraftsQueue.tsx`
