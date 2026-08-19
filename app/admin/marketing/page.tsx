@@ -20,7 +20,7 @@ export default async function AdminMarketingPage() {
         <h1 className="text-xl font-semibold text-text-primary">Marketing</h1>
         <p className="mt-1 text-sm text-text-secondary">Broadcast emails and push notifications to subscribed users.</p>
       </div>
-      <MarketingList broadcasts={result.broadcasts} eligibleCount={result.eligibleCount} viewerRole={rosterResult.viewerRole} />
+      <MarketingList broadcasts={result.broadcasts} segmentCounts={result.segmentCounts} viewerRole={rosterResult.viewerRole} />
       <PushBroadcastForm subscriberCount={pushSubscriberCount} viewerRole={rosterResult.viewerRole} />
     </div>
   );

@@ -77,12 +77,19 @@ export function buildUnsubscribeUrl(token: string): string {
   return `${base}/api/unsubscribe?token=${token}`;
 }
 
+// Tagged with the broadcast id (Resend's own tags feature) so the
+// email.opened/email.clicked webhook (app/api/webhooks/resend-marketing/
+// route.ts) knows which broadcast to credit — Resend echoes tags back
+// verbatim in every event payload for that send. Same inert-until-domain
+// constraint as the rest of this file: opened/clicked counts stay
+// genuinely 0 until real sends actually go out.
 export async function sendMarketingEmail(params: {
   to: string;
   subject: string;
   body: string;
   unsubscribeToken: string;
   physicalAddress: string;
+  broadcastId: string;
 }): Promise<{ success: boolean }> {
   const fromEmail = process.env.MARKETING_FROM_EMAIL || process.env.SUPPORT_FROM_EMAIL || "onboarding@resend.dev";
   const unsubscribeUrl = buildUnsubscribeUrl(params.unsubscribeToken);
@@ -97,6 +104,7 @@ export async function sendMarketingEmail(params: {
       subject: params.subject,
       text,
       headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
+      tags: [{ name: "broadcast_id", value: params.broadcastId }],
     });
     if (error) {
       console.error("[lib/email/resend] sendMarketingEmail", error);

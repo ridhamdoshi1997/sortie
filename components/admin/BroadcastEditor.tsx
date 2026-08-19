@@ -8,21 +8,22 @@ import { saveBroadcast, sendBroadcast, deleteBroadcast, generateDraft } from "@/
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { MarkdownContent } from "@/components/shared/MarkdownContent";
 import type { AdminRole } from "@/lib/admin/auth";
-import type { BroadcastRow } from "@/lib/admin/marketing";
+import { SEGMENT_LABELS, type BroadcastRow, type BroadcastSegment } from "@/lib/admin/marketing";
 
 export function BroadcastEditor({
   initialBroadcast,
-  eligibleCount,
+  segmentCounts,
   viewerRole,
 }: {
   initialBroadcast: BroadcastRow | null;
-  eligibleCount: number;
+  segmentCounts: Record<BroadcastSegment, number>;
   viewerRole: AdminRole;
 }) {
   const router = useRouter();
   const [id, setId] = useState(initialBroadcast?.id ?? null);
   const [subject, setSubject] = useState(initialBroadcast?.subject ?? "");
   const [body, setBody] = useState(initialBroadcast?.bodyMarkdown ?? "");
+  const [segment, setSegment] = useState<BroadcastSegment>(initialBroadcast?.segment ?? "all");
   const [status, setStatus] = useState(initialBroadcast?.status ?? "draft");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -34,12 +35,13 @@ export function BroadcastEditor({
 
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
   const isDraft = status === "draft";
+  const eligibleCount = segmentCounts[segment];
 
   function handleSave(): void {
     setError(null);
     setNotice(null);
     startTransition(async () => {
-      const result = await saveBroadcast(id, subject, body);
+      const result = await saveBroadcast(id, subject, body, segment);
       if (!result.success) {
         setError(result.error);
         return;
@@ -105,15 +107,42 @@ export function BroadcastEditor({
           This broadcast is {status} — no further edits possible.
         </p>
       )}
+      {status === "sent" && (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <StatCard label="Recipients" value={initialBroadcast?.recipientCount ?? "—"} />
+          <StatCard label="Sent" value={initialBroadcast?.sentCount ?? 0} />
+          <StatCard label="Opened" value={initialBroadcast?.openedCount ?? 0} />
+          <StatCard label="Clicked" value={initialBroadcast?.clickedCount ?? 0} />
+        </div>
+      )}
 
       <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
-        <label className="mb-1 block text-[11px] font-medium text-text-muted">Subject</label>
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          disabled={!canWrite || !isDraft}
-          className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent disabled:opacity-60"
-        />
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-text-muted">Subject</label>
+            <input
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              disabled={!canWrite || !isDraft}
+              className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent disabled:opacity-60"
+            />
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-text-muted">Audience</label>
+            <select
+              value={segment}
+              onChange={(e) => setSegment(e.target.value as BroadcastSegment)}
+              disabled={!canWrite || !isDraft}
+              className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent disabled:opacity-60"
+            >
+              {(Object.keys(SEGMENT_LABELS) as BroadcastSegment[]).map((s) => (
+                <option key={s} value={s}>
+                  {SEGMENT_LABELS[s]} ({segmentCounts[s]})
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
 
         {canWrite && isDraft && (
           <div className="mt-4 flex flex-wrap items-end gap-2 border-t border-border pt-4">
@@ -192,7 +221,7 @@ export function BroadcastEditor({
       <ConfirmDialog
         open={confirmSend}
         title={`Send to ${eligibleCount} recipients?`}
-        description="This sends a real email to every subscribed user with an email on file. This can't be undone or recalled once sending starts."
+        description={`This sends a real email to every user in "${SEGMENT_LABELS[segment]}". This can't be undone or recalled once sending starts.`}
         confirmLabel="Send"
         pending={isPending}
         onConfirm={handleSend}
@@ -207,6 +236,15 @@ export function BroadcastEditor({
         onConfirm={handleDelete}
         onCancel={() => setConfirmDelete(false)}
       />
+    </div>
+  );
+}
+
+function StatCard({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-4 shadow-card">
+      <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">{label}</p>
+      <p className="mt-2 font-mono text-2xl font-semibold text-text-primary">{value}</p>
     </div>
   );
 }

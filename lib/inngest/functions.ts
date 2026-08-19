@@ -305,21 +305,25 @@ export const sendMarketingBroadcastAsync = inngest.createFunction(
         const { data: broadcast } = await step.run("fetch-broadcast", async () => {
             return admin.database
                 .from("marketing_broadcasts")
-                .select("id,subject,body_markdown,status")
+                .select("id,subject,body_markdown,status,segment")
                 .eq("id", broadcastId)
-                .maybeSingle<{ id: string; subject: string; body_markdown: string; status: string }>();
+                .maybeSingle<{ id: string; subject: string; body_markdown: string; status: string; segment: "all" | "active_7d" | "inactive_30d" }>();
         });
 
         if (!broadcast) {
             return { message: `Broadcast ${broadcastId} not found, skipping.` };
         }
 
+        const { getSegmentUserIds } = await import("@/lib/admin/marketing");
+        const segmentUserIds = await step.run("resolve-segment", () => getSegmentUserIds(broadcast.segment));
+
         const { data: recipients } = await step.run("fetch-recipients", async () => {
             return admin.database
                 .from("profiles")
                 .select("email,unsubscribe_token")
                 .eq("marketing_opt_out", false)
-                .not("email", "is", null);
+                .not("email", "is", null)
+                .in("id", segmentUserIds.length > 0 ? segmentUserIds : ["00000000-0000-0000-0000-000000000000"]);
         });
 
         const recipientList = (recipients ?? []) as { email: string; unsubscribe_token: string }[];
@@ -339,6 +343,7 @@ export const sendMarketingBroadcastAsync = inngest.createFunction(
                             body: broadcast.body_markdown,
                             unsubscribeToken: r.unsubscribe_token,
                             physicalAddress,
+                            broadcastId,
                         }),
                     ),
                 );

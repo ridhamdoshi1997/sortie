@@ -22,7 +22,7 @@ export default async function MarketingBroadcastPage({ params }: { params: Promi
       <div>
         <h1 className="text-xl font-semibold text-text-primary">{detailResult.broadcast.subject}</h1>
       </div>
-      <BroadcastEditor initialBroadcast={detailResult.broadcast} eligibleCount={listResult.eligibleCount} viewerRole={rosterResult.viewerRole} />
+      <BroadcastEditor initialBroadcast={detailResult.broadcast} segmentCounts={listResult.segmentCounts} viewerRole={rosterResult.viewerRole} />
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
-import { listBroadcasts, getBroadcastById, getEligibleRecipientCount, generateBroadcastDraft, type BroadcastRow } from "@/lib/admin/marketing";
+import { listBroadcasts, getBroadcastById, getSegmentRecipientCounts, generateBroadcastDraft, type BroadcastRow, type BroadcastSegment } from "@/lib/admin/marketing";
 import { inngest } from "@/lib/inngest/client";
 import { toUserMessage } from "@/lib/errors";
 
@@ -15,13 +15,13 @@ import { toUserMessage } from "@/lib/errors";
 // support_readonly write path, matching every other admin write surface.
 type ActionResult = { success: true } | { success: false; error: string };
 
-type BroadcastsListResult = { success: true; broadcasts: BroadcastRow[]; eligibleCount: number } | { success: false; error: string };
+type BroadcastsListResult = { success: true; broadcasts: BroadcastRow[]; segmentCounts: Record<BroadcastSegment, number> } | { success: false; error: string };
 
 export async function getBroadcastsList(): Promise<BroadcastsListResult> {
   try {
     await requireAdmin();
-    const [broadcasts, eligibleCount] = await Promise.all([listBroadcasts(), getEligibleRecipientCount()]);
-    return { success: true, broadcasts, eligibleCount };
+    const [broadcasts, segmentCounts] = await Promise.all([listBroadcasts(), getSegmentRecipientCounts()]);
+    return { success: true, broadcasts, segmentCounts };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
   }
@@ -42,7 +42,7 @@ export async function getBroadcastDetail(id: string): Promise<BroadcastDetailRes
 
 type SaveBroadcastResult = { success: true; id: string } | { success: false; error: string };
 
-export async function saveBroadcast(id: string | null, subject: string, bodyMarkdown: string): Promise<SaveBroadcastResult> {
+export async function saveBroadcast(id: string | null, subject: string, bodyMarkdown: string, segment: BroadcastSegment): Promise<SaveBroadcastResult> {
   try {
     const admin = await requireAdmin();
     requireRole(admin, ["owner", "admin"]);
@@ -58,7 +58,7 @@ export async function saveBroadcast(id: string | null, subject: string, bodyMark
 
       const { error } = await client.database
         .from("marketing_broadcasts")
-        .update({ subject: trimmedSubject, body_markdown: bodyMarkdown, updated_at: new Date().toISOString() })
+        .update({ subject: trimmedSubject, body_markdown: bodyMarkdown, segment, updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) return { success: false, error: toUserMessage(error, "Failed to save this broadcast.") };
 
@@ -69,7 +69,7 @@ export async function saveBroadcast(id: string | null, subject: string, bodyMark
 
     const { data, error } = await client.database
       .from("marketing_broadcasts")
-      .insert([{ subject: trimmedSubject, body_markdown: bodyMarkdown, status: "draft", created_by: admin.id }])
+      .insert([{ subject: trimmedSubject, body_markdown: bodyMarkdown, segment, status: "draft", created_by: admin.id }])
       .select("id")
       .single<{ id: string }>();
     if (error || !data) return { success: false, error: toUserMessage(error, "Failed to create this broadcast.") };

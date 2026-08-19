@@ -21,7 +21,7 @@ export default async function NewMarketingBroadcastPage() {
         <h1 className="text-xl font-semibold text-text-primary">New broadcast</h1>
         <p className="mt-1 text-sm text-text-secondary">Saved as a draft until you send it.</p>
       </div>
-      <BroadcastEditor initialBroadcast={null} eligibleCount={listResult.eligibleCount} viewerRole={rosterResult.viewerRole} />
+      <BroadcastEditor initialBroadcast={null} segmentCounts={listResult.segmentCounts} viewerRole={rosterResult.viewerRole} />
     </div>
   );
 }

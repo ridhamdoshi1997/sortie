@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Plus } from "lucide-react";
 
-import type { BroadcastRow, BroadcastStatus } from "@/lib/admin/marketing";
+import { SEGMENT_LABELS, type BroadcastRow, type BroadcastSegment, type BroadcastStatus } from "@/lib/admin/marketing";
 import type { AdminRole } from "@/lib/admin/auth";
 
 const STATUS_LABELS: Record<BroadcastStatus, string> = { draft: "Draft", sending: "Sending", sent: "Sent", failed: "Failed" };
@@ -19,15 +19,26 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
 }
 
-export function MarketingList({ broadcasts, eligibleCount, viewerRole }: { broadcasts: BroadcastRow[]; eligibleCount: number; viewerRole: AdminRole }) {
+export function MarketingList({
+  broadcasts,
+  segmentCounts,
+  viewerRole,
+}: {
+  broadcasts: BroadcastRow[];
+  segmentCounts: Record<BroadcastSegment, number>;
+  viewerRole: AdminRole;
+}) {
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
-        <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">Eligible recipients</p>
-        <p className="mt-3 font-mono text-3xl font-semibold text-text-primary">{eligibleCount}</p>
-        <p className="mt-1 text-xs text-text-muted">Real profiles with an email, not opted out.</p>
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        {(Object.keys(SEGMENT_LABELS) as BroadcastSegment[]).map((s) => (
+          <div key={s} className="border border-border bg-surface shadow-card rounded-2xl p-6">
+            <p className="text-xs font-semibold uppercase tracking-wide text-text-secondary">{SEGMENT_LABELS[s]}</p>
+            <p className="mt-3 font-mono text-3xl font-semibold text-text-primary">{segmentCounts[s]}</p>
+          </div>
+        ))}
       </div>
 
       <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
@@ -48,10 +59,10 @@ export function MarketingList({ broadcasts, eligibleCount, viewerRole }: { broad
           <p className="mt-6 text-sm text-text-muted">No broadcasts yet.</p>
         ) : (
           <div className="mt-4 overflow-x-auto">
-            <table className="w-full min-w-[560px] text-sm">
+            <table className="w-full min-w-[680px] text-sm">
               <thead>
                 <tr className="bg-surface-secondary">
-                  {["Subject", "Status", "Sent / Recipients", "Created"].map((h) => (
+                  {["Subject", "Audience", "Status", "Sent / Recipients", "Opened", "Clicked", "Created"].map((h) => (
                     <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                       {h}
                     </th>
@@ -66,12 +77,15 @@ export function MarketingList({ broadcasts, eligibleCount, viewerRole }: { broad
                         {b.subject}
                       </Link>
                     </td>
+                    <td className="px-5 py-4 text-text-secondary">{SEGMENT_LABELS[b.segment]}</td>
                     <td className="px-5 py-4">
                       <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_CHIP_CLASS[b.status]}`}>{STATUS_LABELS[b.status]}</span>
                     </td>
                     <td className="px-5 py-4 font-mono text-text-secondary">
                       {b.status === "sent" || b.status === "sending" ? `${b.sentCount} / ${b.recipientCount ?? "—"}` : "—"}
                     </td>
+                    <td className="px-5 py-4 font-mono text-text-secondary">{b.status === "sent" ? b.openedCount : "—"}</td>
+                    <td className="px-5 py-4 font-mono text-text-secondary">{b.status === "sent" ? b.clickedCount : "—"}</td>
                     <td className="px-5 py-4 font-mono text-text-secondary">{formatDate(b.createdAt)}</td>
                   </tr>
                 ))}
