@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-19 (Phase 17, continued): Marketing gained AI-assisted broadcast drafting, first of the "AI-heavy admin panel" work — direct user request, delivered from the earlier research pass.**
+  - `lib/admin/marketing.ts`'s `generateBroadcastDraft()` — exact same shape as Content/CMS's `generatePageDraft()` (Gemini via `lib/models.ts`'s `complete()`, not usage-metered — internal admin tooling), applied to email body instead of a CMS page. `actions/adminMarketing.ts`'s `generateDraft()` wraps it with the same owner+admin gate.
+  - `BroadcastEditor.tsx` gained the identical AI-first-draft row `PageEditor.tsx` already has (brief input + `Sparkles` button, disabled while generating) — same UI recipe reused deliberately, not reinvented.
+  - **Live-verified with a real Gemini call**: generated a draft for a real subject ("New feature: Practice Sandbox"), got back honest, well-formed copy accurately describing the app's own real Practice Sandbox feature (no fabricated stats, no hype-speak — matches the system prompt's own honesty constraints), saved it, confirmed the 873-char body landed in the DB, then deleted the test row.
+  - `tsc --noEmit`/`eslint` clean.
+
+---
+
 - **2026-08-19 (Phase 17, continued): Support fast-follows #2, direct user request — editable ticket subject + an SLA/stats dashboard on `/admin/support`.**
   - `actions/adminSupport.ts`'s `updateTicketSubject()` (owner+admin) + a click-to-edit `Pencil` icon in `SupportTicketDetail.tsx`'s header (input + Save/Cancel, Enter-to-save).
   - `lib/admin/support.ts`'s `getSupportDashboard()` — client-side aggregation over two lean-column fetches (`support_tickets`, admin-authored `support_ticket_messages`), same "fine at this scale" pattern as `getSignupsOverTime()`. Computes open/pending/resolved counts, average time-to-first-admin-response, oldest-still-open ticket age, and an SLA breach count (open + no admin reply yet + older than `SLA_FIRST_RESPONSE_HOURS`, a sensible 24h default — not a number the user specified, shown explicitly in the UI's own label so it's never a silent threshold). `components/admin/SupportDashboardStats.tsx` renders it as a 6-card stat row atop the inbox, the breach card getting a real `border-error/30 bg-error/5` treatment only when `slaBreachCount > 0`.

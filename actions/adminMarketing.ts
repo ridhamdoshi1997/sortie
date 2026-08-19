@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
-import { listBroadcasts, getBroadcastById, getEligibleRecipientCount, type BroadcastRow } from "@/lib/admin/marketing";
+import { listBroadcasts, getBroadcastById, getEligibleRecipientCount, generateBroadcastDraft, type BroadcastRow } from "@/lib/admin/marketing";
 import { inngest } from "@/lib/inngest/client";
 import { toUserMessage } from "@/lib/errors";
 
@@ -141,5 +141,21 @@ export async function sendBroadcast(id: string): Promise<ActionResult> {
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+type DraftResult = { success: true; bodyMarkdown: string } | { success: false; error: string };
+
+export async function generateDraft(subject: string, brief: string): Promise<DraftResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+
+    if (!subject.trim()) return { success: false, error: "Enter a subject first." };
+
+    const bodyMarkdown = await generateBroadcastDraft(subject, brief);
+    return { success: true, bodyMarkdown };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Failed to generate a draft.") };
   }
 }

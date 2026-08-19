@@ -83,6 +83,7 @@ Extended again same day: the subject line in `SupportTicketDetail`'s header is n
 Files: `components/admin/{MarketingList,BroadcastEditor}.tsx`, `app/admin/marketing/{page,new/page,[id]/page}.tsx`, `lib/admin/marketing.ts`, `actions/adminMarketing.ts`, `lib/inngest/functions.ts`'s `sendMarketingBroadcastAsync`, `app/api/unsubscribe/route.ts`
 Route: admin side gated the same as the rest of `/admin`, all writes owner+admin-gated (no `support_readonly` write path here, unlike Support); `/api/unsubscribe` is public/unauthenticated
 Last updated: 2026-08-19 (Phase 17). Same list/editor split as Content/CMS — `MarketingList` (eligible-recipient stat card + a `ContentList`-style table with Draft/Sending/Sent/Failed chips), `BroadcastEditor` (subject + markdown textarea/preview split reusing `MarkdownContent.tsx`, disabled entirely once a broadcast leaves `draft`). Send is a real 2-step confirm: the primary button reads "Send to N recipients" (the real live count, not a placeholder) and opens `ConfirmDialog` before calling `sendBroadcast()`, which itself refuses to send without `MARKETING_PHYSICAL_ADDRESS` configured — a real compliance gate, not just a UI warning.
+`BroadcastEditor` also has the identical AI-first-draft row `PageEditor.tsx` uses (brief input + `Sparkles` button) — same exact recipe, not a new pattern, reused for email body instead of a CMS page.
 
 ### Push notifications (Settings tab + /admin/marketing send form)
 
