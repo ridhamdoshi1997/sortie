@@ -8,11 +8,13 @@ import { ApplicationHistory } from "@/components/job-details/ApplicationHistory"
 import { Benefits } from "@/components/job-details/Benefits";
 import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
+import { EmailDrafts } from "@/components/job-details/EmailDrafts";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
 import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
+import { NegotiationScript } from "@/components/job-details/NegotiationScript";
 import { OfferWorkspace } from "@/components/job-details/OfferWorkspace";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { InterviewDebrief } from "@/components/job-details/InterviewDebrief";
@@ -244,6 +246,7 @@ export default async function JobDetailsPage({ params }: Props) {
                       missingSkills={job.missing_skills}
                       requirements={job.requirements}
                       niceToHave={job.nice_to_have}
+                      jdDecoder={job.jd_decoder}
                       correctionsAppliedCount={correctionsAppliedCount ?? 0}
                       roleFamily={roleFamily}
                     />
@@ -253,7 +256,10 @@ export default async function JobDetailsPage({ params }: Props) {
                     <HiringProcess items={job.hiring_process ?? []} />
 
                     {job.application_status === "offered" && (
-                      <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
+                      <>
+                        <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
+                        <NegotiationScript jobId={job.id} script={job.negotiation_script} />
+                      </>
                     )}
 
                     <NetworkSignals
@@ -366,6 +372,9 @@ export default async function JobDetailsPage({ params }: Props) {
             droppedFromSearchAt={job.dropped_from_search_at}
             foundAt={job.found_at}
           />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: "320ms" }}>
+          <EmailDrafts jobId={job.id} />
         </div>
         <FloatingApplyButton applyUrl={applyUrl} company={company} />
       </main>

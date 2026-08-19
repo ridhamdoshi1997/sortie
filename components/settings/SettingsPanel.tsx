@@ -10,6 +10,7 @@ import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { SupportTab } from "@/components/settings/SupportTab";
 import { PushNotificationsTab } from "@/components/settings/PushNotificationsTab";
 import { ReferralsTab } from "@/components/settings/ReferralsTab";
+import { CreditsUsageTab } from "@/components/settings/CreditsUsageTab";
 
 type Props = {
   email: string;
@@ -363,7 +364,7 @@ export function SettingsPanel({ email, providers }: Props) {
       <div className="p-6">
         {tab === "security" && <LoginSecurityTab email={email} providers={providers} />}
         {tab === "subscription" && <NotYetAvailable label="Subscription" />}
-        {tab === "credits" && <NotYetAvailable label="Credits & usage" />}
+        {tab === "credits" && <CreditsUsageTab />}
         {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
         {tab === "push" && <PushNotificationsTab />}
         {tab === "extension" && <ExtensionTab />}

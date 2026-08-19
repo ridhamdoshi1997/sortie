@@ -32,9 +32,13 @@ export type UsageAction =
   | "brag_doc"
   | "market_readiness"
   | "extension_score_preview"
-  | "referral_message";
+  | "referral_message"
+  | "negotiation_script"
+  | "email_draft"
+  | "outreach_message"
+  | "jd_decoder";
 
-const DAILY_LIMITS: Record<UsageAction, number> = {
+export const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
   document_generation: 10,
   company_research: 3,
@@ -151,6 +155,24 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // shape as bullet_rewrite. Capped tighter since a user only genuinely
   // needs a handful of drafts across a few channels, not dozens.
   referral_message: 10,
+  // Negotiation scripts (build-plan.md §F) — one structured call over
+  // already-derived leverage_synthesis data (no new external lookup, no
+  // re-derivation), same shape/cost as leverage_synthesis itself.
+  negotiation_script: 5,
+  // Application email drafts (build-plan.md §C) — same shape/cost as
+  // bullet_rewrite: free-tier Gemini, no external cost, and a user
+  // plausibly drafts a few variants per job in one sitting.
+  email_draft: 15,
+  // Per-contact outreach drafts (build-plan.md §F) — a short LinkedIn note
+  // per discovered contact, same free-tier-Gemini shape as email_draft, but
+  // capped tighter since Insider Connections itself is already capped to
+  // 3 lookups/day (a user can't discover more than a handful of contacts
+  // to message in one day anyway).
+  outreach_message: 15,
+  // Job-description decoder (build-plan.md §B) — one structured call over
+  // this job's own already-extracted requirements, same cost/shape as
+  // rejection_intelligence/trap_door_prediction.
+  jd_decoder: 5,
 };
 
 export const ACTION_LABELS: Record<UsageAction, string> = {
@@ -179,6 +201,10 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   market_readiness: "market readiness checks",
   extension_score_preview: "extension match-score previews",
   referral_message: "referral message drafts",
+  negotiation_script: "negotiation scripts",
+  email_draft: "email drafts",
+  outreach_message: "outreach message drafts",
+  jd_decoder: "job-description decodes",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

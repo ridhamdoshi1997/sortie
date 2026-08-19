@@ -4,6 +4,8 @@ import { useState, useTransition } from "react";
 import { Award, Check, CheckCircle2, Circle, X } from "lucide-react";
 
 import { correctSkillTag } from "@/actions/jobs";
+import { JobDescriptionDecoder } from "@/components/job-details/JobDescriptionDecoder";
+import type { Job } from "@/types";
 
 type Props = {
   jobId: string;
@@ -11,6 +13,7 @@ type Props = {
   missingSkills: string[] | null;
   requirements: string[];
   niceToHave: string[];
+  jdDecoder?: Job["jd_decoder"];
   // §Q2 — how many skill_corrections rows exist for this job's own role
   // family, and the role family label itself. Zero/undefined means either
   // no corrections have been made yet or this job's evaluation predates
@@ -65,6 +68,7 @@ export function Qualification({
   missingSkills,
   requirements,
   niceToHave,
+  jdDecoder,
   correctionsAppliedCount = 0,
   roleFamily,
 }: Props) {
@@ -162,6 +166,8 @@ export function Qualification({
           <BulletColumn title="Preferred" items={niceToHave} variant="preferred" />
         </div>
       )}
+
+      {requirements.length > 0 && <JobDescriptionDecoder jobId={jobId} decoded={jdDecoder ?? null} />}
     </section>
   );
 }

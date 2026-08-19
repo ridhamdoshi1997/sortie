@@ -12,6 +12,8 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
 import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/research";
 import { synthesizeLeverageForJob, type LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
+import { generateNegotiationScript as generateNegotiationScriptForJob, type NegotiationScript } from "@/lib/negotiationScript";
+import { decodeJobRequirements, type JobDecoderResult } from "@/lib/jobDecoder";
 import { predictTrapDoorQuestions, type TrapDoorPredictionResult } from "@/lib/trapDoorPredictor";
 import { synthesizeInterrogationPlan, type InterrogationPlanResult } from "@/lib/interrogationPlan";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
@@ -998,5 +1000,142 @@ export async function synthesizeLeverage(
   } catch (error) {
     console.error("[actions/jobs] synthesizeLeverage", error);
     return { success: false, error: "Failed to generate a leverage synthesis" };
+  }
+}
+
+// Negotiation scripts (build-plan.md §F, Phase 12). Auto-chains a leverage
+// synthesis internally if one doesn't exist yet — same "auto-chain
+// prerequisites instead of blocking" pattern already established for Trap
+// Door Predictor/Interrogation Plan (§N), justified the same way: leverage
+// synthesis is a free-tier-Gemini, already-shipped feature, not a new paid
+// dependency.
+export async function generateNegotiationScript(
+  jobId: string,
+): Promise<ActionResult & { script?: NegotiationScript }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "negotiation_script");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select(
+        "id,title,company,evaluation,missing_skills,match_score,title_scope_mismatch,found_at,application_status_updated_at,offer_details,leverage_synthesis",
+      )
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{
+        id: string;
+        title: string | null;
+        company: string | null;
+        evaluation: EvaluationDimensionResult[] | null;
+        missing_skills: string[] | null;
+        match_score: number | null;
+        title_scope_mismatch: { flagged: boolean; note: string } | null;
+        found_at: string | null;
+        application_status_updated_at: string | null;
+        offer_details: OfferDetails | null;
+        leverage_synthesis: LeverageSynthesisResult | null;
+      }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model">>();
+    const provider = resolveProvider(profile?.preferred_model, user.email);
+
+    let leverage = job.leverage_synthesis;
+    if (!leverage) {
+      const { data: allJobsForSignal } = await insforge.database.from("jobs").select("company,title,found_at").eq("user_id", user.id);
+      const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
+      leverage = await synthesizeLeverageForJob(
+        { ...job, offerEntered: job.offer_details !== null, reappearanceLabel: reappearanceSignal?.label ?? null },
+        provider,
+      );
+      await insforge.database
+        .from("jobs")
+        .update({ leverage_synthesis: leverage, leverage_synthesized_at: new Date().toISOString() })
+        .eq("id", jobId)
+        .eq("user_id", user.id);
+    }
+
+    const script = await generateNegotiationScriptForJob(job.title, job.company, leverage, provider);
+
+    const { error: updateError } = await insforge.database
+      .from("jobs")
+      .update({ negotiation_script: script })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (updateError) {
+      console.error("[actions/jobs] generateNegotiationScript persist", updateError);
+      return { success: false, error: "Script generated but failed to save" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, script };
+  } catch (error) {
+    console.error("[actions/jobs] generateNegotiationScript", error);
+    return { success: false, error: "Failed to generate a negotiation script" };
+  }
+}
+
+// Job-description decoder (build-plan.md §B) — reads this job's own already-
+// stored Required list, no new external lookup.
+export async function decodeJobDescription(jobId: string): Promise<ActionResult & { result?: JobDecoderResult }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "jd_decoder");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("title,requirements,preferred_model")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{ title: string | null; requirements: string[] | null }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+    if (!job.requirements || job.requirements.length === 0) {
+      return { success: false, error: "This job has no Required qualifications listed yet." };
+    }
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model">>();
+    const provider = resolveProvider(profile?.preferred_model, user.email);
+
+    const result = await decodeJobRequirements(job.title, job.requirements, provider);
+
+    const { error: updateError } = await insforge.database.from("jobs").update({ jd_decoder: result }).eq("id", jobId).eq("user_id", user.id);
+    if (updateError) {
+      console.error("[actions/jobs] decodeJobDescription persist", updateError);
+      return { success: false, error: "Decoded but failed to save" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, result };
+  } catch (error) {
+    console.error("[actions/jobs] decodeJobDescription", error);
+    return { success: false, error: "Failed to decode this job's requirements" };
   }
 }

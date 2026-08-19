@@ -182,6 +182,14 @@ export interface Job {
   // imports lib/evaluator.ts).
   leverage_synthesis: LeverageSynthesis | null;
   leverage_synthesized_at: string | null;
+  // Negotiation scripts — converts leverage_synthesis into actual
+  // spoken/written negotiation language, see lib/negotiationScript.ts's
+  // header comment. Local shape mirroring its NegotiationScript, same
+  // avoid-circular-import precedent as leverage_synthesis above.
+  negotiation_script: NegotiationScriptData | null;
+  // Job-description decoder — classifies this job's own Required list into
+  // must-have vs likely padding, see lib/jobDecoder.ts's header comment.
+  jd_decoder: JdDecoderData | null;
   // Trap Door Predictor — tough/uncomfortable questions grounded only in
   // this job's own already-stored research, see lib/trapDoorPredictor.ts's
   // header comment. Local shape mirroring its TrapDoorPredictionResult.
@@ -266,6 +274,16 @@ export interface LeverageSynthesis {
   factors: { label: string; explanation: string }[];
   talkingPoints: string[];
   confidenceNote: string;
+}
+
+export interface NegotiationScriptData {
+  openingAsk: string;
+  counterResponses: { theirPushback: string; yourResponse: string }[];
+  closingLine: string;
+}
+
+export interface JdDecoderData {
+  requirements: { text: string; classification: "must_have" | "likely_padding"; reasoning: string }[];
 }
 
 export interface TaxEstimateInputs {
