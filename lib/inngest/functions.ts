@@ -282,3 +282,82 @@ export const generateResumeSuggestionAsync = inngest.createFunction(
         return { message: `Queued a résumé suggestion for accomplishment ${accomplishmentId}.` };
     },
 );
+
+// Marketing broadcasts (admin console expansion item 5) — triggered from
+// actions/adminMarketing.ts's sendBroadcast() after it flips the row to
+// "sending". Chunked via the existing chunkArray() helper (same shape as
+// evaluateJobsAsync's job-batch chunking above), each chunk its own
+// step.run() so a transient failure mid-send retries just that chunk
+// instead of resending everyone. Sends only to profiles with a real email
+// and marketing_opt_out = false — CAN-SPAM compliance (physical address +
+// unsubscribe link) is enforced inside lib/email/resend.ts's
+// sendMarketingEmail(), not duplicated here.
+export const sendMarketingBroadcastAsync = inngest.createFunction(
+    { id: "send-marketing-broadcast", name: "Send Marketing Broadcast", triggers: [{ event: "marketing/broadcast.send" }] },
+    async ({ event, step }) => {
+        const { broadcastId } = event.data as { broadcastId: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: broadcast } = await step.run("fetch-broadcast", async () => {
+            return admin.database
+                .from("marketing_broadcasts")
+                .select("id,subject,body_markdown,status")
+                .eq("id", broadcastId)
+                .maybeSingle<{ id: string; subject: string; body_markdown: string; status: string }>();
+        });
+
+        if (!broadcast) {
+            return { message: `Broadcast ${broadcastId} not found, skipping.` };
+        }
+
+        const { data: recipients } = await step.run("fetch-recipients", async () => {
+            return admin.database
+                .from("profiles")
+                .select("email,unsubscribe_token")
+                .eq("marketing_opt_out", false)
+                .not("email", "is", null);
+        });
+
+        const recipientList = (recipients ?? []) as { email: string; unsubscribe_token: string }[];
+        const chunks = chunkArray(recipientList, 25);
+
+        const { sendMarketingEmail } = await import("@/lib/email/resend");
+        const physicalAddress = process.env.MARKETING_PHYSICAL_ADDRESS ?? "";
+
+        let sentCount = 0;
+        for (let i = 0; i < chunks.length; i++) {
+            const results = await step.run(`send-chunk-${i}`, async () => {
+                const outcomes = await Promise.all(
+                    chunks[i].map((r) =>
+                        sendMarketingEmail({
+                            to: r.email,
+                            subject: broadcast.subject,
+                            body: broadcast.body_markdown,
+                            unsubscribeToken: r.unsubscribe_token,
+                            physicalAddress,
+                        }),
+                    ),
+                );
+                return outcomes.filter((o) => o.success).length;
+            });
+            sentCount += results;
+        }
+
+        await admin.database
+            .from("marketing_broadcasts")
+            .update({
+                status: "sent",
+                recipient_count: recipientList.length,
+                sent_count: sentCount,
+                sent_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", broadcastId);
+
+        return { message: `Broadcast ${broadcastId}: ${sentCount}/${recipientList.length} sent.` };
+    },
+);

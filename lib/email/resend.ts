@@ -59,3 +59,52 @@ export async function sendSupportReplyEmail(params: { to: string; subject: strin
     console.error("[lib/email/resend] sendSupportReplyEmail", error);
   }
 }
+
+// Marketing broadcasts (same session, same inert-until-domain constraint
+// as support email — see this file's own top comment). CAN-SPAM's real
+// requirements, not just a cosmetic footer: MARKETING_PHYSICAL_ADDRESS
+// must be set (checked by the caller, actions/adminMarketing.ts's
+// sendBroadcast(), which refuses to send at all without it — a compliance
+// gate, not a UI nicety) and every send carries a real per-recipient
+// unsubscribe link built from their own profiles.unsubscribe_token.
+// NEXT_PUBLIC_APP_URL isn't set anywhere in this project yet — falls back
+// to Vercel's own auto-provided VERCEL_URL (hostname only, no protocol) in
+// a real deployment, then bare localhost for pure local dev. Set
+// NEXT_PUBLIC_APP_URL explicitly once a real domain exists so this stops
+// depending on Vercel's preview-deployment hostname.
+export function buildUnsubscribeUrl(token: string): string {
+  const base = process.env.NEXT_PUBLIC_APP_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3001");
+  return `${base}/api/unsubscribe?token=${token}`;
+}
+
+export async function sendMarketingEmail(params: {
+  to: string;
+  subject: string;
+  body: string;
+  unsubscribeToken: string;
+  physicalAddress: string;
+}): Promise<{ success: boolean }> {
+  const fromEmail = process.env.MARKETING_FROM_EMAIL || process.env.SUPPORT_FROM_EMAIL || "onboarding@resend.dev";
+  const unsubscribeUrl = buildUnsubscribeUrl(params.unsubscribeToken);
+
+  const text = `${params.body}\n\n---\n${params.physicalAddress}\nUnsubscribe: ${unsubscribeUrl}`;
+
+  try {
+    const resend = getResendClient();
+    const { error } = await resend.emails.send({
+      from: `Sortie <${fromEmail}>`,
+      to: params.to,
+      subject: params.subject,
+      text,
+      headers: { "List-Unsubscribe": `<${unsubscribeUrl}>` },
+    });
+    if (error) {
+      console.error("[lib/email/resend] sendMarketingEmail", error);
+      return { success: false };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error("[lib/email/resend] sendMarketingEmail", error);
+    return { success: false };
+  }
+}
