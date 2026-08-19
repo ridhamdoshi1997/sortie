@@ -114,3 +114,172 @@ function buildDailySeries(days: number, counts: Map<string, number>): DailyCount
   }
   return series;
 }
+
+export type AppSettings = { aiEnabled: boolean; aiDisabledReason: string | null };
+
+export async function getAppSettings(): Promise<AppSettings> {
+  const admin = createAdminDbClient();
+  const { data } = await admin.database
+    .from("app_settings")
+    .select("ai_enabled,ai_disabled_reason")
+    .eq("id", 1)
+    .maybeSingle<{ ai_enabled: boolean; ai_disabled_reason: string | null }>();
+
+  return { aiEnabled: data?.ai_enabled ?? true, aiDisabledReason: data?.ai_disabled_reason ?? null };
+}
+
+export type UserListRow = {
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  createdAt: string | null;
+  isSuspended: boolean;
+  customUsageMultiplier: number;
+};
+
+export type UserListPage = { rows: UserListRow[]; totalCount: number };
+
+const PAGE_SIZE = 25;
+
+// Full searchable/paginated user table — v1.1's "no full user table yet"
+// gap. Server-side pagination via .range(), not a fetch-everything-then-
+// slice-in-JS shortcut (agy's real flagged gotcha: fine at today's scale,
+// a real crash risk at a few thousand users).
+export async function listUsers(page: number, search: string): Promise<UserListPage> {
+  const admin = createAdminDbClient();
+  const from = (page - 1) * PAGE_SIZE;
+  const to = from + PAGE_SIZE - 1;
+
+  let query = admin.database
+    .from("profiles")
+    .select("id,email,full_name,created_at,is_suspended,custom_usage_multiplier", { count: "exact" })
+    .order("created_at", { ascending: false })
+    .range(from, to);
+
+  if (search.trim()) {
+    const term = `%${search.trim()}%`;
+    query = query.or(`email.ilike.${term},full_name.ilike.${term}`);
+  }
+
+  const { data, count } = await query;
+
+  const rows = (
+    (data ?? []) as {
+      id: string;
+      email: string | null;
+      full_name: string | null;
+      created_at: string | null;
+      is_suspended: boolean;
+      custom_usage_multiplier: number;
+    }[]
+  ).map((p) => ({
+    userId: p.id,
+    email: p.email,
+    fullName: p.full_name,
+    createdAt: p.created_at,
+    isSuspended: p.is_suspended,
+    customUsageMultiplier: p.custom_usage_multiplier,
+  }));
+
+  return { rows, totalCount: count ?? 0 };
+}
+
+export type UserDetail = {
+  userId: string;
+  email: string | null;
+  fullName: string | null;
+  currentTitle: string | null;
+  location: string | null;
+  createdAt: string | null;
+  isSuspended: boolean;
+  customUsageMultiplier: number;
+  featureFlags: Record<string, boolean>;
+  jobCount: number;
+  usageLast14Days: DailyCount[];
+};
+
+export type AdminNoteRow = { id: string; note: string; createdAt: string; adminEmail: string | null };
+
+export async function getUserDetail(userId: string): Promise<UserDetail | null> {
+  const admin = createAdminDbClient();
+
+  const { data: profile } = await admin.database
+    .from("profiles")
+    .select("id,email,full_name,current_title,location,created_at,is_suspended,custom_usage_multiplier,feature_flags")
+    .eq("id", userId)
+    .maybeSingle<{
+      id: string;
+      email: string | null;
+      full_name: string | null;
+      current_title: string | null;
+      location: string | null;
+      created_at: string | null;
+      is_suspended: boolean;
+      custom_usage_multiplier: number;
+      feature_flags: Record<string, boolean>;
+    }>();
+
+  if (!profile) return null;
+
+  const since = daysAgoIso(13);
+  const [{ count: jobCount }, { data: usageRows }] = await Promise.all([
+    admin.database.from("jobs").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    admin.database.from("usage_daily").select("day,count").eq("user_id", userId).gte("day", since),
+  ]);
+
+  const counts = new Map<string, number>();
+  for (const row of (usageRows ?? []) as { day: string; count: number }[]) {
+    counts.set(row.day, (counts.get(row.day) ?? 0) + row.count);
+  }
+
+  return {
+    userId: profile.id,
+    email: profile.email,
+    fullName: profile.full_name,
+    currentTitle: profile.current_title,
+    location: profile.location,
+    createdAt: profile.created_at,
+    isSuspended: profile.is_suspended,
+    customUsageMultiplier: profile.custom_usage_multiplier,
+    featureFlags: profile.feature_flags ?? {},
+    jobCount: jobCount ?? 0,
+    usageLast14Days: buildDailySeries(14, counts),
+  };
+}
+
+// admin_notes has no direct FK to admin_users' email — a second lookup
+// join, not a foreign-table select, since InsForge's PostgREST layer
+// doesn't expose implicit FK-embed joins the way this app's other reads
+// assume for its own app-owned tables.
+export async function getAdminNotes(userId: string): Promise<AdminNoteRow[]> {
+  const admin = createAdminDbClient();
+
+  const { data: notes } = await admin.database
+    .from("admin_notes")
+    .select("id,note,created_at,admin_user_id")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false });
+
+  const noteRows = (notes ?? []) as { id: string; note: string; created_at: string; admin_user_id: string }[];
+  if (noteRows.length === 0) return [];
+
+  const adminUserIds = Array.from(new Set(noteRows.map((n) => n.admin_user_id)));
+  const { data: adminUsers } = await admin.database.from("admin_users").select("id,user_id").in("id", adminUserIds);
+  const adminUserRows = (adminUsers ?? []) as { id: string; user_id: string }[];
+
+  const authUserIds = adminUserRows.map((a) => a.user_id);
+  const { data: profiles } =
+    authUserIds.length > 0
+      ? await admin.database.from("profiles").select("id,email").in("id", authUserIds)
+      : { data: [] as { id: string; email: string | null }[] };
+
+  const emailByAuthUserId = new Map(((profiles ?? []) as { id: string; email: string | null }[]).map((p) => [p.id, p.email]));
+  const emailByAdminUserId = new Map(adminUserRows.map((a) => [a.id, emailByAuthUserId.get(a.user_id) ?? null]));
+
+  return noteRows.map((n) => ({
+    id: n.id,
+    note: n.note,
+    createdAt: n.created_at,
+    adminEmail: emailByAdminUserId.get(n.admin_user_id) ?? null,
+  }));
+}

@@ -1,11 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { AlertTriangle, ShieldOff, Users } from "lucide-react";
+import Link from "next/link";
+import { AlertTriangle, ArrowRight, ShieldOff, Users } from "lucide-react";
 
 import { setUserSuspended, type AdminDashboardData } from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TrendChart } from "@/components/admin/TrendChart";
+import { AiKillSwitch } from "@/components/admin/AiKillSwitch";
 
 // v1 slice, per agy's build-order review: the actual first real use case
 // ("see who's burning the shared AI rate limit, suspend them") on one
@@ -42,6 +44,18 @@ export function AdminDashboard({ initialData }: { initialData: AdminDashboardDat
 
   return (
     <div className="flex flex-col gap-4">
+      <AiKillSwitch initialSettings={data.appSettings} />
+
+      <div className="flex justify-end">
+        <Link
+          href="/admin/users"
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-text-secondary transition-colors hover:text-text-primary"
+        >
+          View all users
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
+      </div>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <StatCard icon={<Users className="h-4 w-4" />} label="Total users" value={data.totalUsers} />
         <StatCard icon={<Users className="h-4 w-4" />} label="Signups (14d)" value={signupsInWindow} />
@@ -76,7 +90,11 @@ export function AdminDashboard({ initialData }: { initialData: AdminDashboardDat
               <tbody>
                 {data.topUsers.map((u) => (
                   <tr key={u.userId} className="border-t border-border">
-                    <td className="px-5 py-4 text-text-primary">{u.email ?? u.userId}</td>
+                    <td className="px-5 py-4">
+                      <Link href={`/admin/users/${u.userId}`} className="text-accent hover:underline">
+                        {u.email ?? u.userId}
+                      </Link>
+                    </td>
                     <td className="px-5 py-4 font-mono text-text-primary">{u.totalRuns}</td>
                     <td className="px-5 py-4">
                       {u.isSuspended ? (

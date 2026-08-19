@@ -185,6 +185,27 @@ export async function checkAndConsumeUsage(
   email: string | null | undefined,
   action: UsageAction,
 ): Promise<UsageResult> {
+  // The global kill switch — checked first, before per-user suspension and
+  // before the admin exemption, deliberately with NO exceptions (including
+  // ADMIN_EMAILS accounts). It exists for a runaway-bug or bot-spam
+  // scenario where the whole point is stopping every AI call app-wide, not
+  // just for most users. lib/admin/queries.ts's getAppSettings() reads the
+  // same row; kept as a direct query here rather than importing that
+  // module, since lib/admin/ pulls in the service-role client and this
+  // file must stay usable from the cookie-scoped client alone.
+  const { data: settings } = await insforge.database
+    .from("app_settings")
+    .select("ai_enabled,ai_disabled_reason")
+    .eq("id", 1)
+    .maybeSingle<{ ai_enabled: boolean; ai_disabled_reason: string | null }>();
+
+  if (settings && !settings.ai_enabled) {
+    return {
+      allowed: false,
+      error: settings.ai_disabled_reason || "AI features are temporarily disabled. Please check back shortly.",
+    };
+  }
+
   // Checked before the admin exemption below, and at this exact choke
   // point rather than only in a UI layout — every AI-costing action in the
   // app routes through here, so this is the one place a suspension
@@ -194,9 +215,9 @@ export async function checkAndConsumeUsage(
   // stale client-side cache for a while).
   const { data: profile } = await insforge.database
     .from("profiles")
-    .select("is_suspended")
+    .select("is_suspended,custom_usage_multiplier")
     .eq("id", userId)
-    .maybeSingle<{ is_suspended: boolean }>();
+    .maybeSingle<{ is_suspended: boolean; custom_usage_multiplier: number }>();
 
   if (profile?.is_suspended) {
     return { allowed: false, error: "This account has been suspended. Contact support if you believe this is a mistake." };
@@ -206,7 +227,11 @@ export async function checkAndConsumeUsage(
     return { allowed: true };
   }
 
-  const limit = DAILY_LIMITS[action];
+  // Rounds down, floor of 1 — a multiplier is meant to scale a cap up or
+  // down, never to silently zero someone out (suspend already covers that
+  // case explicitly and with a clear error message).
+  const multiplier = profile?.custom_usage_multiplier ?? 1;
+  const limit = Math.max(1, Math.floor(DAILY_LIMITS[action] * multiplier));
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: existing } = await insforge.database
