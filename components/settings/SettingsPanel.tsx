@@ -2,25 +2,27 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, Copy, CreditCard, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
+import { Bell, BellRing, Check, Copy, CreditCard, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
 
 import { deleteAccount } from "@/actions/account";
 import { generateApiKey, listApiKeys, revokeApiKey, type ApiKeyRow } from "@/actions/apiKeys";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { SupportTab } from "@/components/settings/SupportTab";
+import { PushNotificationsTab } from "@/components/settings/PushNotificationsTab";
 
 type Props = {
   email: string;
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts" | "extension" | "support";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "support";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
   { key: "subscription", icon: CreditCard, label: "Subscription" },
   { key: "credits", icon: Ticket, label: "Credits & usage" },
   { key: "alerts", icon: Bell, label: "Job alerts" },
+  { key: "push", icon: BellRing, label: "Push notifications" },
   { key: "extension", icon: Plug, label: "Browser extension" },
   { key: "support", icon: LifeBuoy, label: "Contact support" },
 ];
@@ -361,6 +363,7 @@ export function SettingsPanel({ email, providers }: Props) {
         {tab === "subscription" && <NotYetAvailable label="Subscription" />}
         {tab === "credits" && <NotYetAvailable label="Credits & usage" />}
         {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
+        {tab === "push" && <PushNotificationsTab />}
         {tab === "extension" && <ExtensionTab />}
         {tab === "support" && <SupportTab />}
       </div>

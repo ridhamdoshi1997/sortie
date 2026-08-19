@@ -361,3 +361,53 @@ export const sendMarketingBroadcastAsync = inngest.createFunction(
         return { message: `Broadcast ${broadcastId}: ${sentCount}/${recipientList.length} sent.` };
     },
 );
+
+// Push notifications — the second Marketing broadcast channel, paired
+// with email per the original plan. A stale subscription (browser push
+// service returns 404/410 — the user uninstalled, cleared storage, etc.)
+// is deleted right here rather than left to error again on every future
+// send.
+export const sendPushBroadcastAsync = inngest.createFunction(
+    { id: "send-push-broadcast", name: "Send Push Broadcast", triggers: [{ event: "push/broadcast.send" }] },
+    async ({ event, step }) => {
+        const { title, body, url } = event.data as { title: string; body: string; url?: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: subscriptions } = await step.run("fetch-subscriptions", async () => {
+            return admin.database.from("push_subscriptions").select("id,endpoint,p256dh,auth");
+        });
+
+        const subs = (subscriptions ?? []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+        const chunks = chunkArray(subs, 25);
+        const { sendPushNotification } = await import("@/lib/push");
+
+        let sentCount = 0;
+        for (let i = 0; i < chunks.length; i++) {
+            const outcome = await step.run(`send-chunk-${i}`, async () => {
+                let sent = 0;
+                const staleIds: string[] = [];
+                await Promise.all(
+                    chunks[i].map(async (s) => {
+                        const result = await sendPushNotification(s, { title, body, url });
+                        if (result.success) {
+                            sent++;
+                        } else if (result.expired) {
+                            staleIds.push(s.id);
+                        }
+                    }),
+                );
+                if (staleIds.length > 0) {
+                    await admin.database.from("push_subscriptions").delete().in("id", staleIds);
+                }
+                return { sent, staleCount: staleIds.length };
+            });
+            sentCount += outcome.sent;
+        }
+
+        return { message: `Push broadcast: ${sentCount}/${subs.length} sent.` };
+    },
+);

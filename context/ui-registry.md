@@ -83,6 +83,12 @@ Files: `components/admin/{MarketingList,BroadcastEditor}.tsx`, `app/admin/market
 Route: admin side gated the same as the rest of `/admin`, all writes owner+admin-gated (no `support_readonly` write path here, unlike Support); `/api/unsubscribe` is public/unauthenticated
 Last updated: 2026-08-19 (Phase 17). Same list/editor split as Content/CMS — `MarketingList` (eligible-recipient stat card + a `ContentList`-style table with Draft/Sending/Sent/Failed chips), `BroadcastEditor` (subject + markdown textarea/preview split reusing `MarkdownContent.tsx`, disabled entirely once a broadcast leaves `draft`). Send is a real 2-step confirm: the primary button reads "Send to N recipients" (the real live count, not a placeholder) and opens `ConfirmDialog` before calling `sendBroadcast()`, which itself refuses to send without `MARKETING_PHYSICAL_ADDRESS` configured — a real compliance gate, not just a UI warning.
 
+### Push notifications (Settings tab + /admin/marketing send form)
+
+Files: `components/settings/PushNotificationsTab.tsx`, `components/admin/PushBroadcastForm.tsx`, `public/sw.js`, `lib/push.ts`, `actions/push.ts`, `actions/adminPush.ts`, `lib/inngest/functions.ts`'s `sendPushBroadcastAsync`
+Route: `PushNotificationsTab` lives in `SettingsPanel.tsx` as its own tab (separate from the still-unbuilt "Job alerts" placeholder — delivery-channel management, not alert-content logic); `PushBroadcastForm` renders below `MarketingList` on `/admin/marketing`
+Last updated: 2026-08-19 (Phase 17). `PushNotificationsTab` is a 4-state component (`checking`/`unsupported`/`unsubscribed`/`subscribed`/`denied`) driving the real browser Notification/Push APIs — no custom permission-prompt UI, the browser's own native prompt handles that. `PushBroadcastForm` is deliberately send-immediately with no draft/edit cycle (unlike `BroadcastEditor`) — title/body/optional-link, `ConfirmDialog`-gated, disabled unless title+body are both filled.
+
 ### Practice Sandbox (inline code editor)
 
 Files: `components/interview/PracticeSandbox.tsx`, `lib/practiceSandbox.ts` (execution engines), `lib/interviewQuestions.ts`'s `PracticeKit` type + `generatePracticeKit()`, `actions/interviewQuestions.ts`'s `getPracticeKit()`
