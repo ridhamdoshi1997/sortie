@@ -17,6 +17,16 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-19 (Phase 18, continued): Free ATS score checker — public, no-login lead magnet (build-plan.md §I).**
+  - The first genuinely public, unauthenticated, AI-calling surface in this app. `/ats-checker` — paste resume text (+ optional job description) → one Gemini call → an honest AI-judged formatting-risk read + keyword coverage (only when a JD is given, never invented) + concrete suggestions. Explicitly distinct in the UI copy and code comments from the authenticated `lib/atsChecker.ts` (which computes deterministic structural risk from this app's own `ResumeSection`/`ResumeStyle` data) — this one only has pasted text, so every read is an honest AI judgment, never claimed as precise structural parsing.
+  - **New abuse/cost guard, since this route has no login wall**: `ip_usage_daily` table + `lib/ipRateLimit.ts`, keyed by the real client IP (`x-forwarded-for`/`x-real-ip`) rather than `user_id` — the existing `rate_limit` table can't cover anonymous traffic. Capped at 3 checks/IP/day.
+  - Linked from the footer, alongside `/blog` (also previously undiscoverable — neither had a real nav link before this).
+  - **Live-verified end to end on real production, unauthenticated**: a real synthetic resume scored 95/100 with zero formatting flags and genuinely specific suggestions (correctly cited the resume's own real "40%" metric, not a generic line). Verified the rate limit's real block path too, not just its allow path — forced the counter to the cap and confirmed the 4th real request was rejected with the correct message, then cleaned up the test row.
+  - **Not yet done, a real follow-up worth flagging**: no `sitemap.xml`/`robots.txt` exists yet (build-plan.md §I's other item) — `/ats-checker` and `/blog` are both linked and crawlable via the footer, but a real sitemap would help discovery further.
+  - `tsc --noEmit`/`eslint .` clean. Committed (`e7199f4`), pushed, deployed to production, post-deploy checked.
+
+---
+
 - **2026-08-19 (Phase 18, continued): 5-item user-side batch — email drafts, negotiation scripts, per-contact outreach drafts, job-description decoder, real Credits & Usage tab.**
   - **Application email drafts** (§C) — `lib/emailDrafts.ts` + `actions/emailDrafts.ts`, 3 types (cold application/follow-up/thank-you), grounded in real job+profile data, thank-you pulls a real interviewer name from `interview_panel_members` when one exists. Ephemeral, copy-to-clipboard UI on the job detail page (`EmailDrafts.tsx`), same pattern as the referral copy generator.
   - **Per-contact outreach drafts on Insider Connections** (§F) — closes the "discovery without drafting" gap. `lib/outreachMessage.ts` drafts a real, honest, under-300-char LinkedIn note per discovered contact, grounded in the REAL shared-employer/school connection Insider Connections itself already resolved (verified this really is a genuine candidate-contact overlap, not an arbitrary fact — traced through `agent/research.ts`'s `findConnectionsByCompany`, which searches Apify by the candidate's own real past employer). `OutreachMessageButton.tsx`, popover pattern matching `EmailLookupButton.tsx`.

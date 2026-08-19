@@ -2,7 +2,15 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system deployed, then a 5-item user-side batch also deployed: email drafts, negotiation scripts, per-contact outreach drafts, job-description decoder, real Credits & Usage tab)
+Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system deployed, then a 5-item user-side batch, then a free public ATS score checker, all deployed)
+
+## Phase 18, third piece — free ATS score checker, deployed
+
+**Direct instruction: "complete other work because monetization and all we will do in last"** — confirms the standing sequencing decision (monetization/§J stays deferred to the very end) and green-lights continuing straight through the rest of the user-side backlog.
+
+Built and deployed `/ats-checker` — build-plan.md §I's "free ATS score checker" growth item, a genuinely public no-login lead magnet. **This is the first unauthenticated, AI-calling route in the whole app** — needed its own new abuse/cost guard (`ip_usage_daily` + `lib/ipRateLimit.ts`, IP-keyed since the existing `rate_limit` table only covers logged-in `user_id`s). Capped at 3 checks/IP/day. Live-verified on real production, unauthenticated: a real synthetic resume scored correctly (95/100, specific honest suggestions citing the resume's own real metric), AND the rate-limit's actual block path was verified for real (forced the counter to the cap, confirmed a real 4th request got rejected), not just the happy path. Full detail in `progress-tracker.md`'s newest entry.
+
+**Real follow-up flagged, not done**: no `sitemap.xml`/`robots.txt` exists yet (the other half of §I) — `/ats-checker` and `/blog` are now both footer-linked and crawlable, but a real sitemap would help.
 
 ## Phase 18, second half — user-side batch, deployed
 

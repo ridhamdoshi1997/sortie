@@ -18,6 +18,12 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### ATS Checker form (public, /ats-checker)
+
+Files: `components/tools/AtsCheckerForm.tsx`
+Route: `/ats-checker` (public, no login)
+Last updated: 2026-08-19. Two side-by-side textareas (`grid sm:grid-cols-2`) matching this app's plain form-field convention (`border-border bg-surface`, `focus-visible:border-accent`). Score ring is plain large text, not an SVG ring — color keys off score tier (`text-success`/`text-warning`/`text-error`) same thresholds as elsewhere in the app. Result card reuses the standard `rounded-2xl border border-border bg-surface p-6 shadow-card` section shell. The closing CTA card is the one deliberately agent-toned element (`border-agent/30 bg-agent-light/40`) — it's pitching the AI-driven authenticated product, everything above it is plain utility UI.
+
 ### Email Drafts (job detail)
 
 Files: `components/job-details/EmailDrafts.tsx`
