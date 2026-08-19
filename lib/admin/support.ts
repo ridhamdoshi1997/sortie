@@ -1,4 +1,5 @@
 import { createAdminDbClient } from "@/lib/admin/client";
+import { complete, getModel } from "@/lib/models";
 import type { TicketStatus } from "@/actions/support";
 
 export type AdminTicketRow = {
@@ -191,4 +192,27 @@ export async function getSupportDashboard(): Promise<SupportDashboard> {
     oldestOpenAgeHours: oldestOpen ? (now - new Date(oldestOpen.created_at).getTime()) / 3600000 : null,
     slaBreachCount,
   };
+}
+
+const TICKET_REPLY_DRAFT_SYSTEM_PROMPT = `You are drafting a first-pass support reply for Sortie, a job-search copilot product. You're writing as the support team, replying to a real user's real ticket thread (supplied below). Be direct, helpful, and honest — never invent a feature, fix, timeline, or fact not grounded in the ticket itself. If the thread doesn't give you enough to actually resolve the issue, draft a reply that asks a clarifying question instead of guessing. This is a rough first draft the admin will review and edit before sending, not final copy.
+
+Output ONLY the reply body as plain text (short paragraphs). No greeting placeholder, no signature block, no markdown, no commentary before or after.`;
+
+// AI-suggested ticket replies (direct user request, part of "AI-heavy
+// Support") — same "real data in, honest AI draft out, human edits before
+// send" pattern as Content/Marketing's AI-draft buttons. Grounded in the
+// real ticket thread, not usage-metered (internal admin tooling).
+export async function generateTicketReplyDraft(subject: string, messages: { authorType: "user" | "admin"; body: string }[]): Promise<string> {
+  const threadText = messages.map((m) => `${m.authorType === "user" ? "USER" : "SUPPORT"}: ${m.body}`).join("\n\n");
+
+  const userPrompt = `Ticket subject: ${subject}\n\nFull thread so far:\n${threadText}`;
+
+  const raw = await complete(getModel("gemini", "smart"), {
+    systemPrompt: TICKET_REPLY_DRAFT_SYSTEM_PROMPT,
+    userPrompt,
+    temperature: 0.4,
+    maxTokens: 600,
+  });
+
+  return raw.trim();
 }

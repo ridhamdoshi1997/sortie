@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Pencil, Trash2 } from "lucide-react";
+import { Pencil, Sparkles, Trash2 } from "lucide-react";
 
-import { deleteTicket, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus, updateTicketSubject } from "@/actions/adminSupport";
+import { deleteTicket, generateReplyDraft, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus, updateTicketSubject } from "@/actions/adminSupport";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { AdminTicketMessage, AdminTicketRow } from "@/lib/admin/support";
 import type { AdminRole } from "@/lib/admin/auth";
@@ -42,6 +42,7 @@ export function SupportTicketDetail({
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState(initialTicket.subject);
   const [isPending, startTransition] = useTransition();
+  const [isGenerating, startGenerating] = useTransition();
 
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
 
@@ -70,6 +71,18 @@ export function SupportTicketDetail({
       }
       setReply("");
       refresh();
+    });
+  }
+
+  function handleGenerateDraft(): void {
+    setError(null);
+    startGenerating(async () => {
+      const result = await generateReplyDraft(ticket.id);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setReply(result.body);
     });
   }
 
@@ -228,7 +241,18 @@ export function SupportTicketDetail({
 
       {canWrite && (
         <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
-          <label className="mb-1 block text-[11px] font-medium text-text-muted">Reply</label>
+          <div className="mb-1 flex items-center justify-between">
+            <label className="block text-[11px] font-medium text-text-muted">Reply</label>
+            <button
+              type="button"
+              onClick={handleGenerateDraft}
+              disabled={isGenerating}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-text-primary disabled:opacity-60"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isGenerating ? "Generating..." : "AI draft reply"}
+            </button>
+          </div>
           <textarea
             value={reply}
             onChange={(e) => setReply(e.target.value)}

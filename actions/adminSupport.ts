@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
-import { listTickets, getTicketDetail, getSupportDashboard, type AdminTicketRow, type AdminTicketMessage, type SupportDashboard } from "@/lib/admin/support";
+import { listTickets, getTicketDetail, getSupportDashboard, generateTicketReplyDraft, type AdminTicketRow, type AdminTicketMessage, type SupportDashboard } from "@/lib/admin/support";
 import { sendSupportReplyEmail } from "@/lib/email/resend";
 import type { TicketStatus } from "@/actions/support";
 import { toUserMessage } from "@/lib/errors";
@@ -242,5 +242,26 @@ export async function createTicketAsAdmin(userEmail: string, subject: string, no
     return { success: true, id: ticket.id };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+type DraftReplyResult = { success: true; body: string } | { success: false; error: string };
+
+export async function generateReplyDraft(ticketId: string): Promise<DraftReplyResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+
+    const detail = await getTicketDetail(ticketId);
+    if (!detail) return { success: false, error: "Ticket not found." };
+    if (detail.messages.length === 0) return { success: false, error: "No messages on this ticket yet." };
+
+    const body = await generateTicketReplyDraft(
+      detail.ticket.subject,
+      detail.messages.map((m) => ({ authorType: m.authorType, body: m.body })),
+    );
+    return { success: true, body };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Failed to generate a draft.") };
   }
 }
