@@ -32,3 +32,22 @@ export async function requireAdmin(): Promise<AdminUser> {
 
   return { id: row.id, userId: user.id, email: user.email ?? null, role: row.role };
 }
+
+// Hardcoded per-role capability checks (2026-08-19) — a 3-tier enum with
+// checks inline at each call site, not a permission-matrix table. Real
+// research (agy) confirmed this is the right size for a 2-5 person team:
+// a full RBAC UI would cost more to build than a hardcoded enum ever
+// saves at this scale. Call after requireAdmin() — takes its result so
+// every gated action only needs one round-trip to the DB, not two.
+//
+// owner: everything, including managing other admins and the kill switch.
+// admin: every day-to-day lever (suspend, usage caps, notes, content) —
+//   NOT admin management or the kill switch, both blast-radius-large
+//   enough to stay owner-only.
+// support_readonly: read-only everywhere — zero write actions, matching
+//   "a support person who needs context, not levers."
+export function requireRole(admin: AdminUser, allowed: AdminRole[]): void {
+  if (!allowed.includes(admin.role)) {
+    throw new AdminAuthError(`This action requires ${allowed.join(" or ")} access.`);
+  }
+}

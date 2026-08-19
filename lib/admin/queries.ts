@@ -1,4 +1,36 @@
 import { createAdminDbClient } from "@/lib/admin/client";
+import type { AdminRole } from "@/lib/admin/auth";
+
+export type AdminRosterRow = {
+  id: string;
+  email: string | null;
+  role: AdminRole;
+  createdAt: string;
+};
+
+// Same two-hop lookup pattern as getAdminNotes() below — admin_users has
+// no direct FK-embed to profiles' email via InsForge's PostgREST layer.
+export async function listAdmins(): Promise<AdminRosterRow[]> {
+  const admin = createAdminDbClient();
+
+  const { data: adminUsers } = await admin.database
+    .from("admin_users")
+    .select("id,user_id,role,created_at")
+    .order("created_at", { ascending: true });
+  const rows = (adminUsers ?? []) as { id: string; user_id: string; role: AdminRole; created_at: string }[];
+  if (rows.length === 0) return [];
+
+  const userIds = rows.map((r) => r.user_id);
+  const { data: profiles } = await admin.database.from("profiles").select("id,email").in("id", userIds);
+  const emailByUserId = new Map(((profiles ?? []) as { id: string; email: string | null }[]).map((p) => [p.id, p.email]));
+
+  return rows.map((r) => ({
+    id: r.id,
+    email: emailByUserId.get(r.user_id) ?? null,
+    role: r.role,
+    createdAt: r.created_at,
+  }));
+}
 
 export type UsageLeaderboardRow = {
   userId: string;

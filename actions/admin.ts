@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { requireAdmin } from "@/lib/admin/auth";
+import { requireAdmin, requireRole, type AdminRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
 import {
@@ -14,9 +14,11 @@ import {
   getUserDetail,
   getAdminNotes,
   listUsers,
+  listAdmins,
   type UserListPage,
   type UserDetail,
   type AdminNoteRow,
+  type AdminRosterRow,
 } from "@/lib/admin/queries";
 import { toUserMessage } from "@/lib/errors";
 
@@ -29,6 +31,7 @@ type ActionResult = { success: true } | { success: false; error: string };
 export async function setUserSuspended(targetUserId: string, suspend: boolean): Promise<ActionResult> {
   try {
     const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
     const client = createAdminDbClient();
 
     const { data: before } = await client.database
@@ -80,6 +83,7 @@ async function getAdminDashboardData() {
 export async function setAiEnabled(enabled: boolean, reason: string): Promise<ActionResult> {
   try {
     const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
     const client = createAdminDbClient();
 
     const before = await getAppSettings();
@@ -114,6 +118,7 @@ export async function setAiEnabled(enabled: boolean, reason: string): Promise<Ac
 export async function setUsageMultiplier(targetUserId: string, multiplier: number): Promise<ActionResult> {
   try {
     const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
     const client = createAdminDbClient();
 
     const { data: before } = await client.database
@@ -150,6 +155,7 @@ export async function setUsageMultiplier(targetUserId: string, multiplier: numbe
 export async function addAdminNote(targetUserId: string, note: string): Promise<ActionResult> {
   try {
     const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
     const client = createAdminDbClient();
 
     if (!note.trim()) {
@@ -214,6 +220,122 @@ export async function getAdminDashboard(): Promise<DashboardResult> {
     await requireAdmin();
     const data = await getAdminDashboardData();
     return { success: true, data };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Team & Roles (2026-08-19, direct user request) — hardcoded owner-only
+// gate, not a permission-matrix UI. "Invite" is really "grant an existing
+// account admin access" — InsForge auth requires a real signed-up account
+// to exist first, there's no separate invitation-email flow in v1 (matches
+// the "hours, not multi-day" complexity estimate from real research).
+type AdminRosterResult =
+  | { success: true; admins: AdminRosterRow[]; viewerRole: AdminRole }
+  | { success: false; error: string };
+
+export async function getAdminRoster(): Promise<AdminRosterResult> {
+  try {
+    const viewer = await requireAdmin();
+    const admins = await listAdmins();
+    return { success: true, admins, viewerRole: viewer.role };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function addAdmin(email: string, role: AdminRole): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      return { success: false, error: "Enter an email address." };
+    }
+
+    const { data: profile } = await client.database
+      .from("profiles")
+      .select("id")
+      .eq("email", trimmedEmail)
+      .maybeSingle<{ id: string }>();
+
+    if (!profile) {
+      return { success: false, error: "No Sortie account found for that email — they need to sign up first." };
+    }
+
+    const { data: existing } = await client.database
+      .from("admin_users")
+      .select("id")
+      .eq("user_id", profile.id)
+      .maybeSingle<{ id: string }>();
+
+    if (existing) {
+      return { success: false, error: "This person already has admin access." };
+    }
+
+    const { error } = await client.database.from("admin_users").insert([{ user_id: profile.id, role }]);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to add this admin.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "add_admin",
+      targetUserId: profile.id,
+      targetTable: "admin_users",
+      after: { email: trimmedEmail, role },
+    });
+
+    revalidatePath("/admin/team");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function removeAdmin(adminUserId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const { data: target } = await client.database
+      .from("admin_users")
+      .select("id,user_id,role")
+      .eq("id", adminUserId)
+      .maybeSingle<{ id: string; user_id: string; role: AdminRole }>();
+
+    if (!target) {
+      return { success: false, error: "Admin not found." };
+    }
+
+    if (target.role === "owner") {
+      const { count } = await client.database
+        .from("admin_users")
+        .select("id", { count: "exact", head: true })
+        .eq("role", "owner");
+      if ((count ?? 0) <= 1) {
+        return { success: false, error: "Can't remove the last owner." };
+      }
+    }
+
+    const { error } = await client.database.from("admin_users").delete().eq("id", adminUserId);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to remove this admin.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "remove_admin",
+      targetUserId: target.user_id,
+      targetTable: "admin_users",
+      before: { role: target.role },
+    });
+
+    revalidatePath("/admin/team");
+    return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
   }
