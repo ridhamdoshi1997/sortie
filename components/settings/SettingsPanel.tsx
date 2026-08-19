@@ -2,18 +2,19 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, Check, Copy, CreditCard, KeyRound, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
+import { Bell, Check, Copy, CreditCard, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
 
 import { deleteAccount } from "@/actions/account";
 import { generateApiKey, listApiKeys, revokeApiKey, type ApiKeyRow } from "@/actions/apiKeys";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
+import { SupportTab } from "@/components/settings/SupportTab";
 
 type Props = {
   email: string;
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts" | "extension";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "extension" | "support";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
@@ -21,6 +22,7 @@ const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "credits", icon: Ticket, label: "Credits & usage" },
   { key: "alerts", icon: Bell, label: "Job alerts" },
   { key: "extension", icon: Plug, label: "Browser extension" },
+  { key: "support", icon: LifeBuoy, label: "Contact support" },
 ];
 
 const PROVIDER_LABEL: Record<string, string> = {
@@ -360,6 +362,7 @@ export function SettingsPanel({ email, providers }: Props) {
         {tab === "credits" && <NotYetAvailable label="Credits & usage" />}
         {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
         {tab === "extension" && <ExtensionTab />}
+        {tab === "support" && <SupportTab />}
       </div>
     </div>
   );

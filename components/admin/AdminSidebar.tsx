@@ -2,19 +2,20 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText } from "lucide-react";
+import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy } from "lucide-react";
 
 // Shopify-shaped nav (2026-08-19, direct user request): a flat icon+label
 // list, not the old header-only shell. Only links to pages that actually
-// exist today — extend this list as each new section (Support, Marketing)
-// ships, per context/RESUME.md's admin-console expansion plan. Don't add a
-// nav item for a page that doesn't exist yet.
+// exist today — extend this list as each new section (Marketing) ships,
+// per context/RESUME.md's admin-console expansion plan. Don't add a nav
+// item for a page that doesn't exist yet.
 const NAV_ITEMS = [
   { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
   { href: "/admin/users", label: "Users", icon: Users, exact: false },
   { href: "/admin/team", label: "Team & Roles", icon: ShieldCheck, exact: false },
   { href: "/admin/expenses", label: "Expenses", icon: DollarSign, exact: false },
   { href: "/admin/content", label: "Content", icon: FileText, exact: false },
+  { href: "/admin/support", label: "Support", icon: LifeBuoy, exact: false },
 ];
 
 export function AdminSidebar() {
