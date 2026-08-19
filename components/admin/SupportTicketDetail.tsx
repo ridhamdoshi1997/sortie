@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2 } from "lucide-react";
 
-import { deleteTicket, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus } from "@/actions/adminSupport";
+import { deleteTicket, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus, updateTicketSubject } from "@/actions/adminSupport";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { AdminTicketMessage, AdminTicketRow } from "@/lib/admin/support";
 import type { AdminRole } from "@/lib/admin/auth";
@@ -39,6 +39,8 @@ export function SupportTicketDetail({
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [editingSubject, setEditingSubject] = useState(false);
+  const [subjectInput, setSubjectInput] = useState(initialTicket.subject);
   const [isPending, startTransition] = useTransition();
 
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
@@ -106,12 +108,62 @@ export function SupportTicketDetail({
     });
   }
 
+  function handleSaveSubject(): void {
+    if (!subjectInput.trim() || subjectInput.trim() === ticket.subject) {
+      setEditingSubject(false);
+      setSubjectInput(ticket.subject);
+      return;
+    }
+    setError(null);
+    startTransition(async () => {
+      const result = await updateTicketSubject(ticket.id, subjectInput);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setTicket((prev) => ({ ...prev, subject: subjectInput.trim() }));
+      setEditingSubject(false);
+    });
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-text-primary">{ticket.subject}</h1>
+          <div className="min-w-0 flex-1">
+            {editingSubject ? (
+              <div className="flex items-center gap-2">
+                <input
+                  value={subjectInput}
+                  onChange={(e) => setSubjectInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleSaveSubject()}
+                  autoFocus
+                  className="h-8 min-w-0 flex-1 rounded-md border border-border bg-surface px-2 text-lg font-semibold text-text-primary outline-none focus-visible:border-accent"
+                />
+                <button type="button" onClick={handleSaveSubject} disabled={isPending} className="text-xs font-medium text-accent hover:underline">
+                  Save
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingSubject(false);
+                    setSubjectInput(ticket.subject);
+                  }}
+                  className="text-xs font-medium text-text-muted hover:underline"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-semibold text-text-primary">{ticket.subject}</h1>
+                {canWrite && (
+                  <button type="button" onClick={() => setEditingSubject(true)} aria-label="Edit subject" className="text-text-muted hover:text-text-primary">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                )}
+              </div>
+            )}
             <p className="mt-1 text-xs text-text-muted">
               {ticket.userEmail ?? "Unknown user"} · Assigned: {ticket.assignedAdminEmail ?? "Unassigned"}
             </p>

@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
-import { listTickets, getTicketDetail, type AdminTicketRow, type AdminTicketMessage } from "@/lib/admin/support";
+import { listTickets, getTicketDetail, getSupportDashboard, type AdminTicketRow, type AdminTicketMessage, type SupportDashboard } from "@/lib/admin/support";
 import { sendSupportReplyEmail } from "@/lib/email/resend";
 import type { TicketStatus } from "@/actions/support";
 import { toUserMessage } from "@/lib/errors";
@@ -25,6 +25,18 @@ export async function getAdminTicketsList(statusFilter: TicketStatus | "all"): P
     await requireAdmin();
     const tickets = await listTickets(statusFilter);
     return { success: true, tickets };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+type DashboardResult = { success: true; dashboard: SupportDashboard } | { success: false; error: string };
+
+export async function getAdminSupportDashboard(): Promise<DashboardResult> {
+  try {
+    await requireAdmin();
+    const dashboard = await getSupportDashboard();
+    return { success: true, dashboard };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
   }
@@ -102,6 +114,31 @@ export async function setTicketStatus(ticketId: string, status: TicketStatus): P
     if (error) return { success: false, error: toUserMessage(error, "Failed to update this ticket's status.") };
 
     await logAdminAction(admin, { action: "set_ticket_status", targetTable: "support_tickets", targetId: ticketId, after: { status } });
+
+    revalidatePath("/admin/support");
+    revalidatePath(`/admin/support/${ticketId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function updateTicketSubject(ticketId: string, subject: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const trimmed = subject.trim();
+    if (!trimmed) return { success: false, error: "Subject can't be empty." };
+
+    const { data: before } = await client.database.from("support_tickets").select("subject").eq("id", ticketId).maybeSingle<{ subject: string }>();
+    if (!before) return { success: false, error: "Ticket not found." };
+
+    const { error } = await client.database.from("support_tickets").update({ subject: trimmed, updated_at: new Date().toISOString() }).eq("id", ticketId);
+    if (error) return { success: false, error: toUserMessage(error, "Failed to update the subject.") };
+
+    await logAdminAction(admin, { action: "update_ticket_subject", targetTable: "support_tickets", targetId: ticketId, before: { subject: before.subject }, after: { subject: trimmed } });
 
     revalidatePath("/admin/support");
     revalidatePath(`/admin/support/${ticketId}`);

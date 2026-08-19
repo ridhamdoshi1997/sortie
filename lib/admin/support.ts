@@ -132,3 +132,63 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
     })),
   };
 }
+
+// SLA/stats dashboard (direct user request: "all the related data and
+// SLAs"). Client-side aggregation over two lean-column fetches — same
+// "fine at this project's current pre-revenue scale" pattern as
+// lib/admin/queries.ts's getSignupsOverTime(), not a SQL GROUP BY. 24h
+// first-response is a sensible default threshold, not a target the user
+// specified — adjust SLA_FIRST_RESPONSE_HOURS if it proves wrong.
+export const SLA_FIRST_RESPONSE_HOURS = 24;
+
+export type SupportDashboard = {
+  openCount: number;
+  pendingCount: number;
+  resolvedCount: number;
+  avgFirstResponseMinutes: number | null;
+  oldestOpenAgeHours: number | null;
+  slaBreachCount: number;
+};
+
+export async function getSupportDashboard(): Promise<SupportDashboard> {
+  const admin = createAdminDbClient();
+
+  const [{ data: tickets }, { data: adminMessages }] = await Promise.all([
+    admin.database.from("support_tickets").select("id,status,created_at"),
+    admin.database.from("support_ticket_messages").select("ticket_id,created_at").eq("author_type", "admin").order("created_at", { ascending: true }),
+  ]);
+
+  const ticketRows = (tickets ?? []) as { id: string; status: TicketStatus; created_at: string }[];
+
+  // First admin message per ticket only — later admin replies don't count
+  // toward "time to first response".
+  const firstAdminMessageAt = new Map<string, string>();
+  for (const m of (adminMessages ?? []) as { ticket_id: string; created_at: string }[]) {
+    if (!firstAdminMessageAt.has(m.ticket_id)) firstAdminMessageAt.set(m.ticket_id, m.created_at);
+  }
+
+  const openTickets = ticketRows.filter((t) => t.status === "open");
+  const oldestOpen = [...openTickets].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())[0];
+
+  const responseTimesMinutes: number[] = [];
+  for (const t of ticketRows) {
+    const firstResponse = firstAdminMessageAt.get(t.id);
+    if (firstResponse) {
+      responseTimesMinutes.push((new Date(firstResponse).getTime() - new Date(t.created_at).getTime()) / 60000);
+    }
+  }
+
+  const now = Date.now();
+  const slaBreachCount = openTickets.filter(
+    (t) => !firstAdminMessageAt.has(t.id) && (now - new Date(t.created_at).getTime()) / 3600000 > SLA_FIRST_RESPONSE_HOURS,
+  ).length;
+
+  return {
+    openCount: openTickets.length,
+    pendingCount: ticketRows.filter((t) => t.status === "pending").length,
+    resolvedCount: ticketRows.filter((t) => t.status === "resolved").length,
+    avgFirstResponseMinutes: responseTimesMinutes.length > 0 ? responseTimesMinutes.reduce((a, b) => a + b, 0) / responseTimesMinutes.length : null,
+    oldestOpenAgeHours: oldestOpen ? (now - new Date(oldestOpen.created_at).getTime()) / 3600000 : null,
+    slaBreachCount,
+  };
+}

@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-19 (Phase 17, continued): Support fast-follows #2, direct user request — editable ticket subject + an SLA/stats dashboard on `/admin/support`.**
+  - `actions/adminSupport.ts`'s `updateTicketSubject()` (owner+admin) + a click-to-edit `Pencil` icon in `SupportTicketDetail.tsx`'s header (input + Save/Cancel, Enter-to-save).
+  - `lib/admin/support.ts`'s `getSupportDashboard()` — client-side aggregation over two lean-column fetches (`support_tickets`, admin-authored `support_ticket_messages`), same "fine at this scale" pattern as `getSignupsOverTime()`. Computes open/pending/resolved counts, average time-to-first-admin-response, oldest-still-open ticket age, and an SLA breach count (open + no admin reply yet + older than `SLA_FIRST_RESPONSE_HOURS`, a sensible 24h default — not a number the user specified, shown explicitly in the UI's own label so it's never a silent threshold). `components/admin/SupportDashboardStats.tsx` renders it as a 6-card stat row atop the inbox, the breach card getting a real `border-error/30 bg-error/5` treatment only when `slaBreachCount > 0`.
+  - **Live-verified with real seeded data, hand-checked math**: seeded a ticket backdated 30 hours with no admin reply — dashboard correctly showed Open=1, Oldest open=1.3d, SLA breaches=1. Edited its subject (confirmed via `db query`). Replied as admin — dashboard correctly recalculated to Open=0/Pending=1/Avg first response=1.3d/SLA breaches=0, matching hand-calculated expected values exactly. Test data cleaned up.
+  - `tsc --noEmit`/`eslint` clean.
+
+---
+
 - **2026-08-19 (Phase 17, continued): Admin console expansion item 6, Push notifications — the last originally-planned item, paired with Marketing as its second broadcast channel exactly as scoped.**
   - **Genuinely usable today, unlike email** — Web Push + VAPID needs no external account or verified domain, just a generated keypair. Real VAPID keys generated this session via `web-push`'s own `generateVAPIDKeys()`, stored in `.env` (`NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY`).
   - New `push_subscriptions` table (migration `20260819110000_push-subscriptions-table.sql`) — **real RLS**, same reasoning as `support_tickets`/`support_ticket_messages` (a user manages their own subscriptions through the regular client, not admin-owned data).
