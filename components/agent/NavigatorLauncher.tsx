@@ -32,6 +32,15 @@ function isPublicRoute(pathname: string): boolean {
   return pathname === "/" || pathname === "/login" || pathname === "/waitlist" || pathname.startsWith("/preview");
 }
 
+// /admin/* gets its own AdminNavigatorLauncher, grounded in admin ops data
+// instead of this candidate's own profile/tracker — showing consumer
+// Navigator there too was a real gap (it rendered on every admin page,
+// confirmed live), not intentional overlap. One floating assistant per
+// surface, not two stacked in the same corner.
+function isAdminRoute(pathname: string): boolean {
+  return pathname.startsWith("/admin");
+}
+
 // Exit animation duration deliberately shorter than the enter (150ms vs
 // 220ms, ~68%) — a closing UI should feel more responsive than an opening
 // one (Material Design motion guidance). The panel stays mounted for this
@@ -117,7 +126,7 @@ export function NavigatorLauncher() {
     };
   }, [open]);
 
-  if (!pathname || isPublicRoute(pathname)) {
+  if (!pathname || isPublicRoute(pathname) || isAdminRoute(pathname)) {
     return null;
   }
 

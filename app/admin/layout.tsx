@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 
 import { requireAdmin, AdminAuthError } from "@/lib/admin/auth";
 import { AdminSidebar } from "@/components/admin/AdminSidebar";
+import { AdminNavigatorLauncherLoader } from "@/components/admin/AdminNavigatorLauncherLoader";
 
 // The gate. Server Actions under /admin still call requireAdmin() themselves
 // (actions/admin.ts) — a layout only blocks the rendered UI, it doesn't stop
@@ -32,6 +33,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="flex min-h-screen bg-surface-secondary">
       <AdminSidebar />
       <main className="mx-auto w-full min-w-0 max-w-360 flex-1 px-4 py-8 sm:px-6 lg:px-8">{children}</main>
+      <AdminNavigatorLauncherLoader />
     </div>
   );
 }

@@ -91,6 +91,12 @@ Files: `components/settings/PushNotificationsTab.tsx`, `components/admin/PushBro
 Route: `PushNotificationsTab` lives in `SettingsPanel.tsx` as its own tab (separate from the still-unbuilt "Job alerts" placeholder — delivery-channel management, not alert-content logic); `PushBroadcastForm` renders below `MarketingList` on `/admin/marketing`
 Last updated: 2026-08-19 (Phase 17). `PushNotificationsTab` is a 4-state component (`checking`/`unsupported`/`unsubscribed`/`subscribed`/`denied`) driving the real browser Notification/Push APIs — no custom permission-prompt UI, the browser's own native prompt handles that. `PushBroadcastForm` is deliberately send-immediately with no draft/edit cycle (unlike `BroadcastEditor`) — title/body/optional-link, `ConfirmDialog`-gated, disabled unless title+body are both filled.
 
+### Admin Navigator (floating AI chat, /admin/* only)
+
+Files: `components/admin/{AdminNavigatorLauncher,AdminNavigatorChat,AdminNavigatorLauncherLoader}.tsx`, `lib/adminAgentAssistant.ts`, `actions/adminAgent.ts`, mounted in `app/admin/layout.tsx`
+Route: every `/admin/*` page; consumer Navigator (`components/agent/NavigatorLauncher.tsx`) is explicitly excluded from `/admin/*` via its own `isAdminRoute()` check, so only one floating assistant ever shows per surface
+Last updated: 2026-08-19 (Phase 17). Byte-for-byte the same floating-FAB recipe as consumer Navigator (`fixed bottom-6 right-6`, `Sparkles`/`X` crossfade, `animate-in`/`animate-out` panel, click-outside + Escape to close, `ssr:false` dynamic loader for the same documented Server-Component-root-mount gotcha) — deliberately reused, not redesigned, since the interaction pattern was already proven. The one real difference: no action-proposal cards (consumer's `log_accomplishment` Accept/Discard UI) — v1 is read-only/drafting-only, so message bubbles are plain, no card below the assistant bubble ever renders. Grounded in a snapshot assembled from `getSupportDashboard()`/`getTopUsersByUsage()`/`getExpensesSummary()`/`listBroadcasts()` — the exact same functions the Support/Expenses/Marketing dashboards already call, no new queries.
+
 ### Practice Sandbox (inline code editor)
 
 Files: `components/interview/PracticeSandbox.tsx`, `lib/practiceSandbox.ts` (execution engines), `lib/interviewQuestions.ts`'s `PracticeKit` type + `generatePracticeKit()`, `actions/interviewQuestions.ts`'s `getPracticeKit()`
