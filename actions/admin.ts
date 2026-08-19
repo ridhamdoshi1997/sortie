@@ -20,6 +20,8 @@ import {
   type AdminNoteRow,
   type AdminRosterRow,
 } from "@/lib/admin/queries";
+import { getExpensesSummary, type ExpensesSummary, type ExpenseCadence } from "@/lib/admin/expenses";
+import type { UsageAction } from "@/lib/usage";
 import { toUserMessage } from "@/lib/errors";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -335,6 +337,138 @@ export async function removeAdmin(adminUserId: string): Promise<ActionResult> {
     });
 
     revalidatePath("/admin/team");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Expenses (2026-08-19, admin console expansion item 1) — hand-entered
+// recurring/one-time business_expenses plus the hand-maintained
+// ai_cost_rates estimate joined against usage_daily. See
+// lib/admin/expenses.ts for the estimate's own reasoning.
+type ExpensesPageResult = { success: true; data: ExpensesSummary } | { success: false; error: string };
+
+export async function getExpensesPage(): Promise<ExpensesPageResult> {
+  try {
+    await requireAdmin();
+    const data = await getExpensesSummary();
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function addBusinessExpense(
+  name: string,
+  category: string,
+  amountCents: number,
+  cadence: ExpenseCadence,
+): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      return { success: false, error: "Enter a name for this expense." };
+    }
+    if (!Number.isFinite(amountCents) || amountCents < 0) {
+      return { success: false, error: "Enter a valid amount." };
+    }
+
+    const trimmedCategory = category.trim() || "Other";
+
+    const { error } = await client.database.from("business_expenses").insert([
+      {
+        name: trimmedName,
+        category: trimmedCategory,
+        amount_cents: Math.round(amountCents),
+        cadence,
+        created_by: admin.id,
+      },
+    ]);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to add this expense.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "add_business_expense",
+      targetTable: "business_expenses",
+      after: { name: trimmedName, category: trimmedCategory, amountCents, cadence },
+    });
+
+    revalidatePath("/admin/expenses");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function removeBusinessExpense(expenseId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database.from("business_expenses").delete().eq("id", expenseId);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to remove this expense.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "remove_business_expense",
+      targetTable: "business_expenses",
+      targetId: expenseId,
+    });
+
+    revalidatePath("/admin/expenses");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Owner-only — tuning the hand-maintained cost estimate as providers
+// reprice (context/RESUME.md: "providers reprice every 3-6 months") is a
+// blast-radius-large enough lever to match the AI kill switch's gating,
+// not the everyday admin/support level.
+export async function updateAiCostRate(action: UsageAction, rateCentsPerCall: number, provider: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    if (!Number.isFinite(rateCentsPerCall) || rateCentsPerCall < 0) {
+      return { success: false, error: "Enter a valid rate." };
+    }
+
+    const { error } = await client.database.from("ai_cost_rates").upsert(
+      [
+        {
+          action,
+          rate_cents_per_call: rateCentsPerCall,
+          provider: provider.trim() || null,
+          updated_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "action" },
+    );
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to update this rate.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "update_ai_cost_rate",
+      targetTable: "ai_cost_rates",
+      after: { action, rateCentsPerCall, provider },
+    });
+
+    revalidatePath("/admin/expenses");
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };

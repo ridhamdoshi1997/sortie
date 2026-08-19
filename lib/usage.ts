@@ -147,7 +147,7 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   extension_score_preview: 40,
 };
 
-const ACTION_LABELS: Record<UsageAction, string> = {
+export const ACTION_LABELS: Record<UsageAction, string> = {
   search: "job searches",
   document_generation: "document generations",
   company_research: "company research runs",
