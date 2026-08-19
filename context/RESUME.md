@@ -2,9 +2,11 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 17 session end — admin console expansion fully complete, ready to deploy)
+Last updated: 2026-08-19 (Phase 17 session end — admin console expansion fully complete, PUSHED AND DEPLOYED to production)
 
-## Admin console expansion — COMPLETE, everything below is built and locally committed, not yet pushed/deployed
+**Deploy record**: all 12 commits pushed to `origin/feature/my-experiment` (`d7c443c..4bdb4f9`), deployed via `npx vercel --prod --scope sortie3`, aliased live at `https://jobpilot-experiment.vercel.app`. Post-deploy checklist all green against real production: `PUT /api/inngest` → `200` (re-synced with the 2 new functions), `GET /api/inngest` → `401`, `GET /admin`/`GET /career` → `307` (correct unauthenticated redirects), `GET /` → `200`, `GET /blog` → `200` (new public route confirmed live), `GET /api/unsubscribe` with no token → `400`.
+
+## Admin console expansion — COMPLETE, pushed and deployed to production
 
 **Direct user request, spanning Phase 16-17**: turn the internal admin panel into a real, Shopify-shaped business console — vertical icon nav, genuinely useful for running the business, not just an ops dashboard. Every item below was researched before building (Shopify's real Polaris/nav structure, `agy` CLI architecture research, live Resend API testing rather than guessing constraints).
 
@@ -32,8 +34,7 @@ Last updated: 2026-08-19 (Phase 17 session end — admin console expansion fully
 
 ### Not yet done — real, still-open items
 
-- **Deploy**: everything above is committed locally on `feature/my-experiment`, NOT pushed or deployed. Push + `npx vercel --prod --scope sortie3` + the standard post-deploy checklist (Inngest re-sync, route-redirect smoke test) is the next and last step.
-- **Production env vars still needed once deploying, beyond what's already in Vercel**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (Push — real keys are in local `.env`, gitignored, must be added to Vercel manually). `SUPPORT_FROM_EMAIL`/`SUPPORT_INBOUND_DOMAIN`/`MARKETING_FROM_EMAIL`/`MARKETING_PHYSICAL_ADDRESS`/`RESEND_WEBHOOK_SECRET` all stay unset until the user owns a domain — that's fine, every feature that needs them degrades safely (support/marketing email + inbound webhooks simply stay inert, confirmed live).
+- **Production env vars still needed, not yet set in Vercel**: `NEXT_PUBLIC_VAPID_PUBLIC_KEY`/`VAPID_PRIVATE_KEY` (Push — real keys exist in local `.env` only, gitignored, must be added to Vercel manually before Push works in production; local/dev-tested only so far). `SUPPORT_FROM_EMAIL`/`SUPPORT_INBOUND_DOMAIN`/`MARKETING_FROM_EMAIL`/`MARKETING_PHYSICAL_ADDRESS`/`RESEND_WEBHOOK_SECRET` all stay unset until the user owns a domain — that's fine, every feature needing them degrades safely (support/marketing email + inbound webhooks stay inert, confirmed live both locally and in this deploy's checklist).
 - **Standing note for later, not now**: once subscription/monetization (§J, deferred to the end of the roadmap) ships, the user wants subscription management added for users afterward — noted, not started.
 
 **Test account credentials**: `.env`'s `TEST_ACCOUNT_EMAIL`/`TEST_ACCOUNT_PASSWORD` (not `.env.local`) — sign in via the plain email/password form below the OAuth buttons on `/login`. Also saved to cross-session memory (`reference_test_account_credentials.md`).
