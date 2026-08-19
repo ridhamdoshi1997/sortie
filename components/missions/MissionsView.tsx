@@ -133,7 +133,7 @@ export function MissionsView({
   const filteredJobs = filter === "all" ? visibleJobs : visibleJobs.filter((job) => job.application_status === filter);
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex min-w-0 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="inline-flex items-center gap-1 rounded-full border border-border bg-surface p-1">
           <button

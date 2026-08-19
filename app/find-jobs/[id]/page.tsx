@@ -156,7 +156,7 @@ export default async function JobDetailsPage({ params }: Props) {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         {/* Staggered entrance (2026-07-28) — .fade-in-up already existed
             (used on a few page titles) but was never applied to job-details
             cards. Wrapping divs here, not editing each card component, so

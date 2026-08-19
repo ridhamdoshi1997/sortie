@@ -23,5 +23,15 @@ type Props = {
 };
 
 export function KanbanBoardLoader({ jobs, appliedAtByJobId }: Props) {
-  return <KanbanBoard jobs={jobs} appliedAtByJobId={appliedAtByJobId} />;
+  // min-w-0 is load-bearing, not decorative — MissionsView's root is a flex
+  // column, and a flex-column child defaults to min-width: auto (a classic
+  // flexbox gotcha), which lets this board's own internal overflow-x-auto
+  // row (KanbanBoard.tsx) stretch its parent to fit instead of scrolling
+  // within it. Confirmed live at 375px: without this, the whole page
+  // scrolled horizontally by over 1000px instead of just the board.
+  return (
+    <div className="min-w-0">
+      <KanbanBoard jobs={jobs} appliedAtByJobId={appliedAtByJobId} />
+    </div>
+  );
 }
