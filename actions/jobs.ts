@@ -17,6 +17,7 @@ import { synthesizeInterrogationPlan, type InterrogationPlanResult } from "@/lib
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import { listInterviewPanel } from "@/actions/interviewPanel";
 import { logApplicationEvent, type ApplicationEventType } from "@/actions/careerEvents";
+import { inngest } from "@/lib/inngest/client";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { OfferDetails } from "@/lib/equityDecoder";
 import type { TaxEstimateInputs } from "@/lib/taxCalculator";
@@ -326,6 +327,18 @@ export async function setApplicationStatus(
       const eventResult = await logApplicationEvent(jobId, eventType, note);
       if (!eventResult.success) {
         console.error("[actions/jobs] setApplicationStatus: event log failed", eventResult.error);
+      }
+    }
+
+    // Success Story pipeline (Phase 18 item 2) — a real 'offered' milestone
+    // is the trigger. Fire-and-forget, same pattern as every other Inngest
+    // send in this app (addAccomplishment, etc.) — a send failure must
+    // never fail an otherwise-successful status change.
+    if (to === "offered" && from !== "offered") {
+      try {
+        await inngest.send({ name: "success-story/consider", data: { jobId, userId: user.id } });
+      } catch (sendError) {
+        console.error("[actions/jobs] setApplicationStatus: success-story send failed", sendError);
       }
     }
 

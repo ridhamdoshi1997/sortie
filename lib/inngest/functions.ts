@@ -416,3 +416,43 @@ export const sendPushBroadcastAsync = inngest.createFunction(
         return { message: `Push broadcast: ${sentCount}/${subs.length} sent.` };
     },
 );
+
+// Programmatic SEO/GEO content engine (Phase 18 item 1, context/RESUME.md).
+// Two triggers on the same function: a weekly cron for the automatic
+// pipeline, and a manual event fired from a "Generate now" admin button
+// (actions/adminContent.ts) for on-demand extra content or live testing —
+// both run the exact same lib/admin/geoContent.ts logic, no duplicated
+// pick-topic/draft/insert flow. Never fails loudly when there's nothing new
+// to cover — that's a normal steady state, not an error.
+// "Success Story" content repurposing pipeline (Phase 18 item 2,
+// context/RESUME.md). Fired from actions/jobs.ts's setApplicationStatus
+// right after a real 'offered' transition — see lib/admin/socialDrafts.ts
+// for the anonymization rules the draft itself is written under.
+export const generateSuccessStoryAsync = inngest.createFunction(
+    { id: "generate-success-story", name: "Generate Success Story Draft", triggers: [{ event: "success-story/consider" }] },
+    async ({ event, step }) => {
+        const { jobId, userId } = event.data as { jobId: string; userId: string };
+        const { generateAndQueueSuccessStory } = await import("@/lib/admin/socialDrafts");
+        const result = await step.run("generate-and-queue", () => generateAndQueueSuccessStory(jobId, userId));
+
+        return result
+            ? { message: `Queued a success story draft ${result.draftId} for job ${jobId}.` }
+            : { message: `No draft queued for job ${jobId} (job not found or already has one).` };
+    },
+);
+
+export const generateGeoContentAsync = inngest.createFunction(
+    {
+        id: "generate-geo-content",
+        name: "Generate Programmatic SEO/GEO Page",
+        triggers: [{ event: "geo/generate-content" }, { cron: "0 8 * * 1" }],
+    },
+    async ({ step }) => {
+        const { generateAndQueueGeoPage } = await import("@/lib/admin/geoContent");
+        const result = await step.run("generate-and-queue", () => generateAndQueueGeoPage());
+
+        return result
+            ? { message: `Queued a new GEO draft page: ${result.slug}` }
+            : { message: "No fresh, well-sampled topic to cover right now — nothing queued." };
+    },
+);

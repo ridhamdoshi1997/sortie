@@ -2,17 +2,32 @@ import { redirect } from "next/navigation";
 
 import { getBroadcastsList } from "@/actions/adminMarketing";
 import { getPushSubscriberCount } from "@/actions/adminPush";
+import { getSocialDraftsList } from "@/actions/adminSocialDrafts";
+import { getReferralOverviewAction } from "@/actions/adminReferrals";
+import { getOutreachSignalSettingsAction } from "@/actions/adminOutreachSettings";
 import { getAdminRoster } from "@/actions/admin";
 import { MarketingList } from "@/components/admin/MarketingList";
 import { PushBroadcastForm } from "@/components/admin/PushBroadcastForm";
+import { SocialDraftsQueue } from "@/components/admin/SocialDraftsQueue";
+import { ReferralsOverview } from "@/components/admin/ReferralsOverview";
+import { OutreachSignalSettingsCard } from "@/components/admin/OutreachSignalSettingsCard";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminMarketingPage() {
-  const [result, rosterResult, pushSubscriberCount] = await Promise.all([getBroadcastsList(), getAdminRoster(), getPushSubscriberCount()]);
+  const [result, rosterResult, pushSubscriberCount, socialDraftsResult, referralOverviewResult, outreachSettingsResult] = await Promise.all([
+    getBroadcastsList(),
+    getAdminRoster(),
+    getPushSubscriberCount(),
+    getSocialDraftsList(),
+    getReferralOverviewAction(),
+    getOutreachSignalSettingsAction(),
+  ]);
   if (!result.success || !rosterResult.success) {
     redirect("/dashboard");
   }
+
+  const canWrite = rosterResult.viewerRole === "owner" || rosterResult.viewerRole === "admin";
 
   return (
     <div className="flex flex-col gap-4">
@@ -22,6 +37,9 @@ export default async function AdminMarketingPage() {
       </div>
       <MarketingList broadcasts={result.broadcasts} segmentCounts={result.segmentCounts} viewerRole={rosterResult.viewerRole} />
       <PushBroadcastForm subscriberCount={pushSubscriberCount} viewerRole={rosterResult.viewerRole} />
+      <SocialDraftsQueue drafts={socialDraftsResult.success ? socialDraftsResult.drafts : []} canWrite={canWrite} />
+      {referralOverviewResult.success && <ReferralsOverview overview={referralOverviewResult.overview} />}
+      {outreachSettingsResult.success && <OutreachSignalSettingsCard initial={outreachSettingsResult.settings} canWrite={canWrite} />}
     </div>
   );
 }

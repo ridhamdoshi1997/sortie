@@ -6,6 +6,8 @@ import { GlassCursorGlow } from "@/components/ui/GlassCursorGlow";
 import { CommandPaletteLoader } from "@/components/ui/CommandPaletteLoader";
 import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
 import { NavigatorLauncherLoader } from "@/components/agent/NavigatorLauncherLoader";
+import { ReferralCaptureLoader } from "@/components/referrals/ReferralCaptureLoader";
+import { ReferralClaimerLoader } from "@/components/referrals/ReferralClaimerLoader";
 
 export const metadata: Metadata = {
   title: "Sortie",
@@ -40,6 +42,8 @@ export default function RootLayout({
           <SettingsModalLoader />
           <NavigatorLauncherLoader />
           <CommandPaletteLoader />
+          <ReferralCaptureLoader />
+          <ReferralClaimerLoader />
         </ThemeProvider>
       </body>
     </html>

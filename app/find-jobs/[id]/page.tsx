@@ -35,11 +35,13 @@ import { Responsibilities } from "@/components/job-details/Responsibilities";
 import { ResumeFitSection } from "@/components/job-details/ResumeFitSection";
 import { Navbar } from "@/components/layout/Navbar";
 import { NetworkSignals } from "@/components/shared/NetworkSignals";
+import { OutreachSignal } from "@/components/job-details/OutreachSignal";
 import { Tabs } from "@/components/ui/Tabs";
 import { isAdminUser, resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
+import { getCompanyHiringSignal } from "@/lib/hiringSignal";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import { computeApplyVerdict } from "@/lib/applyVerdict";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
@@ -119,6 +121,8 @@ export default async function JobDetailsPage({ params }: Props) {
     profile?.work_experience ?? null,
     profile?.education ?? null,
   );
+
+  const hiringSignal = await getCompanyHiringSignal(job.company);
 
   const { data: allJobsForSignal } = await insforge.database
     .from("jobs")
@@ -272,6 +276,8 @@ export default async function JobDetailsPage({ params }: Props) {
                     />
 
                     <StrategicMoatBriefing jobId={job.id} briefing={job.strategic_moat} />
+
+                    <OutreachSignal company={company} signal={hiringSignal} />
 
                     {job.company_research && (
                       <InsiderConnections

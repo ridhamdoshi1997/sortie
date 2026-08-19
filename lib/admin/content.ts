@@ -2,6 +2,7 @@ import { createAdminDbClient } from "@/lib/admin/client";
 import { complete, getModel } from "@/lib/models";
 
 export type PageStatus = "draft" | "published";
+export type ContentSource = "manual" | "ai_geo";
 
 export type PageRow = {
   id: string;
@@ -11,12 +12,13 @@ export type PageRow = {
   metaTitle: string | null;
   metaDescription: string | null;
   status: PageStatus;
+  contentSource: ContentSource;
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type PageListRow = Pick<PageRow, "id" | "slug" | "title" | "status" | "publishedAt" | "updatedAt">;
+export type PageListRow = Pick<PageRow, "id" | "slug" | "title" | "status" | "contentSource" | "publishedAt" | "updatedAt">;
 
 type RawPageRow = {
   id: string;
@@ -26,6 +28,7 @@ type RawPageRow = {
   meta_title: string | null;
   meta_description: string | null;
   status: PageStatus;
+  content_source: ContentSource;
   published_at: string | null;
   created_at: string;
   updated_at: string;
@@ -40,6 +43,7 @@ function mapRow(p: RawPageRow): PageRow {
     metaTitle: p.meta_title,
     metaDescription: p.meta_description,
     status: p.status,
+    contentSource: p.content_source,
     publishedAt: p.published_at,
     createdAt: p.created_at,
     updatedAt: p.updated_at,
@@ -47,14 +51,14 @@ function mapRow(p: RawPageRow): PageRow {
 }
 
 function mapListRow(p: Omit<RawPageRow, "body_markdown" | "meta_title" | "meta_description" | "created_at">): PageListRow {
-  return { id: p.id, slug: p.slug, title: p.title, status: p.status, publishedAt: p.published_at, updatedAt: p.updated_at };
+  return { id: p.id, slug: p.slug, title: p.title, status: p.status, contentSource: p.content_source, publishedAt: p.published_at, updatedAt: p.updated_at };
 }
 
 export async function listPages(): Promise<PageListRow[]> {
   const admin = createAdminDbClient();
   const { data } = await admin.database
     .from("pages")
-    .select("id,slug,title,status,published_at,updated_at")
+    .select("id,slug,title,status,content_source,published_at,updated_at")
     .order("updated_at", { ascending: false });
 
   return (
@@ -94,7 +98,7 @@ export async function listPublishedPages(): Promise<PageListRow[]> {
   const admin = createAdminDbClient();
   const { data } = await admin.database
     .from("pages")
-    .select("id,slug,title,status,published_at,updated_at")
+    .select("id,slug,title,status,content_source,published_at,updated_at")
     .eq("status", "published")
     .order("published_at", { ascending: false });
 

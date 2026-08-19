@@ -31,7 +31,8 @@ export type UsageAction =
   | "outcome_narrative"
   | "brag_doc"
   | "market_readiness"
-  | "extension_score_preview";
+  | "extension_score_preview"
+  | "referral_message";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -145,6 +146,11 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // app/api/extension/score-preview/route.ts. This only bounds the
   // remaining genuine-miss case (browsing new postings never seen before).
   extension_score_preview: 40,
+  // Referral copy generator (Phase 18 item 4) — one short structured call
+  // grounded in the user's own profile, same free-tier-Gemini/no-external-cost
+  // shape as bullet_rewrite. Capped tighter since a user only genuinely
+  // needs a handful of drafts across a few channels, not dozens.
+  referral_message: 10,
 };
 
 export const ACTION_LABELS: Record<UsageAction, string> = {
@@ -172,6 +178,7 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   brag_doc: "brag doc generations",
   market_readiness: "market readiness checks",
   extension_score_preview: "extension match-score previews",
+  referral_message: "referral message drafts",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

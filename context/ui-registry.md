@@ -18,6 +18,36 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Success story drafts queue (admin, /admin/marketing)
+
+Files: `components/admin/SocialDraftsQueue.tsx`
+Route: `/admin/marketing`, below the Push broadcast form
+Last updated: 2026-08-19. Card list, same `rounded-xl border border-border bg-surface-secondary p-4` per-item shape as other admin queue rows. Status pill uses agent-teal (`bg-agent-light text-agent-dark`) for "Approved" since this is genuinely AI-generated content (per the standing Rejection Radar color-invariant lesson), neutral gray for pending, `error`-toned for rejected. Approve/Reject buttons only when `status === "pending_review"`; Mark posted/Discard only when `"approved"`.
+
+### Outreach signal enrichment settings (admin, /admin/marketing)
+
+Files: `components/admin/OutreachSignalSettingsCard.tsx`
+Route: `/admin/marketing`, bottom card
+Last updated: 2026-08-19. Same wired-but-inert status-pill pattern as any other "needs a real key" admin card in this app — `bg-agent-light text-agent-dark` when `ENRICHMENT_API_KEY` is actually set (read live from env, never a DB toggle), `bg-surface-secondary text-text-secondary` otherwise. Provider picker is a two-pill toggle group (`bg-accent text-accent-foreground` selected, `border border-border text-text-secondary` unselected) — same convention as `ReferralsTab`'s channel picker.
+
+### Referrals overview (admin, /admin/marketing)
+
+Files: `components/admin/ReferralsOverview.tsx`
+Route: `/admin/marketing`
+Last updated: 2026-08-19. Plain admin table card, exact same shape as `ContentList.tsx`'s pages table (`bg-surface-secondary` header row, `border-t border-border` rows). Total-count pill uses `bg-agent-light text-agent-dark`.
+
+### Referrals tab (Settings)
+
+Files: `components/settings/ReferralsTab.tsx`, mounted via `SettingsPanel.tsx`'s `referrals` tab key
+Route: `/settings`
+Last updated: 2026-08-19. Link-and-copy row matches `ExtensionTab`'s API-key-copy affordance exactly (`code` in a bordered pill + a small `bg-accent` Copy button with a Check-icon success flip). Two-stat grid below it (`grid grid-cols-2 gap-3`) — one plain `bg-surface-secondary` tile, one `border-agent/30 bg-agent-light/50` tile for the AI-boost stat (agent-adjacent since it affects AI usage limits). Channel picker + "Generate with AI" button reuse the `bg-agent-light text-agent-dark` treatment for the generate CTA (matches every other AI-draft button in this app, e.g. Content's "AI first draft").
+
+### Outreach signal card (job detail, Company tab)
+
+Files: `components/job-details/OutreachSignal.tsx`
+Route: job-detail page, Company tab, between `StrategicMoatBriefing` and `InsiderConnections`
+Last updated: 2026-08-19. `border-agent/30 bg-agent-light/40` card — agent-toned since it's a real, AI-adjacent hiring signal, not a plain data card. Renders `null` entirely when there's no real signal (`signal.trending` false) — no empty state shown, matching `NetworkSignals`' own "render nothing if there's nothing real to show" convention.
+
 ### Saved Jobs Active/Closed tabs
 
 Files: `components/shared/SavedJobsTabs.tsx`

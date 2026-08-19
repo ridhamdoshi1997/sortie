@@ -14,6 +14,7 @@ import {
   type PageRow,
 } from "@/lib/admin/content";
 import { toUserMessage } from "@/lib/errors";
+import { inngest } from "@/lib/inngest/client";
 
 // Content/CMS (admin console expansion item 2, context/RESUME.md). Same
 // requireAdmin()-inside-every-action pattern as actions/admin.ts — a
@@ -168,6 +169,23 @@ export async function deletePage(id: string): Promise<ActionResult> {
 
     revalidatePath("/admin/content");
     revalidatePath("/blog");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Manual trigger for the SEO/GEO content engine (Phase 18 item 1) — same
+// Inngest function the weekly cron fires, so a click here and a Monday
+// tick run identical logic. Fire-and-forget: the queued page shows up in
+// the list on next load, same UX as any other background-generated content
+// in this app (résumé suggestions, etc.).
+export async function generateGeoPageNow(): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+
+    await inngest.send({ name: "geo/generate-content", data: {} });
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
