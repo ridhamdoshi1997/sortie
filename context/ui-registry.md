@@ -18,7 +18,7 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
-### Ask Orion job chat (job detail)
+### Ask Navigator job chat (job detail)
 
 Files: `components/job-details/JobChat.tsx`, `lib/jobChat.ts`, `actions/jobChat.ts`
 Route: job-detail page, rendered only when `job.evaluation` exists, right after `EvaluationBreakdown`

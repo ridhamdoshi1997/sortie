@@ -6,7 +6,7 @@ import { MessageCircle, Send } from "lucide-react";
 import { askJobChatAction } from "@/actions/jobChat";
 import type { ChatMessage } from "@/lib/jobChat";
 
-// "Ask Orion" per-job AI chat (build-plan.md §B) — same visual/round-trip
+// "Ask Navigator" per-job AI chat (build-plan.md §B) — same visual/round-trip
 // shape as components/documents/DocumentChatEditor.tsx (chat bubbles +
 // input form), reused here for job-fit Q&A instead of document revision.
 // Evidence-cited: every reply is grounded in this job's own already-

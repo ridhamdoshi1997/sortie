@@ -138,7 +138,7 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // external lookup. Not persisted, so re-checking later costs another
   // call, same reasoning as brag_doc's own cap.
   market_readiness: 5,
-  // "Ask Orion" per-job chat (build-plan.md §B) — same shape/cost as
+  // "Ask Navigator" per-job chat (build-plan.md §B) — same shape/cost as
   // agent_message (Navigator): free-tier Gemini, no external lookup, and a
   // real conversation plausibly needs several turns, so it gets a generous
   // cap rather than a tight one-shot-feature cap.
@@ -177,7 +177,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   outcome_narrative: "outcome insight summaries",
   brag_doc: "brag doc generations",
   market_readiness: "market readiness checks",
-  job_chat: "Ask Orion messages",
+  job_chat: "Ask Navigator messages",
   extension_score_preview: "extension match-score previews",
 };
 

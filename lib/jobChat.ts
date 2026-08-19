@@ -3,7 +3,7 @@ import { z } from "zod";
 import { complete, getModel, type ModelProvider } from "@/lib/models";
 import type { JobEvaluationDimension } from "@/types";
 
-// "Ask Orion" per-job AI chat (build-plan.md §B) — reuses the same
+// "Ask Navigator" per-job AI chat (build-plan.md §B) — reuses the same
 // chat-round-trip shape as agent/documents.ts's reviseTailoredResume/
 // reviseCoverLetter (system prompt + full message history in, one
 // structured reply out), pointed at job-fit Q&A instead of document
