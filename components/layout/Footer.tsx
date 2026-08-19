@@ -4,6 +4,8 @@ import { Logo } from "@/components/layout/Logo";
 
 const footerLinks = [
   { href: "/dashboard", label: "Dashboard" },
+  { href: "/ats-checker", label: "Free ATS Checker" },
+  { href: "/blog", label: "Blog" },
   { href: "/privacy", label: "Privacy Policy" },
   { href: "/terms", label: "Terms & Condition" },
 ];

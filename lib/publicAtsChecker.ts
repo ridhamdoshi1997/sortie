@@ -1,0 +1,95 @@
+import { z } from "zod";
+
+import { complete, getModel } from "@/lib/models";
+
+// Free ATS score checker (build-plan.md §I, no-login lead magnet). Distinct
+// from the authenticated lib/atsChecker.ts — that one computes deterministic
+// structural risk from this app's OWN ResumeSection/ResumeStyle data model;
+// this one has no structured data at all (just pasted resume text from an
+// anonymous visitor), so every read here is an honest AI judgment call, not
+// a deterministic check — the copy in the system prompt and the UI must
+// stay honest about that distinction, never claim the precision the
+// authenticated tool has.
+export type PublicAtsFlag = {
+  severity: "info" | "warning";
+  note: string; // one honest, specific sentence
+};
+
+export type PublicAtsResult = {
+  overallScore: number; // 0-100
+  formattingFlags: PublicAtsFlag[];
+  keywordCoverage: { matched: string[]; missing: string[] } | null; // null when no job description was given
+  suggestions: string[]; // 2-4 concrete, actionable
+};
+
+const flagSchema = z.object({ severity: z.enum(["info", "warning"]), note: z.string().min(1) });
+
+const resultSchema = z.object({
+  result: z.object({
+    overallScore: z.number().min(0).max(100),
+    formattingFlags: z.array(flagSchema).max(6),
+    keywordCoverage: z
+      .object({ matched: z.array(z.string()), missing: z.array(z.string()) })
+      .nullable(),
+    suggestions: z.array(z.string().min(1)).min(1).max(4),
+  }),
+});
+
+function fallbackResult(): PublicAtsResult {
+  return {
+    overallScore: 0,
+    formattingFlags: [{ severity: "warning", note: "Automated analysis failed — please try again." }],
+    keywordCoverage: null,
+    suggestions: ["Try again in a moment."],
+  };
+}
+
+const SYSTEM_PROMPT = `You are giving an honest, free ATS-compatibility read on a resume pasted as plain text by an anonymous visitor.
+
+Hard constraints:
+- You only have plain text — you cannot see real formatting, columns, fonts, or graphics. Never claim to detect a formatting risk you cannot actually see from text alone (e.g. never claim "this uses a multi-column layout" unless the text's own line structure genuinely suggests it, like columns of dates/text interleaved oddly).
+- Real, honestly-checkable formatting/parseability signals from text alone: non-standard section headers (e.g. "My Journey" instead of "Experience"), missing standard sections (no clear Experience or Education section), walls of text with no bullet structure, contact info that looks malformed or missing, inconsistent date formats.
+- If a job description is provided, do real keyword coverage: list specific skills/technologies/qualifications from the job description that genuinely appear in the resume (matched) and ones that don't (missing). If no job description is given, keywordCoverage must be null — do not invent generic keywords.
+- overallScore should weight formatting risk and (if present) keyword coverage. Score honestly — most real resumes score 60-85, reserve 90+ for genuinely strong, clean documents and under 50 for resumes with real structural problems.
+- suggestions must be concrete and specific to what you actually observed in this resume, never generic filler advice.
+- Never fabricate statistics about ATS systems, hiring rates, or rejection percentages.
+
+Return ONLY valid JSON:
+{
+  "result": {
+    "overallScore": number,
+    "formattingFlags": [{ "severity": "info"|"warning", "note": "string" }],
+    "keywordCoverage": {"matched": ["string"], "missing": ["string"]} | null,
+    "suggestions": ["string"]
+  }
+}`;
+
+export async function checkPublicAtsScore(resumeText: string, jobDescriptionText: string | null): Promise<PublicAtsResult> {
+  const userPrompt = `RESUME TEXT:\n${resumeText.slice(0, 8000)}\n\n${
+    jobDescriptionText ? `JOB DESCRIPTION TEXT:\n${jobDescriptionText.slice(0, 4000)}` : "No job description was provided — keywordCoverage must be null."
+  }`;
+
+  const raw = await complete(getModel("gemini", "smart"), {
+    systemPrompt: SYSTEM_PROMPT,
+    userPrompt,
+    temperature: 0.3,
+    maxTokens: 1200,
+    jsonResponse: true,
+  });
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    console.error("[lib/publicAtsChecker] JSON parse failed", error);
+    return fallbackResult();
+  }
+
+  const validated = resultSchema.safeParse(parsed);
+  if (!validated.success) {
+    console.error("[lib/publicAtsChecker] schema validation failed", validated.error);
+    return fallbackResult();
+  }
+
+  return validated.data.result;
+}
