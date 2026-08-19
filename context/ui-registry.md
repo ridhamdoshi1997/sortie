@@ -18,12 +18,6 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
-### Ask Navigator job chat (job detail)
-
-Files: `components/job-details/JobChat.tsx`, `lib/jobChat.ts`, `actions/jobChat.ts`
-Route: job-detail page, rendered only when `job.evaluation` exists, right after `EvaluationBreakdown`
-Last updated: 2026-08-19. Same chat-shell recipe as `DocumentChatEditor.tsx` — message bubbles, sticky input row, `text-agent-dark`/`bg-agent-light` styling on assistant turns since responses are genuinely AI-generated and must stay evidence-cited to the job's own real data, never fabricated. New `job_chat` usage action, 30/day.
-
 ### Saved Jobs Active/Closed tabs
 
 Files: `components/shared/SavedJobsTabs.tsx`

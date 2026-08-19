@@ -29,7 +29,6 @@ import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
 import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
 import { WhyILeftReflection } from "@/components/job-details/WhyILeftReflection";
-import { JobChat } from "@/components/job-details/JobChat";
 import { MatchScore } from "@/components/job-details/MatchScore";
 import { Qualification } from "@/components/job-details/Qualification";
 import { Responsibilities } from "@/components/job-details/Responsibilities";
@@ -227,8 +226,6 @@ export default async function JobDetailsPage({ params }: Props) {
                       recommendationScore={job.recommendation_score}
                       overallGrade={job.overall_grade}
                     />
-
-                    {job.evaluation && job.evaluation.length > 0 && <JobChat jobId={job.id} />}
 
                     <JobDescription
                       aboutRole={job.about_role || job.description}
