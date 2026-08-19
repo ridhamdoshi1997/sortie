@@ -1,17 +1,30 @@
 import { redirect } from "next/navigation";
 
-import { requireAdmin } from "@/lib/admin/auth";
+import { requireAdmin, AdminAuthError } from "@/lib/admin/auth";
 
-// The gate. Deliberately silent — redirects to "/" rather than a
-// "you're not authorized" page, so /admin's existence isn't advertised to
-// a logged-in-but-not-admin user. Server Actions under /admin still call
-// requireAdmin() themselves (actions/admin.ts) — a layout only blocks the
-// rendered UI, it doesn't stop a Server Action from being invoked directly.
+// The gate. Server Actions under /admin still call requireAdmin() themselves
+// (actions/admin.ts) — a layout only blocks the rendered UI, it doesn't stop
+// a Server Action from being invoked directly.
+//
+// Two distinct failure modes, two distinct redirects (2026-08-19, direct
+// user request) — requireAdmin() throws a different message for each so
+// this doesn't need its own session check:
+// - Not signed in at all -> /login, so the person can actually get in.
+// - Signed in but not an admin -> /dashboard, not /login (redirecting an
+//   already-authenticated person to a login screen is confusing — they'd
+//   just bounce right back in). This also doesn't silently advertise
+//   /admin's existence any more than /dashboard already does for a
+//   logged-in user, so the original "don't reveal this route" reasoning
+//   still holds without needing to send them to a sign-in screen they
+//   don't need.
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   try {
     await requireAdmin();
-  } catch {
-    redirect("/");
+  } catch (error) {
+    if (error instanceof AdminAuthError && error.message === "Not signed in.") {
+      redirect("/login");
+    }
+    redirect("/dashboard");
   }
 
   return (
