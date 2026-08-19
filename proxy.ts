@@ -63,6 +63,37 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   return response;
 }
 
+// A real bug (found 2026-08-19): this matcher only covered 3 of the 14
+// routes that actually call requireUser()/requireAdmin() (lib/auth.ts,
+// lib/admin/auth.ts) — every route NOT listed here never ran updateSession(),
+// so an expired 15-minute access token was never silently refreshed from the
+// (7-day) refresh token before the page's own Server Component checked
+// auth. The symptom: a signed-in user (refresh token still valid) got
+// silently bounced to /login (or, for /admin, redirected to / — the admin
+// layout's own catch behavior) on any of the uncovered routes once their
+// access token expired mid-session, with no visible error — looked
+// indistinguishable from "not actually an admin"/"not actually logged in."
+// Reproduced directly: curl'd /admin with a session cookie immediately
+// after sign-in (200 OK) vs the same cookie a few minutes later, past the
+// access token's 15-minute exp claim (307 to /). Every authenticated route
+// needs to be listed — there is no wildcard "everything except public
+// routes" option here since the matcher is an allowlist by design.
 export const config = {
-  matcher: ["/dashboard/:path*", "/profile/:path*", "/find-jobs/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/profile/:path*",
+    "/find-jobs/:path*",
+    "/missions/:path*",
+    "/saved-jobs/:path*",
+    "/career/:path*",
+    "/interview/:path*",
+    "/resume/:path*",
+    "/cover-letter/:path*",
+    "/settings/:path*",
+    "/notifications/:path*",
+    "/jobs/:path*",
+    "/waitlist/:path*",
+    "/admin/:path*",
+    "/api/settings/:path*",
+  ],
 };
