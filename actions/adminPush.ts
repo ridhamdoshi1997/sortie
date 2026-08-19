@@ -4,6 +4,7 @@ import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
 import { inngest } from "@/lib/inngest/client";
+import { generatePushDraft, type PushDraft } from "@/lib/push";
 import { toUserMessage } from "@/lib/errors";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -39,5 +40,19 @@ export async function sendPushBroadcast(title: string, body: string, url: string
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+type DraftResult = { success: true; draft: PushDraft } | { success: false; error: string };
+
+export async function generatePushBroadcastDraft(brief: string): Promise<DraftResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+
+    const draft = await generatePushDraft(brief);
+    return { success: true, draft };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Failed to generate a draft.") };
   }
 }

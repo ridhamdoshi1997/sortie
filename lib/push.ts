@@ -1,4 +1,7 @@
 import webpush from "web-push";
+import { z } from "zod";
+
+import { complete, getModel } from "@/lib/models";
 
 // Push notifications (admin console expansion item 6, context/RESUME.md) —
 // the second Marketing broadcast channel, paired with email per the
@@ -46,4 +49,48 @@ export async function sendPushNotification(
     const expired = status === 404 || status === 410;
     return { success: false, expired, error: error instanceof Error ? error.message : "Unknown error" };
   }
+}
+
+const PUSH_DRAFT_SYSTEM_PROMPT = `You are drafting a first-pass browser push notification for Sortie, a job-search copilot product. Push notifications are read at a glance — the title must be under 50 characters and the body under 120 characters, both plain text, no emoji, no markdown, no exclamation-point hype. Honest, direct, no invented features or stats. This is a rough first draft an admin will review and edit before sending, not final copy.
+
+Return ONLY valid JSON matching this exact shape:
+{ "title": "string, under 50 characters", "body": "string, under 120 characters" }`;
+
+const pushDraftSchema = z.object({
+  title: z.string().min(1).max(80),
+  body: z.string().min(1).max(200),
+});
+
+export type PushDraft = { title: string; body: string };
+
+// AI-assisted first-draft for push notifications (direct user request) —
+// same family as the Content/Marketing/Support draft buttons, structured
+// output instead of free text since title/body have real length limits a
+// push notification actually enforces. Internal admin tooling, not
+// usage-metered.
+export async function generatePushDraft(brief: string): Promise<PushDraft> {
+  const userPrompt = `What this notification should announce or say: ${brief.trim() || "(no brief given — draft something generic and useful)"}`;
+
+  const raw = await complete(getModel("gemini", "smart"), {
+    systemPrompt: PUSH_DRAFT_SYSTEM_PROMPT,
+    userPrompt,
+    temperature: 0.5,
+    maxTokens: 200,
+    jsonResponse: true,
+  });
+
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (error) {
+    console.error("[lib/push] generatePushDraft JSON parse failed", error);
+    throw new Error("Failed to generate a valid push draft.");
+  }
+
+  const parsed = pushDraftSchema.safeParse(json);
+  if (!parsed.success) {
+    console.error("[lib/push] generatePushDraft schema validation failed", parsed.error);
+    throw new Error("Failed to generate a valid push draft.");
+  }
+  return parsed.data;
 }

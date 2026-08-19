@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { BellRing } from "lucide-react";
+import { BellRing, Sparkles } from "lucide-react";
 
-import { sendPushBroadcast } from "@/actions/adminPush";
+import { generatePushBroadcastDraft, sendPushBroadcast } from "@/actions/adminPush";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { AdminRole } from "@/lib/admin/auth";
 
@@ -15,10 +15,12 @@ export function PushBroadcastForm({ subscriberCount, viewerRole }: { subscriberC
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [url, setUrl] = useState("");
+  const [brief, setBrief] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmSend, setConfirmSend] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isGenerating, startGenerating] = useTransition();
 
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
 
@@ -39,6 +41,19 @@ export function PushBroadcastForm({ subscriberCount, viewerRole }: { subscriberC
     });
   }
 
+  function handleGenerateDraft(): void {
+    setError(null);
+    startGenerating(async () => {
+      const result = await generatePushBroadcastDraft(brief);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setTitle(result.draft.title);
+      setBody(result.draft.body);
+    });
+  }
+
   return (
     <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="mb-1 flex items-center gap-2">
@@ -52,10 +67,28 @@ export function PushBroadcastForm({ subscriberCount, viewerRole }: { subscriberC
 
       {canWrite ? (
         <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              value={brief}
+              onChange={(e) => setBrief(e.target.value)}
+              placeholder="What should this notification announce? (optional)"
+              className="h-9 min-w-0 flex-1 rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent"
+            />
+            <button
+              type="button"
+              onClick={handleGenerateDraft}
+              disabled={isGenerating}
+              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border border-border px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-60"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              {isGenerating ? "Generating..." : "AI draft"}
+            </button>
+          </div>
           <input
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder="Title"
+            maxLength={80}
             className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent"
           />
           <textarea
@@ -63,6 +96,7 @@ export function PushBroadcastForm({ subscriberCount, viewerRole }: { subscriberC
             onChange={(e) => setBody(e.target.value)}
             placeholder="Message"
             rows={2}
+            maxLength={200}
             className="w-full rounded-md border border-border bg-surface px-3 py-2 text-sm text-text-primary outline-none focus-visible:border-accent"
           />
           <input
