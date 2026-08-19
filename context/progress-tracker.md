@@ -17,6 +17,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-19 (Phase 18, continued): sitemap.xml + robots.txt — the other half of build-plan.md §I.**
+  - `app/sitemap.ts` (static public routes + every real published blog post via `listPublishedPages()`) and `app/robots.ts` (disallows every authenticated/admin/api path) — both real Next.js App Router file-based generators, served at `/sitemap.xml`/`/robots.txt` automatically.
+  - **A real bug caught immediately via live verification**: the sitemap/robots URLs resolved to a random per-deployment preview hostname (`jobpilot-experiment-82kexer51-sortie3.vercel.app`) instead of the stable production domain — `lib/siteUrl.ts`'s fallback chain (shared with `lib/email/resend.ts`'s existing `buildUnsubscribeUrl`) falls back to Vercel's own `VERCEL_URL`, which is per-deployment, not stable, exactly as that file's own pre-existing comment warned. Fixed for real by setting `NEXT_PUBLIC_APP_URL=https://jobpilot-experiment.vercel.app` in Vercel's production env vars and redeploying — the first time this project has actually set that variable, closing a gap flagged (but not fixed) since the marketing-email feature shipped.
+  - **Live-verified on real production**: `robots.txt`/`sitemap.xml` both fetched directly and confirmed correct — the sitemap correctly excluded the GEO test page (still in `draft` status) and listed only genuinely public routes.
+  - Committed (`cfdb602`), pushed, deployed, redeployed after the env var fix, both checked live.
+
+---
+
 - **2026-08-19 (Phase 18, continued): Free ATS score checker — public, no-login lead magnet (build-plan.md §I).**
   - The first genuinely public, unauthenticated, AI-calling surface in this app. `/ats-checker` — paste resume text (+ optional job description) → one Gemini call → an honest AI-judged formatting-risk read + keyword coverage (only when a JD is given, never invented) + concrete suggestions. Explicitly distinct in the UI copy and code comments from the authenticated `lib/atsChecker.ts` (which computes deterministic structural risk from this app's own `ResumeSection`/`ResumeStyle` data) — this one only has pasted text, so every read is an honest AI judgment, never claimed as precise structural parsing.
   - **New abuse/cost guard, since this route has no login wall**: `ip_usage_daily` table + `lib/ipRateLimit.ts`, keyed by the real client IP (`x-forwarded-for`/`x-real-ip`) rather than `user_id` — the existing `rate_limit` table can't cover anonymous traffic. Capped at 3 checks/IP/day.

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import type { ComponentType } from "react";
-import { AlertTriangle, Eye, FileText, Mail, SquarePen, Sparkles, X } from "lucide-react";
+import { AlertTriangle, Download, Eye, FileText, Mail, SquarePen, Sparkles, X } from "lucide-react";
 
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { getListingSignal } from "@/lib/jobStatus";
@@ -132,6 +132,15 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
               <Eye className="h-4 w-4" />
               View
             </a>
+            {kind === "resume" && (
+              <a
+                href={`/api/documents/download-docx?jobId=${jobId}`}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface"
+              >
+                <Download className="h-4 w-4" />
+                DOCX
+              </a>
+            )}
           </>
         )}
       </div>
