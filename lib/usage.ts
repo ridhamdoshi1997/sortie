@@ -30,6 +30,7 @@ export type UsageAction =
   | "agent_message"
   | "outcome_narrative"
   | "brag_doc"
+  | "market_readiness"
   | "extension_score_preview";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
@@ -130,6 +131,12 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // outcome_narrative/leverage_synthesis. Not persisted, so re-opening the
   // same period later costs another call — capped the same way as those.
   brag_doc: 5,
+  // "Market Readiness" (build-plan.md §E, the free pivot of Passive
+  // market-watch) — same shape/cost as brag_doc: one structured call over
+  // the user's own already-stored accomplishments + target titles, no
+  // external lookup. Not persisted, so re-checking later costs another
+  // call, same reasoning as brag_doc's own cap.
+  market_readiness: 5,
   // The extension's inline match-score badge — fires while the user is just
   // BROWSING job postings, not applying, so it needs a higher cap than a
   // deliberate one-shot action like brag_doc. Most of the real cost is
@@ -163,6 +170,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   agent_message: "Navigator messages",
   outcome_narrative: "outcome insight summaries",
   brag_doc: "brag doc generations",
+  market_readiness: "market readiness checks",
   extension_score_preview: "extension match-score previews",
 };
 
@@ -177,6 +185,23 @@ export async function checkAndConsumeUsage(
   email: string | null | undefined,
   action: UsageAction,
 ): Promise<UsageResult> {
+  // Checked before the admin exemption below, and at this exact choke
+  // point rather than only in a UI layout — every AI-costing action in the
+  // app routes through here, so this is the one place a suspension
+  // actually blocks usage regardless of which page/action triggered it
+  // (a real gotcha flagged during the admin panel's design: checking
+  // suspension only in a React layout lets a user keep clicking around on
+  // stale client-side cache for a while).
+  const { data: profile } = await insforge.database
+    .from("profiles")
+    .select("is_suspended")
+    .eq("id", userId)
+    .maybeSingle<{ is_suspended: boolean }>();
+
+  if (profile?.is_suspended) {
+    return { allowed: false, error: "This account has been suspended. Contact support if you believe this is a mistake." };
+  }
+
   if (isAdminUser(email)) {
     return { allowed: true };
   }

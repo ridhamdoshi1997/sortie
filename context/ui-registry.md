@@ -18,6 +18,18 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Market Readiness (/career)
+
+Files: `components/career/MarketReadiness.tsx`, `lib/marketReadiness.ts`, `actions/marketReadiness.ts`
+Route: `/career`, between `BragDocGenerator` and `CareerTimeline`
+Last updated: 2026-08-19. Exact same card recipe as `BragDocGenerator.tsx` (`rounded-2xl border border-border bg-surface p-6 shadow-card`, icon-in-circle + `h2` header, `bg-accent` opt-in button) but simpler — no date-range inputs, one button ("Check my market readiness" → "Check again" once a result exists). Result renders in the standard Agent Content Callout (`border-l-2 border-agent bg-agent-light`, `text-agent-dark` label + body) since it's genuinely AI-synthesized, same as Brag Doc's summary line.
+
+### Admin Dashboard (internal, /admin)
+
+Files: `components/admin/AdminDashboard.tsx`, `components/admin/TrendChart.tsx`, `app/admin/layout.tsx`, `app/admin/page.tsx`
+Route: `/admin`, gated by `lib/admin/auth.ts`'s `requireAdmin()` — not linked from the main app nav anywhere, deliberately
+Last updated: 2026-08-19. Distinct minimal header (`border-b border-border bg-surface`, just "Sortie Admin" — NOT the consumer-facing `Navbar.tsx`, this is an internal tool with a different audience). 3 `StatCard`s (`border border-border bg-surface shadow-card rounded-2xl p-6`, `font-mono text-3xl` value) in a `sm:grid-cols-3` row. Two `TrendChart`s (recharts `LineChart`, same card/axis/tooltip conventions as `components/dashboard/AnalyticsCharts.tsx`'s `MatchDistributionChart` — `var(--color-*)` tokens throughout, never raw hex) side by side on `lg:grid-cols-2`. Leaderboard table reuses `ResumeManager.tsx`'s exact table classes (`bg-surface-secondary` header row, `font-mono text-[10px] uppercase tracking-wider text-text-muted` header cells, `border-t border-border` body rows) wrapped in `overflow-x-auto` (not a full mobile-card fallback — acceptable per this app's own mobile-responsive rule, which allows horizontal scroll as a lighter alternative for genuinely internal-only surfaces). Status badges: `bg-error/10 text-error` (Suspended), `bg-warning/10 text-warning` (High usage, ≥100 combined daily AI actions), plain `text-text-muted` (Active) — note the usage-trend chart line deliberately uses `var(--color-info)`, NOT `var(--color-agent)` (a real mistake caught before shipping — agent-teal is reserved for genuinely AI-generated content, not "this chart is about AI usage" theming). Suspend uses the existing `ConfirmDialog.tsx` (destructive-action pattern); Unsuspend is a plain button, no confirm needed.
+
 ### Practice Sandbox (inline code editor)
 
 Files: `components/interview/PracticeSandbox.tsx`, `lib/practiceSandbox.ts` (execution engines), `lib/interviewQuestions.ts`'s `PracticeKit` type + `generatePracticeKit()`, `actions/interviewQuestions.ts`'s `getPracticeKit()`
