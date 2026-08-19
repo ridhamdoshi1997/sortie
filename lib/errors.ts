@@ -11,6 +11,17 @@
 // That's deliberate: rewriting every message through a strict whitelist
 // would flatten genuinely useful, already-good copy into a generic
 // fallback the first time its exact wording drifts from a hardcoded list.
+//
+// ZodError gets an explicit instanceof check (below), not a text pattern —
+// a real bug found in Phase 15 (lib/interviewQuestions.ts's redFlags
+// schema): ZodError.message is a JSON blob of issues by default, which
+// doesn't match any vendor/stack-trace-shaped regex here, so it was
+// passing straight through to the user un-rewritten. A schema violation is
+// this app's own AI-response validation failing, not the AI provider
+// itself failing — same "should never reach a user verbatim" bucket as the
+// raw JS exceptions rule below, just not textually detectable the same way.
+
+import { ZodError } from "zod";
 
 export const GENERIC_SERVER_ERROR =
   "Something went wrong on our end. Please try again in a moment.";
@@ -72,6 +83,8 @@ export function rateLimitMessage(): string {
 }
 
 export function toUserMessage(error: unknown, fallback: string = GENERIC_SERVER_ERROR): string {
+  if (error instanceof ZodError) return fallback;
+
   const raw = error instanceof Error ? error.message : typeof error === "string" ? error : "";
   if (!raw) return fallback;
 

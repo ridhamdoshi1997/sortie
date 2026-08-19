@@ -39,17 +39,22 @@ export type InterviewQuestion = {
 };
 
 // v1 scope, per the 2026-08-14 feasibility research: 100% client-side
-// execution (lib/practiceSandbox.ts), no strict pass/fail grading — the
-// AI's own test-case-generation reliability for arbitrary problems isn't
-// trustworthy enough for a binary verdict, so this is "soft verification":
-// run the same call against the user's code AND a real reference solution,
-// show both outputs side by side, let the user judge.
+// execution (lib/practiceSandbox.ts). Originally "soft verification" (run
+// the same call against the user's code AND a real reference solution,
+// show both outputs side by side, let the user judge) — reworked
+// 2026-08-18 (agy critique) to strict pass/fail grading instead: the
+// reference solution's own output becomes the graded ground truth at
+// runtime, compared exactly against the candidate's output, no eyeballing
+// required. Falls back to showing both outputs unlabeled only when the
+// reference solution itself errors.
 //
 // Expanded 2026-08-18 from JS/Python to 5 languages (typescript/ruby/sql
 // added) — each has a real, verified-live, genuinely-client-side execution
 // engine (lib/practiceSandbox.ts). C#/Java were researched and deliberately
-// excluded — both are technically buildable but carry a 20-30MB cold-boot
-// payload, a meaningfully worse experience than everything else here.
+// excluded from client-side execution — Java's CheerpJ needs a paid
+// commercial license past a 1-person company, C# has no genuine
+// client-only live-compile path at all. Both are deferred pending a
+// self-hosted Piston judge, not rejected outright.
 //
 // `functionName` is optional because SQL doesn't have one — its `code` is a
 // schema-setup script (CREATE/INSERT), not a function definition, and its
@@ -114,7 +119,11 @@ const questionDetailsSchema = z.discriminatedUnion("type", [
     insiderTips: z.object({
       whatTheyTest: z.string().min(1),
       commonPitfall: z.string().min(1),
-      edgeCases: z.array(z.string()).max(3),
+      // .transform() truncates instead of .max() rejecting — the prompt
+      // asks for "up to 3" but an LLM over-generating past that shouldn't
+      // crash generation (real bug, Phase 15: an over-long redFlags array
+      // below did exactly this, surfaced as a raw Zod error to the user).
+      edgeCases: z.array(z.string()).transform((arr) => arr.slice(0, 3)),
     }),
     approachSteps: z.array(z.string().min(1)).min(1),
     solution: z.object({
@@ -137,7 +146,12 @@ const questionDetailsSchema = z.discriminatedUnion("type", [
     type: z.enum(["behavioral", "culture_fit"]),
     insiderTips: z.object({
       whatTheyLookFor: z.string().min(1),
-      redFlags: z.array(z.string()).max(2),
+      // Real bug, Phase 15: the AI sometimes returns more than 2 red flags
+      // despite the prompt asking for "up to 2" — .max() rejected the whole
+      // response with a raw Zod error surfaced straight to the user.
+      // .transform() truncates instead of rejecting, so an over-generation
+      // never crashes the request.
+      redFlags: z.array(z.string()).transform((arr) => arr.slice(0, 2)),
     }),
     starFramework: z.object({
       situationPrompt: z.string().min(1),

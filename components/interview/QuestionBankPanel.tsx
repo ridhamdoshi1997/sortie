@@ -396,7 +396,11 @@ function StudyView({
                 )}
                 {practiceError && <p className="text-xs text-error">{practiceError}</p>}
                 {practiceOpen && practiceKit && (
-                  <PracticeSandbox practiceKit={practiceKit} onClose={() => setPracticeOpen(false)} />
+                  <PracticeSandbox
+                    practiceKit={practiceKit}
+                    storageKey={`${bankId}:${questionIndex}`}
+                    onClose={() => setPracticeOpen(false)}
+                  />
                 )}
               </>
             )}
