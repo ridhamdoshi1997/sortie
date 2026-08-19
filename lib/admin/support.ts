@@ -6,6 +6,7 @@ export type AdminTicketRow = {
   subject: string;
   status: TicketStatus;
   userEmail: string | null;
+  assignedAdminId: string | null;
   assignedAdminEmail: string | null;
   createdAt: string;
   updatedAt: string;
@@ -60,6 +61,7 @@ export async function listTickets(statusFilter: TicketStatus | "all"): Promise<A
     subject: t.subject,
     status: t.status,
     userEmail: emailByUserId.get(t.user_id) ?? null,
+    assignedAdminId: t.assigned_admin_id,
     assignedAdminEmail: t.assigned_admin_id ? (adminEmailByAdminId.get(t.assigned_admin_id) ?? null) : null,
     createdAt: t.created_at,
     updatedAt: t.updated_at,
@@ -116,6 +118,7 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
       subject: ticket.subject,
       status: ticket.status,
       userEmail: profile?.email ?? null,
+      assignedAdminId: ticket.assigned_admin_id,
       assignedAdminEmail: ticket.assigned_admin_id ? (adminEmailMap.get(ticket.assigned_admin_id) ?? null) : null,
       createdAt: ticket.created_at,
       updatedAt: ticket.updated_at,

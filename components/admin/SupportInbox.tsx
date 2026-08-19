@@ -2,9 +2,11 @@
 
 import { useState, useTransition } from "react";
 import Link from "next/link";
+import { Plus } from "lucide-react";
 
 import { getAdminTicketsList } from "@/actions/adminSupport";
 import type { AdminTicketRow } from "@/lib/admin/support";
+import type { AdminRole } from "@/lib/admin/auth";
 import type { TicketStatus } from "@/actions/support";
 
 const STATUS_LABELS: Record<TicketStatus, string> = { open: "Open", pending: "Pending", resolved: "Resolved" };
@@ -18,10 +20,11 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleString("en-US", { year: "numeric", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false });
 }
 
-export function SupportInbox({ initialTickets }: { initialTickets: AdminTicketRow[] }) {
+export function SupportInbox({ initialTickets, viewerRole }: { initialTickets: AdminTicketRow[]; viewerRole: AdminRole }) {
   const [tickets, setTickets] = useState(initialTickets);
   const [filter, setFilter] = useState<TicketStatus | "all">("all");
   const [isPending, startTransition] = useTransition();
+  const canWrite = viewerRole === "owner" || viewerRole === "admin";
 
   function applyFilter(next: TicketStatus | "all"): void {
     setFilter(next);
@@ -34,6 +37,15 @@ export function SupportInbox({ initialTickets }: { initialTickets: AdminTicketRo
   return (
     <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="flex flex-wrap items-center gap-2">
+        {canWrite && (
+          <Link
+            href="/admin/support/new"
+            className="mr-auto inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            New ticket
+          </Link>
+        )}
         {(["all", "open", "pending", "resolved"] as const).map((s) => (
           <button
             key={s}

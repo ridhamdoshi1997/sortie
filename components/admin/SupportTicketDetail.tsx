@@ -1,10 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { Trash2 } from "lucide-react";
 
-import { assignTicketToSelf, getAdminTicketDetail, replyToTicketAsAdmin, setTicketStatus } from "@/actions/adminSupport";
+import { deleteTicket, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus } from "@/actions/adminSupport";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import type { AdminTicketMessage, AdminTicketRow } from "@/lib/admin/support";
 import type { AdminRole } from "@/lib/admin/auth";
+import type { AdminRosterRow } from "@/lib/admin/queries";
 import type { TicketStatus } from "@/actions/support";
 
 const STATUS_LABELS: Record<TicketStatus, string> = { open: "Open", pending: "Pending", resolved: "Resolved" };
@@ -22,15 +26,19 @@ export function SupportTicketDetail({
   initialTicket,
   initialMessages,
   viewerRole,
+  admins,
 }: {
   initialTicket: AdminTicketRow;
   initialMessages: AdminTicketMessage[];
   viewerRole: AdminRole;
+  admins: AdminRosterRow[];
 }) {
+  const router = useRouter();
   const [ticket, setTicket] = useState(initialTicket);
   const [messages, setMessages] = useState(initialMessages);
   const [reply, setReply] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [isPending, startTransition] = useTransition();
 
   const canWrite = viewerRole === "owner" || viewerRole === "admin";
@@ -75,15 +83,26 @@ export function SupportTicketDetail({
     });
   }
 
-  function handleAssignToSelf(): void {
+  function handleReassign(adminUserId: string): void {
     setError(null);
     startTransition(async () => {
-      const result = await assignTicketToSelf(ticket.id);
+      const result = await reassignTicket(ticket.id, adminUserId || null);
       if (!result.success) {
         setError(result.error);
         return;
       }
       refresh();
+    });
+  }
+
+  function handleDelete(): void {
+    startTransition(async () => {
+      const result = await deleteTicket(ticket.id);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      router.push("/admin/support");
     });
   }
 
@@ -101,7 +120,7 @@ export function SupportTicketDetail({
         </div>
 
         {canWrite && (
-          <div className="mt-4 flex flex-wrap gap-2 border-t border-border pt-4">
+          <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
             {(["open", "pending", "resolved"] as const).map((s) => (
               <button
                 key={s}
@@ -113,13 +132,27 @@ export function SupportTicketDetail({
                 Mark {STATUS_LABELS[s]}
               </button>
             ))}
+            <select
+              value={ticket.assignedAdminId ?? ""}
+              onChange={(e) => handleReassign(e.target.value)}
+              disabled={isPending}
+              className="h-8 rounded-md border border-border bg-surface px-2 text-xs text-text-secondary outline-none focus-visible:border-accent disabled:opacity-60"
+            >
+              <option value="">Unassigned</option>
+              {admins.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.email ?? a.id}
+                </option>
+              ))}
+            </select>
             <button
               type="button"
-              onClick={handleAssignToSelf}
+              onClick={() => setConfirmDelete(true)}
               disabled={isPending}
-              className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-60"
+              className="ml-auto inline-flex items-center gap-1.5 rounded-md border border-error/30 px-3 py-1.5 text-xs font-medium text-error transition-colors hover:bg-error/10 disabled:opacity-60"
             >
-              Assign to me
+              <Trash2 className="h-3 w-3" />
+              Delete
             </button>
           </div>
         )}
@@ -160,6 +193,16 @@ export function SupportTicketDetail({
           </button>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmDelete}
+        title="Delete this ticket?"
+        description={`"${ticket.subject}" and its entire message thread will be permanently deleted.`}
+        confirmLabel="Delete"
+        pending={isPending}
+        onConfirm={handleDelete}
+        onCancel={() => setConfirmDelete(false)}
+      />
     </div>
   );
 }

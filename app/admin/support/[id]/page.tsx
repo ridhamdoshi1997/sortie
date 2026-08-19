@@ -17,5 +17,12 @@ export default async function AdminSupportTicketPage({ params }: { params: Promi
     notFound();
   }
 
-  return <SupportTicketDetail initialTicket={detailResult.ticket} initialMessages={detailResult.messages} viewerRole={rosterResult.viewerRole} />;
+  return (
+    <SupportTicketDetail
+      initialTicket={detailResult.ticket}
+      initialMessages={detailResult.messages}
+      viewerRole={rosterResult.viewerRole}
+      admins={rosterResult.admins}
+    />
+  );
 }
