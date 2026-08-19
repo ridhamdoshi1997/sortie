@@ -1105,7 +1105,7 @@ export async function decodeJobDescription(jobId: string): Promise<ActionResult 
 
     const { data: job } = await insforge.database
       .from("jobs")
-      .select("title,requirements,preferred_model")
+      .select("title,requirements")
       .eq("id", jobId)
       .eq("user_id", user.id)
       .maybeSingle<{ title: string | null; requirements: string[] | null }>();
