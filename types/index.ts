@@ -213,9 +213,12 @@ export interface Job {
   // accomplishments.tags's array shape.
   tags: string[];
   personal_notes: string | null;
-  // "Recently viewed jobs" — column exists live, app-code wiring (updating
-  // this on job-detail-page load + a "Recently Viewed" widget) not yet
-  // built. See context/RESUME.md.
+  // "Why I Left" private log — distinct from personal_notes above,
+  // captured once a job is marked rejected.
+  reflection_loved: string | null;
+  reflection_avoid: string | null;
+  // "Recently viewed jobs" — written on every job-detail-page load,
+  // surfaced via components/find-jobs/RecentlyViewed.tsx.
   last_viewed_at: string | null;
   // Deadline tracker / application calendar (build-plan.md §D) — a real
   // user-entered future timestamp, not derived from interview_events (that's

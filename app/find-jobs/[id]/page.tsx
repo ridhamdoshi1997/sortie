@@ -28,6 +28,8 @@ import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
 import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
+import { WhyILeftReflection } from "@/components/job-details/WhyILeftReflection";
+import { JobChat } from "@/components/job-details/JobChat";
 import { MatchScore } from "@/components/job-details/MatchScore";
 import { Qualification } from "@/components/job-details/Qualification";
 import { Responsibilities } from "@/components/job-details/Responsibilities";
@@ -194,6 +196,12 @@ export default async function JobDetailsPage({ params }: Props) {
           <JobTagsAndNotes jobId={job.id} initialTags={job.tags ?? []} initialNotes={job.personal_notes} />
         </div>
 
+        {job.application_status === "rejected" && (
+          <div className="fade-in-up" style={{ animationDelay: "105ms" }}>
+            <WhyILeftReflection jobId={job.id} initialLoved={job.reflection_loved} initialAvoid={job.reflection_avoid} />
+          </div>
+        )}
+
         <div className="fade-in-up" style={{ animationDelay: "110ms" }}>
           <JobDeadline jobId={job.id} initialDeadlineAt={job.next_deadline_at} initialLabel={job.next_deadline_label} />
         </div>
@@ -219,6 +227,8 @@ export default async function JobDetailsPage({ params }: Props) {
                       recommendationScore={job.recommendation_score}
                       overallGrade={job.overall_grade}
                     />
+
+                    {job.evaluation && job.evaluation.length > 0 && <JobChat jobId={job.id} />}
 
                     <JobDescription
                       aboutRole={job.about_role || job.description}

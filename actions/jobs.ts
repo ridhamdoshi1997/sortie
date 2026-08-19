@@ -213,6 +213,36 @@ export async function updateJobNotes(jobId: string, notes: string): Promise<Acti
   }
 }
 
+// "Why I Left" private log (build-plan.md §E) — two structured reflection
+// fields, distinct from the generic personal_notes field above and from
+// the outcome note application_events already captures. v1 scope is
+// capture only: no cross-job "surface this when evaluating a similar
+// role" retrieval yet, deliberately deferred.
+export async function updateJobReflection(jobId: string, loved: string, avoid: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ reflection_loved: loved || null, reflection_avoid: avoid || null })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] updateJobReflection", error);
+      return { success: false, error: "Failed to save your reflection" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] updateJobReflection", error);
+    return { success: false, error: "Failed to save your reflection" };
+  }
+}
+
 // Deadline tracker / application calendar (build-plan.md §D) — one real,
 // user-entered future timestamp per job (interview date, application
 // deadline, follow-up), not derived from interview_events (that's a log of

@@ -1,8 +1,8 @@
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
-import { JobResultCard } from "@/components/shared/JobResultCard";
-import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
+import { SavedJobsTabs } from "@/components/shared/SavedJobsTabs";
+import { computeReappearanceCounts } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
 export default async function SavedJobsPage() {
@@ -42,16 +42,7 @@ export default async function SavedJobsPage() {
             No saved jobs yet — save one from its detail page and it&apos;ll show up here.
           </p>
         ) : (
-          <div className="flex flex-col gap-4">
-            {jobs.map((job, index) => (
-              <JobResultCard
-                key={job.id}
-                job={job}
-                index={index}
-                reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
-              />
-            ))}
-          </div>
+          <SavedJobsTabs jobs={jobs} reappearanceCounts={reappearanceCounts} />
         )}
       </main>
     </>

@@ -31,6 +31,7 @@ export type UsageAction =
   | "outcome_narrative"
   | "brag_doc"
   | "market_readiness"
+  | "job_chat"
   | "extension_score_preview";
 
 const DAILY_LIMITS: Record<UsageAction, number> = {
@@ -137,6 +138,11 @@ const DAILY_LIMITS: Record<UsageAction, number> = {
   // external lookup. Not persisted, so re-checking later costs another
   // call, same reasoning as brag_doc's own cap.
   market_readiness: 5,
+  // "Ask Orion" per-job chat (build-plan.md §B) — same shape/cost as
+  // agent_message (Navigator): free-tier Gemini, no external lookup, and a
+  // real conversation plausibly needs several turns, so it gets a generous
+  // cap rather than a tight one-shot-feature cap.
+  job_chat: 30,
   // The extension's inline match-score badge — fires while the user is just
   // BROWSING job postings, not applying, so it needs a higher cap than a
   // deliberate one-shot action like brag_doc. Most of the real cost is
@@ -171,6 +177,7 @@ const ACTION_LABELS: Record<UsageAction, string> = {
   outcome_narrative: "outcome insight summaries",
   brag_doc: "brag doc generations",
   market_readiness: "market readiness checks",
+  job_chat: "Ask Orion messages",
   extension_score_preview: "extension match-score previews",
 };
 

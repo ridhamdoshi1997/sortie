@@ -18,6 +18,24 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Ask Orion job chat (job detail)
+
+Files: `components/job-details/JobChat.tsx`, `lib/jobChat.ts`, `actions/jobChat.ts`
+Route: job-detail page, rendered only when `job.evaluation` exists, right after `EvaluationBreakdown`
+Last updated: 2026-08-19. Same chat-shell recipe as `DocumentChatEditor.tsx` — message bubbles, sticky input row, `text-agent-dark`/`bg-agent-light` styling on assistant turns since responses are genuinely AI-generated and must stay evidence-cited to the job's own real data, never fabricated. New `job_chat` usage action, 30/day.
+
+### Saved Jobs Active/Closed tabs
+
+Files: `components/shared/SavedJobsTabs.tsx`
+Route: `/saved-jobs`, replacing the old flat card list
+Last updated: 2026-08-19. Two tabs (`TabButton`, same `border-b-2 border-accent text-accent` active-state convention as Practice Sandbox's Result/Console tabs) splitting jobs by `getListingSignal(job) === null` (Active) vs not (Closed) — zero new data, reuses the signal already computed for the existing Closed/Stale badges.
+
+### "Why I Left" reflection (job detail)
+
+Files: `components/job-details/WhyILeftReflection.tsx`
+Route: job-detail page, rendered only when `job.application_status === "rejected"`
+Last updated: 2026-08-19. Private, non-AI card — two blur-to-save textareas ("What I'd want again" / "What to avoid next time") over new `jobs.reflection_loved`/`jobs.reflection_avoid` columns. Plain `border border-border bg-surface` card, no agent styling (this is the user's own words, not AI output).
+
 ### Market Readiness (/career)
 
 Files: `components/career/MarketReadiness.tsx`, `lib/marketReadiness.ts`, `actions/marketReadiness.ts`
