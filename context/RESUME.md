@@ -2,6 +2,16 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+**Same-session follow-up (still Phase 20) — all 4 homepage fast-follows closed out, "ya go ahead" from the user.** All committed and deployed. Full detail in `progress-tracker.md`'s newest 4 entries; fast map:
+1. **Features mega-menu** — real dropdown grouped Discovery/Application/Interviews, deep-linking to new anchor `id`s on the actual feature cards.
+2. **Dedicated `/pricing` page** — reuses `CTASection.tsx` directly, nav now points here instead of the `/#pricing` anchor.
+3. **Conversion tracking** — `marketing_cta_clicked` fires on every "Start for free" click; confirmed via `vercel env ls production` that PostHog is genuinely configured in prod even though local `.env` has an empty key by design.
+4. **Homepage performance pass** — found and fixed 2 real pre-existing bugs: `CommandPalette.tsx` had zero public-route gating at all (Cmd+K opened auth-only links on the marketing homepage), and `NavigatorLauncher.tsx`'s own route list had gone stale and missed `/methodology`/`/pricing`/`/ats-checker`. New shared `lib/publicRoutes.ts` fixes both, and both `Loader` wrappers now gate at the `next/dynamic()` level so a public-page visitor never even downloads either JS chunk.
+
+**A real environment lesson worth remembering going forward, found while chasing what looked like a 3rd stale-Turbopack-graph recurrence**: it wasn't the server at all — it was the **browser tab's own Next.js Router Cache**, which lives in the tab's memory and survives a full dev-server restart + `.next` wipe since nothing forces the tab to discard it. **Try a fresh browser tab before escalating to a `.next` wipe** — cheaper, faster, and may explain some of this session's earlier "stale graph" diagnoses too. This bit twice in a row this stretch: once diagnosing `CTASection.tsx` (looked like a real "Link is not defined" bug, wasn't), once diagnosing the Cmd+K regression check on `/dashboard` (looked like the new gating broke authenticated pages, didn't — confirmed clean in a fresh tab).
+
+---
+
 **Same-session follow-up (still Phase 20)**: direct user request added "Free ATS Checker" to the logged-out homepage nav (was footer-only) and gave `/ats-checker` real PDF upload (new `actions/publicTools.ts`, public `pdf-parse` extraction, file never stored — populates the same textarea the paste flow uses). Committed (`258d091`), deployed, live-verified with a real spec-compliant PDF (82,756 chars extracted correctly). One self-inflicted false alarm along the way, correctly not chased: a hand-crafted minimal test PDF had a malformed xref table that plain Node's `pdf-parse` recovered from leniently but the server action's bundled build didn't — not a real bug, just a bad test fixture; confirmed via server logs before concluding that.
 
 Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deployed to production)
