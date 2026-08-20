@@ -261,8 +261,17 @@ function DropdownPanel<T extends string>({
     function onClickOutside(event: MouseEvent) {
       if (!panelRef.current?.contains(event.target as Node)) onClose();
     }
+    // WCAG 2.1.1 keyboard-operability fix (accessibility audit, 2026-08-20)
+    // — this panel previously had no keyboard way to close at all.
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+    }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [onClose]);
 
   // The panel is `position: fixed` (viewport-relative), computed once from

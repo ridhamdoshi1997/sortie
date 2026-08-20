@@ -139,8 +139,17 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
     function onClickOutside(event: MouseEvent) {
       if (addSectionRef.current && !addSectionRef.current.contains(event.target as Node)) setAddSectionOpen(false);
     }
+    // WCAG 2.1.1 keyboard-operability fix (accessibility audit, 2026-08-20)
+    // — this menu previously had no keyboard way to close at all.
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setAddSectionOpen(false);
+    }
     document.addEventListener("mousedown", onClickOutside);
-    return () => document.removeEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
   }, [addSectionOpen]);
 
   function handleDragEnd(event: DragEndEvent) {

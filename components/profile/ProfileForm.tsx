@@ -146,9 +146,16 @@ function MonthYearPicker({
       }
       setOpen(false);
     }
+    // WCAG 2.1.1 keyboard-operability fix (accessibility audit, 2026-08-20)
+    // — this date picker previously had no keyboard way to close at all.
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setOpen(false);
+    }
     document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
     };
   }, []);
 
