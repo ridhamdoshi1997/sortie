@@ -600,7 +600,16 @@ export const generateWeeklyBriefingsAsync = inngest.createFunction(
                             .gte("next_deadline_at", now)
                             .lte("next_deadline_at", sevenDaysFromNow)
                             .returns<{ title: string | null; company: string | null; next_deadline_at: string; next_deadline_label: string | null }[]>(),
-                        admin.database.from("profiles").select("preferred_model,email").eq("id", userId).maybeSingle<Pick<Profile, "preferred_model" | "email">>(),
+                        admin.database
+                            .from("profiles")
+                            .select("preferred_model,email,marketing_opt_out,unsubscribe_token")
+                            .eq("id", userId)
+                            .maybeSingle<
+                                Pick<Profile, "preferred_model" | "email"> & {
+                                    marketing_opt_out: boolean;
+                                    unsubscribe_token: string;
+                                }
+                            >(),
                     ]);
 
                 const applicationsThisWeek = (appEventsForUser ?? []).filter((e: { event_type: string }) => e.event_type === "applied").length;
@@ -624,6 +633,25 @@ export const generateWeeklyBriefingsAsync = inngest.createFunction(
                     .from("profiles")
                     .update({ weekly_briefing: result.summary, weekly_briefing_generated_at: new Date().toISOString() })
                     .eq("id", userId);
+
+                // Proactive match digest email (build-plan.md §G) — same
+                // real summary already computed above for the in-app card,
+                // reused as the email body rather than a second AI call.
+                // Same CAN-SPAM gate as sendMarketingBroadcastAsync above
+                // (marketing_opt_out + physical address + real unsubscribe
+                // link, all enforced inside sendMarketingEmail itself).
+                const physicalAddress = process.env.MARKETING_PHYSICAL_ADDRESS ?? "";
+                if (profile?.email && profile.marketing_opt_out === false && profile.unsubscribe_token && physicalAddress) {
+                    const { sendMarketingEmail } = await import("@/lib/email/resend");
+                    await sendMarketingEmail({
+                        to: profile.email,
+                        subject: "Your weekly Sortie digest",
+                        body: result.summary,
+                        unsubscribeToken: profile.unsubscribe_token,
+                        physicalAddress,
+                        broadcastId: `weekly-digest-${userId}`,
+                    });
+                }
             });
             generatedCount += 1;
         }

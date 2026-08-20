@@ -1333,7 +1333,7 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | Gmail ingest, LinkedIn-alerts ingest, Google Calendar ingest, Outlook interview detection | 📋 still open, blocked | Each needs a real external OAuth app (Google Cloud Console and/or Microsoft Azure AD) registered by the user, plus the security review Phase 16's own header calls for (scopes, token storage, revocation) — not something buildable without that external setup happening first |
 | Zapier / Sheets export | 🆕 | Competitive Map |
 | Push / browser notifications | 🆕 | Brainstorm |
-| Proactive match digest email | 🆕 | Brainstorm |
+| Proactive match digest email | ✅ shipped 2026-08-20 | Reuses `generateWeeklyBriefingsAsync`'s already-computed weekly summary as the email body (no new AI call) — `lib/inngest/functions.ts`. Same CAN-SPAM gate as `sendMarketingBroadcastAsync` (`marketing_opt_out`, real unsubscribe link, `MARKETING_PHYSICAL_ADDRESS`). **Inert until `MARKETING_PHYSICAL_ADDRESS` is set** — same as the pre-existing broadcast feature, not something to fabricate. |
 
 **Explicitly rejected:** auto-apply / mass-autofill. It's commoditized, users report it damages their credibility, agentic hiring will absorb it, and it directly contradicts the "aim, don't spray" positioning. Do not build.
 
