@@ -2,6 +2,8 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+**Same-session follow-up (still Phase 20)**: direct user request added "Free ATS Checker" to the logged-out homepage nav (was footer-only) and gave `/ats-checker` real PDF upload (new `actions/publicTools.ts`, public `pdf-parse` extraction, file never stored — populates the same textarea the paste flow uses). Committed (`258d091`), deployed, live-verified with a real spec-compliant PDF (82,756 chars extracted correctly). One self-inflicted false alarm along the way, correctly not chased: a hand-crafted minimal test PDF had a malformed xref table that plain Node's `pdf-parse` recovered from leniently but the server action's bundled build didn't — not a real bug, just a bad test fixture; confirmed via server logs before concluding that.
+
 Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deployed to production)
 
 ## Phase 20 — new marketing homepage built from the Phase 19 research, a real honesty bug found and fixed
