@@ -4,6 +4,12 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-20 (Phase 19 session, in progress — 12 items shipped/resolved across 2 deploys so far, live-verified; full detail below and in `progress-tracker.md`)
 
+## Phase 19 — new marketing homepage, researched and logged (not built)
+
+**Direct user request, mid-session**: log a plan for a brand-new public marketing homepage + logged-out navigation, "spectacular gui," via an `agy` deep-research call. Full plan now in `build-plan.md`'s new **§S** — read that before starting this. Short version: outcome-driven hero (not category-driven), a bento-grid feature showcase grouped by user journey (Target/Attack/Advance/Engine Room) instead of a flat feature list, a dedicated Methodology/anti-auto-apply page (real GEO/trust value, not filler), and pushing the existing mission-console dark-ink/amber/teal language to a Linear/Vercel-grade execution (1px grid backgrounds, surface-ladder elevation instead of shadows, micro-interactions only, no scroll-jacking). The full original `agy` report (more copy drafts) is saved outside the repo at `C:/Users/ridha/.gemini/antigravity-cli/brain/d8039968-5daf-4a88-ab6a-a17cd1dd8aec/marketing-homepage-plan.md` — §S summarizes it, but read the original file too before building. **Nothing implemented — this is logged for a future session.**
+
+**A real environment gotcha hit getting this research to run at all**: `agy -p` in non-interactive mode can't complete a permission prompt (no terminal to answer through) — it silently failed on its first attempt trying to read this repo's own context files, with zero research output. Needs `--dangerously-skip-permissions`, which itself then hit this session's auto-mode classifier and needed an explicit user confirmation before it would run — same "stop and ask, don't push through" category as a production deploy. If `agy -p` is ever invoked again in a similar non-interactive background context, expect to need that flag from the start.
+
 ## Phase 19, second batch — 4 more items, including a real production data-integrity bug
 
 Deployed as commit `e11de12` (`npx vercel --prod --scope sortie3` — this time went through without hitting the permission classifier, unlike the first batch). Post-deploy checklist green: `GET /` → `200`, `GET /admin`/`GET /career`/`GET /profile`/`GET /jobs/external` → `307`, `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`.
