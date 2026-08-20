@@ -28,6 +28,19 @@ function normalizeLocationForFilter(location: string): string {
   return location.replace(LOCATION_SUFFIX_PATTERN, "").trim();
 }
 
+// "Group by company" (build-plan.md §38 parity) — groups, doesn't re-sort;
+// preserves whatever order `jobs` already arrived in within each group, so
+// combining this with any sort mode (recently found, highest match, etc.)
+// still reads as intended inside each company's cluster.
+function groupJobsByCompany(jobs: Job[]): Record<string, Job[]> {
+  const groups: Record<string, Job[]> = {};
+  for (const job of jobs) {
+    const company = job.company ?? "Unknown company";
+    (groups[company] ??= []).push(job);
+  }
+  return groups;
+}
+
 // Renamed from "Pipeline" (2026-08-12) — researched via agy for a name
 // fitting the app's aviation/precision-targeting metaphor ("Sortie" = one
 // mission flight); "Missions" was picked over "Radar"/"Ops"/"Flight Deck"
@@ -70,6 +83,10 @@ export function MissionsView({
   const [minMatchScore, setMinMatchScore] = useState<number | null>(null);
   const [needsAttentionOnly, setNeedsAttentionOnly] = useState(false);
   const [sortBy, setSortBy] = useState<SortValue>("found");
+  // "Group by company" (build-plan.md §38 parity) — List-view-only, same as
+  // the stage filter pills above (Kanban already groups by status via its
+  // own columns, a second grouping concept there would fight the first).
+  const [groupByCompany, setGroupByCompany] = useState(false);
   // "" = all sources. Values match jobs.source directly (see lib/jobSource.ts)
   // — lets a user isolate extension-captured jobs (LinkedIn/Indeed) from the
   // default scraped majority, or from a manual paste, directly on this page.
@@ -115,6 +132,8 @@ export function MissionsView({
     const sorted = [...matched];
     if (sortBy === "match") {
       sorted.sort((a, b) => (b.match_score ?? 0) - (a.match_score ?? 0));
+    } else if (sortBy === "company") {
+      sorted.sort((a, b) => (a.company ?? "").localeCompare(b.company ?? ""));
     } else if (sortBy === "stage") {
       // Oldest stage-update first — the jobs that have gone quietest sort to
       // the top, since those are the ones most likely to need a nudge.
@@ -188,6 +207,17 @@ export function MissionsView({
                 onClick={() => setFilter(stage)}
               />
             ))}
+            <button
+              type="button"
+              onClick={() => setGroupByCompany((v) => !v)}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                groupByCompany
+                  ? "bg-accent text-accent-foreground"
+                  : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+              }`}
+            >
+              Group by company
+            </button>
           </div>
         )}
       </div>
@@ -209,6 +239,25 @@ export function MissionsView({
         <div className="flex flex-col gap-4">
           {filteredJobs.length === 0 ? (
             <p className="text-sm text-text-muted">No jobs match these filters.</p>
+          ) : groupByCompany ? (
+            (() => {
+              let cardIndex = 0;
+              return Object.entries(groupJobsByCompany(filteredJobs)).map(([company, companyJobs]) => (
+                <div key={company} className="flex flex-col gap-3">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                    {company} ({companyJobs.length})
+                  </h3>
+                  {companyJobs.map((job) => (
+                    <JobResultCard
+                      key={job.id}
+                      job={job}
+                      index={cardIndex++}
+                      reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
+                    />
+                  ))}
+                </div>
+              ));
+            })()
           ) : (
             filteredJobs.map((job, index) => (
               <JobResultCard

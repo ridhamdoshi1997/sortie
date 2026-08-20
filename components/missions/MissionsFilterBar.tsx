@@ -148,7 +148,7 @@ function RadioOption({ label, checked, onSelect }: { label: string; checked: boo
   );
 }
 
-export type SortValue = "found" | "match" | "stage";
+export type SortValue = "found" | "match" | "stage" | "company";
 
 const MATCH_SCORE_OPTIONS = [50, 70, 85];
 
@@ -156,6 +156,7 @@ const SORT_OPTIONS: { value: SortValue; label: string }[] = [
   { value: "found", label: "Recently found" },
   { value: "match", label: "Highest match score" },
   { value: "stage", label: "Longest gone quiet" },
+  { value: "company", label: "Company (A-Z)" },
 ];
 
 type Props = {
