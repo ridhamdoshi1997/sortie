@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): Profile page mobile-responsive fix — direct user request, mid-session.**
+  - Real bug in the shared `components/ui/Tabs.tsx` (used by Profile, the job detail page's Overview/Company/Offer Tools, and both document workspaces): the tab-bar container was a plain `flex w-fit shrink-0` row with no wrap or scroll handling. `/profile`'s 4-tab set (Personal/Education/Work Experience/Preferences) sat right at the edge of a real 375px viewport with zero margin — a longer label render or slightly different font metrics would silently push the whole page into horizontal scroll instead of failing loudly. Fixed by making the tablist itself `overflow-x-auto` (contains any overflow to the pill bar via real native touch-scroll, never the page) with `w-full sm:w-fit` to keep desktop's original compact sizing.
+  - Fixing the shared component fixes this for every page that uses `Tabs.tsx`, not just Profile.
+  - **Live-verified at a real 375px viewport, not assumed**: confirmed a real overflow before the fix (tablist `scrollWidth` 445 vs 343 available, `overflow-x: visible`), confirmed zero page-level horizontal overflow after (`document.body.scrollWidth` exactly 375, `overflow-x: auto` correctly containing the tablist's own internal scroll). Re-checked all 4 tabs individually plus the "Edit Personal" modal at the same viewport — zero overflowing elements anywhere.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): Skills radar chart — build-plan.md §H, the last missing piece of the analytics-dashboard set (funnel/heatmap/score-distribution already shipped in earlier phases).**
   - `actions/skillGapTracking.ts`'s new `getMatchedSkills()` reuses the existing `aggregateSkillGaps()` helper — same zero-AI frequency-counting shape as the already-shipped "Recurring Skill Gaps," just counting `matched_skills` instead of `missing_skills`. `SkillsRadarChart.tsx` uses `recharts`' `RadarChart` (already a project dependency, no new package), rendered on `/career` next to `SkillGapTracker`.
   - **A real dev-server-only false alarm hit and correctly not chased**: after wiring this in, the shared dev server (owned by another concurrent session, not restartable from here) started 500-erroring `/career` with a parser error on `OutcomeInsights.tsx`'s closing tag — the exact "stale Turbopack graph" artifact class this project has hit and documented several times before (Phase 9, Phase 16). Confirmed via two independent signals instead of restarting a server that isn't this session's to restart: `tsc --noEmit` clean, and a full fresh `npm run build` compiling `/career` (and every other route) with zero errors on the exact current code. Trusted the clean independent build over the stale dev-server error.

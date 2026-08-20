@@ -19,9 +19,19 @@ export function Tabs({ tabs, defaultTabId }: Props) {
 
   return (
     <div className="flex flex-col gap-6" style={{ width: "100%" }}>
+      {/* Mobile fix (ui-rules.md's standing mobile-responsive rule): this
+         was a plain `flex w-fit shrink-0` row with no wrap/scroll handling
+         — fine on desktop, but a 4-tab set with a longer label ("Work
+         Experience", ProfileForm.tsx) sits right at the edge of a real
+         375px viewport with zero margin for a slightly wider font render,
+         and would silently push the page into horizontal scroll rather
+         than failing loudly. `overflow-x-auto` on the tablist itself
+         contains any overflow to the pill bar (real native touch-scroll),
+         never the page; `w-full sm:w-fit` keeps desktop's original
+         compact/centered sizing unchanged. */}
       <div
         role="tablist"
-        className="flex w-fit shrink-0 gap-1 rounded-full border border-border bg-surface p-1"
+        className="flex w-full shrink-0 gap-1 overflow-x-auto rounded-full border border-border bg-surface p-1 sm:w-fit"
       >
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab?.id;
@@ -32,7 +42,7 @@ export function Tabs({ tabs, defaultTabId }: Props) {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveId(tab.id)}
-              className={`rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-accent-light text-accent"
                   : "text-text-secondary hover:text-text-primary"
