@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellRing, Check, Copy, CreditCard, Gift, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
+import { Bell, BellRing, Check, Copy, CreditCard, Database, Gift, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
 
 import { deleteAccount } from "@/actions/account";
 import { generateApiKey, listApiKeys, revokeApiKey, type ApiKeyRow } from "@/actions/apiKeys";
@@ -11,13 +11,14 @@ import { SupportTab } from "@/components/settings/SupportTab";
 import { PushNotificationsTab } from "@/components/settings/PushNotificationsTab";
 import { ReferralsTab } from "@/components/settings/ReferralsTab";
 import { CreditsUsageTab } from "@/components/settings/CreditsUsageTab";
+import { NotionTab } from "@/components/settings/NotionTab";
 
 type Props = {
   email: string;
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "referrals" | "support";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "notion" | "referrals" | "support";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
@@ -26,6 +27,7 @@ const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "alerts", icon: Bell, label: "Job alerts" },
   { key: "push", icon: BellRing, label: "Push notifications" },
   { key: "extension", icon: Plug, label: "Browser extension" },
+  { key: "notion", icon: Database, label: "Notion" },
   { key: "referrals", icon: Gift, label: "Referrals" },
   { key: "support", icon: LifeBuoy, label: "Contact support" },
 ];
@@ -368,6 +370,7 @@ export function SettingsPanel({ email, providers }: Props) {
         {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
         {tab === "push" && <PushNotificationsTab />}
         {tab === "extension" && <ExtensionTab />}
+        {tab === "notion" && <NotionTab />}
         {tab === "referrals" && <ReferralsTab />}
         {tab === "support" && <SupportTab />}
       </div>

@@ -5,7 +5,7 @@ import {
   setAuthCookies,
 } from "@insforge/sdk/ssr";
 
-const verifierCookieName = "jobpilot_oauth_code_verifier";
+const verifierCookieName = "sortie_oauth_code_verifier";
 
 type ProfileCompletionRow = {
   is_complete: boolean | null;

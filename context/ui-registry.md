@@ -523,6 +523,17 @@ Self-fetches its own data (`listApiKeys()`) via a `useEffect` on mount rather th
 
 **Backend split, for reuse**: `createExternalJob` (`lib/externalJob.ts`) holds the actual job-insert-plus-evaluation-trigger logic, called by both `actions/jobs.ts`'s cookie-authed `addExternalJob` (existing "paste a job from anywhere" flow) and the new bearer-token-authed `/api/extension/capture-job` route — same job creation, two different ways of resolving which user it's for. See `progress-tracker.md`'s Phase 14 §Q5 entry for a real bug this extraction surfaced and fixed (an unguarded `inngest.send()` failure used to fail the whole call even after the job row had already saved).
 
+### Settings — "Notion" tab (build-plan.md §G/Phase 16 — Notion export)
+
+File: `components/settings/NotionTab.tsx`, `actions/notion.ts`, `lib/notion.ts`
+Route: Settings modal (`?settings=1`) → "Notion" nav item, same `NAV`/`TabKey` pattern as the other tabs
+Last updated: 2026-08-20 (new)
+
+**Pattern notes:**
+Same `ReferralsTab`/`ExtensionTab` two-state shape: a "not connected" state (paste a Notion internal-integration token, pasted via a native `<select>` once databases are listed) and a "connected" state (database name + last-synced-at row, same `border-border bg-surface-secondary` card as `ExtensionTab`'s key rows, `Unplug` icon disconnect button in the same corner position as `ExtensionTab`'s `Trash2` revoke). Deliberately a personal internal-integration-token model, not OAuth — the user creates their own free integration at `notion.so/my-integrations` and shares one database with it, so there's no public OAuth app for this app's own account to register or maintain (unlike Gmail/Calendar/Outlook, still blocked on exactly that). Push direction mirrors Missions' own scope exactly (`is_hidden = false`) so it never surprises a user with jobs they don't see in-app; read-back direction reuses the existing `createExternalJob`/Jina-reader external-job pipeline verbatim rather than a parallel importer.
+
+**Verification tier, disclosed**: clean `tsc`/`eslint`/production build only. Not live-tested end-to-end — doing so needs a real Notion account and a real integration token, which only the user has; ask them to connect a test database and report back, or hand over a token for a one-time live check.
+
 ### ConfirmDialog (new — reusable destructive-action confirmation)
 
 File: components/ui/ConfirmDialog.tsx
@@ -567,7 +578,7 @@ Last updated: 2026-07-18 (corrected same-day to actually match the approved conc
 | Accent usage     | Mark glyph only — the wordmark text itself stays on the primary/surface token, not accent |
 
 **Pattern notes:**
-Text-based wordmark, not an image — no new logo asset was generated as part of this rebrand. `public/logo.png` and the homepage hero/features preview images still show the old "JobPilot" branding baked into static screenshots; those are a separate asset-regeneration task, not a code fix. `priority` prop is still accepted for backward compatibility with existing callers but is unused (no `<Image>` left to prioritize). New `variant` prop (`"dark" | "light"`) makes the wordmark theme-aware for use on both light surfaces (footer) and the dark ink navbar chrome — see the Navbar entry below.
+Text-based wordmark, not an image. `public/logo.png` (unreferenced by any code — kept only as a static asset) was regenerated 2026-08-20 with the real amber-diamond-on-ink mark, closing out the last stale "JobPilot" raster asset; the homepage's own hero/feature mockups were already rebuilt as real CSS/JSX in Phase 20, not baked screenshots, so there was nothing stale left there. `priority` prop is still accepted for backward compatibility with existing callers but is unused (no `<Image>` left to prioritize). New `variant` prop (`"dark" | "light"`) makes the wordmark theme-aware for use on both light surfaces (footer) and the dark ink navbar chrome — see the Navbar entry below.
 
 ### Login Card
 
