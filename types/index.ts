@@ -59,6 +59,9 @@ export interface Profile {
   // (build-plan.md §P); this only ever removes a widget from the grid, it
   // never reshuffles the ones that remain.
   dashboard_hidden_widgets: string[];
+  // Google Calendar ingest (build-plan.md §G, interview detection).
+  google_calendar_refresh_token: string | null;
+  google_calendar_connected_at: string | null;
 }
 
 export interface WorkExperience {
