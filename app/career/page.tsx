@@ -12,11 +12,13 @@ import { BragDocGenerator } from "@/components/career/BragDocGenerator";
 import { MarketReadiness } from "@/components/career/MarketReadiness";
 import { SkillGapTracker } from "@/components/career/SkillGapTracker";
 import { ResumeSuggestionsQueue } from "@/components/career/ResumeSuggestionsQueue";
+import { WeeklyWinsTicker } from "@/components/career/WeeklyWinsTicker";
 import {
   buildCareerEpochs,
   buildEducationEntries,
   buildFlatTimeline,
   buildJobOutcomeEntries,
+  buildWeeklyWins,
   mostRecentActivityDate,
   type JobOutcomeRow,
 } from "@/lib/careerTimeline";
@@ -82,6 +84,7 @@ export default async function CareerPage() {
   const applicationEvents = applicationEventsResult.data ?? [];
   const flatTimeline = buildFlatTimeline(epochs, unassigned, education, applicationEvents, jobOutcomes ?? []);
   const nudge = freshnessNudge(mostRecentActivityDate(epochs, unassigned, jobOutcomeEntries));
+  const weeklyWins = buildWeeklyWins((accomplishments ?? []) as AccomplishmentRow[]);
 
   return (
     <>
@@ -110,6 +113,8 @@ export default async function CareerPage() {
             <p className="text-sm text-warning">{nudge}</p>
           </div>
         )}
+
+        <WeeklyWinsTicker wins={weeklyWins} />
 
         <ResumeSuggestionsQueue initialSuggestions={resumeSuggestionsResult.data ?? []} />
 

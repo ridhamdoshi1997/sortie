@@ -238,3 +238,18 @@ export function mostRecentActivityDate(
   if (dates.length === 0) return null;
   return dates.reduce((latest, d) => (new Date(d).getTime() > new Date(latest).getTime() ? d : latest));
 }
+
+// "Weekly Wins" ticker (build-plan.md §P) — a small recap of what actually
+// got LOGGED this week, not what happened this week. Filters on
+// created_at, not the (possibly backdated) date field — a user who logs
+// three older wins today should see all three in this week's recap; a win
+// dated this week but entered last month shouldn't count as new activity.
+export type WeeklyWin = { id: string; title: string; loggedAt: string };
+
+export function buildWeeklyWins(accomplishments: AccomplishmentRow[]): WeeklyWin[] {
+  const weekAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  return accomplishments
+    .filter((a) => new Date(a.created_at).getTime() >= weekAgo)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .map((a) => ({ id: a.id, title: a.title, loggedAt: a.created_at }));
+}

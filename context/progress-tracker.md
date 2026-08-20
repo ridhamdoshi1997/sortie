@@ -4,6 +4,13 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): "Weekly Wins" ticker — build-plan.md §P.**
+  - `lib/careerTimeline.ts`'s `buildWeeklyWins` + `components/career/WeeklyWinsTicker.tsx`, rendered near the top of `/career`. Filters on `created_at` (when a win was actually logged), deliberately not the accomplishment's own `date` field (which can be legitimately backdated) — a "this week" recap is about what you logged this week, not what happened this week. Renders nothing at all when there's nothing to show (no empty-card nagging).
+  - **Live-verified with a real seeded row**: a fresh accomplishment appeared correctly; a pre-existing backdated (2025) accomplishment also correctly appeared since it was logged recently, confirming the `created_at`-not-`date` filter works as designed, not a bug. Test row deleted after.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): job_decisions table — build-plan.md §Q3 fast-follow, the one piece deliberately deferred when §Q3 originally shipped.**
   - New `job_decisions` table (`user_id, job_id, decision enum('applied','skipped'), skip_reason, decided_at`, `UNIQUE(user_id, job_id)` so a job's later re-decided decision replaces the old one rather than duplicating). References `auth.users(id)`, so this one genuinely needed `db migrations` (not `db query`, which rejects auth-schema FKs) — hit the long-standing legacy-migrations-tracking blocker again, worked around it again (move every other `migrations/*.sql` file aside, apply, move back).
   - **Design decision made without asking, to resolve the exact overlap risk §Q3's original entry flagged**: rather than a new parallel "skip" UI, the existing Hide toggle IS the skip-decision capture point — `JobActionBar.tsx`'s Hide button now opens a small optional quick-pick reason panel (same portal/fixed-position pattern as the existing status-note prompt) only when hiding, never on un-hide. `setApplicationStatus` records `decision='applied'` the same way on a real transition to `applied`. Both writes are fire-and-forget/best-effort, same non-blocking pattern as every other side-write in `actions/jobs.ts`. Deliberately scoped to the job detail page's `JobActionBar` only, not `JobResultCard`'s list-view Hide — a modal-per-card interrupt on a high-traffic list view is a real UX cost the detail page doesn't have.
