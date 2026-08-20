@@ -2,6 +2,23 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+Last updated: 2026-08-20 (Phase 20 session, closed out clean — new marketing homepage + logged-out nav + Methodology/Pricing pages, an "AI heavy dashboard" (2 new AI widgets), and the ATS Checker's nav link + PDF upload. Everything below is committed, **pushed to `origin/feature/my-experiment`** (branch was 34 commits ahead locally at session end — confirm a fresh session isn't picking up a stale remote before assuming otherwise), and deployed to production. Post-deploy checklist re-confirmed green on every shipped surface right before this line was written.)
+
+## Session status: clean stop, nothing in flight
+
+No half-finished work, no uncommitted changes, no local-only commits. Production (`https://jobpilot-experiment.vercel.app`) is healthy across `/`, `/dashboard`, `/pricing`, `/methodology`, `/ats-checker`, and `/api/inngest`. The local dev server and the local Inngest dev server from this session were both stopped before ending.
+
+**What a fresh session should read next, in order**: this file's Phase 20 entries below (this session, most recent first), then `progress-tracker.md`'s matching entries for full technical detail per feature, then `build-plan.md`'s §S (marketing homepage) and Master Feature Inventory for the overall backlog map.
+
+**What's genuinely still open** (see the fuller breakdown further down / in `build-plan.md`):
+- ~12 items blocked on a real decision from the user (paid vendor picks, external account setup, or a pricing call) — comp/salary benchmarking, company enrichment, Google One Tap/LinkedIn OAuth, voice interview simulator, passive market-watch, job alerts, Sentry, Canva, signal-based outreach, getting Support/Marketing email fully live.
+- **Monetization (§J)** and the **full design revamp** — both deliberately parked together until the very end, per the user's own standing sequencing decision from earlier in the project. Neither has been started.
+- Smaller disclosed fast-follows from this session's own work (homepage mega-menu is anchor-based not a true per-feature-page mega-menu; no Lighthouse pass run; the dashboard could take more AI widgets if asked).
+
+Nothing was queued autonomously beyond this — the user ended the session with "that's fine," not a new directive. Wait for direction before starting something new.
+
+---
+
 ## Phase 20, cont'd — "AI heavy dashboard" (direct user request), both parts shipped and deployed
 
 Before building, flagged a real tension: the dashboard's `AIActionCenter` is deliberately deterministic (its own comment says a per-visit live LLM call is "exactly the wrong place"). Asked the user how cost-heavy they wanted this — they chose opt-in widgets first, then a proactive pre-generated briefing. Both are done. Full detail in `progress-tracker.md`'s two newest entries.
@@ -28,8 +45,6 @@ Before building, flagged a real tension: the dashboard's `AIActionCenter` is del
 ---
 
 **Same-session follow-up (still Phase 20)**: direct user request added "Free ATS Checker" to the logged-out homepage nav (was footer-only) and gave `/ats-checker` real PDF upload (new `actions/publicTools.ts`, public `pdf-parse` extraction, file never stored — populates the same textarea the paste flow uses). Committed (`258d091`), deployed, live-verified with a real spec-compliant PDF (82,756 chars extracted correctly). One self-inflicted false alarm along the way, correctly not chased: a hand-crafted minimal test PDF had a malformed xref table that plain Node's `pdf-parse` recovered from leniently but the server action's bundled build didn't — not a real bug, just a bad test fixture; confirmed via server logs before concluding that.
-
-Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deployed to production)
 
 ## Phase 20 — new marketing homepage built from the Phase 19 research, a real honesty bug found and fixed
 
