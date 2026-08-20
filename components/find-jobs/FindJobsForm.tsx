@@ -10,6 +10,7 @@ import { formatTimeAgo } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import { FilterBar } from "@/components/find-jobs/FilterBar";
+import { SearchLoadingState } from "@/components/find-jobs/SearchLoadingState";
 import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from "@/lib/jobFilters";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
@@ -260,6 +261,14 @@ export function FindJobsForm({
                     </div>
                 )}
             </div>
+
+            {/* "Loading states that teach" (build-plan.md §H) — only for a
+                genuinely fresh search (no results on screen yet). The
+                existing datePostedNeedsNewSearch indicator above already
+                covers a background refilter of an already-visible result
+                set; this shouldn't replace real results with a big loading
+                block just because a filter changed. */}
+            {loading && jobs.length === 0 && <SearchLoadingState />}
 
             {/* A completed search with zero matches is a real outcome, not
                 a failure — give it its own quiet empty state instead of

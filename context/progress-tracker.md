@@ -4,6 +4,15 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): Loading states that teach — build-plan.md §H, Find & Evaluate's search flow.**
+  - Between clicking "Execute search" and results appearing, there was previously nothing but the button's own spinner — a real, meaningful wait (an actual SerpApi call, then real per-job AI evaluation queued afterward) with zero explanation. New `SearchLoadingState.tsx`: 3 rotating status lines, each describing something this app genuinely does in the real order it does it (search → filter → queue for evaluation) — no invented progress percentage or fake step count — plus an honest, appropriately-hedged time expectation ("usually takes 10–20 seconds") and a note that results appear progressively rather than all at once.
+  - Wired into `FindJobsForm.tsx` only for a genuinely fresh search (`loading && jobs.length === 0`) — the existing `datePostedNeedsNewSearch` indicator already covers a background refilter of an already-visible result set, and shouldn't get replaced by a big loading block.
+  - **Verified the copy's claims are actually true by tracing the real state sequencing, not assumed**: `scrapeAndEvaluateJobs` returns the DB-inserted (still-unscored) rows, and `setLoading(false)`/`setJobs(...)` fire together right after — confirming results genuinely do appear before evaluation finishes, each showing the existing per-card "Scoring…" indicator, matching the new copy exactly.
+  - **Honest, disclosed lower-confidence tier**: NOT live-tested end to end with a real search, since that would spend a real, arguably redundant paid SerpApi call just to confirm a spinner/copy change whose logic was already traced and verified in code — deliberate cost discipline, not an oversight.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): "Today"/focus view — investigated, deliberately built as an extension of the existing dashboard instead of a new page.**
   - The dashboard's "Action Center" (`AIActionCenter.tsx`/`lib/dashboardInsights.ts`) already IS the "what needs my attention" surface this build-plan.md row was asking for — a dedicated `/today` page would have duplicated it, the same near-duplicate-surface mistake this project has caught and reverted before (the per-job Ask Navigator vs. global Navigator). Extended the existing widget with the one genuinely missing signal instead: **upcoming deadlines** (`jobs.next_deadline_at` within the next 7 days).
   - A second candidate signal ("follow-up due") was considered and deliberately NOT added — `lib/followUpNudge.ts`'s own 7-day threshold on applied-status jobs is a strict subset of the Action Center's existing 14-day stale-applied signal (same underlying condition), so adding it would just double-count the same jobs under two different labels, not surface anything new.
