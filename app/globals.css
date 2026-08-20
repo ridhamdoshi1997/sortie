@@ -201,8 +201,27 @@ body {
   }
 }
 
+/* Toast notification entrance (components/ui/ToastProvider.tsx) — a
+   separate, smaller/faster rise-and-fade than .fade-in-up above, which is
+   deliberately reserved for page-title-level elements. */
+.toast-enter {
+  animation: toast-enter 200ms ease both;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .fade-in-up {
+  .fade-in-up,
+  .toast-enter {
     animation: none;
   }
 }

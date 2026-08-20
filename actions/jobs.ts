@@ -14,6 +14,7 @@ import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/resea
 import { synthesizeLeverageForJob, type LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
 import { generateNegotiationScript as generateNegotiationScriptForJob, type NegotiationScript } from "@/lib/negotiationScript";
 import { decodeJobRequirements, type JobDecoderResult } from "@/lib/jobDecoder";
+import { generateNinetyDayPlan as generateNinetyDayPlanForJob, type NinetyDayPlan } from "@/lib/ninetyDayPlan";
 import { predictTrapDoorQuestions, type TrapDoorPredictionResult } from "@/lib/trapDoorPredictor";
 import { synthesizeInterrogationPlan, type InterrogationPlanResult } from "@/lib/interrogationPlan";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
@@ -1137,5 +1138,68 @@ export async function decodeJobDescription(jobId: string): Promise<ActionResult 
   } catch (error) {
     console.error("[actions/jobs] decodeJobDescription", error);
     return { success: false, error: "Failed to decode this job's requirements" };
+  }
+}
+
+// First-90-days success plan (build-plan.md §F) — reads this job's own
+// already-stored responsibilities/requirements/missing_skills, no new
+// external lookup.
+export async function generateNinetyDayPlanAction(jobId: string): Promise<ActionResult & { plan?: NinetyDayPlan }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const usageResult = await checkAndConsumeUsage(insforge, user.id, user.email, "ninety_day_plan");
+    if (!usageResult.allowed) {
+      return { success: false, error: usageResult.error };
+    }
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("title,company,responsibilities,requirements,missing_skills")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{
+        title: string | null;
+        company: string | null;
+        responsibilities: string[] | null;
+        requirements: string[] | null;
+        missing_skills: string[] | null;
+      }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model">>();
+    const provider = resolveProvider(profile?.preferred_model, user.email);
+
+    const plan = await generateNinetyDayPlanForJob(
+      {
+        jobTitle: job.title,
+        company: job.company,
+        responsibilities: job.responsibilities ?? [],
+        requirements: job.requirements ?? [],
+        missingSkills: job.missing_skills ?? [],
+      },
+      provider,
+    );
+
+    const { error: updateError } = await insforge.database.from("jobs").update({ ninety_day_plan: plan }).eq("id", jobId).eq("user_id", user.id);
+    if (updateError) {
+      console.error("[actions/jobs] generateNinetyDayPlanAction persist", updateError);
+      return { success: false, error: "Plan generated but failed to save" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, plan };
+  } catch (error) {
+    console.error("[actions/jobs] generateNinetyDayPlanAction", error);
+    return { success: false, error: "Failed to generate a 90-day plan" };
   }
 }

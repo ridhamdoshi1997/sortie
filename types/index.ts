@@ -190,6 +190,8 @@ export interface Job {
   // Job-description decoder — classifies this job's own Required list into
   // must-have vs likely padding, see lib/jobDecoder.ts's header comment.
   jd_decoder: JdDecoderData | null;
+  // First-90-days success plan — see lib/ninetyDayPlan.ts's header comment.
+  ninety_day_plan: NinetyDayPlanData | null;
   // Trap Door Predictor — tough/uncomfortable questions grounded only in
   // this job's own already-stored research, see lib/trapDoorPredictor.ts's
   // header comment. Local shape mirroring its TrapDoorPredictionResult.
@@ -284,6 +286,13 @@ export interface NegotiationScriptData {
 
 export interface JdDecoderData {
   requirements: { text: string; classification: "must_have" | "likely_padding"; reasoning: string }[];
+}
+
+export interface NinetyDayPlanData {
+  day30: string[];
+  day60: string[];
+  day90: string[];
+  watchOuts: string[];
 }
 
 export interface TaxEstimateInputs {

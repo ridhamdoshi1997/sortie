@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -8,11 +8,32 @@ import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
 import { NavigatorLauncherLoader } from "@/components/agent/NavigatorLauncherLoader";
 import { ReferralCaptureLoader } from "@/components/referrals/ReferralCaptureLoader";
 import { ReferralClaimerLoader } from "@/components/referrals/ReferralClaimerLoader";
+import { ServiceWorkerRegisterLoader } from "@/components/pwa/ServiceWorkerRegisterLoader";
+import { ToastProvider } from "@/components/ui/ToastProvider";
 
+// Installable PWA (build-plan.md §H). manifest + icons here are the two
+// pieces Next.js's metadata API covers; the service worker itself
+// (public/sw.js, already shipped for push notifications — deliberately NOT
+// expanded into a full offline-caching worker here, matching this app's
+// existing minimalism) is registered globally by ServiceWorkerRegisterLoader
+// below, since it previously only ever registered when a user opened
+// Settings -> Push, which isn't enough for real installability.
 export const metadata: Metadata = {
   title: "Sortie",
   description:
     "Your career operations command center — scan the field, score what's worth your time, and land with a file on every target.",
+  manifest: "/manifest.json",
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: "/icons/icon-192.png",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0a0a0a",
 };
 
 export default function RootLayout({
@@ -37,13 +58,16 @@ export default function RootLayout({
           the document itself. */}
       <body className="flex min-h-full flex-col overflow-x-hidden">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
-          <GlassCursorGlow />
-          {children}
-          <SettingsModalLoader />
-          <NavigatorLauncherLoader />
-          <CommandPaletteLoader />
-          <ReferralCaptureLoader />
-          <ReferralClaimerLoader />
+          <ToastProvider>
+            <GlassCursorGlow />
+            {children}
+            <SettingsModalLoader />
+            <NavigatorLauncherLoader />
+            <CommandPaletteLoader />
+            <ReferralCaptureLoader />
+            <ReferralClaimerLoader />
+            <ServiceWorkerRegisterLoader />
+          </ToastProvider>
         </ThemeProvider>
       </body>
     </html>

@@ -7,6 +7,7 @@ import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
 import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
+import { WelcomeTour } from "@/components/dashboard/WelcomeTour";
 import { Navbar } from "@/components/layout/Navbar";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
@@ -176,6 +177,7 @@ export default async function DashboardPage() {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
+      <WelcomeTour />
       <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-360 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
         {completionPercent < 100 && (
           <ProfileAttentionBanner

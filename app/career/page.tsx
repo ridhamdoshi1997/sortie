@@ -10,6 +10,7 @@ import { OutcomeInsights } from "@/components/career/OutcomeInsights";
 import { StarVault } from "@/components/career/StarVault";
 import { BragDocGenerator } from "@/components/career/BragDocGenerator";
 import { MarketReadiness } from "@/components/career/MarketReadiness";
+import { SkillGapTracker } from "@/components/career/SkillGapTracker";
 import { ResumeSuggestionsQueue } from "@/components/career/ResumeSuggestionsQueue";
 import {
   buildCareerEpochs,
@@ -131,6 +132,8 @@ export default async function CareerPage() {
         <BragDocGenerator />
 
         <MarketReadiness />
+
+        <SkillGapTracker />
 
         <CareerTimeline
           epochs={epochs}

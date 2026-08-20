@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Check, Copy, Mail, Sparkles } from "lucide-react";
 
 import { generateEmailDraftAction } from "@/actions/emailDrafts";
@@ -17,11 +18,33 @@ const TYPES: Array<{ key: EmailDraftType; label: string }> = [
 // reviews and sends themselves" discipline as every other draft-generation
 // surface in this app; never wired to an actual send action.
 export function EmailDrafts({ jobId }: { jobId: string }) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const containerRef = useRef<HTMLDivElement | null>(null);
   const [type, setType] = useState<EmailDraftType>("cold_application");
   const [draft, setDraft] = useState<EmailDraft | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<"subject" | "body" | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  // Deep-link support: FollowUpNudge.tsx links here with `?draft=follow_up`
+  // so the nudge lands the user already on the right tab instead of making
+  // them find it themselves. Watches searchParams (not just mount) since
+  // FollowUpNudge lives on this same page — a query-param-only Link click
+  // doesn't remount this component, it's a same-route param change.
+  useEffect(() => {
+    const requested = searchParams.get("draft");
+    if (requested !== "follow_up") return;
+    const timer = setTimeout(() => {
+      setType("follow_up");
+      containerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      const params = new URLSearchParams(searchParams);
+      params.delete("draft");
+      const query = params.toString();
+      router.replace(query ? `?${query}` : window.location.pathname, { scroll: false });
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [searchParams, router]);
 
   function handleGenerate(): void {
     setError(null);
@@ -41,7 +64,7 @@ export function EmailDrafts({ jobId }: { jobId: string }) {
   }
 
   return (
-    <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
+    <section ref={containerRef} className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex items-center gap-3 border-b border-border p-6">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
           <Mail className="h-4 w-4 text-accent" />

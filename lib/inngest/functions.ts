@@ -441,6 +441,87 @@ export const generateSuccessStoryAsync = inngest.createFunction(
     },
 );
 
+// Follow-up timing nudges (build-plan.md §C) — the proactive half of the
+// feature; the inline banner (FollowUpNudge.tsx) is the reactive half. No
+// new paid-API cost (a plain DB query + the already-shipped push infra),
+// unlike Job Alerts' blocked background-search shape — a real, deliberate
+// distinction, not an oversight. Never re-nudges the same job twice
+// (jobs.follow_up_nudged_at is set once and never cleared).
+export const sendFollowUpNudgesAsync = inngest.createFunction(
+    { id: "send-follow-up-nudges", name: "Send Follow-up Timing Nudges", triggers: [{ cron: "0 14 * * 1" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        const { data: eligibleJobs } = await step.run("find-eligible-jobs", async () => {
+            return admin.database
+                .from("jobs")
+                .select("id,user_id,title,company")
+                .eq("application_status", "applied")
+                .is("follow_up_nudged_at", null)
+                .lte("application_status_updated_at", sevenDaysAgo);
+        });
+
+        const jobs = (eligibleJobs ?? []) as { id: string; user_id: string; title: string | null; company: string | null }[];
+        if (jobs.length === 0) {
+            return { message: "No jobs eligible for a follow-up nudge right now." };
+        }
+
+        const jobsByUser = new Map<string, typeof jobs>();
+        for (const job of jobs) {
+            jobsByUser.set(job.user_id, [...(jobsByUser.get(job.user_id) ?? []), job]);
+        }
+
+        const { sendPushNotification } = await import("@/lib/push");
+        let nudgedUsers = 0;
+
+        for (const [userId, userJobs] of jobsByUser.entries()) {
+            await step.run(`nudge-user-${userId}`, async () => {
+                const { data: subs } = await admin.database
+                    .from("push_subscriptions")
+                    .select("id,endpoint,p256dh,auth")
+                    .eq("user_id", userId);
+
+                const subscriptions = (subs ?? []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+
+                if (subscriptions.length > 0) {
+                    const count = userJobs.length;
+                    const title = "Time to follow up?";
+                    const body =
+                        count === 1
+                            ? `Your application to ${userJobs[0].company ?? "a company"} has had no update in a week.`
+                            : `${count} applications have had no update in a week.`;
+
+                    const staleIds: string[] = [];
+                    for (const sub of subscriptions) {
+                        const result = await sendPushNotification(sub, { title, body, url: "/missions" });
+                        if (!result.success && result.expired) staleIds.push(sub.id);
+                    }
+                    if (staleIds.length > 0) {
+                        await admin.database.from("push_subscriptions").delete().in("id", staleIds);
+                    }
+                }
+
+                // Marked nudged regardless of whether a push subscription
+                // existed — the inline banner already covers users without
+                // push enabled, and this stops the same job from being
+                // re-evaluated by this cron every week forever.
+                await admin.database
+                    .from("jobs")
+                    .update({ follow_up_nudged_at: new Date().toISOString() })
+                    .in("id", userJobs.map((j) => j.id));
+            });
+            nudgedUsers += 1;
+        }
+
+        return { message: `Evaluated ${jobs.length} stale applications across ${nudgedUsers} users.` };
+    },
+);
+
 export const generateGeoContentAsync = inngest.createFunction(
     {
         id: "generate-geo-content",

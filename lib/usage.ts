@@ -36,7 +36,9 @@ export type UsageAction =
   | "negotiation_script"
   | "email_draft"
   | "outreach_message"
-  | "jd_decoder";
+  | "jd_decoder"
+  | "ninety_day_plan"
+  | "skill_gap_synthesis";
 
 export const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -173,6 +175,14 @@ export const DAILY_LIMITS: Record<UsageAction, number> = {
   // this job's own already-extracted requirements, same cost/shape as
   // rejection_intelligence/trap_door_prediction.
   jd_decoder: 5,
+  // First-90-days success plan (build-plan.md §F) — one structured call
+  // over this job's own already-stored data, same cost/shape as
+  // negotiation_script.
+  ninety_day_plan: 5,
+  // Skill-gap career pathing (build-plan.md §E) — one structured call over
+  // the user's own already-aggregated missing-skills pattern (zero-AI
+  // aggregation happens first), same cost/shape as market_readiness.
+  skill_gap_synthesis: 5,
 };
 
 export const ACTION_LABELS: Record<UsageAction, string> = {
@@ -205,6 +215,8 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   email_draft: "email drafts",
   outreach_message: "outreach message drafts",
   jd_decoder: "job-description decodes",
+  ninety_day_plan: "first-90-days plans",
+  skill_gap_synthesis: "skill-gap career reads",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

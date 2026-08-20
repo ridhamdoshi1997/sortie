@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Scale } from "lucide-react";
 
+import { useToast } from "@/components/ui/ToastProvider";
+
 const STORAGE_KEY = "sortie_compare_jobs";
 const MAX_COMPARE = 3;
 
@@ -33,6 +35,7 @@ function writeCompareSet(entries: CompareEntry[]): void {
 // localStorage, capped at 3 (a real side-by-side table stops being
 // scannable past that), and the actual comparison renders on `/compare`.
 export function AddToCompareButton({ jobId, title, company }: { jobId: string; title: string; company: string }) {
+  const { showToast } = useToast();
   const [entries, setEntries] = useState<CompareEntry[]>([]);
 
   // Deferred via setTimeout(0) — same reason as every other mount-effect
@@ -51,6 +54,7 @@ export function AddToCompareButton({ jobId, title, company }: { jobId: string; t
     const next = isAdded ? entries.filter((e) => e.id !== jobId) : [...entries, { id: jobId, title, company }].slice(0, MAX_COMPARE);
     setEntries(next);
     writeCompareSet(next);
+    showToast(isAdded ? `Removed "${title}" from comparison` : `Added "${title}" to comparison`, "success");
   }
 
   return (

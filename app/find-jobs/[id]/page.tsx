@@ -15,6 +15,7 @@ import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
 import { NegotiationScript } from "@/components/job-details/NegotiationScript";
+import { NinetyDayPlan } from "@/components/job-details/NinetyDayPlan";
 import { OfferWorkspace } from "@/components/job-details/OfferWorkspace";
 import { StrategicMoatBriefing } from "@/components/job-details/StrategicMoatBriefing";
 import { InterviewDebrief } from "@/components/job-details/InterviewDebrief";
@@ -27,6 +28,7 @@ import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { AddToCompareButton } from "@/components/job-details/AddToCompareButton";
+import { FollowUpNudge } from "@/components/job-details/FollowUpNudge";
 import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -191,6 +193,9 @@ export default async function JobDetailsPage({ params }: Props) {
         <div className="fade-in-up" style={{ animationDelay: "40ms" }}>
           <AddToCompareButton jobId={job.id} title={job.title ?? "Untitled role"} company={company} />
         </div>
+        <div className="fade-in-up" style={{ animationDelay: "50ms" }}>
+          <FollowUpNudge applicationStatus={job.application_status} statusUpdatedAt={job.application_status_updated_at} />
+        </div>
         <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
           <JobInfo job={job} />
         </div>
@@ -263,6 +268,7 @@ export default async function JobDetailsPage({ params }: Props) {
                       <>
                         <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
                         <NegotiationScript jobId={job.id} script={job.negotiation_script} />
+                        <NinetyDayPlan jobId={job.id} plan={job.ninety_day_plan} />
                       </>
                     )}
 
