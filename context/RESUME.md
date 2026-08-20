@@ -2,7 +2,25 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 19 session, in progress — 19 of 24 queued items shipped/resolved across 3 deploys, live-verified; full detail below and in `progress-tracker.md`)
+Last updated: 2026-08-20 (Phase 19 session — ALL 24 queued items shipped/resolved across 4 deploys, live-verified; full detail below and in `progress-tracker.md`)
+
+## Phase 19, fourth (final) batch — the last 5 items, and a real InsForge outage caught + waited out mid-verification
+
+Deployed (`npx vercel --prod --scope sortie3`, no permission prompt). Post-deploy checklist green: `GET /` → `200`, `GET /find-jobs`/`GET /missions`/`GET /career`/`GET /dashboard` → `307`, `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`.
+
+**This closes out the full Phase 19 queue — all 24 items from the original "complete the remaining free tasks" instruction are now done.**
+
+1. **Global search** — extended the existing Cmd+K command palette (didn't build a new search surface) with a debounced real-jobs search, merged in as a "Jobs" result group. Scoped to jobs only, this app's highest-value searchable entity.
+2. **"Today"/focus view — investigated, deliberately NOT built as a new page.** The dashboard's existing "Action Center" already IS that surface; a separate page would have duplicated it (the same near-duplicate mistake this project has caught before — per-job Ask Navigator vs. global Navigator). Extended the existing widget with the one genuinely missing signal (upcoming deadlines) instead of building something new.
+3. **Loading states that teach** — Find & Evaluate's search flow. Verified the new copy's claims ("results appear progressively") are actually true by tracing the real `loading`/`setJobs` state sequencing, not assumed. NOT live-tested with a real search — would have spent a real, arguably redundant paid SerpApi call to confirm a copy change already verified in code; disclosed as a real, lower-confidence tier.
+4. **Skeleton loaders + optimistic UI, audited.** Optimistic UI: confirmed already broadly covered (42 components already follow the pattern) — not a real gap. Skeleton loaders: only `/find-jobs` had one; added matching ones for `/missions`, `/dashboard`, `/career`.
+5. **Job detail drawer / split view** — the last item. A deliberately lightweight summary panel (not a replica of the real job detail page's 25+ sub-components), wired only into Find & Evaluate via a new optional `onQuickView` prop on `JobResultCard.tsx`.
+
+**A real InsForge backend outage hit mid-verification of the drawer, correctly diagnosed as infrastructure, not a code bug**: `/find-jobs` briefly stopped loading any jobs, with `getUnreadNotificationCount`/other server actions failing `InsForgeError: Request timed out after 30000ms`, cascading into spurious auth-check failures (real `/login` redirects, page loads up to 2.3 minutes) — confirmed via the dev server's own logs, not assumed from symptoms. Recovered on its own within a few minutes; re-verified cleanly afterward. Matches this project's own previously-documented pattern of transient InsForge instability (Phase 13, Phase 16) — if `/find-jobs` or similar ever silently stops loading again with no obvious code change nearby, check server logs for this exact error before assuming a regression.
+
+**A second real cross-session gotcha, worth remembering**: a previous session's shared dev server had gone away partway through this session; starting a fresh one of this session's own meant a genuinely logged-out browser (no cookie carried over) — the first attempt at verifying global search was silently invalid because of this (tested against `/login`, not the real app). Always check `document.cookie`/`window.location.href` before trusting a "no results" finding as real.
+
+---
 
 ## Phase 19, third batch — bulk actions, homepage research logged, and a real accessibility audit
 
