@@ -62,6 +62,8 @@ export interface Profile {
   // Google Calendar ingest (build-plan.md §G, interview detection).
   google_calendar_refresh_token: string | null;
   google_calendar_connected_at: string | null;
+  outlook_refresh_token: string | null;
+  outlook_connected_at: string | null;
 }
 
 export interface WorkExperience {

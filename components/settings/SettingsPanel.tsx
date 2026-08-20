@@ -13,13 +13,14 @@ import { ReferralsTab } from "@/components/settings/ReferralsTab";
 import { CreditsUsageTab } from "@/components/settings/CreditsUsageTab";
 import { NotionTab } from "@/components/settings/NotionTab";
 import { GoogleCalendarTab } from "@/components/settings/GoogleCalendarTab";
+import { OutlookCalendarTab } from "@/components/settings/OutlookCalendarTab";
 
 type Props = {
   email: string;
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "notion" | "googleCalendar" | "referrals" | "support";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "notion" | "googleCalendar" | "outlookCalendar" | "referrals" | "support";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
@@ -30,6 +31,7 @@ const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "extension", icon: Plug, label: "Browser extension" },
   { key: "notion", icon: Database, label: "Notion" },
   { key: "googleCalendar", icon: CalendarIcon, label: "Google Calendar" },
+  { key: "outlookCalendar", icon: CalendarIcon, label: "Outlook Calendar" },
   { key: "referrals", icon: Gift, label: "Referrals" },
   { key: "support", icon: LifeBuoy, label: "Contact support" },
 ];
@@ -374,6 +376,7 @@ export function SettingsPanel({ email, providers }: Props) {
         {tab === "extension" && <ExtensionTab />}
         {tab === "notion" && <NotionTab />}
         {tab === "googleCalendar" && <GoogleCalendarTab />}
+        {tab === "outlookCalendar" && <OutlookCalendarTab />}
         {tab === "referrals" && <ReferralsTab />}
         {tab === "support" && <SupportTab />}
       </div>
