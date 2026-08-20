@@ -1406,7 +1406,7 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Company card | Logo, description, socials (X / LinkedIn / Crunchbase), **Glassdoor rating**, founded year, HQ, employee count, website | Partial |
 | **Funding** | Current stage, total funding, and a dated timeline of rounds | 🆕 — needs Crunchbase ($49–99/mo, free tier gone) or a cheaper alternative |
 | **Leadership Team** | Photo cards, name, title, LinkedIn link | ✅ shipped 2026-07-22/23 — waterfall: Wikipedia (free) → site-guessing (free) → Apify/LinkedIn (paid, ~$0.10-0.11, last resort only). Photo cards with LinkedIn icon overlay match JobRight's own treatment; real photos only from the Apify path, initials-avatar fallback otherwise |
-| **Recent News** | Three cards: source, headline, date | 🆕 — cheap via a news API or the existing research agent |
+| **Recent News** | ✅ already shipped, stale marker corrected 2026-08-20 | `CompanyResearchDossier.recentUpdates`, rendered as "Recent Updates" on the Company tab (`CompanyResearch.tsx`) — deliberately not labeled "Recent News" since it's grounded in whatever the free Jina Reader site crawl actually surfaced (blog/press pages), not a real news API. No new build needed. |
 | Attribution | "Company data provided by Crunchbase" | — |
 
 **Persistent right rail (both tabs):** AI Tools — *View Custom Resume* (with "Updated {date}"), *Build Cover Letter*, *Analyze How Well You Fit*. Sortie has all three capabilities but doesn't surface them as a persistent rail.

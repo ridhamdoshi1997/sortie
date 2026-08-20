@@ -334,6 +334,16 @@ function ExtensionTab() {
         <KeyRound className="h-4 w-4" />
         {isGenerating ? "Generating…" : "Generate new key"}
       </button>
+
+      <div className="rounded-lg border border-border bg-surface-secondary px-3 py-2.5">
+        <p className="text-xs font-medium text-text-primary">Zapier / Google Sheets export</p>
+        <p className="mt-1 text-xs leading-5 text-text-muted">
+          Same key works with Zapier&apos;s &quot;Webhooks by Zapier&quot; trigger — point it at{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-[11px]">GET /api/integrations/jobs</code> with{" "}
+          <code className="rounded bg-surface px-1 py-0.5 text-[11px]">Authorization: Bearer &lt;key&gt;</code>, then
+          chain a &quot;Google Sheets: Create Spreadsheet Row&quot; action inside Zapier.
+        </p>
+      </div>
     </div>
   );
 }
