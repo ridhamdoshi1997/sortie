@@ -2,7 +2,20 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 19 session, in progress — 6 more items shipped, deployed, live-verified; full detail below and in `progress-tracker.md`)
+Last updated: 2026-08-20 (Phase 19 session, in progress — 12 items shipped/resolved across 2 deploys so far, live-verified; full detail below and in `progress-tracker.md`)
+
+## Phase 19, second batch — 4 more items, including a real production data-integrity bug
+
+Deployed as commit `e11de12` (`npx vercel --prod --scope sortie3` — this time went through without hitting the permission classifier, unlike the first batch). Post-deploy checklist green: `GET /` → `200`, `GET /admin`/`GET /career`/`GET /profile`/`GET /jobs/external` → `307`, `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`.
+
+1. **Skills radar chart** on `/career` — real matched-skill frequency (reuses the existing `aggregateSkillGaps` helper against `matched_skills` instead of `missing_skills`), `recharts` already a dependency. Honest verification-tier note: the real test account's `matched_skills` is genuinely empty (sparse profile), so the non-empty chart render wasn't visually confirmed with real populated data — confirmed correct via a clean independent `npm run build` and code-identity with the already-proven `SkillGapTracker`.
+2. **Feature-announcement/waitlist modal — investigated, deliberately not built.** This is a captured competitor design pattern (JobRight's "Introducing Agent [Beta]"), not a concrete feature spec — `/waitlist` (checked) is a different, already-built thing (an at-capacity account gate). Grepped the whole app for remaining `<ComingSoon>` placeholders (the natural home for this pattern) and found none left. Nothing to attach it to right now.
+3. **Direct mid-session user request: "the mobile version of profile page"** — real bug found in the SHARED `components/ui/Tabs.tsx` (used by Profile, job detail's Overview/Company/Offer Tools, both document workspaces): the tablist had zero overflow handling and sat right at the edge of a real 375px viewport with zero margin. Fixed with `overflow-x-auto` on the tablist itself — fixes every page using `Tabs.tsx`, not just Profile. Live-verified: confirmed real overflow before, zero page-level overflow after, at an exact 375px viewport, across all 4 tabs plus the edit modal.
+4. **Dedup audit (§37) — found and fixed two real, separate duplicate-job-creation bugs.** (a) `lib/externalJob.ts`'s `createExternalJob` (manual paste + extension capture) had zero dedup at all — fixed with a same-user-url pre-check. (b) The primary SerpApi search path's existing `external_id`-based dedup doesn't actually work, because Google Jobs issues a fresh `job_id`/token per search run even for the identical real listing — confirmed via real production data (**one account had the same job duplicated 11 times**). Fixed with a title+company+location fingerprint pre-check that refreshes the existing row instead of inserting a new one. **Deliberately did NOT retroactively merge the duplicate rows already sitting in the data** — real data-loss risk (which row's status/tags/notes wins), needs an actual product decision on merge semantics. This is a real, still-open item if a data cleanup is ever wanted.
+
+**A second real environment finding, worth remembering**: production deploys via `vercel --prod` hit the permission classifier unpredictably — the first batch this session got blocked and needed an explicit `AskUserQuestion` confirmation; the very next deploy in the same session went through with no prompt at all. Don't assume a deploy will be blocked or won't be — just attempt it, and if blocked, stop and ask rather than finding a workaround (this is one of the few actions in this project that should NOT be pushed through on a general "keep going" instruction).
+
+---
 
 ## Phase 19 — in progress, working the remaining free/unblocked backlog one item at a time
 
