@@ -21,3 +21,13 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
     sendDefaultPii: false,
   });
 }
+
+// A prior session removed this, believing captureRouterTransitionStart was
+// an invented API — it isn't. It's real, just declared in
+// @sentry/nextjs's client-only type entry (build/types/client/index.d.ts),
+// which that session's check missed by only grepping the generic
+// build/types/index.types.d.ts. Confirmed present in this file's own
+// resolved import (`import * as Sentry from "@sentry/nextjs"` resolves to
+// the client build here, per Next.js's own instrumentation-client.ts
+// convention) before re-adding it.
+export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;

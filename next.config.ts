@@ -36,5 +36,10 @@ export default withSentryConfig(nextConfig, {
   authToken: process.env.SENTRY_AUTH_TOKEN,
   silent: true,
   widenClientFileUpload: true,
-  disableLogger: true,
+  // disableLogger was here but is deprecated in favor of
+  // webpack.treeshake.removeDebugLogging — which itself only works under
+  // webpack, not Turbopack (this project's actual dev/build bundler, see
+  // "next dev"/"next build" both running with Turbopack). No real
+  // replacement applies here, so this option is just removed rather than
+  // swapped for one that silently wouldn't do anything.
 });
