@@ -195,3 +195,4 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
     </section>
   );
 }
+

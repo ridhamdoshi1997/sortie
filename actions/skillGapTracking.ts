@@ -32,6 +32,31 @@ export async function getSkillGaps(): Promise<GapsResult> {
   }
 }
 
+// Skills radar chart (build-plan.md §H) — same zero-AI aggregation shape
+// as getSkillGaps above, just counting matched_skills instead of
+// missing_skills. Real strengths from the user's own evaluated jobs, not a
+// self-reported profile list.
+export async function getMatchedSkills(): Promise<GapsResult> {
+  try {
+    const user = await requireUser();
+    const insforge = await createInsforgeServer();
+
+    const { data: jobs } = await insforge.database
+      .from("jobs")
+      .select("matched_skills")
+      .eq("user_id", user.id)
+      .not("matched_skills", "is", null);
+
+    const rows = (jobs ?? []) as { matched_skills: string[] | null }[];
+    const gaps = aggregateSkillGaps(rows.map((j) => j.matched_skills), 8);
+
+    return { success: true, gaps, jobCount: rows.length };
+  } catch (error) {
+    console.error("[actions/skillGapTracking] getMatchedSkills", error);
+    return { success: false, error: "Failed to load your matched-skills pattern." };
+  }
+}
+
 type PathingActionResult = { success: true; result: SkillGapPathingResult } | { success: false; error: string };
 
 // Opt-in, button-triggered AI synthesis over the already-computed real
