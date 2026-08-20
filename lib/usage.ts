@@ -38,7 +38,8 @@ export type UsageAction =
   | "outreach_message"
   | "jd_decoder"
   | "ninety_day_plan"
-  | "skill_gap_synthesis";
+  | "skill_gap_synthesis"
+  | "pipeline_strategy_read";
 
 export const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
@@ -183,6 +184,11 @@ export const DAILY_LIMITS: Record<UsageAction, number> = {
   // the user's own already-aggregated missing-skills pattern (zero-AI
   // aggregation happens first), same cost/shape as market_readiness.
   skill_gap_synthesis: 5,
+  // Pipeline strategy read (build-plan.md §H, "AI heavy dashboard" direct
+  // request) — one structured call over the dashboard's own already-
+  // computed funnel-stage counts + per-stage average match score (zero-AI
+  // aggregation happens first), same cost/shape as market_readiness.
+  pipeline_strategy_read: 5,
 };
 
 export const ACTION_LABELS: Record<UsageAction, string> = {
@@ -217,6 +223,7 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   jd_decoder: "job-description decodes",
   ninety_day_plan: "first-90-days plans",
   skill_gap_synthesis: "skill-gap career reads",
+  pipeline_strategy_read: "pipeline strategy reads",
 };
 
 type UsageResult = { allowed: true } | { allowed: false; error: string };

@@ -5,6 +5,7 @@ import { ActivityHeatmap } from "@/components/dashboard/ActivityHeatmap";
 import { UpcomingInterviews } from "@/components/dashboard/UpcomingInterviews";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
+import { PipelineStrategyCard } from "@/components/dashboard/PipelineStrategyCard";
 import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
 import { WelcomeTour } from "@/components/dashboard/WelcomeTour";
@@ -193,6 +194,8 @@ export default async function DashboardPage() {
           </div>
           <PipelineFunnel counts={funnelCounts} />
         </div>
+
+        <PipelineStrategyCard />
 
         {/* Row 2 — match quality, activity trend, and (only if real) upcoming interviews */}
         <div className={`grid grid-cols-1 gap-4 ${interviewingJobs.length > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>

@@ -4,6 +4,16 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 20): "AI heavy dashboard" — direct user request, item 1 of 2 (opt-in AI widgets, proactive briefing next).**
+  - Flagged a real architecture tension before building: the dashboard's existing `AIActionCenter` is *deliberately* deterministic (its own header comment: "a dashboard loaded on every visit is exactly the wrong place for a live LLM call per view"). Asked the user how cost-heavy they wanted this — they chose opt-in AI widgets first (matching the app's existing Market Readiness/Skill Gap Tracker pattern), then a proactive pre-generated briefing.
+  - **New `PipelineStrategyCard.tsx`** on `/dashboard` — genuinely new ground, not a duplicate of `/career`'s existing AI widgets (Outcome Insights already covers historical rejection-reason distribution; this looks at the CURRENT live pipeline snapshot instead: per-stage job counts, per-stage average match score, and how many strong-match (80+) jobs are sitting untouched in Draft). `lib/pipelineStrategy.ts`'s `computePipelineSnapshot()` (zero-AI aggregation) + `generatePipelineStrategyRead()` (one opt-in synthesis call), same shape as `lib/skillGapTracking.ts`. New `pipeline_strategy_read` usage action (5/day cap, same tier as `market_readiness`).
+  - **Checked for duplication before building** — confirmed via `lib/outcomeInsights.ts` that rejection-pattern aggregation already exists on `/career`, so a first draft of a second "rejection synthesis" widget was dropped in favor of keeping this one focused and non-overlapping.
+  - **Live-verified end to end with real production data**: real snapshot rendered correctly ("Draft 77 · avg 60", "17 strong matches untouched in Draft"), real AI synthesis call completed (confirmed via server logs, ~10.7s real latency) and produced output that exactly matched the real numbers ("77 of 78 total jobs", "17 strong-match jobs (80+ score)") — grounded correctly, no invented figures.
+  - **A recurring environment quirk hit again, same root cause as before, not a new bug**: a `ChunkLoadError` appeared on the first navigation after starting a fresh dev server; a fresh browser tab (not a reload) cleared it immediately, consistent with the Router-Cache finding already documented in this file.
+  - `tsc --noEmit` clean, full `npm run build` clean.
+
+---
+
 - **2026-08-20 (Phase 20): Homepage performance pass — build-plan.md §S fast-follow, found 2 real pre-existing bugs while checking network requests.**
   - **Real bug #1**: `CommandPalette.tsx` had NO public-route gating at all — every command it offers points to an authenticated-only page (`quickSearchJobs` also requires a logged-in user), yet Cmd+K was fully active on the marketing homepage, opening a palette full of links that just bounce to `/login`.
   - **Real bug #2**: `NavigatorLauncher.tsx`'s own `isPublicRoute()` had gone stale — it never picked up `/methodology`, `/pricing`, or `/ats-checker` when those shipped earlier this session, so Navigator's FAB could still render (and fail on click, per that component's own header comment) on all three.
