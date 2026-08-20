@@ -17,6 +17,12 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-19 (Phase 18, continued): Contextual tooltips explaining the 10 evaluation dimensions — build-plan.md §H, small.**
+  - Native `title`-attribute tooltips (dotted-underline affordance) on each dimension name in `EvaluationBreakdown.tsx` — a genuine, static, one-line explanation of what each dimension GENERALLY measures, distinct from `dim.note`'s already-existing per-job-specific reasoning. No new dependency/component. Live-verified the real tooltip text renders correctly on production.
+  - Committed (`5e4834f`), pushed, deployed.
+
+---
+
 - **2026-08-19 (Phase 18, continued): Job comparison view (side-by-side, 10 dimensions) — build-plan.md §H.**
   - New `/compare` page + `AddToCompareButton.tsx` on the job detail page. Deliberately scoped as a self-contained addition (a `localStorage`-backed compare tray, capped at 3 jobs) rather than adding multi-select state to `MissionsView.tsx` — that component already carries a lot of filter/sort/view-mode state, and this feature doesn't need to touch it at all to be genuinely useful. Renders match score, overall grade, salary, location, and all 10 evaluation dimensions (fixed order from `lib/evaluator.ts`'s `EVALUATION_DIMENSIONS`) side by side, scoped to jobs the signed-in user actually owns.
   - **Live-verified on real production with 3 real jobs** spanning a B/F/C overall-grade spread — confirmed real, distinct match scores/grades/salaries/locations rendered correctly per column, and the "Add to compare" entry point renders on the job detail page.
