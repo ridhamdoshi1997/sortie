@@ -2,6 +2,21 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+## Phase 20, cont'd — "AI heavy dashboard" (direct user request), both parts shipped and deployed
+
+Before building, flagged a real tension: the dashboard's `AIActionCenter` is deliberately deterministic (its own comment says a per-visit live LLM call is "exactly the wrong place"). Asked the user how cost-heavy they wanted this — they chose opt-in widgets first, then a proactive pre-generated briefing. Both are done. Full detail in `progress-tracker.md`'s two newest entries.
+
+1. **`PipelineStrategyCard.tsx`** on `/dashboard` — an opt-in AI synthesis widget over the CURRENT pipeline snapshot (per-stage job counts + average match score, strong-match jobs sitting untouched in Draft). Checked `lib/outcomeInsights.ts` first to confirm this doesn't duplicate `/career`'s existing rejection-pattern synthesis — it doesn't, genuinely new ground. Same zero-AI-aggregation-then-one-opt-in-call shape as Market Readiness/Skill Gap Tracker; new `pipeline_strategy_read` usage action (5/day).
+2. **Proactive weekly briefing** — a new Monday-9am Inngest cron (`generateWeeklyBriefingsAsync`, `lib/inngest/functions.ts`) pre-generates one real summary per user with genuine recent activity or an upcoming deadline (fully dormant accounts cost nothing), stored on new `profiles.weekly_briefing`/`weekly_briefing_generated_at` columns. `WeeklyBriefingCard.tsx` just displays the stored value — zero AI cost per page load, which was the whole point.
+
+**A real environment obstacle worth remembering**: manually invoking a cron-triggered Inngest function through the local dev server's UI (`localhost:8288`) doesn't reliably work in this environment — several synthetic-click strategies produced zero effect. A standalone `tsx` script also failed (`@insforge/shared-schemas`'s package exports don't resolve outside Next.js's own bundler). What worked: a temporary, clearly-named API route inside the real Next.js app that runs the exact cron logic once, hit via `curl`, deleted immediately after (confirmed via `git status` it was never committed). **If a cron function ever needs manual local verification again, use this route method directly — don't spend time on the Inngest dev server UI or a standalone script first.**
+
+**Both new columns were added via plain `db query` (`ALTER TABLE ... ADD COLUMN`), not `db migrations`** — per this project's own recorded gotcha, the migrations-tracking workaround is only needed when a new table's DDL references `auth.users(id)` directly; plain columns on an existing table don't need it.
+
+**Committed (`0d38847`, `ee8c5c5`) and deployed to production** — `npx vercel --prod --scope sortie3`, followed by `PUT /api/inngest` (200) to re-sync the new cron function with Inngest Cloud. Post-deploy checklist green.
+
+---
+
 **Same-session follow-up (still Phase 20) — all 4 homepage fast-follows closed out, "ya go ahead" from the user.** All committed and deployed. Full detail in `progress-tracker.md`'s newest 4 entries; fast map:
 1. **Features mega-menu** — real dropdown grouped Discovery/Application/Interviews, deep-linking to new anchor `id`s on the actual feature cards.
 2. **Dedicated `/pricing` page** — reuses `CTASection.tsx` directly, nav now points here instead of the `/#pricing` anchor.
