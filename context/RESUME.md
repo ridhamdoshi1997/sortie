@@ -4,9 +4,9 @@ Read this file first, before anything else — including the "Read Before Anythi
 
 Last updated: 2026-08-20, later same day (Phase 20 continued — a JobPilot→Sortie branding cleanup pass, a real favicon/app-icon fix, and a new Notion export integration. See this file's newest section, directly below, before the "closed out clean" entries underneath it — those describe the *earlier* Phase 20 work and are now one layer stale on session status.)
 
-## Session status: NOT clean — real uncommitted work in the tree
+## Session status: clean stop, nothing in flight
 
-Everything described in the new top section below (branding cleanup, favicon fix, Notion export) is written, `tsc`/`eslint`/production-build clean, but **not yet committed or deployed** — the user hasn't asked for a commit yet this stretch. Don't assume it's live in production. Check `git status` before trusting anything above this line as shipped.
+Everything described in the new top section below (branding cleanup, favicon fix, Notion export) is committed (`9296e8d`), pushed to `origin/feature/my-experiment`, and deployed to production via `npx vercel --prod --scope sortie3`. Post-deploy checklist green: `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`, `GET /` → `200`, `GET /dashboard` → `307`, `GET /favicon.ico` → `200` (1340 bytes — confirmed byte-identical to the locally-generated file, so the new icon is genuinely live, not just committed), `GET /manifest.json` → `200`. `public/readme/`'s 7 orphaned tutorial assets were deleted per direct user confirmation.
 
 ## Phase 20, cont'd — JobPilot→Sortie branding cleanup, favicon fix, Notion export (this session, most recent)
 
@@ -18,7 +18,7 @@ Everything described in the new top section below (branding cleanup, favicon fix
 
 **Honest verification-tier note, not glossed over**: Notion export is `tsc`-clean, `eslint`-clean, and a full `npm run build` passes (exit 0) — but it has **not** been live-tested end-to-end, since that needs a real Notion account/integration token, which only the user has. Ask the user to connect a real test database and report back, or hand over a token for a one-time live check before calling this fully verified.
 
-**Not yet committed or deployed** — waiting on the user.
+**Committed (`9296e8d`), pushed, and deployed to production** — see the updated session-status line above.
 
 ---
 
