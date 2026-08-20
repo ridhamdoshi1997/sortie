@@ -1,5 +1,6 @@
-import Link from "next/link";
 import { Check } from "lucide-react";
+
+import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
 
 // Rebuilt for build-plan.md §S — a transparent pricing anchor even though
 // monetization (build-plan.md §J) isn't live yet. Describes today's real
@@ -36,12 +37,14 @@ export function CTASection() {
                 </li>
               ))}
             </ul>
-            <Link
+            <TrackedCtaLink
               href="/login"
+              eventName="marketing_cta_clicked"
+              eventProperties={{ location: "pricing" }}
               className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
             >
               Start for free
-            </Link>
+            </TrackedCtaLink>
           </div>
 
           <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">

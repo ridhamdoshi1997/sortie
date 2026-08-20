@@ -4,6 +4,15 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 20): Conversion tracking on the new marketing CTAs — build-plan.md §S fast-follow.**
+  - New `trackPostHogClientEvent()` in `lib/posthog-client.ts` (same no-op-if-unconfigured guard as the rest of that file) fires a `marketing_cta_clicked` event with a `location` property (`hero`/`pricing`/`nav_desktop`/`nav_mobile`) on every "Start for free" click across the homepage.
+  - New `TrackedCtaLink.tsx` — a small Client Component boundary, since `Hero.tsx`/`CTASection.tsx` are Server Components and can't own an inline `onClick` themselves. `Navbar.tsx` is already a Client Component, so its two "Start for free" links got the tracker wired in directly instead.
+  - **A real environment finding, worth remembering for this project going forward**: hit what looked like a 3rd recurrence of the "stale Turbopack graph" bug (`ReferenceError: Link is not defined` in `CTASection.tsx`, despite the file being confirmed correct on disk, `tsc --noEmit` clean, and a full `npm run build` clean) — but this time a full `.next` wipe + dev-server restart did NOT clear it. Opening a genuinely fresh browser tab (rather than reloading the existing one) cleared it immediately. Root cause: Next.js's client-side Router Cache lives in the BROWSER TAB's memory, not the dev server, and survives a full server restart since nothing forces the tab to discard it. **Going forward, try a fresh tab before escalating to a `.next` wipe** — it's a cheaper, more targeted fix, and may explain some of this session's earlier "stale graph" diagnoses too.
+  - **Verified PostHog is genuinely configured in production** (`vercel env ls production` confirms real `NEXT_PUBLIC_POSTHOG_KEY`/`_HOST` values set) even though local `.env` has an empty key by design — so this isn't dead code, it will actually fire once deployed. Local verification confirmed the click wiring itself is error-free and navigation still works correctly (the actual PostHog capture is a local no-op by design, not independently observable without a configured local key or dashboard access).
+  - `tsc --noEmit` clean, full `npm run build` clean.
+
+---
+
 - **2026-08-20 (Phase 20): Dedicated `/pricing` page — build-plan.md §S fast-follow.**
   - Reuses `CTASection.tsx` directly rather than duplicating the pricing cards (same component, same `id="pricing"`, so the homepage anchor still works too) — just gives it a stable, linkable URL plus a short honest FAQ (3 items, each grounded in an already-established real fact: free access won't be revoked, the no-auto-apply stance links to `/methodology`, Pro is honestly marked not-yet-live rather than a fake price).
   - Nav's "Pricing" link (desktop + mobile) now points to `/pricing` instead of the `/#pricing` anchor.

@@ -18,6 +18,7 @@ import { Logo } from "@/components/layout/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { getUnreadNotificationCount } from "@/actions/notifications";
+import { trackPostHogClientEvent } from "@/lib/posthog-client";
 
 const jobsSubItems = [
   { href: "/find-jobs", label: "Recommended" },
@@ -253,6 +254,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
             </Link>
             <Link
               href="/login"
+              onClick={() => trackPostHogClientEvent("marketing_cta_clicked", { location: "nav_desktop" })}
               className="hidden min-h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 md:inline-flex"
             >
               Start for free
@@ -296,7 +298,11 @@ export function Navbar({ isAuthenticated = false }: Props) {
               <Link href="/login" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Log in
               </Link>
-              <Link href="/login" className="block rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-overlay-foreground/5">
+              <Link
+                href="/login"
+                onClick={() => trackPostHogClientEvent("marketing_cta_clicked", { location: "nav_mobile" })}
+                className="block rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-overlay-foreground/5"
+              >
                 Start for free
               </Link>
             </nav>

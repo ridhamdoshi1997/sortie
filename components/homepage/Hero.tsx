@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { Award, Briefcase, DollarSign, MapPin } from "lucide-react";
 
+import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
+
 // Rebuilt for build-plan.md §S — outcome-oriented headline (not category-
 // oriented), the app's real mission-console dark chrome (same
 // .glass-panel-overlay/bg-overlay treatment as FindJobsForm.tsx's "Run a
@@ -43,12 +45,14 @@ export function Hero() {
               connections — so you spend effort on roles worth it, never a blind blast of applications.
             </p>
             <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
-              <Link
+              <TrackedCtaLink
                 href="/login"
+                eventName="marketing_cta_clicked"
+                eventProperties={{ location: "hero" }}
                 className="inline-flex min-h-12 items-center rounded-md bg-accent px-8 text-base font-semibold text-accent-foreground transition-opacity hover:opacity-90"
               >
                 Start for free
-              </Link>
+              </TrackedCtaLink>
               <Link
                 href="/methodology"
                 className="inline-flex min-h-12 items-center rounded-md border border-overlay-foreground/15 bg-overlay-foreground/5 px-8 text-base font-medium text-overlay-foreground transition-colors hover:bg-overlay-foreground/10"
