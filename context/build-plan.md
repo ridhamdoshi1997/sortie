@@ -1418,13 +1418,15 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 
 ## I. Growth surface & SEO
 
+**Every row below was still marked 🆕 despite being shipped in Phases 18-20 — corrected 2026-08-20, same pass that added the two editorial posts. If a future backlog scan flags any of these as open, check `RESUME.md`/`progress-tracker.md` before re-building.**
+
 | Feature | Status | Source |
 | --- | --- | --- |
-| Free ATS score checker (no-login lead magnet) | 🆕 | Launch Playbook |
-| Programmatic SEO pages built on evaluation data | 🆕 | Launch Playbook |
-| JobPosting structured data + sitemap + robots.txt | 🆕 | Launch Playbook |
-| Editorial content / guides (for backlinks & authority) | 🆕 | Launch Playbook |
-| Shareable public evaluation link | 🆕 | Brainstorm |
+| Free ATS score checker (no-login lead magnet) | ✅ shipped Phase 18 | `/ats-checker` |
+| Programmatic SEO pages built on evaluation data | ✅ shipped Phase 18 | GEO content engine, `lib/admin/geoContent.ts` |
+| JobPosting structured data + sitemap + robots.txt | 🟡 sitemap/robots ✅ Phase 18; JobPosting schema deliberately not built | No public job-listing page exists to attach it to — see §A |
+| **Editorial content / guides (for backlinks & authority)** | ✅ shipped 2026-08-20 | 2 real posts published to `/blog` — "Why Auto-Apply Tools Are Quietly Sabotaging Your Job Search" and "How to Spot a Ghost Job (and Other Red Flags) Before You Waste Your Time." Researched via the `agy` CLI (real external research pass per post, not invented), written by hand from that research rather than published raw, grounded with real named sources where the research provided them (Resume Builder 2024, Clarify Capital 2026) and hedged with softer "industry reporting suggests" language where the research's own stats weren't independently attributed. Inserted directly into the existing `pages` table (`status='published'`, `content_source='manual'`) — no new schema, this table/pipeline already existed. **Live-verified**: both render correctly on `/blog` and their own `/blog/[slug]` pages, real `metaTitle`/`metaDescription` confirmed in page `<head>`, real Article JSON-LD confirmed, both appear in `/sitemap.xml` automatically, both confirmed live on production immediately (a `pages` table row is DB content read at request time — no code deploy needed for this one). |
+| Shareable public evaluation link | ✅ shipped Phase 19 | `/share/[token]` |
 
 ## J. Monetization
 

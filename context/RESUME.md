@@ -2,13 +2,27 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20, later same day again (Phase 20 continued a third time — a real onboarding wizard + acquisition attribution, a real Tooltip primitive, and customizable dashboard widgets. See this file's newest section, directly below, before the branding-cleanup/Notion entry underneath it, which is now one layer stale on session status.)
+Last updated: 2026-08-20, later same day a fourth time (Phase 20 continued once more — 2 real editorial blog posts, researched via the `agy` CLI and published to `/blog`. See this file's newest section, directly below, before the onboarding-wizard/tooltip/dashboard-customization entry underneath it, which is now one layer stale on session status.)
 
 ## Session status: clean stop, nothing in flight
 
-Everything described in the newest section below (onboarding wizard, dimension tooltips, dashboard customization) is committed (`b2e9f69`, `b72708c`), pushed to `origin/feature/my-experiment`, and deployed to production via `npx vercel --prod --scope sortie3`. Post-deploy checklist green: `PUT /api/inngest` → `200`, `GET /` → `200`, `GET /dashboard` → `307`, `GET /onboarding` → `307`, `GET /find-jobs` → `307`.
+The two new blog posts are DB content (the `pages` table), not code — nothing to commit/push/deploy for them, and they were confirmed live on real production immediately after insertion. The one doc-only change (`build-plan.md`'s §I corrections) is committed and pushed. Everything from the onboarding/tooltip/dashboard-customization batch below that is committed (`b2e9f69`, `b72708c`), pushed, and deployed to production. Post-deploy checklist green across all of it.
 
-## Phase 20, cont'd — real onboarding wizard, dimension tooltips, customizable dashboard widgets (this session, most recent)
+## Phase 20, cont'd — 2 real editorial blog posts, researched via `agy` (this session, most recent)
+
+**Direct user request**: "I also want you to have some blogs on your own with your research with the agy cli call and make it seo friendly." Checked existing infra first before building anything — the `pages` table + `/blog`/`/blog/[slug]` routes already existed (Phase 18's GEO content engine), already wired for real SEO: dynamic `metaTitle`/`metaDescription`, real Article JSON-LD, and automatic inclusion in `/sitemap.xml` for any `status='published'` row. Nothing new needed there — this was purely a content-writing task, not a build.
+
+Ran two separate real `agy -p` research passes (no `--dangerously-skip-permissions` needed this time — external web research doesn't touch local repo files, unlike the earlier marketing-homepage research pass that did): one on why auto-apply/mass-application tools underperform (recruiter sentiment, detection/penalization, response-rate data), one on ghost jobs and job-posting red flags (real named surveys: Resume Builder 2024, Clarify Capital 2026). Wrote both posts by hand from that research — not published raw — grounding claims in the named sources where the research actually cited one, and deliberately softening language ("industry reporting suggests," "recent surveys report") around the auto-apply research's own stats, since that pass didn't attach specific named sources despite being asked to, and this app's standing honesty discipline (never present a number as harder fact than the research backing it actually supports) applies to blog copy exactly as much as it does to any in-product AI output.
+
+Inserted both directly into the `pages` table via `db query` (base64-encoded body content through `convert_from(decode(...,'base64'),'UTF8')`, to sidestep shell/SQL quote-escaping on ~4.5KB of markdown containing apostrophes and quoted phrases — confirmed byte-length-identical after insert, no corruption). **Live-verified on the real dev server**: both list correctly on `/blog`, both render correctly on their own `/blog/[slug]` pages, real `metaTitle` confirmed as the actual browser tab title, real `meta_description`/Article JSON-LD confirmed via direct DOM inspection, both appear in `/sitemap.xml`. **Then confirmed live on real production immediately** (`curl` against both slugs → `200`, titles present in the served HTML) — since this is DB content read at request time, not a code change, there was nothing to deploy.
+
+Titles/slugs: "Why Auto-Apply Tools Are Quietly Sabotaging Your Job Search" (`/blog/why-auto-apply-tools-hurt-your-job-search`), "How to Spot a Ghost Job (and Other Red Flags) Before You Waste Your Time" (`/blog/how-to-spot-ghost-jobs-red-flags`).
+
+**Also corrected while in this section**: `build-plan.md`'s entire §I table had 4 of 5 rows still marked 🆕/stale despite being shipped in Phases 18-19 (ATS checker, programmatic SEO/GEO engine, sitemap/robots, shareable eval link) — fixed alongside the new editorial-content row so the table stays trustworthy for the next backlog scan.
+
+---
+
+## Phase 20, cont'd — real onboarding wizard, dimension tooltips, customizable dashboard widgets
 
 **Direct user request**: asked for a status list of what was left in the build plan beyond the Gmail/Calendar/Outlook integrations already flagged as blocked; picked 6 items off that list ("go ahead with the buildable"). Before writing any code, a research pass found 2 of the 6 were already fully shipped and stale on `build-plan.md`'s own tracking (**profile completeness meter** and **recently-viewed jobs** — both fully built, live, and documented already; don't re-build these if they resurface on a future backlog scan). The other 4 turned into 3 real, shipped pieces:
 
