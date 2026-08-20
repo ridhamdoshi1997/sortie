@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 20): Dedicated `/pricing` page — build-plan.md §S fast-follow.**
+  - Reuses `CTASection.tsx` directly rather than duplicating the pricing cards (same component, same `id="pricing"`, so the homepage anchor still works too) — just gives it a stable, linkable URL plus a short honest FAQ (3 items, each grounded in an already-established real fact: free access won't be revoked, the no-auto-apply stance links to `/methodology`, Pro is honestly marked not-yet-live rather than a fake price).
+  - Nav's "Pricing" link (desktop + mobile) now points to `/pricing` instead of the `/#pricing` anchor.
+  - **Live-verified**: real page content confirmed, nav link confirmed pointing to the new page.
+  - `tsc --noEmit` clean, full `npm run build` clean (`/pricing` compiled as a static route).
+
+---
+
 - **2026-08-20 (Phase 20): Features mega-menu — build-plan.md §S fast-follow, direct user "go ahead."**
   - The logged-out nav's plain "Features" anchor link is now a real dropdown mega-menu, grouped Discovery/Application/Interviews per the original homepage research — matches the already-established "Jobs" dropdown pattern in the authenticated nav (same ref/click-outside/Escape-close shape, confirmed correct via the accessibility audit earlier this session).
   - Added specific `id` anchors (`scroll-mt-24` to clear the sticky nav) to each individual feature card in `BentoFeatures.tsx`/`TheLifecycle.tsx`, so mega-menu items deep-link to the exact card, not just the top of the section.
