@@ -1321,8 +1321,8 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | Feature | Status | Source |
 | --- | --- | --- |
 | **Chrome extension — capture-first** ("save → grade → track", never auto-apply) | 🆕 | Competitive Map |
-| Gmail ingest (job leads) | 📋 | Phase 16 |
-| Gmail — application status detection (powers rejection intelligence) | 🆕 | Competitive Map |
+| Gmail ingest (job leads) | ⛔ deferred 2026-08-20 | Direct user decision — `gmail.readonly` is a Google Restricted scope, needs an annual paid CASA security audit to leave test mode. Parked alongside the voice interview simulator (§N), not pursued now. |
+| Gmail — application status detection (powers rejection intelligence) | ⛔ deferred 2026-08-20 | Same Gmail CASA blocker as the row above — rides along whenever that decision changes. |
 | **Network signals** (former colleagues / school alumni at this company) | 🎨 | Free — deep-links to LinkedIn people search, no paid people API, no scraping. `NetworkSignals.tsx` built |
 | Work-email lookup (Hunter/Apollo) | ⛔ deferred | Paid ($39–49/mo) **and** CASL/GDPR exposure — needs a compliance review first |
 | LinkedIn-alerts ingest | 📋 | Phase 16 |
