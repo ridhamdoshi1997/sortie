@@ -94,7 +94,60 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
     console.log("🔍 [Scraper] Unique jobs to insert:", uniqueJobs.length);
     console.log("🔍 [Scraper] First job example:", uniqueJobs[0]);
 
-    const jobsToInsert = uniqueJobs.map(job => ({
+    // Dedup audit finding (build-plan.md §37): the upsert below's
+    // onConflict('user_id,external_id') only catches a repeat SerpApi
+    // job_id — confirmed via a real production data check that Google Jobs
+    // itself does NOT return a stable job_id for the same real listing
+    // across separate search runs (each carries a differently-signed
+    // htidocid token), so this path alone let the exact same listing get
+    // re-inserted as a brand new row on every repeat search — one real
+    // account had up to 11 duplicate rows for a single URL. Fixed with a
+    // title+company+location fingerprint pre-check: a job whose fingerprint
+    // already exists for this user gets its existing row refreshed
+    // (run_id/dropped_from_search_at) instead of a second row inserted.
+    // Scoped to preventing NEW duplicates only — not a retroactive merge of
+    // the duplicate rows already in the data, which risks real data loss
+    // (which row's status/tags/notes "wins") and needs a real product
+    // decision, not a unilateral cleanup.
+    function fingerprint(title: string | undefined, company: string | undefined, location: string | undefined): string {
+        const norm = (s: string | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+        return `${norm(title)}|${norm(company)}|${norm(location)}`;
+    }
+
+    const candidateTitles = Array.from(new Set(uniqueJobs.map(j => j.title).filter(Boolean)));
+    const { data: existingByFingerprint } = candidateTitles.length
+        ? await insforge.database
+            .from("jobs")
+            .select("id,title,company,location")
+            .eq("user_id", userId)
+            .in("title", candidateTitles)
+        : { data: [] as { id: string; title: string; company: string; location: string }[] };
+
+    const existingFingerprints = new Map<string, string>();
+    for (const row of existingByFingerprint ?? []) {
+        existingFingerprints.set(fingerprint(row.title, row.company, row.location), row.id);
+    }
+
+    const genuinelyNewJobs: typeof uniqueJobs = [];
+    const refreshExistingJobIds: string[] = [];
+    for (const job of uniqueJobs) {
+        const existingId = existingFingerprints.get(fingerprint(job.title, job.company, job.location));
+        if (existingId) {
+            refreshExistingJobIds.push(existingId);
+        } else {
+            genuinelyNewJobs.push(job);
+        }
+    }
+
+    if (refreshExistingJobIds.length > 0) {
+        await insforge.database
+            .from("jobs")
+            .update({ run_id: runId, dropped_from_search_at: null })
+            .in("id", refreshExistingJobIds)
+            .eq("user_id", userId);
+    }
+
+    const jobsToInsert = genuinelyNewJobs.map(job => ({
         external_id: job.id,
         title: job.title,
         company: job.company,
@@ -117,10 +170,18 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         dropped_from_search_at: null,
     }));
 
-    const { data: savedJobs, error } = await insforge.database
-        .from("jobs")
-        .upsert(jobsToInsert, { onConflict: 'user_id,external_id' })
-        .select('*');
+    const { data: newlySavedJobs, error } = jobsToInsert.length > 0
+        ? await insforge.database
+            .from("jobs")
+            .upsert(jobsToInsert, { onConflict: 'user_id,external_id' })
+            .select('*')
+        : { data: [], error: null };
+
+    const { data: refreshedJobs } = refreshExistingJobIds.length > 0
+        ? await insforge.database.from("jobs").select("*").in("id", refreshExistingJobIds)
+        : { data: [] };
+
+    const savedJobs = [...(newlySavedJobs ?? []), ...(refreshedJobs ?? [])];
 
     // 2. DEBUG: Check what the database actually returned
     console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);

@@ -39,6 +39,29 @@ export async function createExternalJob(
   userId: string,
   input: ExternalJobInput,
 ): Promise<CreateExternalJobResult> {
+  // Dedup audit finding (build-plan.md §37): this path (manual "paste a job
+  // from anywhere" + the browser extension's capture route) had NO dedup at
+  // all — every call generated a fresh random external_id, so a double
+  // click of the extension's "Save to Sortie" button, or re-pasting the
+  // same URL, silently created a genuine duplicate row every time. The
+  // primary search path (lib/actions/scraper.actions.ts) already dedupes
+  // via upsert(external_id); this is the gap. Scoped to a safe, preventive
+  // check on new inserts only — NOT the bigger fuzzy title+company+location
+  // merge-existing-duplicates cron build-plan.md §37 originally specs,
+  // which risks real data loss (which row's status/tags/notes "wins" on a
+  // merge) and needs an actual product decision, not a unilateral build.
+  if (input.url) {
+    const { data: existing } = await insforge.database
+      .from("jobs")
+      .select("id")
+      .eq("user_id", userId)
+      .eq("url", input.url)
+      .maybeSingle<{ id: string }>();
+    if (existing) {
+      return { success: true, jobId: existing.id };
+    }
+  }
+
   const { data: job, error } = await insforge.database
     .from("jobs")
     .insert([
