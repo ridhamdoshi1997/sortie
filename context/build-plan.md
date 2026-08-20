@@ -1452,7 +1452,7 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Privacy Policy + Terms | ✅ shipped 2026-08-17 | Phase 0 — `app/privacy`, `app/terms`, real vendor list, no-auto-apply as a trust point |
 | Account deletion / data erasure | ✅ | Already built (`actions/account.ts`'s `deleteAccount()`, wired into Settings' Danger Zone), a real `resumes`-table gap fixed 2026-08-17 |
 | Multi-tenancy isolation test | ✅ done 2026-08-17 | Ground-truth `pg_class.relrowsecurity` + `pg_policies` audit — all 13 tables RLS-enabled, no cross-user gaps found |
-| Error monitoring (Sentry) | 🟡 code fully wired 2026-08-19, inert without a real DSN | `next.config.ts`/`instrumentation*.ts`/`sentry.*.config.ts` all real, gated on `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`. 2026-08-20: fixed the `disableLogger` deprecation (removed — its replacement is webpack-only, this project runs Turbopack) and restored `onRouterTransitionStart` in `instrumentation-client.ts` (a prior session wrongly concluded `Sentry.captureRouterTransitionStart` was invented — it's real, just declared in the client-only type entry, not the generic one that session grepped). Still needs a real Sentry account + DSN from the user — account creation isn't something this agent can do. |
+| Error monitoring (Sentry) | ✅ live 2026-08-20 | User created a real Sentry project (org `sortie-g1`, project `javascript-nextjs`) and supplied the DSN. `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT` set in `.env` and Vercel production env vars, deployed. `SENTRY_AUTH_TOKEN` (source-map upload, nicer stack traces) still not set — optional, skip-with-warning today. |
 
 ## R. Internal Admin Panel (researched 2026-08-17, not yet built)
 
