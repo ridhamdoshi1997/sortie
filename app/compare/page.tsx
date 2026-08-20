@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { EVALUATION_DIMENSIONS, type EvaluationDimensionResult, type EvaluationGrade } from "@/lib/evaluator";
+import { decodeOffer, EMPTY_OFFER_DETAILS, type OfferDetails } from "@/lib/equityDecoder";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,13 @@ type CompareJob = {
   salary: string | null;
   location: string | null;
   evaluation: EvaluationDimensionResult[] | null;
+  offer_details: OfferDetails | null;
 };
+
+function formatMoney(n: number | null): string {
+  if (n === null) return "—";
+  return `$${Math.round(n).toLocaleString()}`;
+}
 
 // Same grade-color convention as EvaluationBreakdown.tsx (agent-teal for
 // good grades, warning/error reserved for the two genuinely concerning
@@ -47,13 +54,21 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   const { data } = jobIds.length
     ? await insforge.database
         .from("jobs")
-        .select("id,title,company,match_score,overall_grade,salary,location,evaluation")
+        .select("id,title,company,match_score,overall_grade,salary,location,evaluation,offer_details")
         .eq("user_id", user.id)
         .in("id", jobIds)
     : { data: [] };
 
   // Preserve the order the user added them in, not whatever order the DB returns.
   const jobs = jobIds.map((id) => (data ?? []).find((j) => (j as CompareJob).id === id)).filter((j): j is CompareJob => Boolean(j));
+
+  // Multi-offer comparison (build-plan.md §F) — only shown when at least one
+  // job in this comparison has real offer numbers entered, reusing
+  // lib/equityDecoder.ts's existing calculator rather than a new one. No AI,
+  // no external data, same pure-arithmetic-on-user-input discipline as the
+  // Offer Tools tab itself.
+  const hasAnyOffer = jobs.some((job) => job.offer_details !== null);
+  const offerResults = jobs.map((job) => decodeOffer(job.offer_details ?? EMPTY_OFFER_DETAILS));
 
   return (
     <>
@@ -121,6 +136,40 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                     </td>
                   ))}
                 </tr>
+
+                {hasAnyOffer && (
+                  <>
+                    <tr className="border-b border-border bg-surface-secondary">
+                      <td colSpan={jobs.length + 1} className="px-4 py-2 font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                        Offer economics — your own entered numbers
+                      </td>
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="px-4 py-3 font-medium text-text-secondary">Base salary</td>
+                      {jobs.map((job) => (
+                        <td key={job.id} className="px-4 py-3 text-text-primary">
+                          {formatMoney(job.offer_details?.baseSalary ?? null)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="px-4 py-3 font-medium text-text-secondary">Total comp — Year 1</td>
+                      {jobs.map((job, i) => (
+                        <td key={job.id} className="px-4 py-3 font-semibold text-text-primary">
+                          {formatMoney(offerResults[i].totalComp.year1)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-border">
+                      <td className="px-4 py-3 font-medium text-text-secondary">Total comp — Steady state</td>
+                      {jobs.map((job, i) => (
+                        <td key={job.id} className="px-4 py-3 font-semibold text-text-primary">
+                          {formatMoney(offerResults[i].totalComp.steadyState)}
+                        </td>
+                      ))}
+                    </tr>
+                  </>
+                )}
 
                 {EVALUATION_DIMENSIONS.map((dimension) => (
                   <tr key={dimension} className="border-b border-border">
