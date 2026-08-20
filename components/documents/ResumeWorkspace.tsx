@@ -13,6 +13,7 @@ import {
 } from "@/actions/documents";
 import { AIRewriteTab } from "@/components/documents/AIRewriteTab";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
+import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { StyleTab } from "@/components/documents/StyleTab";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
 import type { Profile, ResumeAnalysis, ResumeGapAnalysisResult } from "@/types";
@@ -214,6 +215,7 @@ export function ResumeWorkspace({
             {savingSections || savingStyle ? "Saving…" : `Updated ${formatRelative(updatedAt)}`}
           </p>
         </div>
+        <EditorUsageMeter action="document_generation" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">

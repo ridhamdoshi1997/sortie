@@ -7,6 +7,7 @@ import { Download } from "lucide-react";
 import { saveCoverLetterContent, saveResumeStyle } from "@/actions/documents";
 import { CoverLetterATSAuditCard } from "@/components/documents/CoverLetterATSAuditCard";
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
+import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { RefinementChips, type ChipPreset } from "@/components/documents/RefinementChips";
 import { StyleTab } from "@/components/documents/StyleTab";
 import { FormInput, FormLabel } from "@/components/ui/FormControls";
@@ -140,6 +141,7 @@ export function CoverLetterWorkspace({
             {savingContent || savingStyle ? "Saving…" : `Updated ${formatRelative(updatedAt)}`}
           </p>
         </div>
+        <EditorUsageMeter action="document_generation" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">

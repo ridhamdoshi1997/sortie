@@ -18,6 +18,12 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Editor Usage Meter (document editors)
+
+Files: `components/documents/EditorUsageMeter.tsx`
+Route: header row of `ResumeWorkspace.tsx` and `CoverLetterWorkspace.tsx`
+Last updated: 2026-08-20. Plain `font-mono text-[11px] text-text-muted` (matches the "Updated Xm ago" label next to it), flips to `text-warning` at ≤1 remaining. Reuses `actions/usageStats.ts`'s `getUsageStats()` — no new action.
+
 ### Share Job Link (job detail)
 
 Files: `components/job-details/ShareJobLink.tsx`, public render at `app/share/[token]/page.tsx`
