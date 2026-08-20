@@ -54,6 +54,11 @@ export interface Profile {
   // Distinct from referral_code/referred_by_code (peer-to-peer invite
   // tracking) — this is "which marketing channel," not "who invited you."
   acquisition_channel: string | null;
+  // Customizable dashboard widgets (build-plan.md §H) — show/hide only, no
+  // reorder. Widget POSITION stays the researched bento-grid layout
+  // (build-plan.md §P); this only ever removes a widget from the grid, it
+  // never reshuffles the ones that remain.
+  dashboard_hidden_widgets: string[];
 }
 
 export interface WorkExperience {

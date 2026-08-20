@@ -523,6 +523,27 @@ Self-fetches its own data (`listApiKeys()`) via a `useEffect` on mount rather th
 
 **Backend split, for reuse**: `createExternalJob` (`lib/externalJob.ts`) holds the actual job-insert-plus-evaluation-trigger logic, called by both `actions/jobs.ts`'s cookie-authed `addExternalJob` (existing "paste a job from anywhere" flow) and the new bearer-token-authed `/api/extension/capture-job` route — same job creation, two different ways of resolving which user it's for. See `progress-tracker.md`'s Phase 14 §Q5 entry for a real bug this extraction surfaced and fixed (an unguarded `inngest.send()` failure used to fail the whole call even after the job row had already saved).
 
+### Tooltip (new — first Tooltip primitive in this codebase)
+
+File: `components/ui/Tooltip.tsx`
+Last updated: 2026-08-20 (new)
+
+**Pattern notes:**
+Hand-rolled, not Radix — matching every other interactive primitive in this app (`ConfirmDialog.tsx`, `Tabs.tsx`, `CommandPalette.tsx`; no headless-UI dependency exists anywhere in this codebase, confirmed via a full `components/ui/` listing). Positioned panel above the trigger via `absolute bottom-full`/`-translate-x-1/2`, shown on hover OR focus (keyboard-accessible via a `tabIndex={0}` wrapper span), Escape-to-close wired in from day one — the accessibility audit (build-plan.md §H, an earlier phase) found every existing dropdown/popover in this app was missing that, no reason for a brand-new component to repeat it. First consumer: `EvaluationBreakdown.tsx`'s 10-dimension explanations, replacing a plain native `title` attribute with identical copy.
+
+**Live-verified, with a real environment gotcha worth remembering**: dispatched synthetic `mouseenter`/`mouseover`/`focus` DOM events didn't trigger React's synthetic handlers in this session's Browser pane (a new instance of this project's recurring "browser automation vs. real React event delegation" gap, same family as previously-documented click/reveal quirks) — confirmed the component for real by calling the attached `onMouseEnter`/`onKeyDown` React prop functions directly via `element[__reactProps$...]`, which rendered the real correct copy (`"How well your listed skills align..."`) and correctly closed on a simulated Escape. This proves the component's own logic is correct; it does not prove a literal mouse hover in a real browser dispatches the event that reaches it — that part is standard React and not new risk, just not independently re-provable in this environment.
+
+### Dashboard — "Customize" widget visibility (build-plan.md §P/§H)
+
+File: `components/dashboard/CustomizeDashboardModal.tsx`, `actions/dashboardLayout.ts`, `lib/dashboardWidgets.ts`
+Route: a "Customize" button at the top of `/dashboard`, opens via `SectionModal.tsx`'s existing chrome
+Last updated: 2026-08-20 (new)
+
+**Pattern notes:**
+Show/hide only, deliberately no reorder — see `build-plan.md`'s §H row for the full reasoning (the bento-grid spans were their own researched design decision; reordering would mean either reinventing that span logic per arbitrary order or flattening it to a plain list). `app/dashboard/page.tsx` filters each row's widget list against `profiles.dashboard_hidden_widgets`, then picks a layout: the two combinations the row was actually designed for (with/without a real interviewing-stage job) keep their exact original Tailwind spans; anything else — only reachable by a user explicitly hiding something — falls back to a plain CSS `auto-fit` equal-width reflow via one inline `grid-template-columns`, so a hidden widget never leaves dead whitespace and the untouched-by-anyone default view is pixel-identical to before this feature shipped. `DASHBOARD_WIDGET_KEYS`/`DashboardWidgetKey` deliberately live in `lib/dashboardWidgets.ts`, not the `"use server"` `actions/dashboardLayout.ts` — a plain const/type export from a server-actions file is exactly the invariant violation `progress-tracker.md` already documented once (Phase 15, `actions/referralCopy.ts`), caught and fixed before it shipped this time rather than after.
+
+**Live-verified on the real test account**: opened the modal, confirmed all 9 real widget rows render, toggled "Match Quality Histogram" off (confirmed the row's own class flipped from the visible to the hidden text-muted state before saving), saved, and confirmed on the real re-rendered dashboard that the Match Score Distribution chart was genuinely gone while Activity Heatmap and Upcoming Interviews correctly reflowed into the equal-width fallback grid (this exact visible-set combination isn't one of the two hand-tuned bento layouts, so it correctly fell through to the generic branch) — no dead whitespace. Restored the test account's `dashboard_hidden_widgets` back to `{}` afterward.
+
 ### Onboarding wizard (build-plan.md §H — real first-run flow)
 
 File: `app/onboarding/page.tsx`, `components/onboarding/OnboardingWizard.tsx`, `actions/onboarding.ts`

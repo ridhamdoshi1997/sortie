@@ -1359,11 +1359,11 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | Empty states with guidance | 🆕 | Brainstorm |
 | **Loading states that teach + time expectations** ("usually 10–20 seconds") | 🎨 | Turns dead wait time into feature discovery |
 | Skeleton loaders + optimistic UI + toast system | 🆕 | Brainstorm |
-| Contextual tooltips explaining the 10 dimensions | 🆕 | Brainstorm |
+| Contextual tooltips explaining the 10 dimensions | ✅ shipped 2026-08-20 | The copy and a native `title`-attribute version of this already existed (`EvaluationBreakdown.tsx`'s `DIMENSION_EXPLANATIONS`) — upgraded to a real positioned hover/focus panel via a new `components/ui/Tooltip.tsx`, this codebase's first Tooltip primitive (no Radix/headless-UI dependency anywhere, same hand-rolled convention as `ConfirmDialog.tsx`). Escape-to-close built in from the start. |
 | Keyboard shortcuts | ✅ shipped 2026-08-18 (Phase 15) | See the Command palette row above — shipped as one combined feature, not a separate broader shortcut-everywhere system |
 | Analytics dashboard (funnel, score distribution, skills radar, heatmap) | 📋/🆕 | v1 F17 + Brainstorm |
 | "Today" / focus view | 🆕 | Brainstorm |
-| Customizable dashboard widgets | 🆕 | Brainstorm |
+| Customizable dashboard widgets | ✅ shipped 2026-08-20 (show/hide only) | Deliberately scoped down from full drag-reorder — §P's bento-grid layout (which widget spans how many columns, next to which other one) was its own researched design decision, and letting a user hide a widget is a clean, bounded feature where letting them drag it anywhere would mean either reinventing that grid's span logic for arbitrary order or silently flattening it to a plain list. New `profiles.dashboard_hidden_widgets` (`text[]`), a "Customize" button on `/dashboard` (`components/dashboard/CustomizeDashboardModal.tsx`, reuses `SectionModal.tsx`'s chrome) toggling per-widget visibility. `app/dashboard/page.tsx` recomputes each row's effective layout from whichever widgets in it are still visible — the two combinations the original bento design was actually built for (with/without a real interviewing-stage job) keep their exact hand-tuned spans; any OTHER combination (only reachable by explicitly hiding something) falls back to a simple auto-fit equal-width reflow, so hiding a widget never leaves dead whitespace and the default (nothing hidden) experience is visually unchanged. |
 | Installable PWA + mobile responsive polish | 🆕 | Brainstorm |
 | Accessibility (WCAG) pass | 🆕 | Brainstorm — also a B2B requirement |
 | App-level theme customization (accent, density) | 🆕 | Brainstorm |

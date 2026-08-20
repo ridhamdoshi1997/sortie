@@ -14,6 +14,7 @@ import {
 
 import type { DimensionName } from "@/lib/evaluator";
 import type { JobEvaluationDimension } from "@/types";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 type Props = {
     evaluation: JobEvaluationDimension[];
@@ -62,8 +63,9 @@ const DIMENSION_ICONS: Record<DimensionName, LucideIcon> = {
 // measures, distinct from `dim.note`'s per-job-specific reasoning already
 // shown below it. A first-time user has no way to know what "Application
 // effort-to-value" or "Legitimacy" even mean as categories without this.
-// Plain native `title` attribute — no new tooltip component/dependency,
-// keyboard/mouse accessible by default.
+// Upgraded 2026-08-20 from a plain native `title` attribute to the new
+// components/ui/Tooltip.tsx primitive — same copy, a real positioned panel
+// instead of the browser's own delayed/inconsistently-styled tooltip.
 const DIMENSION_EXPLANATIONS: Record<DimensionName, string> = {
     "Skills/tech match": "How well your listed skills align with what this job actually requires.",
     "Seniority/level fit": "Whether this role's real seniority matches your experience level — not just the job title.",
@@ -88,12 +90,11 @@ function DimensionCard({ dim }: { dim: JobEvaluationDimension }) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <div className="flex items-center justify-between gap-2">
-                    <p
-                        className="text-sm font-medium leading-5 text-text-primary underline decoration-dotted decoration-text-muted/50 underline-offset-2"
-                        title={DIMENSION_EXPLANATIONS[dim.dimension as DimensionName]}
-                    >
-                        {dim.dimension}
-                    </p>
+                    <Tooltip content={DIMENSION_EXPLANATIONS[dim.dimension as DimensionName]}>
+                        <p className="text-sm font-medium leading-5 text-text-primary underline decoration-dotted decoration-text-muted/50 underline-offset-2">
+                            {dim.dimension}
+                        </p>
+                    </Tooltip>
                     <span
                         className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold ${style.badge}`}
                     >

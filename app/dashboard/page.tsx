@@ -10,7 +10,9 @@ import { WeeklyBriefingCard } from "@/components/dashboard/WeeklyBriefingCard";
 import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
 import { WelcomeTour } from "@/components/dashboard/WelcomeTour";
+import { CustomizeDashboardModal } from "@/components/dashboard/CustomizeDashboardModal";
 import { Navbar } from "@/components/layout/Navbar";
+import type { DashboardWidgetKey } from "@/lib/dashboardWidgets";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompletion } from "@/lib/profile-utils";
@@ -175,12 +177,44 @@ export default async function DashboardPage() {
 
   const insights = computeDashboardInsights(jobs, completionPercent);
 
+  const hidden = new Set<DashboardWidgetKey>(
+    (profile?.dashboard_hidden_widgets ?? []) as DashboardWidgetKey[],
+  );
+  const showUpcomingInterviews = interviewingJobs.length > 0 && !hidden.has("upcomingInterviews");
+
+  // Row 1/2 keep their exact hand-tuned bento spans (build-plan.md §P) when
+  // every widget in them is visible — the common case, zero visual change
+  // from before this feature existed. Only once the user has actually hidden
+  // something in a row does it fall back to a simple equal-width, auto-
+  // wrapping grid (CSS `auto-fit`, no Tailwind breakpoint juggling needed) —
+  // never a hand-maintained case for every possible combination of hidden
+  // widgets, and never dead whitespace where a hidden widget used to be.
+  const row1Items = [
+    { key: "aiActionCenter" as const, node: <AIActionCenter insights={insights} /> },
+    { key: "pipelineFunnel" as const, node: <PipelineFunnel counts={funnelCounts} /> },
+  ].filter((item) => !hidden.has(item.key));
+
+  const row2Items = [
+    { key: "matchDistribution" as const, node: <MatchDistributionChart data={matchDistributionData} /> },
+    { key: "activityHeatmap" as const, node: <ActivityHeatmap countsByDate={jobsByDate} /> },
+    ...(showUpcomingInterviews
+      ? [{ key: "upcomingInterviews" as const, node: <UpcomingInterviews jobs={interviewingJobs} /> }]
+      : []),
+  ].filter((item) => !hidden.has(item.key));
+
+  const row3Items = [
+    { key: "recentActivity" as const, node: <RecentActivity items={activityItems} /> },
+    { key: "rejectionRadar" as const, node: <RejectionRadar jobs={rejectedJobs} /> },
+  ].filter((item) => !hidden.has(item.key));
+
   return (
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
       <WelcomeTour />
       <main className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-360 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
+        <CustomizeDashboardModal initialHidden={Array.from(hidden)} />
+
         {completionPercent < 100 && (
           <ProfileAttentionBanner
             completionPercent={completionPercent}
@@ -188,32 +222,58 @@ export default async function DashboardPage() {
           />
         )}
 
-        <WeeklyBriefingCard briefing={profile?.weekly_briefing ?? null} generatedAt={profile?.weekly_briefing_generated_at ?? null} />
+        {!hidden.has("weeklyBriefing") && (
+          <WeeklyBriefingCard briefing={profile?.weekly_briefing ?? null} generatedAt={profile?.weekly_briefing_generated_at ?? null} />
+        )}
 
         {/* Row 1 — hero: what needs attention next, not what already happened */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
-          <div className="lg:col-span-3">
-            <AIActionCenter insights={insights} />
+        {row1Items.length === 2 ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+            <div className="lg:col-span-3">{row1Items[0].node}</div>
+            {row1Items[1].node}
           </div>
-          <PipelineFunnel counts={funnelCounts} />
-        </div>
+        ) : row1Items.length === 1 ? (
+          row1Items[0].node
+        ) : null}
 
-        <PipelineStrategyCard />
+        {!hidden.has("pipelineStrategy") && <PipelineStrategyCard />}
 
-        {/* Row 2 — match quality, activity trend, and (only if real) upcoming interviews */}
-        <div className={`grid grid-cols-1 gap-4 ${interviewingJobs.length > 0 ? "lg:grid-cols-4" : "lg:grid-cols-3"}`}>
-          <MatchDistributionChart data={matchDistributionData} />
-          <div className="lg:col-span-2">
-            <ActivityHeatmap countsByDate={jobsByDate} />
+        {/* Row 2 — match quality, activity trend, and (only if real) upcoming interviews.
+           The two branches below are the only combinations this row's bespoke
+           1/2/1-span layout was ever designed for (with vs. without a real
+           interviewing-stage job) — anything else only happens because the
+           user explicitly hid a widget, which falls to the generic reflow. */}
+        {row2Items.length === 0 ? null : row2Items.map((i) => i.key).join(",") ===
+          ["matchDistribution", "activityHeatmap", "upcomingInterviews"].join(",") ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
+            {row2Items[0].node}
+            <div className="lg:col-span-2">{row2Items[1].node}</div>
+            {row2Items[2].node}
           </div>
-          {interviewingJobs.length > 0 && <UpcomingInterviews jobs={interviewingJobs} />}
-        </div>
+        ) : row2Items.map((i) => i.key).join(",") === ["matchDistribution", "activityHeatmap"].join(",") ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {row2Items[0].node}
+            <div className="lg:col-span-2">{row2Items[1].node}</div>
+          </div>
+        ) : row2Items.length === 1 ? (
+          row2Items[0].node
+        ) : (
+          <div className="grid grid-cols-1 gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))]">
+            {row2Items.map((item) => (
+              <div key={item.key}>{item.node}</div>
+            ))}
+          </div>
+        )}
 
         {/* Row 3 — recent activity + rejection intelligence, both real reuse of existing data */}
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <RecentActivity items={activityItems} />
-          <RejectionRadar jobs={rejectedJobs} />
-        </div>
+        {row3Items.length === 2 ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            {row3Items[0].node}
+            {row3Items[1].node}
+          </div>
+        ) : row3Items.length === 1 ? (
+          row3Items[0].node
+        ) : null}
       </main>
     </>
   );
