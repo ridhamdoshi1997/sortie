@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): "Today"/focus view — investigated, deliberately built as an extension of the existing dashboard instead of a new page.**
+  - The dashboard's "Action Center" (`AIActionCenter.tsx`/`lib/dashboardInsights.ts`) already IS the "what needs my attention" surface this build-plan.md row was asking for — a dedicated `/today` page would have duplicated it, the same near-duplicate-surface mistake this project has caught and reverted before (the per-job Ask Navigator vs. global Navigator). Extended the existing widget with the one genuinely missing signal instead: **upcoming deadlines** (`jobs.next_deadline_at` within the next 7 days).
+  - A second candidate signal ("follow-up due") was considered and deliberately NOT added — `lib/followUpNudge.ts`'s own 7-day threshold on applied-status jobs is a strict subset of the Action Center's existing 14-day stale-applied signal (same underlying condition), so adding it would just double-count the same jobs under two different labels, not surface anything new.
+  - **Live-verified with real seeded data**: set a real job's `next_deadline_at` to 3 days out, confirmed the dashboard's Action Center correctly showed "1 deadline in the next 7 days — Application deadline" with the right count/label, reverted after.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): Global search — build-plan.md §H, extending the existing Cmd+K command palette rather than building a new surface.**
   - New `actions/jobs.ts`'s `quickSearchJobs(query)` — same `.or("title.ilike.%x%,company.ilike.%x%")` shape `lib/admin/queries.ts`'s `listUsers` search already uses, scoped to the current user's own jobs, capped at 6 results. Deliberately scoped to jobs only, not a broader multi-entity index — jobs are this app's single highest-value, highest-volume searchable entity, and per-user data volume doesn't justify a real search index yet.
   - `CommandPalette.tsx` gained a 250ms-debounced effect (with a stale-response guard keyed on the query at fire time vs. resolve time, so a fast typist's earlier request can't clobber a later one's results) merging real job matches into a new "Jobs" result group alongside the existing static Navigate/Actions commands.
