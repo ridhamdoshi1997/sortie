@@ -362,6 +362,40 @@ export async function bulkAddTag(jobIds: string[], tag: string): Promise<ActionR
   }
 }
 
+export type QuickSearchJob = { id: string; title: string; company: string | null };
+
+// Global search (build-plan.md §H) — powers the Cmd+K command palette's
+// real-data results. Deliberately scoped to jobs only, not a multi-entity
+// search across résumés/interview banks/etc. — jobs are the single
+// highest-value, highest-volume searchable entity in this app, and this
+// app's own data is small enough per user that a broader fuzzy index isn't
+// justified yet. Same title/company ilike shape as lib/admin/queries.ts's
+// listUsers search, capped small since this powers an inline dropdown, not
+// a results page.
+export async function quickSearchJobs(query: string): Promise<QuickSearchJob[]> {
+  const user = await requireUser();
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  try {
+    const insforge = await createInsforgeServer();
+    const term = `%${trimmed}%`;
+    const { data } = await insforge.database
+      .from("jobs")
+      .select("id,title,company")
+      .eq("user_id", user.id)
+      .or(`title.ilike.${term},company.ilike.${term}`)
+      .order("found_at", { ascending: false })
+      .limit(6)
+      .returns<QuickSearchJob[]>();
+
+    return data ?? [];
+  } catch (error) {
+    console.error("[actions/jobs] quickSearchJobs", error);
+    return [];
+  }
+}
+
 export async function updateJobNotes(jobId: string, notes: string): Promise<ActionResult> {
   const user = await requireUser();
 

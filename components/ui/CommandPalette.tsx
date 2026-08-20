@@ -18,10 +18,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { quickSearchJobs, type QuickSearchJob } from "@/actions/jobs";
+
 type CommandItem = {
   id: string;
   label: string;
-  group: "Navigate" | "Actions";
+  group: "Navigate" | "Actions" | "Jobs";
   icon: LucideIcon;
   keywords?: string;
   run: () => void;
@@ -47,7 +49,27 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
   const [prevQuery, setPrevQuery] = useState(query);
+  const [jobResults, setJobResults] = useState<QuickSearchJob[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Global search (build-plan.md §H) — debounced real-data search against
+  // the user's own jobs, merged into the static command list below as a
+  // "Jobs" group. 250ms debounce plus a stale-response guard (the closure's
+  // own `query` at fire time, checked against the query at resolve time) so
+  // a fast typist's earlier request can't overwrite a later one's results.
+  useEffect(() => {
+    const trimmed = query.trim();
+    if (trimmed.length < 2) {
+      setJobResults([]);
+      return;
+    }
+    const timer = setTimeout(() => {
+      quickSearchJobs(trimmed).then((results) => {
+        setJobResults((prev) => (query.trim() === trimmed ? results : prev));
+      });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   // Adjust state during render (React-sanctioned pattern, same idiom
   // Navbar.tsx already uses for its own pathname-change reset) rather than
@@ -112,16 +134,28 @@ export function CommandPalette() {
     },
   ];
 
-  const filtered = commands.filter((c) => {
-    const q = query.trim().toLowerCase();
-    if (!q) return true;
-    return c.label.toLowerCase().includes(q) || (c.keywords ?? "").includes(q);
-  });
+  const jobCommands: CommandItem[] = jobResults.map((job) => ({
+    id: `job-${job.id}`,
+    label: job.company ? `${job.title} · ${job.company}` : job.title,
+    group: "Jobs",
+    icon: Briefcase,
+    run: () => router.push(`/find-jobs/${job.id}`),
+  }));
+
+  const filtered = [
+    ...commands.filter((c) => {
+      const q = query.trim().toLowerCase();
+      if (!q) return true;
+      return c.label.toLowerCase().includes(q) || (c.keywords ?? "").includes(q);
+    }),
+    ...jobCommands,
+  ];
 
   function close() {
     setOpen(false);
     setQuery("");
     setActiveIndex(0);
+    setJobResults([]);
   }
 
   function runActive() {
@@ -146,6 +180,7 @@ export function CommandPalette() {
           if (wasOpen) {
             setQuery("");
             setActiveIndex(0);
+            setJobResults([]);
           }
           return !wasOpen;
         });
@@ -157,6 +192,7 @@ export function CommandPalette() {
             event.preventDefault();
             setQuery("");
             setActiveIndex(0);
+            setJobResults([]);
           }
           return false;
         });
