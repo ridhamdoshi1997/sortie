@@ -9,6 +9,7 @@ import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actio
 import { formatTimeAgo } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
+import { JobDetailDrawer } from "@/components/find-jobs/JobDetailDrawer";
 import { FilterBar } from "@/components/find-jobs/FilterBar";
 import { SearchLoadingState } from "@/components/find-jobs/SearchLoadingState";
 import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from "@/lib/jobFilters";
@@ -35,6 +36,11 @@ export function FindJobsForm({
     const [title, setTitle] = useState(initialTitle ?? "");
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
+    // Job detail drawer / split view (build-plan.md §H) — fast browsing
+    // without a full navigation. Find & Evaluate is deliberately the one
+    // page this is wired into (job cards elsewhere — Missions, Career — are
+    // in a tracking context, not a rapid-browsing one).
+    const [drawerJob, setDrawerJob] = useState<Job | null>(null);
     const [searchError, setSearchError] = useState<string | null>(null);
     // Distinguishes "haven't run a search this session yet" from "ran one,
     // got zero matches" — the latter needs its own empty state, not silence.
@@ -318,9 +324,12 @@ export function FindJobsForm({
                                 job={job}
                                 index={index}
                                 reappearanceSignal={reappearanceSignals[job.id] ?? null}
+                                onQuickView={() => setDrawerJob(job)}
                             />
                         ))}
                     </div>
+
+                    <JobDetailDrawer job={drawerJob} onClose={() => setDrawerJob(null)} />
 
                     {lastRunAt && (
                         <div className="mt-6 flex items-center gap-2 font-mono text-xs text-text-muted">

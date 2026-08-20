@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, FileText, Flag, Heart, MapPin, Repeat, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Eye, FileText, Flag, Heart, MapPin, Repeat, TrendingUp } from "lucide-react";
 
 import { Card } from "@/components/ui/card";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -48,6 +48,7 @@ export function JobResultCard({
   selectable = false,
   selected = false,
   onToggleSelect,
+  onQuickView,
 }: {
   job: Job;
   index?: number;
@@ -57,6 +58,11 @@ export function JobResultCard({
   selectable?: boolean;
   selected?: boolean;
   onToggleSelect?: () => void;
+  // Job detail drawer / split view (build-plan.md §H) — optional, same
+  // pattern as the props above. When provided, a "Quick view" button opens
+  // the drawer instead of navigating; the card's own primary Link/click
+  // navigation is unaffected everywhere this prop isn't passed.
+  onQuickView?: () => void;
 }) {
   const router = useRouter();
   const tags = jobTags(job);
@@ -312,6 +318,19 @@ export function JobResultCard({
             border-topped footer row like a real toolbar, not icons floating
             on top of the title/score. */}
         <div className="col-span-2 flex items-center justify-end gap-1.5 border-t border-border pt-3">
+          {onQuickView && (
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                onQuickView();
+              }}
+              aria-label="Quick view"
+              className="rounded-full border border-border p-1.5 text-text-muted transition-colors hover:bg-surface-secondary"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleSave}
