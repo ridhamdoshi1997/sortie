@@ -7,18 +7,21 @@ import { KeyRound, Kanban, MessagesSquare } from "lucide-react";
 // (Missions tracker, Interview Prep Engine), not aspirational ones.
 const STAGES = [
   {
+    id: "feature-tracking",
     icon: Kanban,
     title: "Track every application in one place",
     description:
       "Draft, applied, interviewing, offer — a real Kanban board (or a flat list, your call) instead of a spreadsheet you forget to update.",
   },
   {
+    id: "feature-interview-prep",
     icon: KeyRound,
     title: "Walk in prepared, not guessing",
     description:
       "A question bank built from the actual posting, plus your own reusable STAR stories — ready before the recruiter calls, not scrambled together the night before.",
   },
   {
+    id: "feature-negotiation",
     icon: MessagesSquare,
     title: "Know what to say when it counts",
     description:
@@ -43,7 +46,7 @@ export function TheLifecycle() {
           {STAGES.map((stage) => {
             const Icon = stage.icon;
             return (
-              <div key={stage.title} className="rounded-2xl border border-border bg-surface p-7 shadow-card">
+              <div key={stage.title} id={stage.id} className="scroll-mt-24 rounded-2xl border border-border bg-surface p-7 shadow-card">
                 <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-accent-light">
                   <Icon className="h-5 w-5 text-accent" />
                 </div>

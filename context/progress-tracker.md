@@ -4,6 +4,15 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 20): Features mega-menu — build-plan.md §S fast-follow, direct user "go ahead."**
+  - The logged-out nav's plain "Features" anchor link is now a real dropdown mega-menu, grouped Discovery/Application/Interviews per the original homepage research — matches the already-established "Jobs" dropdown pattern in the authenticated nav (same ref/click-outside/Escape-close shape, confirmed correct via the accessibility audit earlier this session).
+  - Added specific `id` anchors (`scroll-mt-24` to clear the sticky nav) to each individual feature card in `BentoFeatures.tsx`/`TheLifecycle.tsx`, so mega-menu items deep-link to the exact card, not just the top of the section.
+  - Deliberately did NOT link to dedicated per-feature pages — those don't exist, and linking to a nonexistent page would be worse than a precise anchor into real, already-built homepage content.
+  - **Live-verified**: opened the real menu, confirmed all 7 items render with correct hrefs; clicked one, confirmed it scrolled precisely to the right card (`getBoundingClientRect()` confirmed in-view, correctly offset below the sticky nav) and the menu auto-closed; confirmed Escape also closes it.
+  - `tsc --noEmit` clean, full `npm run build` clean.
+
+---
+
 - **2026-08-20 (Phase 20): Free ATS Checker added to the homepage nav + PDF upload capability — direct user request.**
   - **Nav**: "Free ATS Checker" added to the logged-out `Navbar.tsx` (desktop + mobile), between Features and Methodology — a public lead magnet belongs on the marketing nav, not buried in the footer where it already was.
   - **PDF upload**: new `actions/publicTools.ts`'s `extractResumeTextFromPdf` — a genuinely public (no `requireUser()`) version of the same local `pdf-parse` extraction `actions/profile.ts`'s authenticated upload already uses (same require-from-lib Turbopack workaround, same type/size validation). The file is never stored — extracted text populates the same textarea the paste flow already used, so the user sees and can edit what was extracted before submitting to the existing rate-limited `/api/tools/ats-check` route. Deliberately PDF-only, matching the only format this app has ever supported extraction for (no DOCX parsing exists anywhere in the codebase).

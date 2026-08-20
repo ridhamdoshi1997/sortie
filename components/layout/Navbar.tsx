@@ -25,6 +25,37 @@ const jobsSubItems = [
   { href: "/jobs/external", label: "External" },
 ];
 
+// Logged-out Features mega-menu (build-plan.md §S fast-follow) — grouped by
+// Discovery/Application/Interviews per the original homepage research. Every
+// href is a real anchor id on an existing feature card (BentoFeatures.tsx/
+// TheLifecycle.tsx), not a dedicated per-feature page — those don't exist
+// yet, and linking to a nonexistent page would be a worse experience than a
+// precise deep-link into the real homepage content.
+const FEATURES_MENU = [
+  {
+    title: "Discovery",
+    items: [
+      { href: "/#feature-evaluator", label: "10-Dimension Evaluator" },
+      { href: "/#feature-extension", label: "Capture Extension" },
+    ],
+  },
+  {
+    title: "Application",
+    items: [
+      { href: "/#feature-tailoring", label: "ATS-Safe Résumé Tailoring" },
+      { href: "/#feature-connections", label: "Insider Connections" },
+    ],
+  },
+  {
+    title: "Interviews",
+    items: [
+      { href: "/#feature-tracking", label: "Application Tracking" },
+      { href: "/#feature-interview-prep", label: "Interview Prep" },
+      { href: "/#feature-negotiation", label: "Negotiation Scripts" },
+    ],
+  },
+];
+
 // "Profile" lives under the profile icon in the right-hand cluster, not as
 // a top-level nav item — one fewer item competing for space in an already
 // full horizontal bar, and matches the icon's own obvious affordance.
@@ -65,6 +96,13 @@ export function Navbar({ isAuthenticated = false }: Props) {
   const [prevPathname, setPrevPathname] = useState(pathname);
   const jobsRef = useRef<HTMLDivElement>(null);
   const [unreadCount, setUnreadCount] = useState(0);
+  // Features mega-menu (build-plan.md §S fast-follow) — logged-out nav
+  // only, grouped by Discovery/Application/Interviews per the original
+  // homepage research, each item deep-linking to a specific anchor id on
+  // the real feature cards (BentoFeatures.tsx/TheLifecycle.tsx) rather than
+  // just the top of the section.
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const featuresRef = useRef<HTMLDivElement>(null);
 
   // Notification bell badge — fetched once on mount, re-checked on route
   // change (a status change elsewhere in the app may have just created
@@ -84,6 +122,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
     setPrevPathname(pathname);
     setJobsOpen(false);
     setMobileOpen(false);
+    setFeaturesOpen(false);
   }
 
   useEffect(() => {
@@ -96,6 +135,23 @@ export function Navbar({ isAuthenticated = false }: Props) {
     // — this menu previously had no keyboard way to close at all.
     function onKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") setJobsOpen(false);
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onClickOutside);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (featuresRef.current && !featuresRef.current.contains(event.target as Node)) {
+        setFeaturesOpen(false);
+      }
+    }
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") setFeaturesOpen(false);
     }
     document.addEventListener("mousedown", onClickOutside);
     document.addEventListener("keydown", onKeyDown);
@@ -140,9 +196,42 @@ export function Navbar({ isAuthenticated = false }: Props) {
           <Logo priority variant="light" />
 
           <nav className="hidden items-center justify-center gap-6 md:flex">
-            <Link href="/#features" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
-              Features
-            </Link>
+            <div ref={featuresRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setFeaturesOpen((v) => !v)}
+                aria-expanded={featuresOpen}
+                className="inline-flex items-center gap-1 text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground"
+              >
+                Features
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${featuresOpen ? "rotate-180" : ""}`} />
+              </button>
+              {featuresOpen && (
+                <div className="glass-panel-strong absolute left-1/2 top-full mt-2 w-[560px] -translate-x-1/2 rounded-xl p-4">
+                  <div className="grid grid-cols-3 gap-4">
+                    {FEATURES_MENU.map((group) => (
+                      <div key={group.title}>
+                        <p className="mb-2 px-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                          {group.title}
+                        </p>
+                        <div className="flex flex-col gap-0.5">
+                          {group.items.map((item) => (
+                            <Link
+                              key={item.href}
+                              href={item.href}
+                              onClick={() => setFeaturesOpen(false)}
+                              className="block rounded-lg px-2.5 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+                            >
+                              {item.label}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
             <Link href="/ats-checker" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
               Free ATS Checker
             </Link>
@@ -182,9 +271,18 @@ export function Navbar({ isAuthenticated = false }: Props) {
         {mobileOpen && (
           <div className="glass-panel-overlay mx-auto mt-2 max-w-[1400px] rounded-2xl p-3 md:hidden">
             <nav className="flex flex-col gap-1">
-              <Link href="/#features" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+              <span className="block px-3 py-2 text-xs font-semibold uppercase tracking-wide text-overlay-foreground/40">
                 Features
-              </Link>
+              </span>
+              {FEATURES_MENU.flatMap((group) => group.items).map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="block rounded-lg px-3 py-2 pl-6 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5"
+                >
+                  {item.label}
+                </Link>
+              ))}
               <Link href="/ats-checker" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Free ATS Checker
               </Link>
