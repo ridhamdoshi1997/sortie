@@ -522,6 +522,116 @@ export const sendFollowUpNudgesAsync = inngest.createFunction(
     },
 );
 
+// Proactive weekly AI briefing (build-plan.md §H, "AI heavy dashboard" part
+// 2, direct user request). Same "find eligible users, loop, one step per
+// user" shape as sendFollowUpNudgesAsync above. Deliberately does NOT run
+// for every user — only those with real activity this week or a real
+// upcoming deadline, both queried directly (not a blanket "every user gets
+// a call" cron, which would be real recurring cost on completely dormant
+// accounts for zero value). Not gated through checkAndConsumeUsage — that's
+// for user-initiated actions with a daily cap; this is a system-scheduled
+// job already inherently bounded to once/week per eligible user by its own
+// cadence and eligibility filter.
+export const generateWeeklyBriefingsAsync = inngest.createFunction(
+    { id: "generate-weekly-briefings", name: "Generate Weekly AI Dashboard Briefings", triggers: [{ cron: "0 9 * * 1" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const now = new Date().toISOString();
+
+        const eligibleUserIds = await step.run("find-eligible-users", async () => {
+            const ids = new Set<string>();
+
+            const { data: newJobs } = await admin.database
+                .from("jobs")
+                .select("user_id")
+                .gte("found_at", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of newJobs ?? []) ids.add(row.user_id);
+
+            const { data: appEvents } = await admin.database
+                .from("application_events")
+                .select("user_id")
+                .gte("event_date", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of appEvents ?? []) ids.add(row.user_id);
+
+            const { data: interviewEvents } = await admin.database
+                .from("interview_events")
+                .select("user_id")
+                .gte("event_date", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of interviewEvents ?? []) ids.add(row.user_id);
+
+            const { data: deadlineJobs } = await admin.database
+                .from("jobs")
+                .select("user_id")
+                .gte("next_deadline_at", now)
+                .lte("next_deadline_at", sevenDaysFromNow)
+                .returns<{ user_id: string }[]>();
+            for (const row of deadlineJobs ?? []) ids.add(row.user_id);
+
+            return Array.from(ids);
+        });
+
+        if (eligibleUserIds.length === 0) {
+            return { message: "No users with real activity or an upcoming deadline this week — nothing generated." };
+        }
+
+        const { generateWeeklyBriefing } = await import("@/lib/weeklyBriefing");
+        let generatedCount = 0;
+
+        for (const userId of eligibleUserIds) {
+            await step.run(`generate-for-${userId}`, async () => {
+                const [{ data: newJobsForUser }, { data: appEventsForUser }, { data: interviewEventsForUser }, { data: deadlineJobsForUser }, { data: profile }] =
+                    await Promise.all([
+                        admin.database.from("jobs").select("id").eq("user_id", userId).gte("found_at", sevenDaysAgo),
+                        admin.database.from("application_events").select("event_type").eq("user_id", userId).gte("event_date", sevenDaysAgo),
+                        admin.database.from("interview_events").select("id").eq("user_id", userId).gte("event_date", sevenDaysAgo),
+                        admin.database
+                            .from("jobs")
+                            .select("title,company,next_deadline_at,next_deadline_label")
+                            .eq("user_id", userId)
+                            .gte("next_deadline_at", now)
+                            .lte("next_deadline_at", sevenDaysFromNow)
+                            .returns<{ title: string | null; company: string | null; next_deadline_at: string; next_deadline_label: string | null }[]>(),
+                        admin.database.from("profiles").select("preferred_model,email").eq("id", userId).maybeSingle<Pick<Profile, "preferred_model" | "email">>(),
+                    ]);
+
+                const applicationsThisWeek = (appEventsForUser ?? []).filter((e: { event_type: string }) => e.event_type === "applied").length;
+                const offersThisWeek = (appEventsForUser ?? []).filter((e: { event_type: string }) => e.event_type === "offered").length;
+
+                const snapshot = {
+                    jobsFoundThisWeek: (newJobsForUser ?? []).length,
+                    applicationsThisWeek,
+                    interviewsThisWeek: (interviewEventsForUser ?? []).length,
+                    offersThisWeek,
+                    upcomingDeadlines: (deadlineJobsForUser ?? []).map((j) => ({
+                        label: j.next_deadline_label || `${j.title ?? "A job"} at ${j.company ?? "a company"}`,
+                        daysAway: Math.max(0, Math.ceil((new Date(j.next_deadline_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000))),
+                    })),
+                };
+
+                const provider = resolveProvider(profile?.preferred_model, profile?.email ?? undefined);
+                const result = await generateWeeklyBriefing(snapshot, provider);
+
+                await admin.database
+                    .from("profiles")
+                    .update({ weekly_briefing: result.summary, weekly_briefing_generated_at: new Date().toISOString() })
+                    .eq("id", userId);
+            });
+            generatedCount += 1;
+        }
+
+        return { message: `Generated weekly briefings for ${generatedCount} user${generatedCount === 1 ? "" : "s"}.` };
+    },
+);
+
 export const generateGeoContentAsync = inngest.createFunction(
     {
         id: "generate-geo-content",

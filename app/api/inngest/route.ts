@@ -1,8 +1,8 @@
 import { serve } from "inngest/next";
 import { inngest } from "../../../lib/inngest/client";
-import { evaluateJobsAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync } from "../../../lib/inngest/functions";
+import { evaluateJobsAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync } from "../../../lib/inngest/functions";
 
 export const { GET, POST, PUT } = serve({
     client: inngest,
-    functions: [evaluateJobsAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync],
+    functions: [evaluateJobsAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync],
 });

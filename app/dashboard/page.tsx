@@ -6,6 +6,7 @@ import { UpcomingInterviews } from "@/components/dashboard/UpcomingInterviews";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
 import { PipelineStrategyCard } from "@/components/dashboard/PipelineStrategyCard";
+import { WeeklyBriefingCard } from "@/components/dashboard/WeeklyBriefingCard";
 import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
 import { ProfileAttentionBanner } from "@/components/profile/ProfileAttentionBanner";
 import { WelcomeTour } from "@/components/dashboard/WelcomeTour";
@@ -186,6 +187,8 @@ export default async function DashboardPage() {
             missingFields={missingFields}
           />
         )}
+
+        <WeeklyBriefingCard briefing={profile?.weekly_briefing ?? null} generatedAt={profile?.weekly_briefing_generated_at ?? null} />
 
         {/* Row 1 — hero: what needs attention next, not what already happened */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-4">
