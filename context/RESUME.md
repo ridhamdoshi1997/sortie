@@ -2,7 +2,23 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 19 session, in progress — 12 items shipped/resolved across 2 deploys so far, live-verified; full detail below and in `progress-tracker.md`)
+Last updated: 2026-08-20 (Phase 19 session, in progress — 19 of 24 queued items shipped/resolved across 3 deploys, live-verified; full detail below and in `progress-tracker.md`)
+
+## Phase 19, third batch — bulk actions, homepage research logged, and a real accessibility audit
+
+Deployed as of this checkpoint (`npx vercel --prod --scope sortie3`, no permission prompt this time — confirms the classifier behavior is genuinely inconsistent run to run, not predictable by pattern). Post-deploy checklist green: `GET /` → `200`, `GET /missions`/`GET /career` → `307`, `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`.
+
+1. **Bulk actions on Missions** (List view) — multi-select checkboxes on `JobResultCard.tsx` (optional prop, every other call site unaffected), bulk archive + bulk tag-append (fetches each job's own existing tags first, never a blanket overwrite). Live-verified through the real UI both ways.
+2. **Missions filter/sort/group parity, closed** — audited first and found most of the original spec already shipped in earlier phases; added the two genuinely missing pieces (sort by company A-Z, a List-view "Group by company" toggle).
+3. **Marketing homepage research, logged per direct user request** — see `build-plan.md`'s new §S. Real environment note: `agy -p` needs `--dangerously-skip-permissions` to read local files non-interactively, and that flag hit this session's own permission classifier and needed an explicit confirmation — same "stop and ask" category as a deploy, don't try to route around it.
+4. **Accessibility (WCAG 2.1 AA) audit, via the design:accessibility-review skill** — found and fixed a real, systemic keyboard-operability gap: none of the app's 11 custom dropdown/popover components closed on Escape (only click-outside/scroll did). Fixed all 9 files. Live-verified on 2 real instances (Missions' Sort popover, JobActionBar's status menu) via genuine dispatched Escape keydowns, not code-review-only. Also found and FLAGGED (deliberately not silently fixed) a real `text-muted` contrast gap (~3.3:1 on white, below the 4.5:1 AA minimum) — a deliberate hand-tuned design-token color that needs a real visual check before changing, logged in `ui-tokens.md` with a verified fix candidate.
+5. **App-level theme customization (accent/density) — investigated, deliberately not built.** Accent customization would conflict with the app's own strict semantic-color invariants (`--color-agent` is exclusively reserved for AI content, etc.); density mode would need a real spacing-token architecture that doesn't exist yet (confirmed via grep: zero CSS-variable-driven spacing in `globals.css`, every component hardcodes static Tailwind spacing classes). Both are real future initiatives needing a design pass, not quick wins.
+
+**A recurring environment lesson worth remembering for next time**: this session's Browser pane never composited frames, which makes `computer`-tool clicks silently no-op (zero error, zero network trace) — the fix used throughout was dispatching real DOM events via `javascript_tool` instead (debugging-only use). A second, separate gotcha hit multiple times: reading DOM state synchronously in the same script block immediately after a `.click()` call reads PRE-render state, since React hasn't flushed yet — wrap in an `async` IIFE with a short `await new Promise(r => setTimeout(r, 300))` between the action and the check, every time.
+
+**Still open, next up**: a job detail drawer/split view, global search, a skeleton-loaders + optimistic-UI pass, "loading states that teach" copy, and a "Today"/focus view — all bigger, more novel UI builds than what's shipped so far this session, better picked up fresh rather than rushed at the end of a long session. Task list tracked live via TaskCreate/TaskUpdate this session.
+
+---
 
 ## Phase 19 — new marketing homepage, researched and logged (not built)
 
