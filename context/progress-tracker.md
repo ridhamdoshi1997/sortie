@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): In-app notification/activity inbox — build-plan.md §H, closes the `/notifications` ComingSoon placeholder.**
+  - New `notifications` table (`user_id, type, title, body, link, read_at, created_at`). **v1 write source deliberately scoped to real application-status milestones only** (interviewing/offered/rejected), written from `setApplicationStatus`'s single existing write path (`actions/jobs.ts`'s `notifyStatusMilestone`, same best-effort/non-blocking shape as `recordJobDecision`) — not instrumented into every possible event in the app, to ship something correct rather than broad and shallow.
+  - `actions/notifications.ts` (`listNotifications`/`markNotificationRead`/`markAllNotificationsRead`/`getUnreadNotificationCount`), real `/notifications` page (`NotificationsList.tsx`, click-to-read + mark-all), and a real unread-count badge on `Navbar.tsx`'s bell icon (fetched client-side on mount + route change, not a live subscription — a page-load-fresh count is enough for a bell badge).
+  - **Live-verified end to end through the real UI, not simulated**: drove the actual status dropdown (Draft → Interviewing → Skip on the note prompt), confirmed a real notification landed in the DB with the correct title/link, confirmed the navbar badge read "Notifications, 1 unread", confirmed `/notifications` rendered it, clicked "Mark all read" through the real UI and confirmed `read_at` committed. All test data (notification, job status, its application_event) reverted after.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): Obsidian markdown export — build-plan.md §G.**
   - Extended the existing `/api/career/export` route with `?format=markdown` rather than a new endpoint — same DB reads, just a different serialization. Real YAML frontmatter + Markdown body (Profile/Accomplishments/Application History sections), a single note meant to be dropped straight into a vault. **Deliberately not a live Obsidian sync** — there's no public Obsidian cloud API for a deployed web app to write to; the local-vault REST-API plugin some Obsidian users run is a local dev-tool integration, not something this production app can rely on for its users. A plain download is the honest, genuinely-free version of this feature.
   - New "Export to Obsidian (Markdown)" link next to the existing JSON download on `/career`.

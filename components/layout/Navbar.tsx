@@ -17,6 +17,7 @@ import {
 import { Logo } from "@/components/layout/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
+import { getUnreadNotificationCount } from "@/actions/notifications";
 
 const jobsSubItems = [
   { href: "/find-jobs", label: "Recommended" },
@@ -63,6 +64,18 @@ export function Navbar({ isAuthenticated = false }: Props) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [prevPathname, setPrevPathname] = useState(pathname);
   const jobsRef = useRef<HTMLDivElement>(null);
+  const [unreadCount, setUnreadCount] = useState(0);
+
+  // Notification bell badge — fetched once on mount, re-checked on route
+  // change (a status change elsewhere in the app may have just created
+  // one). Deliberately not a live subscription for v1 — a page-load-fresh
+  // count is enough for a bell icon badge, not worth a realtime channel.
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    getUnreadNotificationCount().then((result) => {
+      if (result.success) setUnreadCount(result.count);
+    });
+  }, [isAuthenticated, pathname]);
 
   // Close both menus on navigation — the React-sanctioned "adjust state
   // during render" pattern (not an effect) since this is React state
@@ -174,10 +187,15 @@ export function Navbar({ isAuthenticated = false }: Props) {
           </button>
           <Link
             href="/notifications"
-            aria-label="Notifications"
-            className="hidden text-overlay-foreground/60 transition-colors duration-200 ease-in-out hover:text-overlay-foreground sm:block"
+            aria-label={unreadCount > 0 ? `Notifications, ${unreadCount} unread` : "Notifications"}
+            className="relative hidden text-overlay-foreground/60 transition-colors duration-200 ease-in-out hover:text-overlay-foreground sm:block"
           >
             <Bell className="h-5 w-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-accent px-1 font-mono text-[10px] font-semibold text-accent-foreground">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </Link>
           <ThemeToggle />
 

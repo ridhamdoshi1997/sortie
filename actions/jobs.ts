@@ -393,6 +393,49 @@ const APPLICATION_EVENT_TYPE_BY_STATUS: Partial<Record<ApplicationStatus, Applic
   rejected: "rejected",
 };
 
+// In-app notification inbox (build-plan.md §H) — v1 write source, real
+// application status milestones only. Best-effort, same non-blocking
+// pattern as recordJobDecision above; a failed insert must never fail the
+// status change it's attached to. Fetches the job's title/company itself
+// rather than threading them through every setApplicationStatus call site.
+const MILESTONE_NOTIFICATIONS: Partial<Record<ApplicationStatus, { type: string; verb: string }>> = {
+  interviewing: { type: "status_interviewing", verb: "moved to interviewing" },
+  offered: { type: "status_offered", verb: "got an offer" },
+  rejected: { type: "status_rejected", verb: "was marked rejected" },
+};
+
+async function notifyStatusMilestone(
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>,
+  userId: string,
+  jobId: string,
+  to: ApplicationStatus,
+): Promise<void> {
+  const milestone = MILESTONE_NOTIFICATIONS[to];
+  if (!milestone) return;
+
+  try {
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("title,company")
+      .eq("id", jobId)
+      .maybeSingle<{ title: string | null; company: string | null }>();
+
+    const label = job?.title ? `${job.title}${job.company ? ` at ${job.company}` : ""}` : "A tracked job";
+
+    const { error } = await insforge.database.from("notifications").insert([
+      {
+        user_id: userId,
+        type: milestone.type,
+        title: `${label} ${milestone.verb}`,
+        link: `/find-jobs/${jobId}`,
+      },
+    ]);
+    if (error) console.error("[actions/jobs] notifyStatusMilestone", error);
+  } catch (error) {
+    console.error("[actions/jobs] notifyStatusMilestone", error);
+  }
+}
+
 export async function setApplicationStatus(
   jobId: string,
   from: ApplicationStatus,
@@ -430,6 +473,8 @@ export async function setApplicationStatus(
     if (to === "applied") {
       await recordJobDecision(insforge, user.id, jobId, "applied");
     }
+
+    await notifyStatusMilestone(insforge, user.id, jobId, to);
 
     // Success Story pipeline (Phase 18 item 2) — a real 'offered' milestone
     // is the trigger. Fire-and-forget, same pattern as every other Inngest
