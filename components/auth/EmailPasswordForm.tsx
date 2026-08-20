@@ -26,6 +26,7 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
 export function EmailPasswordForm() {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("signin");
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [code, setCode] = useState("");
@@ -74,7 +75,8 @@ export function EmailPasswordForm() {
       success: boolean;
       error?: string;
       requireVerification?: boolean;
-    }>("/api/auth/signup", { email, password });
+      redirectPath?: string;
+    }>("/api/auth/signup", { email, password, name });
     setIsPending(false);
 
     if (!result.success) {
@@ -87,7 +89,7 @@ export function EmailPasswordForm() {
       return;
     }
 
-    router.push("/profile");
+    router.push(result.redirectPath ?? "/onboarding");
     router.refresh();
   }
 
@@ -245,6 +247,17 @@ export function EmailPasswordForm() {
 
   return (
     <form onSubmit={isSignUp ? handleSignUp : handleSignIn} className="mt-6 flex flex-col gap-3">
+      {isSignUp && (
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Full name"
+          className={inputClass}
+          autoComplete="name"
+          required
+        />
+      )}
       <input
         type="email"
         value={email}

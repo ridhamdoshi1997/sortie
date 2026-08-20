@@ -612,3 +612,16 @@ body {
     @apply font-sans;
   }
 }
+
+/* Chrome/Safari inject a stark white/yellow background on autofilled
+   inputs that ignores plain background-color — the standard override is
+   an inset box-shadow the same size as the field. Uses this app's own
+   design tokens (--color-surface/--color-text-primary), not raw hex, so
+   it tracks light/dark mode automatically like everything else. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  transition: background-color 9999s ease-in-out 0s;
+}

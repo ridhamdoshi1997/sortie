@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+import { getPostLoginRedirectPath } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
 
 // Mirrors the shape/response style app/api/auth/oauth/[provider]/route.ts
@@ -45,8 +46,15 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     // Verification not required for this project's config — sign-up
     // already returns a session. Same cookie pattern as OAuth's callback.
-    if (data?.accessToken) {
-      const response = NextResponse.json({ success: true, requireVerification: false });
+    // Dead in practice today (insforge.toml sets require_email_verification
+    // = true, so requireEmailVerification above is always hit first), but
+    // computed the same way as every other real post-auth redirect
+    // (getPostLoginRedirectPath) rather than a hardcoded path, so a brand
+    // new user still lands on /onboarding first if this branch ever does
+    // fire under a different config.
+    if (data?.accessToken && data.user) {
+      const redirectPath = await getPostLoginRedirectPath(data.user.id);
+      const response = NextResponse.json({ success: true, requireVerification: false, redirectPath });
       setAuthCookies(response.cookies, {
         accessToken: data.accessToken,
         refreshToken: data.refreshToken,
