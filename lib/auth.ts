@@ -5,6 +5,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 
 type ProfileCompletionRow = {
   is_complete: boolean | null;
+  onboarding_completed_at: string | null;
 };
 
 export async function getCurrentUser() {
@@ -43,11 +44,19 @@ export async function getPostLoginRedirectPath(userId: string): Promise<string> 
   const insforge = await createInsforgeServer();
   const { data, error } = await insforge.database
     .from("profiles")
-    .select("is_complete")
+    .select("is_complete,onboarding_completed_at")
     .eq("id", userId)
     .maybeSingle<ProfileCompletionRow>();
 
-  if (error || !data?.is_complete) {
+  if (error) {
+    return "/profile";
+  }
+
+  if (!data?.onboarding_completed_at) {
+    return "/onboarding";
+  }
+
+  if (!data.is_complete) {
     return "/profile";
   }
 

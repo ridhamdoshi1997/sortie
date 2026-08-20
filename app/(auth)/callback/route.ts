@@ -9,17 +9,26 @@ const verifierCookieName = "sortie_oauth_code_verifier";
 
 type ProfileCompletionRow = {
   is_complete: boolean | null;
+  onboarding_completed_at: string | null;
 };
 
 async function getRedirectPath(userId: string, accessToken: string): Promise<string> {
   const insforge = createServerClient({ accessToken });
   const { data, error } = await insforge.database
     .from("profiles")
-    .select("is_complete")
+    .select("is_complete,onboarding_completed_at")
     .eq("id", userId)
     .maybeSingle<ProfileCompletionRow>();
 
-  if (error || !data?.is_complete) {
+  if (error) {
+    return "/profile";
+  }
+
+  if (!data?.onboarding_completed_at) {
+    return "/onboarding";
+  }
+
+  if (!data.is_complete) {
     return "/profile";
   }
 

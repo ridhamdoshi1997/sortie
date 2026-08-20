@@ -523,6 +523,17 @@ Self-fetches its own data (`listApiKeys()`) via a `useEffect` on mount rather th
 
 **Backend split, for reuse**: `createExternalJob` (`lib/externalJob.ts`) holds the actual job-insert-plus-evaluation-trigger logic, called by both `actions/jobs.ts`'s cookie-authed `addExternalJob` (existing "paste a job from anywhere" flow) and the new bearer-token-authed `/api/extension/capture-job` route — same job creation, two different ways of resolving which user it's for. See `progress-tracker.md`'s Phase 14 §Q5 entry for a real bug this extraction surfaced and fixed (an unguarded `inngest.send()` failure used to fail the whole call even after the job row had already saved).
 
+### Onboarding wizard (build-plan.md §H — real first-run flow)
+
+File: `app/onboarding/page.tsx`, `components/onboarding/OnboardingWizard.tsx`, `actions/onboarding.ts`
+Route: `/onboarding` — new first gate in the post-login redirect chain (`lib/auth.ts`'s `getPostLoginRedirectPath`, `app/(auth)/callback/route.ts`'s local copy), ahead of the existing `is_complete` → `/profile` check
+Last updated: 2026-08-20 (new)
+
+**Pattern notes:**
+Real 3-step wizard replacing the static `/preview/onboarding` mockup — same `StepShell` progress-dot chrome, same category→role picker, same seniority/acquisition-source chip pickers, ported verbatim from the mockup's markup/constants but wired to real state and real server actions instead of local-only `useState`. Step 2 (résumé) reuses `actions/profile.ts`'s existing `uploadResume`/`extractProfile` directly rather than the newer multi-slot `ResumeManager` — onboarding only ever needs the one base résumé, and confirmed live that `ResumeManager`'s extra slot/version machinery has no importer in the real profile page's simpler flow. New gate column `profiles.onboarding_completed_at` (backfilled to account-creation time for all 8 pre-existing users) — a brand-new signup with this unset lands on `/onboarding` before the existing completeness gate ever runs; once submitted, `completeOnboarding()` stamps it and routes onward based on whether the merged profile is actually complete (`/dashboard` if yes, `/profile` if the user skipped the résumé step and still has required fields missing). New `profiles.acquisition_channel` column folds in "How did you find us?" on the wizard's own step 3, matching the mockup's original layout, rather than as a separate feature — distinct from `referral_code`/`referred_by_code` (peer-invite tracking, unrelated).
+
+**Live-verified end to end**, not just build-clean: real login → real `/onboarding` redirect confirmed on a nulled test account → all 3 steps clicked through for real → DB row confirmed to hold the exact real picks after submit → correct conditional redirect (`/profile`, since no résumé was uploaded so the profile stayed incomplete) → a second direct `/onboarding` visit correctly bounces away instead of re-showing the wizard. Full detail in `build-plan.md`'s §H row.
+
 ### Settings — "Notion" tab (build-plan.md §G/Phase 16 — Notion export)
 
 File: `components/settings/NotionTab.tsx`, `actions/notion.ts`, `lib/notion.ts`

@@ -45,6 +45,15 @@ export interface Profile {
   // regenerated live on page load.
   weekly_briefing: string | null;
   weekly_briefing_generated_at: string | null;
+  // Real onboarding wizard (build-plan.md §H) — set once, first login only.
+  // Backfilled to the account's creation time for every pre-existing user
+  // (2026-08-20) so this only gates brand-new signups, never re-litigates
+  // an already-completed setup for someone already using the app.
+  onboarding_completed_at: string | null;
+  // Organic acquisition channel captured during onboarding, optional.
+  // Distinct from referral_code/referred_by_code (peer-to-peer invite
+  // tracking) — this is "which marketing channel," not "who invited you."
+  acquisition_channel: string | null;
 }
 
 export interface WorkExperience {
