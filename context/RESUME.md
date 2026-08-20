@@ -2,7 +2,31 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 18 session, continued — everything below plus a 6-item free-tier batch: 90-day plan, follow-up nudges, skill-gap tracking, installable PWA, welcome tour, toast system, all deployed and live-verified)
+Last updated: 2026-08-20 (Phase 19 session, in progress — 6 more items shipped, deployed, live-verified; full detail below and in `progress-tracker.md`)
+
+## Phase 19 — in progress, working the remaining free/unblocked backlog one item at a time
+
+**Direct user instruction: "complete all the remaining task one by one if they are free and no need to ask me"** — after producing a cross-referenced "what's actually left to build" list (build-plan.md's Master Feature Inventory vs. what RESUME.md confirms is really shipped), working straight through the genuinely-free, unblocked items autonomously. Items needing a paid API, external OAuth/app-review, or flagged low-confidence/honesty-risk stay parked, same discipline as always — not silently skipped, each one investigated and the reason logged.
+
+**6 real features shipped, committed, deployed to production, and live-verified this stretch** (commits `fa9cdf6`→`822a9f5`, deployed via `npx vercel --prod --scope sortie3` after explicit user confirmation — production deploys hit the auto-mode permission classifier this session, unlike migration/DB commands, so that one action needs a real check-in even under a "keep going" directive):
+1. **Shareable public evaluation link** (`/share/[token]`) — a user's own AI match evaluation, never the scraped posting text. Investigated build-plan.md's original "JobPosting structured data" ask first and deliberately did NOT build it as scoped — no public job-listing surface exists in the app to put it on, and republishing scraped third-party job descriptions to manufacture one raises a real licensing question outside this agent's authority. Folded the legitimate SEO value into the share page instead.
+2. **Visible usage consumption in-editor** — reuses Settings' existing Credits & Usage action, no new backend.
+3. **`job_decisions` table** — the Q3 fast-follow left open when the outcome loop first shipped. Hiding a job now optionally captures why (quick-pick reasons); a real "applied" transition is recorded the same way. Surfaced as a new "Applied vs. skipped" stat on `/career`.
+4. **"Weekly Wins" ticker** on `/career` — recap of accomplishments logged (not dated) in the last 7 days.
+5. **Obsidian Markdown export** — same `/api/career/export` route, `?format=markdown`. No live sync exists (Obsidian has no public write API for a deployed web app), so this is an honest plain download, not a fake integration.
+6. **Real in-app notification inbox**, closing the `/notifications` ComingSoon placeholder. v1 writes from one source only — real application-status milestones (interviewing/offered/rejected) — plus a real unread-count badge on the navbar bell.
+
+**Also investigated and resolved without building anything** (already covered or genuinely blocked, not skipped carelessly): JobPosting schema (see #1 above), résumé page counter (already covered by the PDF viewer's native toolbar), logout escape hatch during onboarding (no real onboarding flow exists yet to attach it to — only a `/preview/onboarding` mockup), dual homepage/nav CTAs (already shipped under different copy), and the dashboard's 10-dimension hover popup (the dashboard v1 redesign's own header comment already documents choosing real navigation over this exact idea, deliberately — respected that prior call rather than overriding it).
+
+**Two real bugs found and fixed via live testing, not caught by `tsc`**: a hydration mismatch in `ShareJobLink.tsx` (`window.location.origin` read inline during render — undefined server-side, real client-side); and a gating bug in `OutcomeInsights.tsx` where the whole section stayed on its empty state whenever the older interview-rate stats lacked data, even when the new job_decisions data had enough on its own.
+
+**A real environment artifact re-confirmed, not a new bug**: this session's Browser pane isn't compositing frames (same signature as Phase 18's documented "phantom bug" — a `screenshot` call fails with the exact same error), which additionally means `computer`-tool clicks silently no-op with zero error and zero network trace. Worked around by dispatching real DOM `.click()` calls via `javascript_tool` for verification (debugging-only use, not implementation) — confirmed this actually fires the real server actions correctly. If a click-driven test shows zero effect in this environment, check for a fired network request before concluding the feature is broken.
+
+**Post-deploy checklist all green on real production**: `GET /` → `200`, `GET /admin`/`GET /career`/`GET /notifications` → `307` (correct unauthenticated redirects), `GET /blog` → `200`, `PUT /api/inngest` → `200`, `GET /api/inngest` → `401`, `GET /share/nonexistent-token` → `404`.
+
+**Task queue still open, next up**: dashboard/Missions filter-sort-group parity, bulk actions on Missions, a job detail drawer/split view, global search, skeleton loaders + optimistic UI, loading states that teach, a "Today"/focus view, the feature-announcement/waitlist modal (note: a `/waitlist` static route already exists — check it before assuming nothing's built), an accessibility (WCAG) pass, app-level theme customization, a skills radar chart, and a dedup/status-normalization audit. Full task list and status is being tracked live via TaskCreate/TaskUpdate for this session — check there first if resuming mid-queue.
+
+---
 
 ## Phase 18, sixth piece — free-tier batch, deployed
 
