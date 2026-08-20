@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, ArrowLeft, Bookmark, ChevronDown, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
 
@@ -56,6 +56,13 @@ export function JobActionBar({
   // idiom as statusMenuPosition, just a second panel keyed off its own state
   // so the two never fight over one position value.
   const [notePrompt, setNotePrompt] = useState<{ position: { top: number; left: number }; next: ApplicationStatus } | null>(null);
+  // Q3 fast-follow (build-plan.md §Q3) — hiding a job doubles as the
+  // "skip decision" capture point (see actions/jobs.ts's recordJobDecision),
+  // since a parallel skip-reason UI would just duplicate what Hide already
+  // means. Only asked when hiding, never when un-hiding — un-skipping isn't
+  // a decision that needs a reason. Same portal/fixed-position idiom as
+  // statusMenuPosition/notePrompt above.
+  const [hidePromptPosition, setHidePromptPosition] = useState<{ top: number; left: number } | null>(null);
   const [markedUnavailableAt, setMarkedUnavailableAt] = useState(initialMarkedUnavailableAt ?? null);
   const [isPending, startTransition] = useTransition();
   // formatTimeAgo(foundAt) is time-dependent — computing it inline in JSX
@@ -122,13 +129,21 @@ export function JobActionBar({
     });
   }
 
-  function handleHide(): void {
-    const next = !hidden;
+  function commitHide(next: boolean, skipReason?: string): void {
     setHidden(next);
     startTransition(async () => {
-      const result = await toggleHideJob(jobId, next);
+      const result = await toggleHideJob(jobId, next, skipReason);
       if (!result.success) setHidden(!next);
     });
+  }
+
+  function handleHide(event: ReactMouseEvent<HTMLButtonElement>): void {
+    if (hidden) {
+      commitHide(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    setHidePromptPosition({ top: rect.bottom + 4, left: rect.left });
   }
 
   return (
@@ -212,6 +227,17 @@ export function JobActionBar({
           {hidden ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
           {hidden ? "Unhide" : "Hide"}
         </button>
+
+        {hidePromptPosition && (
+          <HideReasonPanel
+            position={hidePromptPosition}
+            onChoose={(reason) => {
+              commitHide(true, reason);
+              setHidePromptPosition(null);
+            }}
+            onClose={() => setHidePromptPosition(null)}
+          />
+        )}
 
         <div>
           <button
@@ -425,6 +451,74 @@ function NotePromptPanel({
           Log note
         </button>
       </div>
+    </div>,
+    document.body,
+  );
+}
+
+// Q3 fast-follow's skip-reason capture (build-plan.md §Q3) — shown only when
+// hiding a job, never on un-hide. Same portal/fixed-position idiom as the
+// panels above. Quick-pick reasons cover the common cases without typing;
+// "Skip without a reason" still records the decision (decision='skipped',
+// skip_reason=null) so the applied/skipped ratio stays accurate either way.
+const SKIP_REASONS = [
+  "Not a fit for my skills",
+  "Compensation too low",
+  "Wrong location / not remote",
+  "Already applied elsewhere",
+  "Company or role red flag",
+];
+
+function HideReasonPanel({
+  position,
+  onChoose,
+  onClose,
+}: {
+  position: { top: number; left: number };
+  onChoose: (reason?: string) => void;
+  onClose: () => void;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClickOutside(event: MouseEvent) {
+      if (!panelRef.current?.contains(event.target as Node)) onClose();
+    }
+    document.addEventListener("mousedown", onClickOutside);
+    return () => document.removeEventListener("mousedown", onClickOutside);
+  }, [onClose]);
+
+  useEffect(() => {
+    window.addEventListener("scroll", onClose, true);
+    return () => window.removeEventListener("scroll", onClose, true);
+  }, [onClose]);
+
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={{ position: "fixed", top: position.top, left: position.left }}
+      className="glass-panel-strong animate-in fade-in-0 zoom-in-95 z-50 w-64 rounded-xl p-2 duration-150"
+    >
+      <p className="px-2 pb-1.5 pt-1 text-xs font-medium text-text-primary">Hiding it — why? (optional)</p>
+      {SKIP_REASONS.map((reason) => (
+        <button
+          key={reason}
+          type="button"
+          onClick={() => onChoose(reason)}
+          className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-text-secondary transition-colors hover:bg-surface-secondary"
+        >
+          {reason}
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={() => onChoose(undefined)}
+        className="mt-1 block w-full rounded-lg px-2 py-1.5 text-left text-sm text-text-muted transition-colors hover:bg-surface-secondary"
+      >
+        Skip without a reason
+      </button>
     </div>,
     document.body,
   );

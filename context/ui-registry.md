@@ -18,6 +18,12 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Hide Reason Panel (job detail)
+
+Files: `components/job-details/JobActionBar.tsx` (`HideReasonPanel`)
+Route: job detail page, opens from the Hide button
+Last updated: 2026-08-20. Same portal/fixed-position idiom as `StatusMenuPanel`/`NotePromptPanel` in the same file (`glass-panel-strong`, click-outside + scroll-to-close). Quick-pick text buttons, plain `text-text-secondary hover:bg-surface-secondary` rows — no accent/agent tinting, this is a neutral utility prompt, not AI content or a primary action.
+
 ### Editor Usage Meter (document editors)
 
 Files: `components/documents/EditorUsageMeter.tsx`

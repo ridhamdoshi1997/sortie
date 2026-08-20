@@ -5,15 +5,19 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { resolveProvider } from "@/lib/access";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import {
+  computeAppliedVsSkipped,
   computeInterviewRateByGrade,
   computeInterviewRateByMatchBand,
   computeRejectionReasonDistribution,
+  computeSkipReasons,
   hasEnoughDataForInsights,
   type ApplicationEventLite,
+  type DecisionLite,
   type GradeStat,
   type MatchScoreBandStat,
   type OutcomeJob,
   type RejectionCategoryStat,
+  type SkipReasonStat,
 } from "@/lib/outcomeInsights";
 import { generateOutcomeNarrative, type OutcomeNarrativeResult } from "@/lib/outcomeNarrative";
 import type { Profile } from "@/types";
@@ -23,6 +27,8 @@ export type OutcomeStats = {
   byMatchBand: MatchScoreBandStat[];
   byGrade: GradeStat[];
   rejectionReasons: RejectionCategoryStat[];
+  skipReasons: SkipReasonStat[];
+  appliedVsSkipped: { applied: number; skipped: number };
 };
 
 // §Q3 — deterministic, zero-AI aggregation over the user's own already-
@@ -35,16 +41,18 @@ export async function getOutcomeStats(): Promise<{ success: boolean; data?: Outc
   try {
     const insforge = await createInsforgeServer();
 
-    const [{ data: jobs }, { data: events }] = await Promise.all([
+    const [{ data: jobs }, { data: events }, { data: decisions }] = await Promise.all([
       insforge.database
         .from("jobs")
         .select("id,match_score,overall_grade,application_status,rejection_diagnosis")
         .eq("user_id", user.id),
       insforge.database.from("application_events").select("job_id,event_type").eq("user_id", user.id),
+      insforge.database.from("job_decisions").select("decision,skip_reason").eq("user_id", user.id),
     ]);
 
     const outcomeJobs = (jobs ?? []) as OutcomeJob[];
     const outcomeEvents = (events ?? []) as ApplicationEventLite[];
+    const outcomeDecisions = (decisions ?? []) as DecisionLite[];
 
     return {
       success: true,
@@ -53,6 +61,8 @@ export async function getOutcomeStats(): Promise<{ success: boolean; data?: Outc
         byMatchBand: computeInterviewRateByMatchBand(outcomeJobs, outcomeEvents),
         byGrade: computeInterviewRateByGrade(outcomeJobs, outcomeEvents),
         rejectionReasons: computeRejectionReasonDistribution(outcomeJobs),
+        skipReasons: computeSkipReasons(outcomeDecisions),
+        appliedVsSkipped: computeAppliedVsSkipped(outcomeDecisions),
       },
     };
   } catch (error) {

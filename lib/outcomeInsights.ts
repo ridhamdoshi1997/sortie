@@ -20,6 +20,8 @@ export type ApplicationEventLite = { job_id: string; event_type: string };
 export type MatchScoreBandStat = { band: string; applied: number; interviewed: number; rate: number };
 export type GradeStat = { grade: string; applied: number; interviewed: number; rate: number };
 export type RejectionCategoryStat = { category: RejectionReasonCategory; count: number };
+export type SkipReasonStat = { reason: string; count: number };
+export type DecisionLite = { decision: "applied" | "skipped"; skip_reason: string | null };
 
 // A rate computed from 1-2 data points reads as a confident percentage but
 // is really just noise — this app's own established convention (see
@@ -87,6 +89,29 @@ export function computeRejectionReasonDistribution(jobs: OutcomeJob[]): Rejectio
   return Array.from(counts.entries())
     .map(([category, count]) => ({ category, count }))
     .sort((a, b) => b.count - a.count);
+}
+
+// Q3 fast-follow — top reasons behind real "skipped" decisions (see
+// actions/jobs.ts's recordJobDecision). Unreasoned skips ("Skip without a
+// reason") are deliberately excluded from this specific breakdown, not
+// counted as their own bucket — they're real data (see applied-vs-skipped
+// below) but "no reason given" isn't a pattern worth surfacing as one.
+export function computeSkipReasons(decisions: DecisionLite[]): SkipReasonStat[] {
+  const counts = new Map<string, number>();
+  for (const d of decisions) {
+    if (d.decision !== "skipped" || !d.skip_reason) continue;
+    counts.set(d.skip_reason, (counts.get(d.skip_reason) ?? 0) + 1);
+  }
+  return Array.from(counts.entries())
+    .map(([reason, count]) => ({ reason, count }))
+    .sort((a, b) => b.count - a.count);
+}
+
+export function computeAppliedVsSkipped(decisions: DecisionLite[]): { applied: number; skipped: number } {
+  return {
+    applied: decisions.filter((d) => d.decision === "applied").length,
+    skipped: decisions.filter((d) => d.decision === "skipped").length,
+  };
 }
 
 // Gates the whole insights section, not just one stat — a user with 1-2

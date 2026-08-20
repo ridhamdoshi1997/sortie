@@ -119,6 +119,8 @@ export default async function CareerPage() {
               hasEnoughData: false,
               byMatchBand: [],
               byGrade: [],
+              skipReasons: [],
+              appliedVsSkipped: { applied: 0, skipped: 0 },
               rejectionReasons: [],
             }
           }

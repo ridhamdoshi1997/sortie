@@ -50,7 +50,14 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
     });
   }
 
-  if (!stats.hasEnoughData) {
+  // Two independent data sources feed this section (interview-rate stats
+  // off application_events, applied-vs-skipped off the newer job_decisions
+  // table) — each already has its own MIN_SAMPLE_SIZE gate, so the section
+  // as a whole should only fall back to the empty state when NEITHER has
+  // enough data yet, not just the older of the two.
+  const hasDecisionData = stats.appliedVsSkipped.applied + stats.appliedVsSkipped.skipped >= 3;
+
+  if (!stats.hasEnoughData && !hasDecisionData) {
     return (
       <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
         <div className="mb-1 flex items-center gap-3">
@@ -61,7 +68,7 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
         </div>
         <p className="mt-3 text-sm text-text-muted">
           Track a few more applications and this section will show real patterns from your own history — interview
-          rate by match score and grade, and your most common rejection reasons.
+          rate by match score and grade, applied vs. skipped, and your most common rejection reasons.
         </p>
       </section>
     );
@@ -130,6 +137,33 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
         </div>
       )}
 
+      {/* Q3 fast-follow (build-plan.md §Q3) — "did you apply, or skip and
+          why". Only rendered once there's enough real decision data to be
+          a pattern rather than noise (same MIN_SAMPLE_SIZE=3 discipline as
+          every other stat here), separate from hasEnoughData above since
+          job_decisions is a newer table and fills in gradually. */}
+      {hasDecisionData && (
+        <div className="mt-6 border-t border-border pt-4">
+          <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-muted">Applied vs. skipped</h3>
+          <p className="mb-3 text-sm text-text-secondary">
+            {stats.appliedVsSkipped.applied} applied · {stats.appliedVsSkipped.skipped} skipped
+          </p>
+          {stats.skipReasons.length > 0 && (
+            <ul className="flex flex-col gap-1.5">
+              {stats.skipReasons.map((stat) => (
+                <li key={stat.reason} className="flex items-center justify-between text-sm">
+                  <span className="text-text-secondary">{stat.reason}</span>
+                  <span className="font-medium text-text-primary">
+                    {stat.count} time{stat.count === 1 ? "" : "s"}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+
+      {stats.hasEnoughData && (
       <div className="mt-5 border-t border-border pt-4">
         {narrative ? (
           <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
@@ -157,6 +191,7 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
         )}
         {error && <p className="mt-2 text-xs text-error">{error}</p>}
       </div>
+      )}
     </section>
   );
 }

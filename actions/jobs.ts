@@ -110,7 +110,40 @@ export async function toggleSaveJob(jobId: string, saved: boolean): Promise<Acti
   }
 }
 
-export async function toggleHideJob(jobId: string, hidden: boolean): Promise<ActionResult> {
+// Q3 fast-follow (build-plan.md §Q3) — "did you apply, or did you skip and
+// why" for jobs application_events alone can't capture (that table only
+// exists for jobs someone DID apply to). One row per (user, job); upserted
+// so a job later re-decided (hidden, then eventually applied to) reads as
+// its latest real decision, never both/stale. Best-effort, same
+// non-blocking pattern as every other side-write in this file — a failed
+// insert must never fail the primary hide/status action it's attached to.
+async function recordJobDecision(
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>,
+  userId: string,
+  jobId: string,
+  decision: "applied" | "skipped",
+  skipReason?: string,
+): Promise<void> {
+  try {
+    const { error } = await insforge.database.from("job_decisions").upsert(
+      [
+        {
+          user_id: userId,
+          job_id: jobId,
+          decision,
+          skip_reason: decision === "skipped" ? (skipReason ?? null) : null,
+          decided_at: new Date().toISOString(),
+        },
+      ],
+      { onConflict: "user_id,job_id" },
+    );
+    if (error) console.error("[actions/jobs] recordJobDecision", error);
+  } catch (error) {
+    console.error("[actions/jobs] recordJobDecision", error);
+  }
+}
+
+export async function toggleHideJob(jobId: string, hidden: boolean, skipReason?: string): Promise<ActionResult> {
   const user = await requireUser();
 
   try {
@@ -127,8 +160,13 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
       return { success: false, error: "Failed to update hidden status" };
     }
 
+    if (hidden) {
+      await recordJobDecision(insforge, user.id, jobId, "skipped", skipReason);
+    }
+
     revalidatePath("/find-jobs");
     revalidatePath("/find-jobs/[id]", "page");
+    revalidatePath("/career");
     return { success: true };
   } catch (error) {
     console.error("[actions/jobs] toggleHideJob", error);
@@ -387,6 +425,10 @@ export async function setApplicationStatus(
       if (!eventResult.success) {
         console.error("[actions/jobs] setApplicationStatus: event log failed", eventResult.error);
       }
+    }
+
+    if (to === "applied") {
+      await recordJobDecision(insforge, user.id, jobId, "applied");
     }
 
     // Success Story pipeline (Phase 18 item 2) — a real 'offered' milestone
