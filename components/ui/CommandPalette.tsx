@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 
 import { quickSearchJobs, type QuickSearchJob } from "@/actions/jobs";
+import { isPublicMarketingRoute } from "@/lib/publicRoutes";
 
 type CommandItem = {
   id: string;
@@ -218,7 +219,11 @@ export function CommandPalette() {
     return () => clearTimeout(timer);
   }, [open]);
 
-  if (!open) return null;
+  // Every static command here points to an authenticated-only page, and
+  // quickSearchJobs() requires a logged-in user — same reasoning as
+  // NavigatorLauncher.tsx's public-route gate, previously missing here
+  // entirely (found during the homepage performance pass, 2026-08-20).
+  if (!open || isPublicMarketingRoute(pathname)) return null;
 
   const groups = Array.from(new Set(filtered.map((c) => c.group)));
   let runningIndex = -1;

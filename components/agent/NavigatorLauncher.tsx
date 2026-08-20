@@ -7,6 +7,7 @@ import { Sparkles, X } from "lucide-react";
 import { NavigatorChat } from "@/components/agent/NavigatorChat";
 import { listAgentMessages } from "@/actions/agent";
 import type { AgentAction } from "@/lib/agentAssistant";
+import { isPublicMarketingRoute } from "@/lib/publicRoutes";
 
 type AgentMessageRow = {
   id: string;
@@ -27,10 +28,10 @@ const JOB_PAGE_PATTERN = /^\/find-jobs\/([0-9a-f-]{36})/i;
 // (every page composes <Navbar isAuthenticated /> itself, confirmed — see
 // build-plan.md §O's implementation notes), so gating by known-public path
 // prefixes is the pragmatic equivalent without adding a client-side auth
-// check just for this.
-function isPublicRoute(pathname: string): boolean {
-  return pathname === "/" || pathname === "/login" || pathname === "/waitlist" || pathname.startsWith("/preview");
-}
+// check just for this. Moved to lib/publicRoutes.ts (2026-08-20, performance
+// pass) — this local copy had gone stale and never picked up /methodology,
+// /pricing, or /ats-checker when those shipped earlier this session.
+const isPublicRoute = isPublicMarketingRoute;
 
 // /admin/* gets its own AdminNavigatorLauncher, grounded in admin ops data
 // instead of this candidate's own profile/tracker — showing consumer
