@@ -2,7 +2,15 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system, a 5-item user-side batch, a free public ATS checker, sitemap/robots, DOCX resume export, and a job comparison view, all deployed)
+Last updated: 2026-08-20 (Phase 18 session, continued — everything below plus a 6-item free-tier batch: 90-day plan, follow-up nudges, skill-gap tracking, installable PWA, welcome tour, toast system, all deployed and live-verified)
+
+## Phase 18, sixth piece — free-tier batch, deployed
+
+**Direct instruction: "work on all the fre[e] items"** — closed all 6 genuinely free/buildable items from the earlier inventory pass (First-90-days plan, follow-up timing nudges, skill-gap tracking, installable PWA, guided first-run welcome, toast system infra). LinkedIn OAuth and Google One Tap were explicitly skipped and flagged (both need external app/console setup this agent can't do), email/magic-link sign-in was confirmed already covered by the existing email+password login form.
+
+**A real reactivity bug caught before it shipped, not after**: the follow-up nudge's deep link into the email-draft generator would have silently failed on an already-loaded page — fixed by switching from a mount-only effect to Next.js's reactive `useSearchParams()`, then independently confirmed correct with a real click-through on production.
+
+**Live-verified end to end for all 6 pieces on real production** — including catching my own false-negative on the toast test (the 3-second auto-dismiss window is shorter than this tool's round-trip latency; a naive check-after-click looked like a failure until a timing-safe two-step check confirmed it was real). Full detail in `progress-tracker.md`'s newest entry.
 
 ## Phase 18, fifth piece — job comparison view, deployed
 
