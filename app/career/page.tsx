@@ -99,13 +99,23 @@ export default async function CareerPage() {
               Your own career history — kept whether or not you&apos;re actively job hunting.
             </p>
           </div>
-          <a
-            href="/api/career/export"
-            className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
-          >
-            <Download className="h-4 w-4" />
-            Download your career record
-          </a>
+          <div className="flex flex-wrap gap-2">
+            <a
+              href="/api/career/export"
+              className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+            >
+              <Download className="h-4 w-4" />
+              Download (JSON)
+            </a>
+            <a
+              href="/api/career/export?format=markdown"
+              title="A single Markdown note with YAML frontmatter — drop it straight into an Obsidian vault"
+              className="inline-flex items-center gap-2 rounded-full border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary hover:text-text-primary"
+            >
+              <Download className="h-4 w-4" />
+              Export to Obsidian (Markdown)
+            </a>
+          </div>
         </div>
 
         {nudge && (

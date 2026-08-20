@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): Obsidian markdown export — build-plan.md §G.**
+  - Extended the existing `/api/career/export` route with `?format=markdown` rather than a new endpoint — same DB reads, just a different serialization. Real YAML frontmatter + Markdown body (Profile/Accomplishments/Application History sections), a single note meant to be dropped straight into a vault. **Deliberately not a live Obsidian sync** — there's no public Obsidian cloud API for a deployed web app to write to; the local-vault REST-API plugin some Obsidian users run is a local dev-tool integration, not something this production app can rely on for its users. A plain download is the honest, genuinely-free version of this feature.
+  - New "Export to Obsidian (Markdown)" link next to the existing JSON download on `/career`.
+  - **Live-verified**: fetched the real route with a real session, confirmed genuine frontmatter + real accomplishment/application data rendered correctly as Markdown.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): "Weekly Wins" ticker — build-plan.md §P.**
   - `lib/careerTimeline.ts`'s `buildWeeklyWins` + `components/career/WeeklyWinsTicker.tsx`, rendered near the top of `/career`. Filters on `created_at` (when a win was actually logged), deliberately not the accomplishment's own `date` field (which can be legitimately backdated) — a "this week" recap is about what you logged this week, not what happened this week. Renders nothing at all when there's nothing to show (no empty-card nagging).
   - **Live-verified with a real seeded row**: a fresh accomplishment appeared correctly; a pre-existing backdated (2025) accomplishment also correctly appeared since it was logged recently, confirming the `created_at`-not-`date` filter works as designed, not a bug. Test row deleted after.
