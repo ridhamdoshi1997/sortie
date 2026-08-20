@@ -28,6 +28,7 @@ import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
 import { AddToCompareButton } from "@/components/job-details/AddToCompareButton";
+import { ShareJobLink } from "@/components/job-details/ShareJobLink";
 import { FollowUpNudge } from "@/components/job-details/FollowUpNudge";
 import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
@@ -190,8 +191,9 @@ export default async function JobDetailsPage({ params }: Props) {
             reappearanceSignal={reappearanceSignal}
           />
         </div>
-        <div className="fade-in-up" style={{ animationDelay: "40ms" }}>
+        <div className="fade-in-up flex flex-wrap items-center gap-2" style={{ animationDelay: "40ms" }}>
           <AddToCompareButton jobId={job.id} title={job.title ?? "Untitled role"} company={company} />
+          <ShareJobLink jobId={job.id} initialShareToken={job.share_token ?? null} />
         </div>
         <div className="fade-in-up" style={{ animationDelay: "50ms" }}>
           <FollowUpNudge applicationStatus={job.application_status} statusUpdatedAt={job.application_status_updated_at} />

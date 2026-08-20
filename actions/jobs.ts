@@ -1,5 +1,6 @@
 "use server";
 
+import { randomBytes } from "crypto";
 import { revalidatePath } from "next/cache";
 
 import { requireUser } from "@/lib/auth";
@@ -132,6 +133,61 @@ export async function toggleHideJob(jobId: string, hidden: boolean): Promise<Act
   } catch (error) {
     console.error("[actions/jobs] toggleHideJob", error);
     return { success: false, error: "Failed to update hidden status" };
+  }
+}
+
+// Shareable public evaluation link (build-plan.md §I) — generates a random
+// token and writes it to the owner's own job row via the existing owner-only
+// update policy. The token alone is what makes /share/[token] resolvable;
+// public reads never touch this table directly, only the narrow
+// public.job_shares projection view (see migrations/20260820040624).
+export async function createShareLink(jobId: string): Promise<ActionResult & { token?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+    const token = randomBytes(16).toString("hex");
+
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ share_token: token })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] createShareLink", error);
+      return { success: false, error: "Failed to create share link" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true, token };
+  } catch (error) {
+    console.error("[actions/jobs] createShareLink", error);
+    return { success: false, error: "Failed to create share link" };
+  }
+}
+
+export async function revokeShareLink(jobId: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ share_token: null })
+      .eq("id", jobId)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] revokeShareLink", error);
+      return { success: false, error: "Failed to revoke share link" };
+    }
+
+    revalidatePath("/find-jobs/[id]", "page");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] revokeShareLink", error);
+    return { success: false, error: "Failed to revoke share link" };
   }
 }
 

@@ -18,6 +18,12 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Share Job Link (job detail)
+
+Files: `components/job-details/ShareJobLink.tsx`, public render at `app/share/[token]/page.tsx`
+Route: job detail page, next to `AddToCompareButton`
+Last updated: 2026-08-20. Idle state is a plain `border-border` secondary button (`Link2` icon), same shell as `AddToCompareButton`'s idle state. Active state is a `border-accent bg-accent-muted` pill with a truncated `font-mono text-xs text-accent` URL + Copy/Revoke icon buttons — accent, not agent, since generating/copying a link is a user action, not AI output. The public `/share/[token]` page itself reuses `EvaluationBreakdown.tsx` unmodified and opens with the standard Agent-Content Callout (`border-agent bg-agent-light`, "AI Navigator reads") to frame the page as showing AI evaluation output, not a job listing.
+
 ### ATS Checker form (public, /ats-checker)
 
 Files: `components/tools/AtsCheckerForm.tsx`
