@@ -2,7 +2,7 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deploy pending this checkpoint)
+Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deployed to production)
 
 ## Phase 20 — new marketing homepage built from the Phase 19 research, a real honesty bug found and fixed
 
@@ -17,6 +17,8 @@ Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + l
 **Live-verified thoroughly**: every section's real content confirmed via page-text extraction, the logged-out nav's exact link set confirmed via `read_page`, `/methodology`'s dimension list confirmed pulled live from the real evaluator, both `/#features`/`/#pricing` anchors confirmed landing correctly, mobile menu confirmed working, zero horizontal overflow at a real 375px viewport. Full detail in `progress-tracker.md`'s Phase 20 entry.
 
 **Real, disclosed fast-follows, not done**: the "Features" nav link is a same-page anchor, not the dedicated mega-menu the original research recommended; no dedicated `/pricing` page; no Lighthouse/Core Web Vitals pass run yet; no conversion tracking added to the new CTAs.
+
+**Committed, pushed, AND deployed to production** — commit `30a8978` on `origin/feature/my-experiment`, deployed via `npx vercel --prod --scope sortie3`. Post-deploy checklist green against real production: `GET /` → `200` with the real new headline confirmed present in the served HTML (not just locally), `GET /methodology` → `200`, `GET /dashboard` → `307` (correct unauthenticated redirect, unaffected by the nav split).
 
 ---
 
