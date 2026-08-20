@@ -26,6 +26,7 @@ import { listJobEventHistory } from "@/actions/careerEvents";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
+import { AddToCompareButton } from "@/components/job-details/AddToCompareButton";
 import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
 import { JobInfo } from "@/components/job-details/JobInfo";
@@ -186,6 +187,9 @@ export default async function JobDetailsPage({ params }: Props) {
             droppedFromSearchAt={job.dropped_from_search_at}
             reappearanceSignal={reappearanceSignal}
           />
+        </div>
+        <div className="fade-in-up" style={{ animationDelay: "40ms" }}>
+          <AddToCompareButton jobId={job.id} title={job.title ?? "Untitled role"} company={company} />
         </div>
         <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
           <JobInfo job={job} />
