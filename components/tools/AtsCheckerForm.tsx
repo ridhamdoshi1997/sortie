@@ -1,9 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, CheckCircle2, Info, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, Info, Sparkles, Upload } from "lucide-react";
 
+import { extractResumeTextFromPdf } from "@/actions/publicTools";
 import type { PublicAtsResult } from "@/lib/publicAtsChecker";
 
 function ScoreRing({ score }: { score: number }) {
@@ -22,6 +23,29 @@ export function AtsCheckerForm() {
   const [result, setResult] = useState<PublicAtsResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isExtracting, setIsExtracting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const file = event.target.files?.[0];
+    event.target.value = ""; // allow re-selecting the same file later
+    if (!file) return;
+
+    setError(null);
+    setIsExtracting(true);
+    const formData = new FormData();
+    formData.append("resume", file);
+
+    extractResumeTextFromPdf(formData)
+      .then((result) => {
+        if (result.success) {
+          setResumeText(result.text);
+        } else {
+          setError(result.error);
+        }
+      })
+      .finally(() => setIsExtracting(false));
+  }
 
   function handleSubmit(): void {
     setError(null);
@@ -49,14 +73,33 @@ export function AtsCheckerForm() {
     <div className="flex flex-col gap-6">
       <div className="grid gap-4 sm:grid-cols-2">
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm font-medium text-text-primary">Your resume text</span>
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-medium text-text-primary">Your resume text</span>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isExtracting}
+              className="inline-flex items-center gap-1.5 text-xs font-medium text-accent transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {isExtracting ? "Reading PDF..." : "Upload PDF instead"}
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              onChange={handleFileChange}
+              className="hidden"
+            />
+          </div>
           <textarea
             value={resumeText}
             onChange={(e) => setResumeText(e.target.value)}
             rows={12}
-            placeholder="Paste your resume text here..."
+            placeholder="Paste your resume text here, or upload a PDF above..."
             className="rounded-lg border border-border bg-surface p-3 text-sm text-text-primary outline-none focus-visible:border-accent"
           />
+          <span className="text-xs text-text-muted">PDF only, under 2MB — extracted text lands here so you can check or edit it before submitting.</span>
         </label>
         <label className="flex flex-col gap-1.5">
           <span className="text-sm font-medium text-text-primary">Job description (optional, for keyword match)</span>

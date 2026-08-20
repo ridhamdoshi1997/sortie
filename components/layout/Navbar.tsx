@@ -143,6 +143,9 @@ export function Navbar({ isAuthenticated = false }: Props) {
             <Link href="/#features" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
               Features
             </Link>
+            <Link href="/ats-checker" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
+              Free ATS Checker
+            </Link>
             <Link href="/methodology" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
               Methodology
             </Link>
@@ -181,6 +184,9 @@ export function Navbar({ isAuthenticated = false }: Props) {
             <nav className="flex flex-col gap-1">
               <Link href="/#features" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Features
+              </Link>
+              <Link href="/ats-checker" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                Free ATS Checker
               </Link>
               <Link href="/methodology" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Methodology

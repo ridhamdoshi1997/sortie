@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 20): Free ATS Checker added to the homepage nav + PDF upload capability — direct user request.**
+  - **Nav**: "Free ATS Checker" added to the logged-out `Navbar.tsx` (desktop + mobile), between Features and Methodology — a public lead magnet belongs on the marketing nav, not buried in the footer where it already was.
+  - **PDF upload**: new `actions/publicTools.ts`'s `extractResumeTextFromPdf` — a genuinely public (no `requireUser()`) version of the same local `pdf-parse` extraction `actions/profile.ts`'s authenticated upload already uses (same require-from-lib Turbopack workaround, same type/size validation). The file is never stored — extracted text populates the same textarea the paste flow already used, so the user sees and can edit what was extracted before submitting to the existing rate-limited `/api/tools/ats-check` route. Deliberately PDF-only, matching the only format this app has ever supported extraction for (no DOCX parsing exists anywhere in the codebase).
+  - **A real, self-inflicted false alarm caught and correctly not chased as a feature bug**: the first live-verification attempt used a hand-crafted minimal PDF with a deliberately-simplified (technically malformed) xref table — it parsed fine via plain Node `pdf-parse` (which fell back to a lenient recovery scan) but threw `UnknownErrorException: bad XRef entry` inside the actual Next.js server action's bundled pdf.js build, which apparently doesn't take the same recovery path. Confirmed via the real server logs that this was a fixture problem, not a code problem, by retesting with a genuinely spec-compliant PDF (`pdf-parse`'s own test fixture, fetched into the browser and cleaned up after) — extraction succeeded cleanly (82,756 real characters populated the textarea).
+  - `tsc --noEmit` clean, full `npm run build` clean.
+
+---
+
 - **2026-08-20 (Phase 20): New public marketing homepage + logged-out navigation + Methodology page — build-plan.md §S, built from the agy research logged earlier this session.**
   - **Navbar.tsx split into two genuinely separate navs**, not a filtered subset of the authenticated one. The logged-out branch now returns early with its own header: Features/Methodology/Pricing links, Log in + Start for free — no Dashboard/Jobs/Missions/notification bell/settings/command-palette chrome, all of which either bounced to `/login` or made no sense pre-account. Cleaned up the now-dead `!isAuthenticated` branches left in the authenticated render path below the early return.
   - **New `/methodology` page** — the GEO/trust play the research recommended. Imports `EVALUATION_DIMENSIONS` directly from `lib/evaluator.ts` rather than hand-typing the 10 dimension names, so the page can't silently drift from the real evaluator if a dimension is ever renamed.
