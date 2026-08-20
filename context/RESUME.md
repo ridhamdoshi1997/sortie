@@ -2,7 +2,11 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system, a 5-item user-side batch, a free public ATS checker, sitemap/robots, and DOCX resume export, all deployed)
+Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system, a 5-item user-side batch, a free public ATS checker, sitemap/robots, DOCX resume export, and a job comparison view, all deployed)
+
+## Phase 18, fifth piece — job comparison view, deployed
+
+`/compare` + `AddToCompareButton.tsx` on the job detail page — side-by-side match score/grade/salary/location/all 10 evaluation dimensions across up to 3 jobs. Deliberately built as a self-contained addition (localStorage compare tray) rather than touching `MissionsView.tsx`'s already-complex state, to keep regression risk on that heavily-used page at zero. Live-verified with 3 real jobs spanning a B/F/C grade spread. Full detail in `progress-tracker.md`.
 
 ## Phase 18, fourth piece — sitemap/robots + DOCX export, deployed; Job Alerts deliberately NOT built
 
