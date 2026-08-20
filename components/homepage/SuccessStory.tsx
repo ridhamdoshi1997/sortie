@@ -1,32 +1,25 @@
-import Image from "next/image";
+// Rebuilt for build-plan.md §S. The previous version of this component
+// presented a fabricated testimonial (an invented name, quote, and stock
+// photo) as a real user story — a direct violation of this app's own
+// honesty-in-UI principle (no invented claims anywhere else in the
+// product). Replaced with a real, verifiable trust band instead of a
+// manufactured persona: facts about what the product actually does, not a
+// fake social-proof number.
+const TRUST_FACTS = [
+  "10 real evaluation dimensions, every job",
+  "Zero unattended submissions, ever",
+  "Every AI-generated read clearly marked",
+];
 
 export function SuccessStory() {
   return (
-    <section className="px-4 sm:px-6 lg:px-8">
-      <div className="landing-panel mx-auto max-w-[1440px] bg-surface px-6 py-16 text-center sm:px-10 sm:py-20 lg:px-16 lg:py-24">
-        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-accent">
-          Success Stories
-        </p>
-
-        <blockquote className="mx-auto mt-8 max-w-4xl text-[clamp(2rem,4.1vw,3.2rem)] font-medium leading-[1.18] tracking-[-0.04em] text-text-slate">
-          &ldquo;I used to spend my evenings copy-pasting resumes. Now I open my
-          dashboard to see interviews waiting. It feels like cheating. Had 3
-          offers on the table simultaneously.&rdquo;
-        </blockquote>
-
-        <div className="mt-9 flex items-center justify-center gap-3">
-          <Image
-            src="/images/user-icon.png"
-            alt="Tom Wilson"
-            width={56}
-            height={56}
-            className="h-12 w-12 rounded-full border border-border"
-          />
-          <div className="text-left">
-            <p className="text-sm font-semibold text-text-primary">Tom Wilson</p>
-            <p className="text-sm text-text-secondary">Junior Developer</p>
-          </div>
-        </div>
+    <section className="px-4 py-14 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-6 rounded-2xl border border-border bg-surface px-6 py-10 text-center sm:flex-row sm:justify-between sm:gap-4 sm:text-left">
+        {TRUST_FACTS.map((fact) => (
+          <p key={fact} className="text-sm font-medium text-text-secondary">
+            {fact}
+          </p>
+        ))}
       </div>
     </section>
   );

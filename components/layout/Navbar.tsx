@@ -128,6 +128,80 @@ export function Navbar({ isAuthenticated = false }: Props) {
     window.dispatchEvent(new CustomEvent("sortie:open-command-palette"));
   }
 
+  // Logged-out marketing nav — deliberately separate from the authenticated
+  // app nav below, not a filtered subset of it (build-plan.md §S). A signed-
+  // out visitor was previously shown the exact same Dashboard/Jobs/Missions/
+  // notification-bell/settings/command-palette chrome as a real user, all of
+  // which either bounces to /login or makes no sense pre-account.
+  if (!isAuthenticated) {
+    return (
+      <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
+        <div className="glass-panel-overlay mx-auto grid h-16 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-2xl px-4 sm:px-6 lg:px-8">
+          <Logo priority variant="light" />
+
+          <nav className="hidden items-center justify-center gap-6 md:flex">
+            <Link href="/#features" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
+              Features
+            </Link>
+            <Link href="/methodology" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
+              Methodology
+            </Link>
+            <Link href="/#pricing" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
+              Pricing
+            </Link>
+          </nav>
+
+          <div className="flex items-center justify-end gap-3">
+            <ThemeToggle />
+            <Link
+              href="/login"
+              className="hidden text-sm font-medium text-overlay-foreground/70 transition-colors hover:text-overlay-foreground md:inline-flex"
+            >
+              Log in
+            </Link>
+            <Link
+              href="/login"
+              className="hidden min-h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 md:inline-flex"
+            >
+              Start for free
+            </Link>
+            <button
+              type="button"
+              onClick={() => setMobileOpen((v) => !v)}
+              aria-label={mobileOpen ? "Close menu" : "Open menu"}
+              className="text-overlay-foreground/70 md:hidden"
+            >
+              {mobileOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+
+        {mobileOpen && (
+          <div className="glass-panel-overlay mx-auto mt-2 max-w-[1400px] rounded-2xl p-3 md:hidden">
+            <nav className="flex flex-col gap-1">
+              <Link href="/#features" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                Features
+              </Link>
+              <Link href="/methodology" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                Methodology
+              </Link>
+              <Link href="/#pricing" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                Pricing
+              </Link>
+              <div className="my-1 border-t border-overlay-foreground/10" />
+              <Link href="/login" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                Log in
+              </Link>
+              <Link href="/login" className="block rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-overlay-foreground/5">
+                Start for free
+              </Link>
+            </nav>
+          </div>
+        )}
+      </header>
+    );
+  }
+
   return (
     <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
       <div className="glass-panel-overlay mx-auto grid h-16 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-2xl px-4 sm:px-6 lg:px-8">
@@ -208,30 +282,23 @@ export function Navbar({ isAuthenticated = false }: Props) {
           </Link>
           <ThemeToggle />
 
-          {isAuthenticated ? (
-            <div className="hidden items-center gap-6 md:flex">
-              <Link
-                href="/profile"
-                aria-label="Profile"
-                className={`transition-colors duration-200 ease-in-out ${
-                  isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/50 hover:text-overlay-foreground"
-                }`}
-              >
-                <UserCircle className="h-6 w-6" />
-              </Link>
-              <PostHogLogoutLink className="inline-flex items-center gap-2 text-sm font-medium text-overlay-foreground/70 transition-colors duration-200 ease-in-out hover:text-overlay-foreground">
-                <LogOut className="h-4 w-4" />
-                <span>Sign out</span>
-              </PostHogLogoutLink>
-            </div>
-          ) : (
+          {/* This function returns early above for !isAuthenticated, so this
+             branch is always reached with a real signed-in user. */}
+          <div className="hidden items-center gap-6 md:flex">
             <Link
-              href="/login"
-              className="hidden min-h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 md:inline-flex"
+              href="/profile"
+              aria-label="Profile"
+              className={`transition-colors duration-200 ease-in-out ${
+                isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/50 hover:text-overlay-foreground"
+              }`}
             >
-              Start for free
+              <UserCircle className="h-6 w-6" />
             </Link>
-          )}
+            <PostHogLogoutLink className="inline-flex items-center gap-2 text-sm font-medium text-overlay-foreground/70 transition-colors duration-200 ease-in-out hover:text-overlay-foreground">
+              <LogOut className="h-4 w-4" />
+              <span>Sign out</span>
+            </PostHogLogoutLink>
+          </div>
 
           <button
             type="button"
@@ -277,16 +344,14 @@ export function Navbar({ isAuthenticated = false }: Props) {
               </div>
             ))}
             <div className="my-1 border-t border-overlay-foreground/10" />
-            {isAuthenticated && (
-              <Link
-                href="/profile"
-                className={`block rounded-lg px-3 py-2 text-sm font-medium hover:bg-overlay-foreground/5 ${
-                  isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/70"
-                }`}
-              >
-                Profile
-              </Link>
-            )}
+            <Link
+              href="/profile"
+              className={`block rounded-lg px-3 py-2 text-sm font-medium hover:bg-overlay-foreground/5 ${
+                isItemActive("/profile", pathname) ? "text-accent" : "text-overlay-foreground/70"
+              }`}
+            >
+              Profile
+            </Link>
             <button
               type="button"
               onClick={openSettings}
@@ -300,18 +365,9 @@ export function Navbar({ isAuthenticated = false }: Props) {
             >
               Notifications
             </Link>
-            {isAuthenticated ? (
-              <PostHogLogoutLink className="block rounded-lg px-3 py-2 text-left text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
-                Sign out
-              </PostHogLogoutLink>
-            ) : (
-              <Link
-                href="/login"
-                className="block rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-overlay-foreground/5"
-              >
-                Start for free
-              </Link>
-            )}
+            <PostHogLogoutLink className="block rounded-lg px-3 py-2 text-left text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+              Sign out
+            </PostHogLogoutLink>
           </nav>
         </div>
       )}

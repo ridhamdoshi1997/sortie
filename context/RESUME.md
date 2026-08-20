@@ -2,7 +2,23 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-20 (Phase 19 session — ALL 24 queued items shipped/resolved across 4 deploys, live-verified; full detail below and in `progress-tracker.md`)
+Last updated: 2026-08-20 (Phase 20 session — new public marketing homepage + logged-out nav + Methodology page shipped, live-verified, deploy pending this checkpoint)
+
+## Phase 20 — new marketing homepage built from the Phase 19 research, a real honesty bug found and fixed
+
+**Direct user instruction, after Phase 19 closed out the backlog**: "work on ready to build" (the marketing homepage was flagged as the one fully-scoped, unblocked item). Built from `build-plan.md`'s §S research (now marked ✅ v1 shipped — read that section for the full map, this is the summary).
+
+**What shipped**: `Navbar.tsx` now renders a genuinely separate logged-out nav (Features/Methodology/Pricing + Log in/Start for free — no Dashboard/Missions/notification bell/settings, all of which either bounced to `/login` or made no sense pre-account) instead of the full authenticated app nav it was showing every visitor before. New `/methodology` page (real GEO/trust content, imports the real 10 dimensions directly from `lib/evaluator.ts` so it can't drift). `Hero.tsx` rebuilt with an outcome-oriented headline and the app's real mission-console dark styling (matching `FindJobsForm.tsx`'s proven pattern) plus a faithful static mockup of the real evaluator's grade-badge UI. New `BentoFeatures.tsx`/`AntiAutoApply.tsx`/`TheLifecycle.tsx` replacing the old generic `Features.tsx`/`HowItWorks.tsx`. `CTASection.tsx` reworked into an honest Free/Pro-Coming-Soon pricing anchor.
+
+**A real, pre-existing bug found and fixed, not introduced**: the old `SuccessStory.tsx` had a fabricated testimonial — an invented name, a made-up quote, a stock photo — presented as a real user story, directly violating this app's own no-invented-claims principle that's enforced everywhere else in the product (Agent-content marking, no fabricated résumé content, etc.). Replaced with a real, verifiable trust band instead.
+
+**A real stale-Turbopack-graph bug that a bare restart did NOT clear** (matches a previously-documented project escalation) — a lucide-react icon typo fix kept showing the OLD error even after a full dev-server restart; a full `.next` cache wipe was needed, then it cleared immediately. If this recurs, wipe `.next` before assuming the fix itself is wrong.
+
+**Live-verified thoroughly**: every section's real content confirmed via page-text extraction, the logged-out nav's exact link set confirmed via `read_page`, `/methodology`'s dimension list confirmed pulled live from the real evaluator, both `/#features`/`/#pricing` anchors confirmed landing correctly, mobile menu confirmed working, zero horizontal overflow at a real 375px viewport. Full detail in `progress-tracker.md`'s Phase 20 entry.
+
+**Real, disclosed fast-follows, not done**: the "Features" nav link is a same-page anchor, not the dedicated mega-menu the original research recommended; no dedicated `/pricing` page; no Lighthouse/Core Web Vitals pass run yet; no conversion tracking added to the new CTAs.
+
+---
 
 ## Phase 19, fourth (final) batch — the last 5 items, and a real InsForge outage caught + waited out mid-verification
 

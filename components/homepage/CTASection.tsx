@@ -1,31 +1,64 @@
 import Link from "next/link";
+import { Check } from "lucide-react";
+
+// Rebuilt for build-plan.md §S — a transparent pricing anchor even though
+// monetization (build-plan.md §J) isn't live yet. Describes today's real
+// state honestly (usage-capped, not a permanent unconditional promise) and
+// marks the Pro tier as a real future plan, not implemented — never a fake
+// price or a feature this app doesn't have.
+const FREE_INCLUDES = [
+  "10-dimension job evaluation",
+  "ATS-safe résumé tailoring",
+  "Application tracking",
+  "Interview prep tools",
+];
 
 export function CTASection() {
   return (
-    <section className="px-4 pb-8 sm:px-6 sm:pb-10 lg:px-8">
-      <div className="landing-panel landing-hero-glow mx-auto max-w-[1440px] px-6 py-16 text-center sm:px-10 sm:py-20 lg:px-16 lg:py-24">
-        <div className="mx-auto max-w-4xl">
-          <h2 className="text-[clamp(2.5rem,6vw,4.5rem)] font-semibold leading-[0.96] tracking-[-0.045em] text-text-slate">
-            Your next job search can feel a lot less overwhelming
+    <section id="pricing" className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
+      <div className="mx-auto max-w-4xl">
+        <div className="mb-10 text-center">
+          <h2 className="text-[clamp(2rem,4.5vw,3rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-text-primary">
+            Free to start. No unattended applications, ever.
           </h2>
-          <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-text-secondary sm:text-lg">
-            Set up your profile, upload your resume, and start finding matches
-            in minutes.
-          </p>
-          <div className="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">Free</p>
+            <p className="mt-2 text-3xl font-bold text-text-primary">$0</p>
+            <p className="mt-1 text-sm text-text-secondary">Everything you need to run a real search today.</p>
+            <ul className="mt-6 flex flex-col gap-2.5 text-left">
+              {FREE_INCLUDES.map((item) => (
+                <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
+                  <Check className="h-4 w-4 shrink-0 text-success" />
+                  {item}
+                </li>
+              ))}
+            </ul>
             <Link
               href="/login"
-              className="landing-button-primary"
+              className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
             >
-              Get Started
-              <span className="ml-2 text-xs">{">"}</span>
+              Start for free
             </Link>
-            <Link
-              href="/login"
-              className="landing-button-secondary"
+          </div>
+
+          <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+              Pro — Coming soon
+            </p>
+            <p className="mt-2 text-3xl font-bold text-text-muted">&mdash;</p>
+            <p className="mt-1 text-sm text-text-muted">
+              Higher usage limits and deeper research tools for a heavy, ongoing search.
+            </p>
+            <button
+              type="button"
+              disabled
+              className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
             >
-              Find Your First Match
-            </Link>
+              Not yet available
+            </button>
           </div>
         </div>
       </div>
