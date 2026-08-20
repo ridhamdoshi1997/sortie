@@ -45,10 +45,18 @@ export function JobResultCard({
   job,
   index = 0,
   reappearanceSignal = null,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: {
   job: Job;
   index?: number;
   reappearanceSignal?: ReappearanceSignal;
+  // Bulk actions on Missions (build-plan.md §H) — optional, same pattern as
+  // index/reappearanceSignal, so every other call site is unaffected.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
   const router = useRouter();
   const tags = jobTags(job);
@@ -144,6 +152,23 @@ export function JobResultCard({
         style={{ animationDelay }}
       >
         <div className="flex gap-3">
+          {selectable && (
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={selected}
+              aria-label={selected ? "Deselect job" : "Select job"}
+              onClick={(event) => {
+                stop(event);
+                onToggleSelect?.();
+              }}
+              className={`mt-1 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                selected ? "border-accent bg-accent text-accent-foreground" : "border-border bg-surface hover:border-accent"
+              }`}
+            >
+              {selected && <Check className="h-3.5 w-3.5" />}
+            </button>
+          )}
           <CompanyLogo company={job.company} logoUrl={job.company_logo_url} />
           <div className="min-w-0">
           <p className="text-[15px] font-semibold leading-tight text-text-primary">{job.title}</p>

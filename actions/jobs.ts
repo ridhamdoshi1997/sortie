@@ -286,6 +286,82 @@ export async function updateJobTags(jobId: string, tags: string[]): Promise<Acti
   }
 }
 
+// Bulk actions on Missions (build-plan.md §H, List view only — Kanban's
+// drag-one-card-at-a-time interaction doesn't suit multi-select). Same
+// owner-scoped .in("id", jobIds).eq("user_id", user.id) shape as every
+// other write in this file, just applied to a set of ids instead of one.
+export async function bulkHideJobs(jobIds: string[]): Promise<ActionResult> {
+  const user = await requireUser();
+  if (jobIds.length === 0) return { success: true };
+
+  try {
+    const insforge = await createInsforgeServer();
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ is_hidden: true })
+      .in("id", jobIds)
+      .eq("user_id", user.id);
+
+    if (error) {
+      console.error("[actions/jobs] bulkHideJobs", error);
+      return { success: false, error: "Failed to archive selected jobs" };
+    }
+
+    revalidatePath("/missions");
+    revalidatePath("/find-jobs");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] bulkHideJobs", error);
+    return { success: false, error: "Failed to archive selected jobs" };
+  }
+}
+
+// Appends a tag to each selected job's own existing tags (not a blanket
+// overwrite via updateJobTags — each job likely has different tags
+// already), deduped per job. One fetch + one update per job, run
+// concurrently — InsForge doesn't have a single-statement "append to array
+// across heterogeneous rows" primitive.
+export async function bulkAddTag(jobIds: string[], tag: string): Promise<ActionResult> {
+  const user = await requireUser();
+  const trimmedTag = tag.trim();
+  if (jobIds.length === 0 || !trimmedTag) return { success: true };
+
+  try {
+    const insforge = await createInsforgeServer();
+    const { data: rows, error: fetchError } = await insforge.database
+      .from("jobs")
+      .select("id,tags")
+      .in("id", jobIds)
+      .eq("user_id", user.id)
+      .returns<{ id: string; tags: string[] | null }[]>();
+
+    if (fetchError || !rows) {
+      console.error("[actions/jobs] bulkAddTag fetch", fetchError);
+      return { success: false, error: "Failed to load selected jobs" };
+    }
+
+    const results = await Promise.all(
+      rows.map((row) => {
+        const nextTags = Array.from(new Set([...(row.tags ?? []), trimmedTag]));
+        return insforge.database.from("jobs").update({ tags: nextTags }).eq("id", row.id).eq("user_id", user.id);
+      }),
+    );
+
+    const failed = results.find((r) => r.error);
+    if (failed) {
+      console.error("[actions/jobs] bulkAddTag update", failed.error);
+      return { success: false, error: "Failed to tag some of the selected jobs" };
+    }
+
+    revalidatePath("/missions");
+    revalidatePath("/find-jobs");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] bulkAddTag", error);
+    return { success: false, error: "Failed to tag selected jobs" };
+  }
+}
+
 export async function updateJobNotes(jobId: string, notes: string): Promise<ActionResult> {
   const user = await requireUser();
 

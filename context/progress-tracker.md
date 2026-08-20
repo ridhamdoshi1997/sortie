@@ -4,6 +4,14 @@ Update this file after every completed feature. Any AI agent reading this should
 
 ---
 
+- **2026-08-20 (Phase 19): Bulk actions on Missions (multi-select archive/tag) — build-plan.md §H.**
+  - List-view-only (Kanban's drag-one-at-a-time interaction doesn't suit multi-select). `JobResultCard.tsx` gained optional `selectable`/`selected`/`onToggleSelect` props (same optional-prop pattern as `index`/`reappearanceSignal`) — a checkbox renders next to the company logo when selection mode is on, with `preventDefault`/`stopPropagation` so it doesn't trigger the card's own navigation `<Link>`.
+  - New `actions/jobs.ts` actions: `bulkHideJobs` (plain `.in("id", jobIds)` update) and `bulkAddTag` (fetches each selected job's own existing tags first and appends+dedupes per job, since a blanket overwrite via the existing `updateJobTags` would wipe out tags a job already had — one fetch + concurrent per-job updates, since InsForge has no single-statement "append to array across heterogeneous rows" primitive).
+  - **Live-verified end to end through the real UI**: entered select mode, selected 2 real jobs, confirmed the bulk-tag action wrote the tag to both jobs' real `tags` arrays; selected 2 different jobs, confirmed bulk-archive set `is_hidden=true` on both. All test tags/hidden-flags reverted after.
+  - `tsc --noEmit` clean.
+
+---
+
 - **2026-08-20 (Phase 19): Dashboard/Missions filter-sort-group parity — build-plan.md §38, closing the last gap.**
   - Audited first: Missions/`MissionsView.tsx` already had almost everything the original spec asked for (status filter tabs — All + 5 stages, matching the spec's "6 filter tabs" exactly; Location/Source/Remote/Min-match-score/Needs-attention filters; 3 sort modes; Board/List toggle) from earlier phases. The only two genuinely missing pieces: a 4th sort mode (by company) and a "group by company" toggle.
   - Added `"company"` to `SortValue` (alphabetical `localeCompare` on `job.company`) and a List-view-only "Group by company" toggle (`groupJobsByCompany` — groups without re-sorting, so it composes correctly with whichever sort mode is active) in `MissionsView.tsx`. Kanban intentionally excluded — it already groups by status via its own columns; a second grouping concept there would fight the first.
