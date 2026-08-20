@@ -2,7 +2,17 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system deployed, then a 5-item user-side batch, then a free public ATS score checker, all deployed)
+Last updated: 2026-08-19 (Phase 18 session, continued — admin queue + referral system, a 5-item user-side batch, a free public ATS checker, sitemap/robots, and DOCX resume export, all deployed)
+
+## Phase 18, fourth piece — sitemap/robots + DOCX export, deployed; Job Alerts deliberately NOT built
+
+**Direct instruction: "continue on don't ask me everytime"** — kept working straight through without further check-ins.
+
+- **sitemap.xml + robots.txt** shipped (`app/sitemap.ts`/`app/robots.ts`, `lib/siteUrl.ts`). **Caught a real bug immediately via live verification**: both pointed at a random per-deployment Vercel preview hostname instead of the stable production domain (the pre-existing `VERCEL_URL`-fallback gotcha `lib/email/resend.ts` had already documented but never actually triggered a fix for). Fixed for real this time — set `NEXT_PUBLIC_APP_URL=https://jobpilot-experiment.vercel.app` in Vercel's production env vars and redeployed.
+- **DOCX resume export** shipped — reuses the exact structured content the PDF already generates, no new AI call. Verified for real: downloaded a real DOCX via an authenticated fetch and confirmed the raw bytes start with the actual ZIP magic number, not just a correctly-labeled response.
+- **Job Alerts investigated and deliberately NOT built**: confirmed via a fresh grep that this app's job search now runs entirely on paid SerpApi (the old free Adzuna path is dead, zero real call sites left). A background alert-scan feature would mean genuine new recurring paid-API cost across every user with an active alert — the identical wall "Passive market-watch" already hit (§E) and got explicitly deferred for. Left the honest placeholder in Settings rather than silently turning on an unbounded cost; this needs a real pricing decision, not a unilateral build call.
+
+Full detail on both in `progress-tracker.md`'s two newest Phase 18 entries.
 
 ## Phase 18, third piece — free ATS score checker, deployed
 
