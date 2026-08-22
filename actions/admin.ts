@@ -22,6 +22,7 @@ import {
 } from "@/lib/admin/queries";
 import { getExpensesSummary, type ExpensesSummary, type ExpenseCadence } from "@/lib/admin/expenses";
 import type { UsageAction } from "@/lib/usage";
+import { listPlans, type PlanConfig } from "@/lib/subscription";
 import { toUserMessage } from "@/lib/errors";
 
 type ActionResult = { success: true } | { success: false; error: string };
@@ -469,6 +470,276 @@ export async function updateAiCostRate(action: UsageAction, rateCentsPerCall: nu
     });
 
     revalidatePath("/admin/expenses");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// --- Subscription plans (build-plan.md §J) ---------------------------------
+// Plans are read live everywhere (lib/subscription.ts never caches a plan
+// row), so an owner edit here — price, monthly caps, marketing bullets, or
+// adding/removing a whole plan — takes effect immediately for every user on
+// that plan, no redeploy.
+
+type PlansResult = { success: true; data: PlanConfig[] } | { success: false; error: string };
+
+export async function getPlansForAdmin(): Promise<PlansResult> {
+  try {
+    await requireAdmin();
+    const client = createAdminDbClient();
+    const data = await listPlans(client);
+    return { success: true, data };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export type PlanInput = {
+  tier: string;
+  displayName: string;
+  priceCents: number;
+  billingPeriod: "month" | "year";
+  insiderConnectionsMonthlyLimit: number;
+  companyResearchMonthlyLimit: number;
+  jobEvaluationsDailyLimit: number | null;
+  llmUnlocked: boolean;
+  featureBullets: string[];
+  stripePriceId: string | null;
+};
+
+function isValidTierSlug(tier: string): boolean {
+  return /^[a-z][a-z0-9_]{1,31}$/.test(tier);
+}
+
+// Pricing/billing structure is owner-only — the same gating level as the
+// AI kill switch and cost-rate tuning, not the everyday admin/support tier.
+export async function createPlan(input: PlanInput): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    if (!isValidTierSlug(input.tier)) {
+      return { success: false, error: "Plan slug must be lowercase letters, numbers, and underscores, starting with a letter." };
+    }
+    if (!input.displayName.trim()) {
+      return { success: false, error: "Display name is required." };
+    }
+
+    const { error } = await client.database.from("subscription_plans").insert([
+      {
+        tier: input.tier,
+        display_name: input.displayName.trim(),
+        price_cents: Math.max(0, Math.round(input.priceCents)),
+        billing_period: input.billingPeriod,
+        insider_connections_monthly_limit: Math.max(0, Math.round(input.insiderConnectionsMonthlyLimit)),
+        company_research_monthly_limit: Math.max(0, Math.round(input.companyResearchMonthlyLimit)),
+        job_evaluations_daily_limit:
+          input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
+        llm_unlocked: input.llmUnlocked,
+        feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
+        stripe_price_id: input.stripePriceId?.trim() || null,
+      },
+    ]);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to create this plan — the slug may already exist.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "create_plan",
+      targetTable: "subscription_plans",
+      targetId: input.tier,
+      after: input,
+    });
+
+    revalidatePath("/admin/billing");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function updatePlan(tier: string, input: Omit<PlanInput, "tier">): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const { data: before } = await client.database.from("subscription_plans").select("*").eq("tier", tier).maybeSingle();
+
+    const { error } = await client.database
+      .from("subscription_plans")
+      .update({
+        display_name: input.displayName.trim(),
+        price_cents: Math.max(0, Math.round(input.priceCents)),
+        billing_period: input.billingPeriod,
+        insider_connections_monthly_limit: Math.max(0, Math.round(input.insiderConnectionsMonthlyLimit)),
+        company_research_monthly_limit: Math.max(0, Math.round(input.companyResearchMonthlyLimit)),
+        job_evaluations_daily_limit:
+          input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
+        llm_unlocked: input.llmUnlocked,
+        feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
+        stripe_price_id: input.stripePriceId?.trim() || null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("tier", tier);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to update this plan.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "update_plan",
+      targetTable: "subscription_plans",
+      targetId: tier,
+      before: before ?? undefined,
+      after: input,
+    });
+
+    revalidatePath("/admin/billing");
+    revalidatePath("/pricing");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// The tier FK on user_subscriptions (default RESTRICT, no ON DELETE
+// clause — see the generalize-subscription-tiers migration) blocks this at
+// the database level while any real subscriber is still on the plan; that
+// constraint violation surfaces here as a clean, expected error rather
+// than a silent orphaning of those users' subscription rows.
+export async function deletePlan(tier: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database.from("subscription_plans").delete().eq("tier", tier);
+
+    if (error) {
+      return {
+        success: false,
+        error: toUserMessage(error, "Can't delete this plan — move its subscribers to a different plan first."),
+      };
+    }
+
+    await logAdminAction(admin, {
+      action: "delete_plan",
+      targetTable: "subscription_plans",
+      targetId: tier,
+    });
+
+    revalidatePath("/admin/billing");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// --- Per-user subscription + feature overrides ------------------------------
+
+export async function setUserSubscriptionTier(targetUserId: string, tier: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { data: planExists } = await client.database
+      .from("subscription_plans")
+      .select("tier")
+      .eq("tier", tier)
+      .maybeSingle<{ tier: string }>();
+
+    if (!planExists) {
+      return { success: false, error: "That plan doesn't exist." };
+    }
+
+    const { data: before } = await client.database
+      .from("user_subscriptions")
+      .select("tier")
+      .eq("user_id", targetUserId)
+      .maybeSingle<{ tier: string }>();
+
+    const now = new Date();
+    const periodEnd = new Date(now.getTime() + 30 * 86_400_000);
+
+    const { error } = await client.database.from("user_subscriptions").upsert(
+      [
+        {
+          user_id: targetUserId,
+          tier,
+          status: "active",
+          current_period_start: now.toISOString(),
+          current_period_end: periodEnd.toISOString(),
+          updated_at: now.toISOString(),
+        },
+      ],
+      { onConflict: "user_id" },
+    );
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to update this user's plan.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "set_subscription_tier",
+      targetUserId,
+      targetTable: "user_subscriptions",
+      targetId: targetUserId,
+      before: { tier: before?.tier ?? "recon" },
+      after: { tier },
+    });
+
+    revalidatePath(`/admin/users/${targetUserId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export type FeatureOverrideKey =
+  | "insider_connections_override"
+  | "company_research_override"
+  | "job_evaluation_override"
+  | "llm_unlocked_override";
+
+// Grants ONE specific premium feature to ONE specific user regardless of
+// their plan (see lib/subscription.ts's applyFeatureOverrides) — stored on
+// the existing profiles.feature_flags jsonb column, read-modify-write since
+// PostgREST has no native "patch one jsonb key" operation.
+export async function setFeatureOverride(targetUserId: string, key: FeatureOverrideKey, enabled: boolean): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { data: before } = await client.database
+      .from("profiles")
+      .select("feature_flags")
+      .eq("id", targetUserId)
+      .maybeSingle<{ feature_flags: Record<string, boolean> | null }>();
+
+    const nextFlags = { ...(before?.feature_flags ?? {}), [key]: enabled };
+
+    const { error } = await client.database.from("profiles").update({ feature_flags: nextFlags }).eq("id", targetUserId);
+
+    if (error) {
+      return { success: false, error: toUserMessage(error, "Failed to update this user's feature access.") };
+    }
+
+    await logAdminAction(admin, {
+      action: "set_feature_override",
+      targetUserId,
+      targetTable: "profiles",
+      targetId: targetUserId,
+      before: { [key]: before?.feature_flags?.[key] ?? false },
+      after: { [key]: enabled },
+    });
+
+    revalidatePath(`/admin/users/${targetUserId}`);
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };

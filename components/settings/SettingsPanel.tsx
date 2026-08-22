@@ -11,6 +11,7 @@ import { SupportTab } from "@/components/settings/SupportTab";
 import { PushNotificationsTab } from "@/components/settings/PushNotificationsTab";
 import { ReferralsTab } from "@/components/settings/ReferralsTab";
 import { CreditsUsageTab } from "@/components/settings/CreditsUsageTab";
+import { SubscriptionTab } from "@/components/settings/SubscriptionTab";
 import { NotionTab } from "@/components/settings/NotionTab";
 import { GoogleCalendarTab } from "@/components/settings/GoogleCalendarTab";
 import { OutlookCalendarTab } from "@/components/settings/OutlookCalendarTab";
@@ -348,26 +349,53 @@ function ExtensionTab() {
   );
 }
 
+const TAB_KEYS = new Set<string>(NAV.map((item) => item.key));
+
+// Deep-link support (e.g. the navbar's "Upgrade" CTA opens straight to
+// ?settings=1&tab=subscription) — a lazy useState initializer, not a
+// setState-in-effect, since the latter causes an avoidable extra render
+// (react-hooks/set-state-in-effect) for a value known at mount. Safe in a
+// "use client" component: the initializer only ever runs client-side.
+function initialTabFromUrl(): TabKey {
+  if (typeof window === "undefined") return "security";
+  const requested = new URLSearchParams(window.location.search).get("tab");
+  return requested && TAB_KEYS.has(requested) ? (requested as TabKey) : "security";
+}
+
 export function SettingsPanel({ email, providers }: Props) {
-  const [tab, setTab] = useState<TabKey>("security");
+  const [tab, setTab] = useState<TabKey>(initialTabFromUrl);
+  // Keep-mounted-once pattern (direct user report: switching tabs re-fired
+  // every tab's own data fetch and loading spinner every single time,
+  // since {tab === "x" && <XTab/>} unmounts a tab's component the instant
+  // you click away — not just a first-load spinner, a full flash/jump on
+  // every switch back too). A tab's component mounts the first time it's
+  // selected, then just toggles hidden/visible via CSS afterward — no
+  // repeat fetch, no repeat flash. Never-visited tabs still don't mount
+  // (avoids firing all 11 tabs' fetches on first open).
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabKey>>(() => new Set([initialTabFromUrl()]));
+
+  function selectTab(key: TabKey): void {
+    setTab(key);
+    setVisitedTabs((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  }
 
   return (
-    <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-border bg-surface shadow-card sm:grid-cols-[minmax(0,0.4fr)_minmax(0,1fr)]">
+    <div className="grid w-full grid-cols-1 overflow-hidden rounded-2xl border border-border bg-surface shadow-card sm:grid-cols-[minmax(170px,0.4fr)_minmax(0,1fr)]">
       <div className="flex flex-col justify-between border-b border-border bg-surface-secondary p-4 sm:border-b-0 sm:border-r">
         <div className="flex flex-col gap-1">
           {NAV.map(({ key, icon: Icon, label }) => (
             <button
               key={key}
               type="button"
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
+              onClick={() => selectTab(key)}
+              className={`flex min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                 tab === key
                   ? "bg-accent-muted font-medium text-accent"
                   : "text-text-secondary hover:bg-surface"
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              <span className="min-w-0 break-words">{label}</span>
             </button>
           ))}
         </div>
@@ -377,18 +405,70 @@ export function SettingsPanel({ email, providers }: Props) {
         </PostHogLogoutLink>
       </div>
 
-      <div className="p-6">
-        {tab === "security" && <LoginSecurityTab email={email} providers={providers} />}
-        {tab === "subscription" && <NotYetAvailable label="Subscription" />}
-        {tab === "credits" && <CreditsUsageTab />}
-        {tab === "alerts" && <NotYetAvailable label="Job alerts" />}
-        {tab === "push" && <PushNotificationsTab />}
-        {tab === "extension" && <ExtensionTab />}
-        {tab === "notion" && <NotionTab />}
-        {tab === "googleCalendar" && <GoogleCalendarTab />}
-        {tab === "outlookCalendar" && <OutlookCalendarTab />}
-        {tab === "referrals" && <ReferralsTab />}
-        {tab === "support" && <SupportTab />}
+      {/* Fixed size, not min-height — direct user request: the panel must
+          never resize (width or height) switching tabs or while a tab's
+          own content loads/unloads. overflow-y-auto lets any tab taller
+          than this scroll internally instead of growing the box;
+          overflow-x-hidden stops any wide element from pushing the grid
+          column wider (confirmed live: Login & security was rendering
+          measurably wider than Support before this, meaning some tab's
+          content had nothing capping its own width). */}
+      <div className="h-[520px] overflow-x-hidden overflow-y-auto p-6">
+        {visitedTabs.has("security") && (
+          <div className={tab === "security" ? "" : "hidden"}>
+            <LoginSecurityTab email={email} providers={providers} />
+          </div>
+        )}
+        {visitedTabs.has("subscription") && (
+          <div className={tab === "subscription" ? "" : "hidden"}>
+            <SubscriptionTab />
+          </div>
+        )}
+        {visitedTabs.has("credits") && (
+          <div className={tab === "credits" ? "" : "hidden"}>
+            <CreditsUsageTab />
+          </div>
+        )}
+        {visitedTabs.has("alerts") && (
+          <div className={tab === "alerts" ? "" : "hidden"}>
+            <NotYetAvailable label="Job alerts" />
+          </div>
+        )}
+        {visitedTabs.has("push") && (
+          <div className={tab === "push" ? "" : "hidden"}>
+            <PushNotificationsTab />
+          </div>
+        )}
+        {visitedTabs.has("extension") && (
+          <div className={tab === "extension" ? "" : "hidden"}>
+            <ExtensionTab />
+          </div>
+        )}
+        {visitedTabs.has("notion") && (
+          <div className={tab === "notion" ? "" : "hidden"}>
+            <NotionTab />
+          </div>
+        )}
+        {visitedTabs.has("googleCalendar") && (
+          <div className={tab === "googleCalendar" ? "" : "hidden"}>
+            <GoogleCalendarTab />
+          </div>
+        )}
+        {visitedTabs.has("outlookCalendar") && (
+          <div className={tab === "outlookCalendar" ? "" : "hidden"}>
+            <OutlookCalendarTab />
+          </div>
+        )}
+        {visitedTabs.has("referrals") && (
+          <div className={tab === "referrals" ? "" : "hidden"}>
+            <ReferralsTab />
+          </div>
+        )}
+        {visitedTabs.has("support") && (
+          <div className={tab === "support" ? "" : "hidden"}>
+            <SupportTab />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -502,6 +502,7 @@ export default function PreviewPage() {
                     jobId="preview-dummy-id"
                     company="Manulife"
                     lookedUp
+                    insiderConnectionsAllowed
                     connections={{
                         beyondNetwork: [
                             {

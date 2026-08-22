@@ -1,12 +1,27 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ShieldOff, StickyNote } from "lucide-react";
+import { CreditCard, ShieldOff, StickyNote } from "lucide-react";
 
-import { addAdminNote, setUsageMultiplier, setUserSuspended } from "@/actions/admin";
+import {
+  addAdminNote,
+  setFeatureOverride,
+  setUsageMultiplier,
+  setUserSubscriptionTier,
+  setUserSuspended,
+  type FeatureOverrideKey,
+} from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TrendChart } from "@/components/admin/TrendChart";
 import type { AdminNoteRow, UserDetail } from "@/lib/admin/queries";
+import type { PlanConfig } from "@/lib/subscription";
+
+const OVERRIDE_TOGGLES: { key: FeatureOverrideKey; label: string }[] = [
+  { key: "insider_connections_override", label: "Insider connections" },
+  { key: "company_research_override", label: "Company research" },
+  { key: "job_evaluation_override", label: "Unlimited evaluations" },
+  { key: "llm_unlocked_override", label: "GPT-4o/Claude" },
+];
 
 // Real hydration-mismatch bug caught live: `toLocaleString(undefined, ...)`
 // with a 12-hour clock renders "9:12 PM" server-side (Node) vs "9:12 p.m."
@@ -34,9 +49,11 @@ function formatDateTime(iso: string): string {
 export function UserDetailView({
   detail: initialDetail,
   notes: initialNotes,
+  plans,
 }: {
   detail: UserDetail;
   notes: AdminNoteRow[];
+  plans: PlanConfig[];
 }) {
   const [detail, setDetail] = useState(initialDetail);
   const [notes, setNotes] = useState(initialNotes);
@@ -45,6 +62,30 @@ export function UserDetailView({
   const [confirmingSuspend, setConfirmingSuspend] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  function changeTier(tier: string): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await setUserSubscriptionTier(detail.userId, tier);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setDetail((prev) => ({ ...prev, subscriptionTier: tier, subscriptionStatus: "active" }));
+    });
+  }
+
+  function toggleOverride(key: FeatureOverrideKey, enabled: boolean): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await setFeatureOverride(detail.userId, key, enabled);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setDetail((prev) => ({ ...prev, featureFlags: { ...prev.featureFlags, [key]: enabled } }));
+    });
+  }
 
   function toggleSuspend(suspend: boolean): void {
     setError(null);
@@ -155,6 +196,65 @@ export function UserDetailView({
           <p className="pb-2 text-xs text-text-muted">
             Scales every daily action cap for this user (1 = normal, 0.5 = half, 2 = double).
           </p>
+        </div>
+      </div>
+
+      <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
+        <div className="mb-3 flex items-center gap-2">
+          <CreditCard className="h-4 w-4 text-text-secondary" />
+          <h2 className="text-base font-semibold text-text-primary">Subscription</h2>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-medium text-text-muted">Plan</label>
+            <select
+              value={detail.subscriptionTier}
+              onChange={(e) => changeTier(e.target.value)}
+              disabled={isPending}
+              className="h-9 rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent disabled:opacity-60"
+            >
+              {plans.map((plan) => (
+                <option key={plan.tier} value={plan.tier}>
+                  {plan.displayName}
+                </option>
+              ))}
+              {!plans.some((p) => p.tier === detail.subscriptionTier) && (
+                <option value={detail.subscriptionTier}>{detail.subscriptionTier}</option>
+              )}
+            </select>
+          </div>
+          <span className="pb-2 text-xs text-text-muted">
+            {detail.subscriptionStatus}
+            {detail.subscriptionPeriodEnd &&
+              ` · renews ${new Date(detail.subscriptionPeriodEnd).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+          </span>
+        </div>
+
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="mb-2 text-[11px] font-medium text-text-muted">
+            Per-user overrides — grant one feature regardless of plan (comp access, beta test, support goodwill)
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {OVERRIDE_TOGGLES.map(({ key, label }) => {
+              const active = detail.featureFlags[key] === true;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  disabled={isPending}
+                  onClick={() => toggleOverride(key, !active)}
+                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
+                    active
+                      ? "bg-agent-light text-agent-dark"
+                      : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+                  }`}
+                >
+                  {label}: {active ? "On" : "Off"}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </div>
 

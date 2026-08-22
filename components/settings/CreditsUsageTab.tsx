@@ -1,9 +1,54 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2, Ticket } from "lucide-react";
+import { Ticket } from "lucide-react";
 
 import { getUsageStats, type UsageStatRow } from "@/actions/usageStats";
+import { getBillingSummary, type BillingSummary } from "@/actions/billing";
+
+// Premium-feature (Apify/Browserbase) monthly usage — plan management and
+// upgrade/downgrade live in Settings' own "Subscription" tab
+// (components/settings/SubscriptionTab.tsx), not duplicated here; this tab
+// stays scoped to "how much have I used," matching its existing daily-AI-usage
+// section below.
+function BillingBar({ label, used, limit }: { label: string; used: number; limit: number }) {
+  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+  const isNearLimit = pct >= 80;
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-text-secondary">{label}</span>
+        <span className={isNearLimit ? "font-medium text-warning" : "text-text-muted"}>
+          {used} / {limit}/mo
+        </span>
+      </div>
+      <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary">
+        <div className={`h-full rounded-full ${isNearLimit ? "bg-warning" : "bg-agent"}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function PremiumUsageSection() {
+  const [summary, setSummary] = useState<BillingSummary | null>(null);
+
+  useEffect(() => {
+    getBillingSummary().then((result) => {
+      if (result.success) setSummary(result.data);
+    });
+  }, []);
+
+  if (!summary || !summary.isPaid) return null;
+
+  return (
+    <div className="flex flex-col gap-3 rounded-2xl border border-border bg-surface p-5">
+      <p className="text-sm font-semibold text-text-primary">Premium feature usage this month</p>
+      <BillingBar label="Insider connection lookups" used={summary.insiderConnections.used} limit={summary.insiderConnections.limit} />
+      <BillingBar label="Company research runs" used={summary.companyResearch.used} limit={summary.companyResearch.limit} />
+    </div>
+  );
+}
 
 function UsageBar({ row }: { row: UsageStatRow }) {
   const pct = Math.min(100, Math.round((row.count / row.limit) * 100));
@@ -48,6 +93,8 @@ export function CreditsUsageTab() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PremiumUsageSection />
+
       <div>
         <h3 className="text-base font-semibold text-text-primary">Credits &amp; usage</h3>
         <p className="mt-1 text-xs leading-5 text-text-secondary">
@@ -59,9 +106,16 @@ export function CreditsUsageTab() {
       {error && <p className="text-xs text-error">{error}</p>}
 
       {rows === null ? (
-        <div className="flex items-center gap-2 text-xs text-text-muted">
-          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          Loading your usage…
+        // Bar-shaped skeleton, not a small spinner — matches the final
+        // UsageBar list's shape so the swap-in doesn't visibly jump the
+        // container's height (same fix as SubscriptionTab's loading state).
+        <div className="flex animate-pulse flex-col gap-4">
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} className="flex flex-col gap-1.5">
+              <div className="h-3 w-32 rounded bg-surface-secondary" />
+              <div className="h-1.5 w-full rounded-full bg-surface-secondary" />
+            </div>
+          ))}
         </div>
       ) : rows.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-12 text-center">

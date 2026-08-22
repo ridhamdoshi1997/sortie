@@ -44,6 +44,7 @@ import { NetworkSignals } from "@/components/shared/NetworkSignals";
 import { OutreachSignal } from "@/components/job-details/OutreachSignal";
 import { Tabs } from "@/components/ui/Tabs";
 import { isAdminUser, resolveProvider } from "@/lib/access";
+import { getUserSubscription } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { buildNetworkSearchTerms, findPreviousEmployerMatch } from "@/lib/networkSignals";
@@ -143,10 +144,11 @@ export default async function JobDetailsPage({ params }: Props) {
   const eventHistory = eventHistoryResult.data ?? [];
 
   const isAdmin = isAdminUser(user.email);
+  const subscription = await getUserSubscription(insforge, user.id, user.email);
   // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
-  // or an admin allowlist change) so the selector never shows/persists a
-  // provider a non-admin can no longer actually use.
-  const modelValue = resolveProvider(profile?.preferred_model, user.email);
+  // or a paid plan lapsed / was renamed) so the selector never shows/persists
+  // a provider the account isn't currently entitled to.
+  const modelValue = resolveProvider(profile?.preferred_model, user.email, subscription.plan.llmUnlocked);
 
   const isInterviewing = job.application_status === "interviewing";
 
@@ -291,6 +293,7 @@ export default async function JobDetailsPage({ params }: Props) {
                       company={company}
                       jobId={job.id}
                       research={job.company_research}
+                      companyResearchAllowed={subscription.plan.companyResearchMonthlyLimit > 0}
                     />
 
                     <StrategicMoatBriefing jobId={job.id} briefing={job.strategic_moat} />
@@ -303,6 +306,7 @@ export default async function JobDetailsPage({ params }: Props) {
                         company={company}
                         connections={job.company_research.insiderConnections}
                         lookedUp={job.company_research.insiderConnectionsLookedUp}
+                        insiderConnectionsAllowed={subscription.plan.insiderConnectionsMonthlyLimit > 0}
                       />
                     )}
                   </div>

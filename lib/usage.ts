@@ -10,11 +10,9 @@ type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 export type UsageAction =
   | "search"
   | "document_generation"
-  | "company_research"
   | "resume_extract"
   | "resume_analysis"
   | "resume_quality_analysis"
-  | "insider_connections"
   | "email_lookup"
   | "bullet_rewrite"
   | "rejection_intelligence"
@@ -44,7 +42,6 @@ export type UsageAction =
 export const DAILY_LIMITS: Record<UsageAction, number> = {
   search: 5,
   document_generation: 10,
-  company_research: 3,
   resume_extract: 5,
   // Cheaper than a full generation (one short structured call, no PDF render)
   // and it's the step users take *before* deciding to generate, so it gets a
@@ -58,9 +55,6 @@ export const DAILY_LIMITS: Record<UsageAction, number> = {
   // observed pattern for the equivalent feature is 1-2/day free — matched
   // here rather than guessed.
   resume_quality_analysis: 3,
-  // ~$0.31-0.32/call (3 Apify people-search pages + company-URL resolves) —
-  // the most expensive single action in the app, capped tightly.
-  insider_connections: 3,
   // Originally planned at ~$0.01/call via dev_fusion, but that actor is
   // blocked on Apify's free plan for API calls — reworked to use
   // HarvestAPI's own search actor instead (same vendor as everything else),
@@ -194,11 +188,9 @@ export const DAILY_LIMITS: Record<UsageAction, number> = {
 export const ACTION_LABELS: Record<UsageAction, string> = {
   search: "job searches",
   document_generation: "document generations",
-  company_research: "company research runs",
   resume_extract: "resume imports",
   resume_analysis: "resume fit checks",
   resume_quality_analysis: "resume quality analyses",
-  insider_connections: "insider connection lookups",
   email_lookup: "email lookups",
   bullet_rewrite: "AI bullet rewrites/generations",
   rejection_intelligence: "rejection diagnoses",

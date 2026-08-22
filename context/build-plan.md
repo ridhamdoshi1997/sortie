@@ -1434,7 +1434,7 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Feature | Status | Source |
 | --- | --- | --- |
 | Free tier + metering | ✅ | Phase 0 |
-| Stripe subscription (Pro tier) | 🆕 | Revenue Map |
+| Recon (free) / Command ($15/mo) tiers, admin-managed & DB-driven | ✅ shipped 2026-08-21 | Direct user request — see RESUME.md's newest entry. `subscription_plans` (add/edit/remove tiers live from `/admin/billing`, no redeploy) + `user_subscriptions` + `api_usage_metrics` tables, `lib/subscription.ts` circuit breakers gate Apify/insider-connections, Browserbase/company-research, job evaluations, and the LLM router by plan. Per-user overrides (`profiles.feature_flags`) let admins comp one feature to one user regardless of plan. Admin/owner accounts are a true unmetered bypass, not just Command's cap. **Not yet done**: real payment gateway (Stripe/Razorpay via InsForge's native support, both unconfigured — needs the user to create real provider accounts and run the key-setup command themselves) — tiers are assigned manually from `/admin/users` until that's wired up. |
 | Premium done-for-you tier ($49–99/mo) | 🆕 | Revenue Map |
 | Problem-framed help entry points ("I'm applying but hearing nothing") | 🎨 | The premium tier's front door, framed as the user's problem rather than a feature list |
 | Credit packs / à la carte top-ups | 🆕 | Revenue Map |

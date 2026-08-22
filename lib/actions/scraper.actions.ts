@@ -5,6 +5,7 @@ import { getCurrentUser } from "@/lib/auth";
 import { inngest } from "@/lib/inngest/client";
 import { searchJobs } from "@/lib/jobScraper";
 import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkJobEvaluationLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { unstable_noStore as noStore } from 'next/cache';
@@ -255,15 +256,32 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
         }
     }
 
-    await inngest.send({
-        name: "jobs/evaluate",
-        data: {
-            jobIds: savedJobs.map(j => j.id), // Ensure these are valid DB IDs
-            filters,
-            userId,
-            runId,
-        },
-    });
+    // A search batch can return far more jobs than a Recon-tier user's
+    // daily evaluation cap — rather than blocking the whole search (which
+    // would also block saving jobs that don't cost anything to store),
+    // only the jobs within remaining quota get sent to the evaluator. The
+    // rest are saved but stay unevaluated (no match score) until either
+    // the daily cap resets or the user upgrades — graceful degradation,
+    // not a hard failure. Command tier / admins never hit this loop's
+    // break (checkJobEvaluationLimit is unmetered for them).
+    const evaluableJobIds: string[] = [];
+    for (const job of savedJobs) {
+        const evalCheck = await checkJobEvaluationLimit(insforge, userId, user?.email);
+        if (!evalCheck.allowed) break;
+        evaluableJobIds.push(job.id);
+    }
+
+    if (evaluableJobIds.length > 0) {
+        await inngest.send({
+            name: "jobs/evaluate",
+            data: {
+                jobIds: evaluableJobIds,
+                filters,
+                userId,
+                runId,
+            },
+        });
+    }
 
     // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
     // the caller can track exactly this search's batch by id, rather than

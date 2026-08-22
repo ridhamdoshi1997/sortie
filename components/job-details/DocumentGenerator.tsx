@@ -7,7 +7,21 @@ import type { ComponentType } from "react";
 import { AlertTriangle, Download, Eye, FileText, Mail, SquarePen, Sparkles, X } from "lucide-react";
 
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
+import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import { getListingSignal } from "@/lib/jobStatus";
+
+const GENERATION_STAGES: Record<DocumentKind, string[]> = {
+  resume: [
+    "Reading this job's requirements and your profile…",
+    "Rewriting your experience for this role…",
+    "Laying out the final PDF…",
+  ],
+  cover_letter: [
+    "Reading this job's requirements and your profile…",
+    "Drafting your cover letter…",
+    "Laying out the final PDF…",
+  ],
+};
 
 type DocumentKind = "resume" | "cover_letter";
 
@@ -105,6 +119,13 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
           visual weight without competing with the primary one. Left-to-
           right reading order matches this row's existing left-aligned
           flow (primary already sat first before this change). */}
+      {isPending ? (
+        <GenerationProgress
+          title={label}
+          stages={GENERATION_STAGES[kind]}
+          timeEstimate="Usually takes 10–20 seconds"
+        />
+      ) : (
       <div className="flex flex-wrap items-center gap-2.5">
         <button
           type="button"
@@ -112,7 +133,7 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
           onClick={handleGenerate}
           className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
         >
-          {isPending ? "Generating..." : hasDocument ? "Regenerate" : "Generate"}
+          {hasDocument ? "Regenerate" : "Generate"}
         </button>
         {hasDocument && (
           <>
@@ -144,6 +165,7 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
           </>
         )}
       </div>
+      )}
 
       {error && <p className="text-xs text-error">{error}</p>}
 

@@ -228,6 +228,9 @@ export type UserDetail = {
   featureFlags: Record<string, boolean>;
   jobCount: number;
   usageLast14Days: DailyCount[];
+  subscriptionTier: string;
+  subscriptionStatus: "active" | "canceled" | "past_due";
+  subscriptionPeriodEnd: string | null;
 };
 
 export type AdminNoteRow = { id: string; note: string; createdAt: string; adminEmail: string | null };
@@ -254,9 +257,14 @@ export async function getUserDetail(userId: string): Promise<UserDetail | null> 
   if (!profile) return null;
 
   const since = daysAgoIso(13);
-  const [{ count: jobCount }, { data: usageRows }] = await Promise.all([
+  const [{ count: jobCount }, { data: usageRows }, { data: subscription }] = await Promise.all([
     admin.database.from("jobs").select("id", { count: "exact", head: true }).eq("user_id", userId),
     admin.database.from("usage_daily").select("day,count").eq("user_id", userId).gte("day", since),
+    admin.database
+      .from("user_subscriptions")
+      .select("tier,status,current_period_end")
+      .eq("user_id", userId)
+      .maybeSingle<{ tier: string; status: "active" | "canceled" | "past_due"; current_period_end: string }>(),
   ]);
 
   const counts = new Map<string, number>();
@@ -276,6 +284,12 @@ export async function getUserDetail(userId: string): Promise<UserDetail | null> 
     featureFlags: profile.feature_flags ?? {},
     jobCount: jobCount ?? 0,
     usageLast14Days: buildDailySeries(14, counts),
+    // A missing row means Recon — see the migration's own comment on why
+    // no signup-time insert is required (mirrors lib/subscription.ts's
+    // getUserSubscription default).
+    subscriptionTier: subscription?.tier ?? "recon",
+    subscriptionStatus: subscription?.status ?? "active",
+    subscriptionPeriodEnd: subscription?.current_period_end ?? null,
   };
 }
 

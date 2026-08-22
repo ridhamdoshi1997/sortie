@@ -1,5 +1,6 @@
 import { inngest } from "@/lib/inngest/client";
 import type { createInsforgeServer } from "@/lib/insforge-server";
+import { checkJobEvaluationLimit } from "@/lib/subscription";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -82,6 +83,24 @@ export async function createExternalJob(
   if (error || !job) {
     console.error("[lib/externalJob] createExternalJob", error);
     return { success: false, error: "Failed to save job" };
+  }
+
+  // Same daily job-evaluation circuit breaker the search path enforces
+  // (lib/actions/scraper.actions.ts) — this function has no email in
+  // scope from either caller (cookie-authed addExternalJob, bearer-authed
+  // extension capture), so it's looked up here rather than threading a new
+  // param through both. A blocked check still leaves the job saved above
+  // (the real side effect), it just skips queuing an evaluation — same
+  // graceful degradation as the search path, not a failed save.
+  const { data: profile } = await insforge.database
+    .from("profiles")
+    .select("email")
+    .eq("id", userId)
+    .maybeSingle<{ email: string | null }>();
+
+  const evalCheck = await checkJobEvaluationLimit(insforge, userId, profile?.email);
+  if (!evalCheck.allowed) {
+    return { success: true, jobId: job.id };
   }
 
   // Real bug found live 2026-08-17: an unguarded inngest.send() failure here

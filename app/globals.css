@@ -219,10 +219,42 @@ body {
   }
 }
 
+/* Indeterminate progress sweep (components/ui/GenerationProgress.tsx) — a
+   bounded-but-unknown-duration AI wait, per this app's own "no invented
+   progress percentage" principle (see SearchLoadingState.tsx's comment):
+   a sliding segment conveys "actively working," never a specific % claim
+   the app can't actually back. Standard Material-style indeterminate bar
+   shape (grow while sliding right, then shrink while continuing right,
+   loop) rather than a flat pulse, so it reads as forward motion, not just
+   opacity flicker. */
+.generation-progress-fill {
+  animation: generation-progress-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes generation-progress-sweep {
+  0% {
+    left: -35%;
+    right: 100%;
+  }
+  60% {
+    left: 100%;
+    right: -35%;
+  }
+  100% {
+    left: 100%;
+    right: -35%;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in-up,
   .toast-enter {
     animation: none;
+  }
+  .generation-progress-fill {
+    animation: none;
+    left: 0;
+    right: 40%;
   }
 }
 

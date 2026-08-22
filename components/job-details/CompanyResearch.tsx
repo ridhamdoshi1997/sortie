@@ -7,10 +7,12 @@ import {
   Compass,
   Lightbulb,
   ListChecks,
+  Lock,
   MessageSquareText,
   Newspaper,
   ShieldCheck,
   Sparkles,
+  TrendingUp,
   Users,
 } from "lucide-react";
 
@@ -23,6 +25,13 @@ type Props = {
   company: string;
   jobId: string;
   research: CompanyResearchDossier | null;
+  // Server-computed from the current plan's companyResearchMonthlyLimit
+  // (find-jobs/[id]/page.tsx) — false means the plan's limit is 0 (Recon).
+  // Unlike InsiderConnectionsButton, this feature auto-fires on mount
+  // (CompanyResearchAutoLoader) rather than waiting for a click, so the
+  // gate has to happen HERE, before that component ever mounts — there's
+  // no click to intercept.
+  companyResearchAllowed: boolean;
 };
 
 type SectionProps = {
@@ -177,7 +186,7 @@ function LeaderCard({ leader }: { leader: CompanyLeader }) {
   );
 }
 
-export function CompanyResearch({ company, jobId, research }: Props) {
+export function CompanyResearch({ company, jobId, research, companyResearchAllowed }: Props) {
   return (
     <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex items-center gap-3 border-b border-border p-6">
@@ -299,7 +308,7 @@ export function CompanyResearch({ company, jobId, research }: Props) {
 
           <Sources sources={research.sources} />
         </>
-      ) : (
+      ) : companyResearchAllowed ? (
         <div className="flex min-h-64 flex-col items-center justify-center px-6 py-14 text-center">
           <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-secondary">
             <Building2 className="h-6 w-6 text-text-muted" />
@@ -318,6 +327,30 @@ export function CompanyResearch({ company, jobId, research }: Props) {
           <div className="mt-4">
             <CompanyResearchAutoLoader jobId={jobId} company={company} />
           </div>
+        </div>
+      ) : (
+        // Recon plan — never even fires the auto-loader's fetch. This is a
+        // true pre-emptive gate, not just a nicer error after a blocked
+        // call: company research runs unprompted on mount, so intercepting
+        // it here is the only way to avoid a wasted round trip.
+        <div className="flex min-h-64 flex-col items-center justify-center px-6 py-14 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-secondary text-text-muted">
+            <Lock className="h-6 w-6" />
+          </div>
+          <p className="mt-5 text-sm font-semibold leading-5 text-text-primary">
+            Company research is a Command feature
+          </p>
+          <p className="mt-2 max-w-xs text-sm leading-6 text-text-muted">
+            Upgrade to unlock AI-built company dossiers — culture, tech stack, leadership, and
+            candidate-specific interview prep for {company}.
+          </p>
+          <Link
+            href="/pricing"
+            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          >
+            <TrendingUp className="h-4 w-4" />
+            See Command plan
+          </Link>
         </div>
       )}
     </section>

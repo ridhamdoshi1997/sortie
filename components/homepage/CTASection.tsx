@@ -1,12 +1,16 @@
 import { Check } from "lucide-react";
 
 import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
+import { UpgradeButton } from "@/components/billing/UpgradeButton";
+import { getPlansForPricing } from "@/actions/billing";
 
-// Rebuilt for build-plan.md §S — a transparent pricing anchor even though
-// monetization (build-plan.md §J) isn't live yet. Describes today's real
-// state honestly (usage-capped, not a permanent unconditional promise) and
-// marks the Pro tier as a real future plan, not implemented — never a fake
-// price or a feature this app doesn't have.
+// Rebuilt for build-plan.md §S, then wired to real live plan data for §J
+// (2026-08-21) — the paid tier's price/limits/bullets come from
+// subscription_plans (lib/subscription.ts), not a hardcoded stub, so an
+// admin edit from /admin/billing reflects here immediately. Free tier's
+// bullet list stays hand-written (it's a marketing summary of the whole
+// free product, not a 1:1 mirror of subscription_plans' recon row, which
+// only tracks the two premium-API limits + eval cap, not everything free).
 const FREE_INCLUDES = [
   "10-dimension job evaluation",
   "ATS-safe résumé tailoring",
@@ -14,7 +18,10 @@ const FREE_INCLUDES = [
   "Interview prep tools",
 ];
 
-export function CTASection() {
+export async function CTASection() {
+  const plans = await getPlansForPricing();
+  const paidPlan = plans.find((p) => p.priceCents > 0) ?? null;
+
   return (
     <section id="pricing" className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
       <div className="mx-auto max-w-4xl">
@@ -47,22 +54,61 @@ export function CTASection() {
             </TrackedCtaLink>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-              Pro — Coming soon
-            </p>
-            <p className="mt-2 text-3xl font-bold text-text-muted">&mdash;</p>
-            <p className="mt-1 text-sm text-text-muted">
-              Higher usage limits and deeper research tools for a heavy, ongoing search.
-            </p>
-            <button
-              type="button"
-              disabled
-              className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
-            >
-              Not yet available
-            </button>
-          </div>
+          {paidPlan ? (
+            <div className="rounded-2xl border border-border bg-surface p-8 shadow-card">
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">
+                {paidPlan.displayName}
+              </p>
+              <p className="mt-2 text-3xl font-bold text-text-primary">
+                ${(paidPlan.priceCents / 100).toFixed(0)}
+                <span className="text-base font-medium text-text-secondary">/{paidPlan.billingPeriod}</span>
+              </p>
+              <p className="mt-1 text-sm text-text-secondary">
+                For a heavy, ongoing search that needs the deeper research tools.
+              </p>
+              <ul className="mt-6 flex flex-col gap-2.5 text-left">
+                {paidPlan.featureBullets.map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="h-4 w-4 shrink-0 text-success" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+              {paidPlan.stripePriceId ? (
+                <UpgradeButton
+                  tier={paidPlan.tier}
+                  className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                >
+                  Upgrade to {paidPlan.displayName}
+                </UpgradeButton>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
+                >
+                  Not yet available
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                Pro — Coming soon
+              </p>
+              <p className="mt-2 text-3xl font-bold text-text-muted">&mdash;</p>
+              <p className="mt-1 text-sm text-text-muted">
+                Higher usage limits and deeper research tools for a heavy, ongoing search.
+              </p>
+              <button
+                type="button"
+                disabled
+                className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
+              >
+                Not yet available
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </section>

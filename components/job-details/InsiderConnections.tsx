@@ -12,6 +12,7 @@ type Props = {
   company: string;
   connections: InsiderConnectionsData | null | undefined;
   lookedUp: boolean | undefined;
+  insiderConnectionsAllowed: boolean;
 };
 
 function getInitials(name: string): string {
@@ -123,7 +124,7 @@ function Bucket({
   );
 }
 
-export function InsiderConnections({ jobId, company, connections, lookedUp }: Props) {
+export function InsiderConnections({ jobId, company, connections, lookedUp, insiderConnectionsAllowed }: Props) {
   const hasAny =
     (connections?.beyondNetwork.length ?? 0) > 0 ||
     (connections?.previousCompany.length ?? 0) > 0 ||
@@ -140,7 +141,7 @@ export function InsiderConnections({ jobId, company, connections, lookedUp }: Pr
             Insider Connection @{company}
           </h2>
         </div>
-        {!lookedUp && <InsiderConnectionsButton jobId={jobId} />}
+        {!lookedUp && <InsiderConnectionsButton jobId={jobId} allowed={insiderConnectionsAllowed} />}
       </div>
 
       <div className="p-6">

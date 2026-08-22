@@ -10,6 +10,7 @@ import {
   Menu,
   Search,
   Settings,
+  TrendingUp,
   UserCircle,
   X,
 } from "lucide-react";
@@ -175,6 +176,17 @@ export function Navbar({ isAuthenticated = false }: Props) {
   function openSettings() {
     const params = new URLSearchParams(window.location.search);
     params.set("settings", "1");
+    router.push(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  // Same modal, deep-linked straight to the Subscription tab (SettingsPanel.tsx
+  // reads ?tab= on mount) — a visible upgrade path was missing from the
+  // authenticated nav entirely (direct user report), the only way in used to
+  // be the plain gear icon + manually clicking to the right tab.
+  function openSubscriptionSettings() {
+    const params = new URLSearchParams(window.location.search);
+    params.set("settings", "1");
+    params.set("tab", "subscription");
     router.push(`${pathname}?${params.toString()}`, { scroll: false });
   }
 
@@ -363,6 +375,14 @@ export function Navbar({ isAuthenticated = false }: Props) {
         <div className="flex items-center justify-end gap-4">
           <button
             type="button"
+            onClick={openSubscriptionSettings}
+            className="hidden items-center gap-1.5 rounded-full bg-accent-muted px-3 py-1.5 text-xs font-semibold text-accent transition-opacity hover:opacity-90 sm:inline-flex"
+          >
+            <TrendingUp className="h-3.5 w-3.5" />
+            Upgrade
+          </button>
+          <button
+            type="button"
             onClick={openCommandPalette}
             aria-label="Open command palette"
             className="hidden items-center gap-1.5 rounded-full border border-overlay-foreground/15 px-2.5 py-1 text-overlay-foreground/60 transition-colors duration-200 ease-in-out hover:border-overlay-foreground/30 hover:text-overlay-foreground sm:inline-flex"
@@ -462,6 +482,13 @@ export function Navbar({ isAuthenticated = false }: Props) {
             >
               Profile
             </Link>
+            <button
+              type="button"
+              onClick={openSubscriptionSettings}
+              className="block w-full rounded-lg px-3 py-2 text-left text-sm font-semibold text-accent hover:bg-overlay-foreground/5"
+            >
+              Upgrade
+            </button>
             <button
               type="button"
               onClick={openSettings}

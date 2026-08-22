@@ -10,6 +10,7 @@ import { fetchViaJinaReader, researchCompany } from "@/agent/research";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { resolveProvider } from "@/lib/access";
 import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkUsageLimit } from "@/lib/subscription";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
 import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/research";
 import { synthesizeLeverageForJob, type LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
@@ -939,7 +940,7 @@ export async function getTrapDoorPredictions(
         return { success: false, error: "Profile not found" };
       }
 
-      const researchUsage = await checkAndConsumeUsage(insforge, user.id, user.email, "company_research");
+      const researchUsage = await checkUsageLimit(insforge, user.id, user.email, "company_research");
       if (!researchUsage.allowed) {
         return { success: false, error: researchUsage.error };
       }
