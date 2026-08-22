@@ -4,7 +4,14 @@ import { useState, useTransition } from "react";
 import { Download, FileText, Sparkles } from "lucide-react";
 
 import { generateBragDocAction } from "@/actions/bragDoc";
+import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import type { BragDocResult } from "@/lib/bragDoc";
+
+const GENERATION_STAGES = [
+  "Reading your logged accomplishments and compensation events…",
+  "Drafting your self-review narrative…",
+  "Pulling out key achievements and skills demonstrated…",
+];
 
 // §Q4 Brag Doc generator — a date-range-scoped self-review draft, built
 // from the user's own logged accomplishments/compensation events. Result
@@ -119,6 +126,12 @@ export function BragDocGenerator() {
       </div>
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
+
+      {isGenerating && (
+        <div className="mt-4">
+          <GenerationProgress title="Brag Doc" stages={GENERATION_STAGES} timeEstimate="Usually takes 10–20 seconds" />
+        </div>
+      )}
 
       {bragDoc && (
         <div className="mt-4 flex flex-col gap-4">

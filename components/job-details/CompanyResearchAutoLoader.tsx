@@ -2,14 +2,21 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { Loader2, RotateCw } from "lucide-react";
+import { RotateCw } from "lucide-react";
 
+import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import type { CompanyResearchDossier } from "@/types";
 
 type Props = {
   jobId: string;
   company: string;
 };
+
+const GENERATION_STAGES = [
+  "Browsing the company's public pages…",
+  "Reading culture, tech stack, and recent updates…",
+  "Building your candidate-specific briefing…",
+];
 
 // Fires the same /api/agent/research call the old manual button used —
 // same feature flag, usage metering, and rate limit gates — just triggered
@@ -80,9 +87,8 @@ export function CompanyResearchAutoLoader({ jobId, company }: Props) {
   }
 
   return (
-    <div className="flex items-center gap-2 text-sm font-medium text-text-secondary">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      Researching {company}...
+    <div className="w-full max-w-sm">
+      <GenerationProgress title={`Researching ${company}`} stages={GENERATION_STAGES} timeEstimate="Usually takes under a minute" />
     </div>
   );
 }

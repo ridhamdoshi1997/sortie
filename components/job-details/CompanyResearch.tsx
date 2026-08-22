@@ -11,7 +11,6 @@ import {
   MessageSquareText,
   Newspaper,
   ShieldCheck,
-  Sparkles,
   TrendingUp,
   Users,
 } from "lucide-react";
@@ -309,24 +308,11 @@ export function CompanyResearch({ company, jobId, research, companyResearchAllow
           <Sources sources={research.sources} />
         </>
       ) : companyResearchAllowed ? (
-        <div className="flex min-h-64 flex-col items-center justify-center px-6 py-14 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-surface-secondary">
-            <Building2 className="h-6 w-6 text-text-muted" />
-          </div>
-          <p className="mt-5 text-sm font-semibold leading-5 text-text-primary">
-            Building your briefing
-          </p>
-          <p className="mt-2 max-w-xs text-sm leading-6 text-text-muted">
-            The AI is browsing {company}&apos;s public pages to build a dossier.
-            This usually takes under a minute.
-          </p>
-          <div className="mt-5 flex items-center gap-2 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent">
-            <Sparkles className="h-3 w-3" />
-            Candidate-specific briefing
-          </div>
-          <div className="mt-4">
-            <CompanyResearchAutoLoader jobId={jobId} company={company} />
-          </div>
+        // GenerationProgress (inside CompanyResearchAutoLoader) already
+        // carries the full card visual — no outer wrapper card here
+        // anymore, that would just be a card nested inside a card.
+        <div className="flex min-h-64 items-center justify-center px-6 py-14">
+          <CompanyResearchAutoLoader jobId={jobId} company={company} />
         </div>
       ) : (
         // Recon plan — never even fires the auto-loader's fetch. This is a
