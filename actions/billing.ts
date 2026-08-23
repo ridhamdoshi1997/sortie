@@ -13,6 +13,10 @@ export type BillingSummary = {
   displayName: string;
   isPaid: boolean;
   hasCheckout: boolean;
+  // Lifetime plans (Vanguard) have no recurring Stripe subscription behind
+  // them — Settings' billing section uses this to skip the "manage
+  // billing/cancellation" portal button, which has nothing to manage.
+  billingPeriod: "month" | "year" | "lifetime";
   periodEnd: string;
   insiderConnections: { limit: number; used: number };
   companyResearch: { limit: number; used: number };
@@ -41,6 +45,7 @@ export async function getBillingSummary(): Promise<{ success: true; data: Billin
         displayName: subscription.plan.displayName,
         isPaid: subscription.plan.priceCents > 0,
         hasCheckout: subscription.plan.stripePriceId !== null,
+        billingPeriod: subscription.plan.billingPeriod,
         periodEnd: subscription.periodEnd.toISOString(),
         insiderConnections: { limit: insiderConnections.limit, used: insiderConnections.used },
         companyResearch: { limit: companyResearch.limit, used: companyResearch.used },
@@ -77,14 +82,31 @@ export async function createCheckoutSessionAction(tier: string): Promise<ActionR
       return { success: false, error: "This plan isn't available for checkout yet." };
     }
 
+    // Fast, best-effort pre-check for scarcity-capped plans (Vanguard) —
+    // real race-safety happens at fulfillment via claim_plan_seat's atomic
+    // row-locked UPDATE (see the add-vanguard-lifetime-tier migration);
+    // this just saves someone a trip through Stripe Checkout for a seat
+    // that's already gone, it can't fully close the race between two
+    // people both starting checkout in the same instant.
+    if (plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats) {
+      return { success: false, error: `${plan.displayName} is sold out — all ${plan.maxSeats} seats have been claimed.` };
+    }
+
     const siteUrl = getSiteUrl();
+    const isOneTime = plan.billingPeriod === "lifetime";
     const { data, error } = await insforge.payments.stripe.createCheckoutSession("test", {
-      mode: "subscription",
+      mode: isOneTime ? "payment" : "subscription",
       lineItems: [{ priceId: plan.stripePriceId, quantity: 1 }],
       successUrl: `${siteUrl}/settings?upgraded=1`,
       cancelUrl: `${siteUrl}/pricing`,
       subject: { type: "user", id: user.id },
       customerEmail: user.email ?? null,
+      // Stamped so fulfill_stripe_one_time_purchase() can resolve which
+      // plan a one-time Checkout Session was for — a Checkout Session
+      // webhook payload carries no line-item/price array to reverse-map
+      // the way an invoice does (see the migration's own comment). Harmless
+      // to also send on a subscription checkout, just unused there.
+      metadata: { plan_tier: tier },
       idempotencyKey: `user:${user.id}:${tier}:${Date.now()}`,
     });
 

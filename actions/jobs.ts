@@ -317,6 +317,41 @@ export async function bulkHideJobs(jobIds: string[]): Promise<ActionResult> {
   }
 }
 
+// Inbox/Pipeline split (direct user request) — the Inbox view's own bulk
+// "move to pipeline" action, mirroring bulkHideJobs' shape. Only ever moves
+// jobs currently in "inbox" (the `.eq` guard below) so re-running this on an
+// already-shortlisted selection is a safe no-op rather than clobbering a
+// status a user may have since moved further along manually. No
+// application_events entry — same as setApplicationStatus's own handling of
+// "shortlisted", it has no event-type counterpart (a triage decision, not
+// an outcome milestone).
+export async function bulkShortlistJobs(jobIds: string[]): Promise<ActionResult> {
+  const user = await requireUser();
+  if (jobIds.length === 0) return { success: true };
+
+  try {
+    const insforge = await createInsforgeServer();
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ application_status: "shortlisted", application_status_updated_at: new Date().toISOString() })
+      .in("id", jobIds)
+      .eq("user_id", user.id)
+      .eq("application_status", "inbox");
+
+    if (error) {
+      console.error("[actions/jobs] bulkShortlistJobs", error);
+      return { success: false, error: "Failed to shortlist selected jobs" };
+    }
+
+    revalidatePath("/missions");
+    revalidatePath("/dashboard");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] bulkShortlistJobs", error);
+    return { success: false, error: "Failed to shortlist selected jobs" };
+  }
+}
+
 // Appends a tag to each selected job's own existing tags (not a blanket
 // overwrite via updateJobTags — each job likely has different tags
 // already), deduped per job. One fetch + one update per job, run

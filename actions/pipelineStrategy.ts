@@ -24,12 +24,23 @@ export async function getPipelineSnapshot(): Promise<SnapshotResult> {
 
     const { data: jobs } = await insforge.database
       .from("jobs")
-      .select("application_status,match_score,is_hidden")
+      .select("application_status,match_score,is_hidden,marked_unavailable_at,dropped_from_search_at,found_at")
       .eq("user_id", user.id)
-      .returns<{ application_status: string; match_score: number | null; is_hidden: boolean }[]>();
+      .returns<
+        {
+          application_status: string;
+          match_score: number | null;
+          is_hidden: boolean;
+          marked_unavailable_at: string | null;
+          dropped_from_search_at: string | null;
+          found_at: string | null;
+        }[]
+      >();
 
     const snapshot = computePipelineSnapshot(
-      (jobs ?? []) as { application_status: PipelineSnapshot["stages"][number]["stage"]; match_score: number | null; is_hidden: boolean }[],
+      (jobs ?? []) as (Omit<NonNullable<typeof jobs>[number], "application_status"> & {
+        application_status: PipelineSnapshot["stages"][number]["stage"];
+      })[],
     );
 
     return { success: true, snapshot };

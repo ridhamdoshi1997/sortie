@@ -64,10 +64,10 @@ export function PipelineStrategyCard() {
               </span>
             </span>
           ))}
-          {snapshot.highMatchDraftCount > 0 && (
+          {snapshot.highMatchShortlistedCount > 0 && (
             <span className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1.5 text-sm font-medium text-warning">
-              {snapshot.highMatchDraftCount} strong match{snapshot.highMatchDraftCount === 1 ? "" : "es"} untouched in
-              Draft
+              {snapshot.highMatchShortlistedCount} strong match{snapshot.highMatchShortlistedCount === 1 ? "" : "es"} untouched in
+              Shortlisted
             </span>
           )}
         </div>

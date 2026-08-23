@@ -11,13 +11,15 @@ type DraftPlan = {
   tier: string;
   displayName: string;
   priceCents: number;
-  billingPeriod: "month" | "year";
+  billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
   jobEvaluationsDailyLimitInput: string; // "" means unlimited (null)
   llmUnlocked: boolean;
   featureBulletsText: string; // one bullet per line
   stripePriceId: string;
+  maxSeatsInput: string; // "" means unlimited (null)
+  seatsClaimed: number; // read-only, display only — never sent back to the server
 };
 
 function toDraft(plan: PlanConfig): DraftPlan {
@@ -32,6 +34,8 @@ function toDraft(plan: PlanConfig): DraftPlan {
     llmUnlocked: plan.llmUnlocked,
     featureBulletsText: plan.featureBullets.join("\n"),
     stripePriceId: plan.stripePriceId ?? "",
+    maxSeatsInput: plan.maxSeats === null ? "" : String(plan.maxSeats),
+    seatsClaimed: plan.seatsClaimed,
   };
 }
 
@@ -46,6 +50,7 @@ function draftToInput(draft: DraftPlan): Omit<PlanInput, "tier"> {
     llmUnlocked: draft.llmUnlocked,
     featureBullets: draft.featureBulletsText.split("\n").map((b) => b.trim()).filter(Boolean),
     stripePriceId: draft.stripePriceId.trim() || null,
+    maxSeats: draft.maxSeatsInput.trim() === "" ? null : Number(draft.maxSeatsInput),
   };
 }
 
@@ -60,6 +65,8 @@ const EMPTY_DRAFT: DraftPlan = {
   llmUnlocked: false,
   featureBulletsText: "",
   stripePriceId: "",
+  maxSeatsInput: "",
+  seatsClaimed: 0,
 };
 
 function PlanForm({
@@ -114,12 +121,31 @@ function PlanForm({
           <label className="mb-1 block text-[11px] font-medium text-text-muted">Billing period</label>
           <select
             value={draft.billingPeriod}
-            onChange={(e) => onChange({ ...draft, billingPeriod: e.target.value as "month" | "year" })}
+            onChange={(e) => onChange({ ...draft, billingPeriod: e.target.value as "month" | "year" | "lifetime" })}
             className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent"
           >
             <option value="month">Monthly</option>
             <option value="year">Yearly</option>
+            <option value="lifetime">One-time (lifetime)</option>
           </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-[11px] font-medium text-text-muted">
+            Max seats (blank = unlimited)
+          </label>
+          <input
+            type="number"
+            min="0"
+            value={draft.maxSeatsInput}
+            onChange={(e) => onChange({ ...draft, maxSeatsInput: e.target.value })}
+            placeholder="Unlimited"
+            className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent"
+          />
+          {!isNew && draft.maxSeatsInput.trim() !== "" && (
+            <p className="mt-1 text-[11px] text-text-muted">
+              {draft.seatsClaimed} / {draft.maxSeatsInput} seats claimed — this count only changes from real Stripe purchases, not this form.
+            </p>
+          )}
         </div>
         <div>
           <label className="mb-1 block text-[11px] font-medium text-text-muted">Insider connections / month</label>
@@ -243,7 +269,7 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
         setError(result.error);
         return;
       }
-      const created: PlanConfig = { tier: newDraft.tier, ...draftToInput(newDraft) };
+      const created: PlanConfig = { tier: newDraft.tier, ...draftToInput(newDraft), seatsClaimed: 0 };
       setPlans((prev) => [...prev, created]);
       setDrafts((prev) => ({ ...prev, [newDraft.tier]: newDraft }));
       setNewDraft(null);

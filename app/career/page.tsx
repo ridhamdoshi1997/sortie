@@ -70,7 +70,8 @@ export default async function CareerPage() {
       .from("jobs")
       .select("id,title,company,application_status,application_status_updated_at,found_at")
       .eq("user_id", user.id)
-      .neq("application_status", "draft")
+      .neq("application_status", "inbox")
+      .neq("application_status", "shortlisted")
       .order("application_status_updated_at", { ascending: false }),
     listApplicationEvents(),
     getOutcomeStats(),

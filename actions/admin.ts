@@ -499,13 +499,20 @@ export type PlanInput = {
   tier: string;
   displayName: string;
   priceCents: number;
-  billingPeriod: "month" | "year";
+  billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
   jobEvaluationsDailyLimit: number | null;
   llmUnlocked: boolean;
   featureBullets: string[];
   stripePriceId: string | null;
+  // Global scarcity cap for a one-time "lifetime deal" plan — null means
+  // unlimited (every ordinary recurring plan). Deliberately not settable
+  // here: seats_claimed is the atomic counter claim_plan_seat() increments
+  // from real Stripe payments (see the add-vanguard-lifetime-tier
+  // migration) — an admin edit through this form must never touch it,
+  // that would risk desyncing the count from the real claim ledger.
+  maxSeats: number | null;
 };
 
 function isValidTierSlug(tier: string): boolean {
@@ -540,6 +547,7 @@ export async function createPlan(input: PlanInput): Promise<ActionResult> {
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,
+        max_seats: input.maxSeats === null ? null : Math.max(0, Math.round(input.maxSeats)),
       },
     ]);
 
@@ -582,6 +590,7 @@ export async function updatePlan(tier: string, input: Omit<PlanInput, "tier">): 
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,
+        max_seats: input.maxSeats === null ? null : Math.max(0, Math.round(input.maxSeats)),
         updated_at: new Date().toISOString(),
       })
       .eq("tier", tier);

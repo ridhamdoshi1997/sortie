@@ -11,9 +11,17 @@ export type OutcomeJob = {
   id: string;
   match_score: number | null;
   overall_grade: "A" | "B" | "C" | "D" | "F" | null;
-  application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
+  application_status: "inbox" | "shortlisted" | "applied" | "interviewing" | "offered" | "rejected";
   rejection_diagnosis: { possibleReasons: { category: RejectionReasonCategory; explanation: string }[] } | null;
 };
+
+// A job hasn't been genuinely applied to yet while it's still pre-pipeline
+// (Inbox, never triaged) or shortlisted (triaged but not yet applied) — both
+// replace what used to be the single "draft" status (build-plan.md's
+// Inbox/Pipeline split, direct user request).
+function isPreApplication(status: OutcomeJob["application_status"]): boolean {
+  return status === "inbox" || status === "shortlisted";
+}
 
 export type ApplicationEventLite = { job_id: string; event_type: string };
 
@@ -46,7 +54,7 @@ export function computeInterviewRateByMatchBand(
   jobs: OutcomeJob[],
   events: ApplicationEventLite[],
 ): MatchScoreBandStat[] {
-  const applied = jobs.filter((job) => job.application_status !== "draft" && typeof job.match_score === "number");
+  const applied = jobs.filter((job) => !isPreApplication(job.application_status) && typeof job.match_score === "number");
 
   return MATCH_SCORE_BANDS.map((band) => {
     const inBand = applied.filter((job) => (job.match_score as number) >= band.min && (job.match_score as number) <= band.max);
@@ -62,7 +70,7 @@ export function computeInterviewRateByMatchBand(
 
 export function computeInterviewRateByGrade(jobs: OutcomeJob[], events: ApplicationEventLite[]): GradeStat[] {
   const grades: NonNullable<OutcomeJob["overall_grade"]>[] = ["A", "B", "C", "D", "F"];
-  const applied = jobs.filter((job) => job.application_status !== "draft" && job.overall_grade);
+  const applied = jobs.filter((job) => !isPreApplication(job.application_status) && job.overall_grade);
 
   return grades
     .map((grade) => {
@@ -118,5 +126,5 @@ export function computeAppliedVsSkipped(decisions: DecisionLite[]): { applied: n
 // tracked applications gets an honest "not enough data yet" state instead
 // of a section that's mostly empty bands.
 export function hasEnoughDataForInsights(jobs: OutcomeJob[]): boolean {
-  return jobs.filter((job) => job.application_status !== "draft").length >= MIN_SAMPLE_SIZE;
+  return jobs.filter((job) => !isPreApplication(job.application_status)).length >= MIN_SAMPLE_SIZE;
 }

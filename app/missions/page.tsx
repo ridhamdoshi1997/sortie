@@ -46,8 +46,8 @@ export default async function MissionsPage() {
         <div className="flex flex-col gap-1">
           <h1 className="fade-in-up text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Missions</h1>
           <p className="text-base text-text-secondary sm:text-lg">
-            Every application you&apos;re running, tracked from draft to offer — drag a card to
-            move it, or switch to a filtered list.
+            Every application you&apos;re running, tracked from shortlist to offer — drag a card to
+            move it, or switch to a filtered list. New jobs land in your Inbox first.
           </p>
         </div>
 

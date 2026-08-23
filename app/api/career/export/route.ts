@@ -115,7 +115,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .from("jobs")
         .select("title,company,application_status,application_status_updated_at,found_at")
         .eq("user_id", user.id)
-        .neq("application_status", "draft")
+        .neq("application_status", "inbox")
+        .neq("application_status", "shortlisted")
         .order("application_status_updated_at", { ascending: false }),
     ]);
 

@@ -193,7 +193,8 @@ export function DocumentGenerator({
   // this job — once applied (or further), the documents already exist for
   // real reasons and generating/regenerating shouldn't be second-guessed
   // (researched via agy: never disrupt the experience for an applied job).
-  const showWarning = signal && applicationStatus === "draft" && !dismissed;
+  // "inbox"/"shortlisted" both mean pre-application (Inbox/Pipeline split).
+  const showWarning = signal && (applicationStatus === "inbox" || applicationStatus === "shortlisted") && !dismissed;
 
   return (
     <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">

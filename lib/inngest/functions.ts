@@ -675,3 +675,118 @@ export const generateGeoContentAsync = inngest.createFunction(
             : { message: "No fresh, well-sampled topic to cover right now — nothing queued." };
     },
 );
+
+// Vanguard (build-plan.md §J, direct user request) is a one-time $149
+// lifetime purchase, not a Stripe subscription — so unlike Command, there's
+// no recurring invoice.paid webhook to advance current_period_start/
+// current_period_end on api_usage_metrics' own monthly-rolling schedule
+// (lib/subscription.ts's checkUsageLimit keys entirely off that period).
+// Runs daily rather than on a fixed calendar day so each Vanguard holder's
+// own purchase-anniversary period rolls forward on ITS OWN schedule, same
+// "not a shared calendar-month boundary" principle the original
+// api_usage_metrics migration established for every other plan — a user
+// who buys mid-month keeps resetting mid-month forever, not on the 1st.
+// Bulk query bounded to at most `max_seats` (250) rows ever, so a plain
+// per-row loop (same shape as sendFollowUpNudgesAsync/
+// generateWeeklyBriefingsAsync above) is plenty, no batching needed.
+// Inbox/Pipeline split's own TTL auto-archive (same direct user request as
+// the Vanguard/lifetime-plan work above, `agy`-researched — see
+// context/RESUME.md's "draft logic" entry). A job sitting in "inbox"
+// (pre-pipeline, untriaged — see the add-inbox-shortlisted-stages
+// migration) that's still there 14 days after it was found gets archived
+// (is_hidden = true, same lever bulkHideJobs/the Missions "Archive
+// selected" bulk action already use) rather than left to pile up forever —
+// real trackers researched (Huntr/Teal/JobRight) all auto-archive an
+// untouched inbox item instead of letting it become permanent dead weight.
+// A plain bulk UPDATE across all users, not a per-row loop — this is a
+// zero-AI-cost DB-only operation the same shape as the seat-claim work
+// above, just admin-wide instead of user-scoped.
+const INBOX_ARCHIVE_AFTER_DAYS = 14;
+
+export const archiveStaleInboxJobsAsync = inngest.createFunction(
+    { id: "archive-stale-inbox-jobs", name: "Archive Stale Inbox Jobs", triggers: [{ cron: "0 4 * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const archivedCount = await step.run("archive-untouched-inbox-jobs", async () => {
+            const cutoff = new Date(Date.now() - INBOX_ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+            const { count } = await admin.database
+                .from("jobs")
+                .select("id", { count: "exact", head: true })
+                .eq("application_status", "inbox")
+                .eq("is_hidden", false)
+                .lte("found_at", cutoff);
+
+            if (!count) return 0;
+
+            const { error } = await admin.database
+                .from("jobs")
+                .update({ is_hidden: true })
+                .eq("application_status", "inbox")
+                .eq("is_hidden", false)
+                .lte("found_at", cutoff);
+
+            if (error) {
+                console.error("[inngest] archiveStaleInboxJobsAsync", error);
+                return 0;
+            }
+
+            return count;
+        });
+
+        return { message: `Archived ${archivedCount} untouched Inbox job${archivedCount === 1 ? "" : "s"}.` };
+    },
+);
+
+export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
+    { id: "reset-lifetime-plan-usage-periods", name: "Reset Lifetime-Plan Usage Periods", triggers: [{ cron: "0 3 * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const resetCount = await step.run("roll-expired-periods", async () => {
+            const { data: lifetimeTiers } = await admin.database
+                .from("subscription_plans")
+                .select("tier")
+                .eq("billing_period", "lifetime")
+                .returns<{ tier: string }[]>();
+
+            const tiers = (lifetimeTiers ?? []).map((p) => p.tier);
+            if (tiers.length === 0) return 0;
+
+            const nowIso = new Date().toISOString();
+            const { data: expired } = await admin.database
+                .from("user_subscriptions")
+                .select("user_id,current_period_end")
+                .in("tier", tiers)
+                .eq("status", "active")
+                .lte("current_period_end", nowIso)
+                .returns<{ user_id: string; current_period_end: string }[]>();
+
+            for (const row of expired ?? []) {
+                const newPeriodStart = new Date(row.current_period_end);
+                const newPeriodEnd = new Date(newPeriodStart);
+                newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+
+                await admin.database
+                    .from("user_subscriptions")
+                    .update({
+                        current_period_start: newPeriodStart.toISOString(),
+                        current_period_end: newPeriodEnd.toISOString(),
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("user_id", row.user_id);
+            }
+
+            return (expired ?? []).length;
+        });
+
+        return { message: `Rolled ${resetCount} lifetime-plan usage period${resetCount === 1 ? "" : "s"} forward.` };
+    },
+);

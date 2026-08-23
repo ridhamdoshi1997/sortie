@@ -19,13 +19,22 @@ type ColumnsState = Record<ApplicationStatus, KanbanJob[]>;
 function groupByStatus(jobs: KanbanJob[]): ColumnsState {
   const grouped = Object.fromEntries(STAGE_ORDER.map((status) => [status, [] as KanbanJob[]])) as ColumnsState;
   for (const job of jobs) {
+    // Defensive: this board only has columns for STAGE_ORDER. "inbox" jobs
+    // are meant to be filtered out by the caller (MissionsView.tsx splits
+    // Inbox out before reaching this component) — skip rather than crash on
+    // `grouped[status]` being undefined if one ever slips through.
+    if (!(job.application_status in grouped)) continue;
     grouped[job.application_status].push(job);
   }
   return grouped;
 }
 
 const EMPTY_MESSAGES: Record<ApplicationStatus, string> = {
-  draft: "No saved jobs yet.",
+  // Never actually rendered — "inbox" is excluded from STAGE_ORDER (it's
+  // reviewed from the dedicated Inbox view, not this board), but the
+  // Record still needs an entry for exhaustiveness.
+  inbox: "",
+  shortlisted: "No shortlisted jobs yet — move one over from your Inbox.",
   applied: "No applications yet — mark a job applied from its detail page.",
   interviewing: "Nothing in this stage yet.",
   offered: "No offers yet — you'll see them here.",

@@ -2,9 +2,10 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
-import { Archive, LayoutGrid, List, Tag, X } from "lucide-react";
+import { Archive, Inbox as InboxIcon, LayoutGrid, List, Tag, X } from "lucide-react";
 
 import { KanbanBoardLoader } from "@/components/missions/KanbanBoardLoader";
+import { InboxTable } from "@/components/missions/InboxTable";
 import { MissionsFilterBar, type SortValue } from "@/components/missions/MissionsFilterBar";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import { bulkAddTag, bulkHideJobs } from "@/actions/jobs";
@@ -14,7 +15,7 @@ import { getListingSignal } from "@/lib/jobStatus";
 import { SOURCE_FILTER_OPTIONS } from "@/lib/jobSource";
 import type { Job } from "@/types";
 
-type ViewMode = "kanban" | "list";
+type ViewMode = "kanban" | "list" | "inbox";
 type FilterValue = "all" | ApplicationStatus;
 
 // Google Jobs' own raw location text sometimes tags a multi-location
@@ -65,6 +66,13 @@ export function MissionsView({
   // filtered List, not the default unfiltered Board ("no dead ends" rule
   // from the dashboard redesign research). Only ever used as an initial
   // value, same idiom as FindJobsForm.tsx's own searchParams-seeded state.
+  // Inbox/Pipeline split (direct user request) — jobs still sitting
+  // untriaged in "inbox" never reach the Kanban/List views below (that's
+  // the whole point: KanbanBoard.tsx's columns are STAGE_ORDER-driven and
+  // no longer include "inbox" at all), they get their own dedicated tab.
+  const pipelineJobs = useMemo(() => jobs.filter((job) => job.application_status !== "inbox"), [jobs]);
+  const inboxJobs = useMemo(() => jobs.filter((job) => job.application_status === "inbox"), [jobs]);
+
   const searchParams = useSearchParams();
   const stageParam = searchParams.get("stage") as FilterValue | null;
   const [viewMode, setViewMode] = useState<ViewMode>(stageParam ? "list" : "kanban");
@@ -134,24 +142,24 @@ export function MissionsView({
   const [sourceFilter, setSourceFilter] = useState("");
 
   const availableSources = useMemo(() => {
-    const present = new Set<string>(jobs.map((job) => job.source));
+    const present = new Set<string>(pipelineJobs.map((job) => job.source));
     return SOURCE_FILTER_OPTIONS.filter((option) => present.has(option.value));
-  }, [jobs]);
+  }, [pipelineJobs]);
 
   const locations = useMemo(() => {
     const unique = new Set(
-      jobs
+      pipelineJobs
         .map((job) => job.location)
         .filter((value): value is string => Boolean(value))
         .map(normalizeLocationForFilter)
         .filter(Boolean),
     );
     return Array.from(unique).sort((a, b) => a.localeCompare(b));
-  }, [jobs]);
+  }, [pipelineJobs]);
 
   const visibleJobs = useMemo(() => {
     const query = search.trim().toLowerCase();
-    const matched = jobs.filter((job) => {
+    const matched = pipelineJobs.filter((job) => {
       if (query) {
         const haystack = `${job.title ?? ""} ${job.company ?? ""}`.toLowerCase();
         if (!haystack.includes(query)) return false;
@@ -187,7 +195,7 @@ export function MissionsView({
       sorted.sort((a, b) => new Date(b.found_at).getTime() - new Date(a.found_at).getTime());
     }
     return sorted;
-  }, [jobs, search, location, remoteOnly, minMatchScore, needsAttentionOnly, sortBy, sourceFilter]);
+  }, [pipelineJobs, search, location, remoteOnly, minMatchScore, needsAttentionOnly, sortBy, sourceFilter]);
 
   const reappearanceCounts = computeReappearanceCounts(visibleJobs);
   const filteredJobs = filter === "all" ? visibleJobs : visibleJobs.filter((job) => job.application_status === filter);
@@ -216,26 +224,47 @@ export function MissionsView({
             <List className="h-4 w-4" />
             List
           </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("inbox")}
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+              viewMode === "inbox" ? "bg-accent text-accent-foreground" : "text-text-secondary hover:text-text-primary"
+            }`}
+          >
+            <InboxIcon className="h-4 w-4" />
+            Inbox
+            {inboxJobs.length > 0 && (
+              <span
+                className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                  viewMode === "inbox" ? "bg-accent-foreground/20" : "bg-surface-secondary text-text-muted"
+                }`}
+              >
+                {inboxJobs.length}
+              </span>
+            )}
+          </button>
         </div>
 
-        <MissionsFilterBar
-          search={search}
-          onSearchChange={setSearch}
-          location={location}
-          onLocationChange={setLocation}
-          locations={locations}
-          remoteOnly={remoteOnly}
-          onRemoteOnlyChange={setRemoteOnly}
-          minMatchScore={minMatchScore}
-          onMinMatchScoreChange={setMinMatchScore}
-          needsAttentionOnly={needsAttentionOnly}
-          onNeedsAttentionOnlyChange={setNeedsAttentionOnly}
-          sortBy={sortBy}
-          onSortByChange={setSortBy}
-          sourceFilter={sourceFilter}
-          onSourceFilterChange={setSourceFilter}
-          availableSources={availableSources}
-        />
+        {viewMode !== "inbox" && (
+          <MissionsFilterBar
+            search={search}
+            onSearchChange={setSearch}
+            location={location}
+            onLocationChange={setLocation}
+            locations={locations}
+            remoteOnly={remoteOnly}
+            onRemoteOnlyChange={setRemoteOnly}
+            minMatchScore={minMatchScore}
+            onMinMatchScoreChange={setMinMatchScore}
+            needsAttentionOnly={needsAttentionOnly}
+            onNeedsAttentionOnlyChange={setNeedsAttentionOnly}
+            sortBy={sortBy}
+            onSortByChange={setSortBy}
+            sourceFilter={sourceFilter}
+            onSourceFilterChange={setSourceFilter}
+            availableSources={availableSources}
+          />
+        )}
 
         {viewMode === "list" && (
           <div className="flex flex-wrap items-center gap-1.5">
@@ -274,7 +303,7 @@ export function MissionsView({
         )}
       </div>
 
-      {selectMode && (
+      {viewMode === "list" && selectMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-accent-muted px-4 py-3">
           <span className="text-sm font-medium text-accent">
             {selectedIds.size} selected
@@ -315,7 +344,9 @@ export function MissionsView({
         </div>
       )}
 
-      {viewMode === "kanban" ? (
+      {viewMode === "inbox" ? (
+        <InboxTable jobs={inboxJobs} />
+      ) : viewMode === "kanban" ? (
         // Keyed on the active filter combo — KanbanBoard seeds its own
         // internal drag state from `jobs` via a lazy useState initializer
         // that only ever runs once (deliberate, so a completed drag's

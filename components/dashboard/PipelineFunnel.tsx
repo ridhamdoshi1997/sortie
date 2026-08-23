@@ -2,14 +2,17 @@ import Link from "next/link";
 
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 
-// Funnel stages only — Draft/Applied/Interviewing/Offered track forward
-// progression through the pipeline. Rejected is a real, important outcome
-// but isn't part of a "how far did this get" funnel shape, so it's
+// Funnel stages only — Shortlisted/Applied/Interviewing/Offered track
+// forward progression through the pipeline. Rejected is a real, important
+// outcome but isn't part of a "how far did this get" funnel shape, so it's
 // deliberately excluded here (build-plan.md §P calls this "Saved→Applied→
-// Interviewing→Offered" — "Draft" is this app's real first Kanban stage,
-// the closest actual equivalent; there's no separate "Saved" application
-// status in this schema, jobs.is_saved is an unrelated bookmark toggle).
-const FUNNEL_STAGES: ApplicationStatus[] = ["draft", "applied", "interviewing", "offered"];
+// Interviewing→Offered" — "Shortlisted" is this app's real first Kanban
+// stage, the closest actual equivalent; there's no separate "Saved"
+// application status in this schema, jobs.is_saved is an unrelated bookmark
+// toggle). "Inbox" (pre-pipeline, untriaged) is excluded too — Inbox/
+// Pipeline split, direct user request: an unreviewed job was never really
+// "backlog," and counting it that way is what made this funnel misleading.
+const FUNNEL_STAGES: ApplicationStatus[] = ["shortlisted", "applied", "interviewing", "offered"];
 
 export function PipelineFunnel({ counts }: { counts: Record<ApplicationStatus, number> }) {
   const maxCount = Math.max(1, ...FUNNEL_STAGES.map((s) => counts[s] ?? 0));

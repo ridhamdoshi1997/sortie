@@ -39,7 +39,7 @@ export type JobOutcomeRow = {
   id: string;
   title: string | null;
   company: string | null;
-  application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
+  application_status: "inbox" | "shortlisted" | "applied" | "interviewing" | "offered" | "rejected";
   application_status_updated_at: string | null;
   found_at: string;
 };

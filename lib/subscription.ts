@@ -21,7 +21,7 @@ export type PlanConfig = {
   tier: string;
   displayName: string;
   priceCents: number;
-  billingPeriod: "month" | "year";
+  billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
   // null = unlimited
@@ -32,19 +32,27 @@ export type PlanConfig = {
   // migration) — null for the free plan and for any plan an owner hasn't
   // wired up for checkout yet.
   stripePriceId: string | null;
+  // Global scarcity cap for one-time "lifetime deal" plans (Vanguard) — null
+  // for every ordinary recurring plan, which has no seat limit at all. See
+  // the add-vanguard-lifetime-tier migration's claim_plan_seat() for the
+  // race-safe atomic claim this count is maintained by.
+  maxSeats: number | null;
+  seatsClaimed: number;
 };
 
 type PlanRow = {
   tier: string;
   display_name: string;
   price_cents: number;
-  billing_period: "month" | "year";
+  billing_period: "month" | "year" | "lifetime";
   insider_connections_monthly_limit: number;
   company_research_monthly_limit: number;
   job_evaluations_daily_limit: number | null;
   llm_unlocked: boolean;
   feature_bullets: string[];
   stripe_price_id: string | null;
+  max_seats: number | null;
+  seats_claimed: number;
 };
 
 function mapPlanRow(row: PlanRow): PlanConfig {
@@ -59,6 +67,8 @@ function mapPlanRow(row: PlanRow): PlanConfig {
     llmUnlocked: row.llm_unlocked,
     featureBullets: row.feature_bullets ?? [],
     stripePriceId: row.stripe_price_id ?? null,
+    maxSeats: row.max_seats ?? null,
+    seatsClaimed: row.seats_claimed ?? 0,
   };
 }
 
@@ -79,6 +89,8 @@ const SAFE_FALLBACK_PLAN: PlanConfig = {
   llmUnlocked: false,
   featureBullets: [],
   stripePriceId: null,
+  maxSeats: null,
+  seatsClaimed: 0,
 };
 
 // True, code-level unlimited — never derived from a plan row, so renaming
@@ -95,6 +107,8 @@ const ADMIN_PLAN: PlanConfig = {
   llmUnlocked: true,
   featureBullets: [],
   stripePriceId: null,
+  maxSeats: null,
+  seatsClaimed: 0,
 };
 
 export async function getPlan(insforge: Insforge, tier: string): Promise<PlanConfig> {

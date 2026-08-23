@@ -40,7 +40,7 @@ export function JobActionBar({
 }: Props) {
   const [saved, setSaved] = useState(initialSaved);
   const [hidden, setHidden] = useState(initialHidden);
-  const [status, setStatus] = useState<ApplicationStatus>(initialApplicationStatus ?? "draft");
+  const [status, setStatus] = useState<ApplicationStatus>(initialApplicationStatus ?? "inbox");
   // Fixed/portaled, not a plain absolute-positioned child — this page always
   // has more content below the action bar (JobInfo, tabs, etc.), and a
   // same-stacking-context absolute dropdown painted underneath that content
@@ -107,13 +107,14 @@ export function JobActionBar({
 
   // Statuses with a real application_events counterpart (see
   // actions/jobs.ts's APPLICATION_EVENT_TYPE_BY_STATUS) get the note prompt;
-  // "draft" has no matching event type — going back to draft is a
-  // correction, not an outcome — so it applies immediately, same as before.
+  // "shortlisted" (the Inbox/Pipeline split's new first pipeline stage —
+  // "I want to pursue this" — replacing what "draft" used to loosely mean)
+  // has no matching event type, so it applies immediately, same as before.
   function handleChooseStatus(next: ApplicationStatus): void {
     const position = statusMenuPosition;
     setStatusMenuPosition(null);
     if (next === status) return;
-    if (next === "draft" || !position) {
+    if (next === "shortlisted" || !position) {
       commitStatusChange(next);
       return;
     }

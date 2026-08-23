@@ -18,6 +18,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { calculateCompletion } from "@/lib/profile-utils";
 import { formatDate } from "@/lib/utils";
 import { computeDashboardInsights } from "@/lib/dashboardInsights";
+import { getListingSignal } from "@/lib/jobStatus";
 import { STAGE_ORDER, type ApplicationStatus } from "@/lib/applicationStatus";
 import type { Job, Profile } from "@/types";
 
@@ -147,9 +148,22 @@ export default async function DashboardPage() {
   }
   const matchDistributionData = MATCH_BUCKETS.map((r) => ({ range: r, count: matchCounts[r] ?? 0 }));
 
-  // Pipeline Funnel counts
+  // Pipeline Funnel counts — excludes jobs the Action Center itself already
+  // flags as likely gone (lib/dashboardInsights.ts's own "needs-attention"
+  // signal), same real bug fix as lib/pipelineStrategy.ts's snapshot: a
+  // stale/dropped listing sitting in Draft isn't real pipeline backlog, and
+  // counting it that way is what made the funnel (and the AI Pipeline
+  // Strategy Read built on identical logic) look like a bottleneck that
+  // wasn't real.
   const funnelCounts = Object.fromEntries(
-    STAGE_ORDER.map((stage) => [stage, jobs.filter((j) => j.application_status === stage && !j.is_hidden).length]),
+    STAGE_ORDER.map((stage) => [
+      stage,
+      jobs.filter((j) => {
+        if (j.application_status !== stage || j.is_hidden) return false;
+        const signal = getListingSignal(j);
+        return signal?.level !== "confirmed" && signal?.level !== "likely";
+      }).length,
+    ]),
   ) as Record<ApplicationStatus, number>;
 
   const interviewingJobs = jobs

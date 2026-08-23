@@ -39,7 +39,7 @@ export type KanbanJob = Pick<
 
 export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: string | null }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
-  const signal = job.application_status === "draft" ? getListingSignal(job) : null;
+  const signal = job.application_status === "shortlisted" ? getListingSignal(job) : null;
   const [diagnosis, setDiagnosis] = useState(job.rejection_diagnosis);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();

@@ -82,7 +82,7 @@ export default async function ResumePage() {
                 title={row.jobs?.title ?? "Tailored resume"}
                 company={row.jobs?.company ?? "Unknown company"}
                 companyLogoUrl={row.jobs?.company_logo_url ?? null}
-                applicationStatus={row.jobs?.application_status ?? "draft"}
+                applicationStatus={row.jobs?.application_status ?? "inbox"}
                 hasCoverLetter={Boolean(row.cover_letter_pdf_url)}
               />
             ))}

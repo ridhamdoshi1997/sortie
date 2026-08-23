@@ -163,7 +163,11 @@ export interface Job {
   // Kanban card research (agy, 2026-08-17) — a user-toggled flag for "the
   // ones I actually need to follow up on" within a crowded column.
   is_priority: boolean;
-  application_status: "draft" | "applied" | "interviewing" | "offered" | "rejected";
+  // "inbox" (pre-pipeline, hidden from the Kanban — a job that hasn't been
+  // triaged yet) and "shortlisted" (the first real Kanban stage, "I want to
+  // pursue this") together replace what used to be a single "draft" status
+  // (Inbox/Pipeline split, direct user request — see lib/applicationStatus.ts).
+  application_status: "inbox" | "shortlisted" | "applied" | "interviewing" | "offered" | "rejected";
   // Set whenever application_status changes (actions/jobs.ts's
   // setApplicationStatus) — powers the Kanban board's "days in this stage"
   // and is the real timing input lib/rejectionIntelligence.ts needs. Null

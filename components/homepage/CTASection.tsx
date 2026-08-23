@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { getPlansForPricing } from "@/actions/billing";
+import type { PlanConfig } from "@/lib/subscription";
 
 // Rebuilt for build-plan.md §S, then wired to real live plan data for §J
 // (2026-08-21) — the paid tier's price/limits/bullets come from
@@ -18,20 +19,87 @@ const FREE_INCLUDES = [
   "Interview prep tools",
 ];
 
+// Renders every real paid plan (not just the first one) — Vanguard's
+// $149-lifetime-deal addition (direct user request) made the old
+// "grab the one paid plan" shape stale; a plan an owner adds from
+// /admin/billing now just shows up here without touching this component
+// again. Vanguard-style scarcity-capped plans get a progress bar and lock
+// into a real "Sold out" state instead of a checkout button once claimed.
+function PaidPlanCard({ plan }: { plan: PlanConfig }) {
+  const isLifetime = plan.billingPeriod === "lifetime";
+  const isSoldOut = plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats;
+
+  return (
+    <div className="rounded-2xl border border-border bg-surface p-8 shadow-card">
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">{plan.displayName}</p>
+      <p className="mt-2 text-3xl font-bold text-text-primary">
+        ${(plan.priceCents / 100).toFixed(0)}
+        <span className="text-base font-medium text-text-secondary">{isLifetime ? " once" : `/${plan.billingPeriod}`}</span>
+      </p>
+      <p className="mt-1 text-sm text-text-secondary">
+        {isLifetime
+          ? "Pay once, keep it forever — limited seats."
+          : "For a heavy, ongoing search that needs the deeper research tools."}
+      </p>
+      {plan.maxSeats !== null && (
+        <div className="mt-4">
+          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary">
+            <div
+              className="h-full rounded-full bg-accent transition-[width]"
+              style={{ width: `${Math.min(100, Math.round((plan.seatsClaimed / Math.max(1, plan.maxSeats)) * 100))}%` }}
+            />
+          </div>
+          <p className="mt-1.5 text-[11px] font-medium text-text-muted">
+            {plan.seatsClaimed} / {plan.maxSeats} seats claimed
+          </p>
+        </div>
+      )}
+      <ul className="mt-6 flex flex-col gap-2.5 text-left">
+        {plan.featureBullets.map((item) => (
+          <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
+            <Check className="h-4 w-4 shrink-0 text-success" />
+            {item}
+          </li>
+        ))}
+      </ul>
+      {isSoldOut ? (
+        <div className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface-secondary px-6 text-sm font-semibold text-text-muted">
+          Sold out — all {plan.maxSeats} seats claimed
+        </div>
+      ) : plan.stripePriceId ? (
+        <UpgradeButton
+          tier={plan.tier}
+          className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        >
+          {isLifetime ? `Buy ${plan.displayName} — one-time` : `Upgrade to ${plan.displayName}`}
+        </UpgradeButton>
+      ) : (
+        <button
+          type="button"
+          disabled
+          className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
+        >
+          Not yet available
+        </button>
+      )}
+    </div>
+  );
+}
+
 export async function CTASection() {
   const plans = await getPlansForPricing();
-  const paidPlan = plans.find((p) => p.priceCents > 0) ?? null;
+  const paidPlans = plans.filter((p) => p.priceCents > 0);
 
   return (
     <section id="pricing" className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
-      <div className="mx-auto max-w-4xl">
+      <div className={paidPlans.length > 1 ? "mx-auto max-w-6xl" : "mx-auto max-w-4xl"}>
         <div className="mb-10 text-center">
           <h2 className="text-[clamp(2rem,4.5vw,3rem)] font-semibold leading-[1.02] tracking-[-0.03em] text-text-primary">
             Free to start. No unattended applications, ever.
           </h2>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${paidPlans.length > 1 ? "lg:grid-cols-3" : ""}`}>
           <div className="rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">Free</p>
             <p className="mt-2 text-3xl font-bold text-text-primary">$0</p>
@@ -54,43 +122,8 @@ export async function CTASection() {
             </TrackedCtaLink>
           </div>
 
-          {paidPlan ? (
-            <div className="rounded-2xl border border-border bg-surface p-8 shadow-card">
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">
-                {paidPlan.displayName}
-              </p>
-              <p className="mt-2 text-3xl font-bold text-text-primary">
-                ${(paidPlan.priceCents / 100).toFixed(0)}
-                <span className="text-base font-medium text-text-secondary">/{paidPlan.billingPeriod}</span>
-              </p>
-              <p className="mt-1 text-sm text-text-secondary">
-                For a heavy, ongoing search that needs the deeper research tools.
-              </p>
-              <ul className="mt-6 flex flex-col gap-2.5 text-left">
-                {paidPlan.featureBullets.map((item) => (
-                  <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
-                    <Check className="h-4 w-4 shrink-0 text-success" />
-                    {item}
-                  </li>
-                ))}
-              </ul>
-              {paidPlan.stripePriceId ? (
-                <UpgradeButton
-                  tier={paidPlan.tier}
-                  className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-                >
-                  Upgrade to {paidPlan.displayName}
-                </UpgradeButton>
-              ) : (
-                <button
-                  type="button"
-                  disabled
-                  className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface px-6 text-sm font-medium text-text-muted"
-                >
-                  Not yet available
-                </button>
-              )}
-            </div>
+          {paidPlans.length > 0 ? (
+            paidPlans.map((plan) => <PaidPlanCard key={plan.tier} plan={plan} />)
           ) : (
             <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
               <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
