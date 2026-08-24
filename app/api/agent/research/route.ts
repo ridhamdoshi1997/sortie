@@ -4,11 +4,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { researchCompany } from "@/agent/research";
 import { resolveProvider } from "@/lib/access";
 import { getCurrentUser } from "@/lib/auth";
-import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkUsageLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { trackPostHogEvent } from "@/lib/posthog-server";
+import { toUserMessage } from "@/lib/errors";
 import type { AgentLog, CompanyResearchDossier, Job, Profile } from "@/types";
 
 type RequestBody = {
@@ -165,9 +166,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const usage = await checkAndConsumeUsage(insforge, userId, profile.email, "company_research");
+    const usage = await checkUsageLimit(insforge, userId, profile.email, "company_research");
     if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: usage.error,
+          reason: usage.reason,
+          ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+        },
+        { status: 429 },
+      );
     }
 
     await logAgentMessage({
@@ -223,7 +232,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error("[api/agent/research]", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: toUserMessage(error) },
       { status: 500 },
     );
   }

@@ -3,14 +3,7 @@ import Link from "next/link";
 
 type Props = {
   aboutRole: string | null;
-  responsibilities: string[];
-  benefits: string[];
   sourceUrl: string | null;
-};
-
-type BulletSection = {
-  title: string;
-  items: string[];
 };
 
 function isTruncatedPreview(description: string | null): boolean {
@@ -20,37 +13,11 @@ function isTruncatedPreview(description: string | null): boolean {
   return trimmed.endsWith("…") || trimmed.endsWith("...");
 }
 
-function BulletList({ section }: { section: BulletSection }) {
-    if (!section.items || section.items.length === 0) return null;
-
-  return (
-    <div className="mt-6">
-      <h3 className="text-sm font-semibold leading-5 text-text-primary">
-        {section.title}
-      </h3>
-      <ul className="mt-3 list-disc space-y-2 pl-5 text-sm font-medium leading-6 text-text-primary">
-        {section.items.map((item) => (
-          <li key={item}>{item}</li>
-        ))}
-      </ul>
-    </div>
-  );
-}
-
-export function JobDescription({
-  aboutRole,
-  responsibilities,
-  benefits,
-  sourceUrl,
-}: Props) {
+export function JobDescription({ aboutRole, sourceUrl }: Props) {
   const shouldShowFullPostLink = isTruncatedPreview(aboutRole) && sourceUrl;
-  const sections: BulletSection[] = [
-    { title: "Responsibilities", items: responsibilities },
-    { title: "Benefits", items: benefits },
-  ];
 
   return (
-    <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="mb-6 flex items-center gap-3">
         <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
           <FileText className="h-4 w-4 text-text-secondary" />
@@ -62,9 +29,6 @@ export function JobDescription({
       <p className="whitespace-pre-line text-sm font-medium leading-6 text-text-primary">
         {aboutRole ?? "No job description is available for this role yet."}
       </p>
-      {sections.map((section) => (
-        <BulletList key={section.title} section={section} />
-      ))}
       {shouldShowFullPostLink && (
         <div className="mt-6 rounded-lg border border-border bg-surface-secondary p-4">
           <p className="text-sm leading-6 text-text-secondary">

@@ -1,0 +1,33 @@
+[auth]
+allowed_redirect_urls = ["http://localhost:3001/callback", "http://localhost:3001/login", "https://jobpilot-experiment.vercel.app/callback", "https://jobpilot-experiment.vercel.app/login"]
+require_email_verification = true
+verify_email_method = "code"
+reset_password_method = "code"
+disable_signup = false
+
+[auth.password]
+min_length = 6
+require_number = false
+require_lowercase = false
+require_uppercase = false
+require_special_char = false
+
+[auth.smtp]
+enabled = true
+host = "smtp-relay.brevo.com"
+port = 587
+username = "b518fa001@smtp-brevo.com"
+# password is managed via secrets — run `insforge secrets add SMTP_PASSWORD "<value>"`
+password = "env(SMTP_PASSWORD)"
+sender_email = "ridham.doshi.rd@gmail.com"
+sender_name = "Sortie"
+min_interval_seconds = 60
+
+[storage]
+max_file_size_mb = 50
+
+[realtime]
+retention_days = 0
+
+[schedules]
+retention_days = 7

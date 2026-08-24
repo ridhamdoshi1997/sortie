@@ -6,7 +6,7 @@
  */
 
 import { useState } from "react";
-import { Check, ChevronRight, FileText, Upload, X } from "lucide-react";
+import { Check, ChevronRight, Upload, X } from "lucide-react";
 
 const CATEGORIES = [
     "Software / Internet / AI",

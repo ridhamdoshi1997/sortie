@@ -40,3 +40,14 @@ export function resetPostHogUser(): void {
 
   posthog.reset();
 }
+
+// Conversion tracking on the new marketing homepage's CTAs (build-plan.md
+// §S fast-follow) — same no-op-if-unconfigured guard as the rest of this
+// file. Fire-and-forget on click, never blocks the real navigation.
+export function trackPostHogClientEvent(eventName: string, properties?: Record<string, unknown>): void {
+  if (!getPostHogKey()) {
+    return;
+  }
+
+  posthog.capture(eventName, properties);
+}

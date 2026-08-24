@@ -5,6 +5,7 @@ import type {
   CompanyLeader,
   CompanyResearchDossier,
   ConnectionPerson,
+  Education,
   InsiderConnections,
   Job,
   Profile,
@@ -294,12 +295,25 @@ function extractMarkdownLinks(markdown: string): Array<{ text: string; url: stri
   return links;
 }
 
+// Google actively CAPTCHA-blocks Jina Reader's requests to
+// google.com/search result pages when they come from cloud/datacenter IPs
+// (confirmed live from this app's own Vercel deployment, 2026-08-12) — the
+// block page itself is ~1000 characters, well past a plain length check, so
+// a length threshold alone can't distinguish "real search results" from
+// "Google's block wall." Any caller that scrapes a Google search URL via
+// fetchViaJinaReader must run its result through this before trusting it as
+// real content — see researchStrategicMoat/researchInterviewerBackground.
+function looksLikeSearchBlockPage(text: string): boolean {
+  const lower = text.toLowerCase();
+  return lower.includes("unusual traffic") || lower.includes("maybe requiring captcha");
+}
+
 // Jina Reader (r.jina.ai) renders the page in a real browser on their
 // infrastructure and returns clean markdown — no browser to host ourselves,
 // genuinely free at this app's volume (10M free tokens with an API key,
 // or a lower-rate-limited keyless tier). Replaces Browserbase/Stagehand as
 // the "get real content off a JS-rendered page" step.
-async function fetchViaJinaReader(url: string): Promise<string | null> {
+export async function fetchViaJinaReader(url: string): Promise<string | null> {
   const jinaKey = process.env.JINA_API_KEY;
   const headers: Record<string, string> = { Accept: "text/plain" };
   if (jinaKey) {
@@ -320,6 +334,62 @@ async function fetchViaJinaReader(url: string): Promise<string | null> {
     return text.trim() || null;
   } catch (error) {
     console.error("[agent/research] fetchViaJinaReader", url, error);
+    return null;
+  }
+}
+
+// Fallback/co-search path, added 2026-07-28: when Jina Reader can't fetch a
+// real page (dead homepage guess, JS-only site Jina still can't render,
+// robots block, etc.), ask Perplexity's Sonar model to search the live web
+// directly instead of giving up and falling through to the generic
+// job-posting-only dossier. Real cost, confirmed live: ~$0.005/call (a flat
+// per-request web-search fee, tokens are negligible on top) — this is why
+// it's a fallback, not a first-choice replacement for the free Jina+Gemini
+// path (explicit product decision, not a technical limitation).
+//
+// Uses Perplexity's native API directly (not routed through OpenRouter or
+// lib/models.ts's getModel/complete) because the thing this needs —
+// top-level `citations: string[]` on the raw response, confirmed live to
+// exist alongside `choices` — is a Perplexity-specific field outside the
+// OpenAI-compatible chat-completions shape complete() normalizes to. The
+// returned text is deliberately NOT trusted as pre-structured JSON; it's
+// run through the same extractStructured() used for Jina markdown so there
+// is exactly one place in this file that has to safely turn "some text
+// from the web" into a validated shape.
+async function fetchViaPerplexity(
+  query: string,
+): Promise<{ text: string; citations: string[] } | null> {
+  const apiKey = process.env.PERPLEXITY_API_KEY;
+  if (!apiKey) return null;
+
+  try {
+    const response = await fetch("https://api.perplexity.ai/chat/completions", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: "sonar",
+        messages: [{ role: "user", content: query }],
+        max_tokens: 600,
+      }),
+      signal: AbortSignal.timeout(JINA_TIMEOUT_MS),
+    });
+
+    if (!response.ok) {
+      console.error("[agent/research] fetchViaPerplexity", response.status, await response.text());
+      return null;
+    }
+
+    const data = await response.json();
+    const text: string | undefined = data.choices?.[0]?.message?.content;
+    if (!text?.trim()) return null;
+
+    const citations: string[] = Array.isArray(data.citations) ? data.citations : [];
+    return { text, citations };
+  } catch (error) {
+    console.error("[agent/research] fetchViaPerplexity", error);
     return null;
   }
 }
@@ -371,6 +441,45 @@ If the page has none of the requested content, return the schema's empty/default
   }
 }
 
+// Tries the Perplexity fallback (see fetchViaPerplexity's comment) when the
+// free Jina+Gemini path came up empty. Returns null if Perplexity isn't
+// configured, or genuinely found nothing either — caller falls through to
+// emptyResearch exactly as before this existed.
+async function tryPerplexityFallback(
+  job: ResearchJob,
+  homepageUrl: string,
+  logger: ResearchLogger | undefined,
+): Promise<BrowserResearch | null> {
+  const company = job.company ?? "this company";
+  const perplexity = await fetchViaPerplexity(
+    `What does ${company} do? Describe their product/service, who it's for, and any concrete signals worth knowing before a job interview: funding, scale, notable customers, mission, and recent news or launches.`,
+  );
+  if (!perplexity) return null;
+
+  const homepage = await extractStructured(
+    perplexity.text,
+    "This is a web-search summary about a company. Capture what the company actually does, who it's for, and any concrete signals (funding, customers, scale, mission, recent launches).",
+    homepageContentSchema,
+    `{ "oneLiner": string, "productSummary": string, "signals": string[] }`,
+  );
+
+  if (!homepage || (!homepage.oneLiner && !homepage.productSummary)) {
+    return null;
+  }
+
+  await log(logger, "Filled in company research via Perplexity web search.", "success");
+
+  return {
+    homepageUrl,
+    visited: true,
+    oneLiner: homepage.oneLiner || null,
+    productSummary: homepage.productSummary || null,
+    signals: homepage.signals,
+    pages: [],
+    sources: perplexity.citations,
+  };
+}
+
 async function collectBrowserResearch(
   job: ResearchJob,
   logger: ResearchLogger | undefined,
@@ -399,10 +508,10 @@ async function collectBrowserResearch(
   if (!homepageMarkdown) {
     await log(
       logger,
-      "Could not fetch the company homepage. Using job and profile context only.",
+      "Could not fetch the company homepage directly. Trying a Perplexity web search instead.",
       "warning",
     );
-    return emptyResearch;
+    return (await tryPerplexityFallback(job, homepageUrl, logger)) ?? emptyResearch;
   }
 
   const homepage = await extractStructured(
@@ -415,10 +524,10 @@ async function collectBrowserResearch(
   if (!homepage || (!homepage.oneLiner && !homepage.productSummary)) {
     await log(
       logger,
-      "Homepage extraction did not find meaningful company content. Using job and profile context only.",
+      "Homepage extraction did not find meaningful content. Trying a Perplexity web search instead.",
       "warning",
     );
-    return emptyResearch;
+    return (await tryPerplexityFallback(job, homepageUrl, logger)) ?? emptyResearch;
   }
 
   const research: BrowserResearch = {
@@ -508,7 +617,7 @@ function buildFallbackDossier(
     industryTags: [],
     recentUpdates: [],
     leadershipTeam: [],
-    techStack: [...job.matched_skills, ...job.missing_skills].slice(0, 8),
+    techStack: [...(job.matched_skills ?? []), ...(job.missing_skills ?? [])].slice(0, 8),
     culture: [
       "Use the job posting language to infer how the team collaborates and what outcomes they value.",
     ],
@@ -518,8 +627,8 @@ function buildFallbackDossier(
         ? [`Lead with your experience in ${skills.join(", ")}.`]
         : ["Lead with the strongest examples from your recent work."],
     gapsToAddress:
-      job.missing_skills.length > 0
-        ? job.missing_skills.map(
+      (job.missing_skills ?? []).length > 0
+        ? (job.missing_skills ?? []).map(
             (skill) =>
               `Prepare an honest story for ${skill}, connecting it to adjacent experience you already have.`,
           )
@@ -578,13 +687,13 @@ JOB POSTING:
 Title: ${job.title ?? "Unknown"}
 Company: ${job.company ?? "Unknown"}
 Description: ${job.about_role ?? "No saved description"}
-Matched skills: ${job.matched_skills.join(", ") || "None recorded"}
-Missing skills: ${job.missing_skills.join(", ") || "None recorded"}
+Matched skills: ${(job.matched_skills ?? []).join(", ") || "None recorded"}
+Missing skills: ${(job.missing_skills ?? []).join(", ") || "None recorded"}
 
 CANDIDATE PROFILE:
 Current title: ${profile.current_title ?? "Unknown"}
 Experience: ${profile.years_experience ?? "Unknown"} years, level ${profile.experience_level ?? "Unknown"}
-Skills: ${profile.skills.join(", ") || "None saved"}
+Skills: ${(profile.skills ?? []).join(", ") || "None saved"}
 Work history: ${getWorkHistory(profile.work_experience)}`;
 
   const raw = await complete(getModel(provider, "smart"), {
@@ -1010,6 +1119,21 @@ function getMostRecentPastEmployer(workExperience: WorkExperience[] | null): str
   return past[0]?.company ?? null;
 }
 
+// Insider Connections' school bucket only supports one search term (each is a
+// paid Apify call — fanning out to every degree would multiply the ~$0.31/
+// lookup cost), so pick a single school the same way past employer is picked:
+// most recent first, falling back to array order when graduation_year is missing.
+function getMostRecentEducationInstitution(education: Education[] | null): string | null {
+  if (!education) return null;
+
+  const withInstitution = education.filter((entry) => entry.institution);
+  const sorted = [...withInstitution].sort((a, b) =>
+    (b.graduation_year ?? "").localeCompare(a.graduation_year ?? ""),
+  );
+
+  return sorted[0]?.institution ?? null;
+}
+
 // Deliberately opt-in only, same as Leadership — a real, paid lookup
 // (~$0.31-0.32/call: 3 people-search pages + up to 3 company-URL resolves),
 // never run automatically. Three buckets, matching JobRight's own layout:
@@ -1037,7 +1161,7 @@ export async function researchInsiderConnections(
     }
 
     const pastEmployerName = getMostRecentPastEmployer(profile.work_experience);
-    const school = profile.education?.institution ?? null;
+    const school = getMostRecentEducationInstitution(profile.education);
 
     const pastEmployerUrl = pastEmployerName
       ? await resolveCompanyLinkedInUrl(pastEmployerName)
@@ -1123,6 +1247,146 @@ export async function findEmailForPerson(
   } catch (error) {
     console.error("[agent/research] findEmailForPerson", error);
     return { success: false, error: "Email lookup failed." };
+  }
+}
+
+// Strategic Moat Briefing — a distinct lens from researchCompany's culture/
+// tech-stack dossier: recent news, current strategic priorities, and
+// existential threats/challenges, plus CEO-level questions grounded in
+// that. Real news synthesis genuinely needs a live search (there's no page
+// to crawl before you know what's newsworthy), unlike the homepage-crawl
+// pattern researchCompany starts with — so this tries a free Jina-Reader
+// fetch of a search-results page first, and only falls to the existing
+// Perplexity path (real ~$0.005/call, already used elsewhere in this file
+// for the same "free path came up empty" reason) if that's too thin.
+export type StrategicMoatBriefing = {
+  strategicPriorities: string[];
+  existentialThreats: string[];
+  smartQuestions: string[];
+  sources: string[];
+};
+
+const strategicMoatSchema = z.object({
+  strategicPriorities: z.array(z.string()).optional().default([]),
+  existentialThreats: z.array(z.string()).optional().default([]),
+  smartQuestions: z.array(z.string()).optional().default([]),
+});
+
+export async function researchStrategicMoat(
+  job: ResearchJob,
+  logger?: ResearchLogger,
+): Promise<{ success: true; briefing: StrategicMoatBriefing } | { success: false; error: string }> {
+  try {
+    const company = job.company ?? "this company";
+
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(
+      `${company} recent news strategic priorities 2026`,
+    )}`;
+    let sourceText = await fetchViaJinaReader(searchUrl);
+    let sources: string[] = [];
+
+    // Same "free path too thin, try Perplexity" threshold reasoning as
+    // tryPerplexityFallback above — a search page that mostly failed to
+    // render still returns *some* text, so a length floor catches that.
+    // Also checks for Google's own CAPTCHA block page, which is verbose
+    // enough to sail past a plain length check on its own.
+    if (!sourceText || sourceText.length < 200 || looksLikeSearchBlockPage(sourceText)) {
+      const perplexity = await fetchViaPerplexity(
+        `What are ${company}'s current strategic priorities, recent news, and any existential threats or business challenges they're facing right now? Be specific and current, not generic.`,
+      );
+      if (perplexity) {
+        sourceText = perplexity.text;
+        sources = perplexity.citations;
+        await log(logger, "Strategic moat briefing filled in via Perplexity web search.", "success");
+      }
+    }
+
+    if (!sourceText) {
+      return { success: false, error: "Could not find recent information about this company." };
+    }
+
+    const briefing = await extractStructured(
+      sourceText,
+      "This is real search/news content about a company. Extract their current strategic priorities, existential threats or business challenges, and 2-3 sharp, specific interview questions a candidate could ask that would signal genuine research (not generic questions). Ground every item in the actual content given — never invent a priority, threat, or fact not present in the source text. Empty arrays are fine if the content doesn't support a section.",
+      strategicMoatSchema,
+      `{ "strategicPriorities": string[], "existentialThreats": string[], "smartQuestions": string[] }`,
+    );
+
+    if (!briefing || (briefing.strategicPriorities.length === 0 && briefing.existentialThreats.length === 0)) {
+      return { success: false, error: "Could not extract a grounded briefing from available sources." };
+    }
+
+    await log(logger, "Strategic moat briefing generated.", "success");
+    return { success: true, briefing: { ...briefing, sources } };
+  } catch (error) {
+    console.error("[agent/research] researchStrategicMoat", error);
+    return { success: false, error: "Strategic moat research failed." };
+  }
+}
+
+// Interview Panel Topology — a named-person version of the same free-first-
+// then-Perplexity pattern researchStrategicMoat uses (not the company-
+// leadership Wikipedia waterfall below, which is the wrong shape for a
+// private individual who almost never has Wikipedia coverage). The name
+// comes from the candidate themselves (they were told who's interviewing
+// them) — this is the same normal, legitimate practice as looking someone
+// up on LinkedIn before a call, not surveillance of a stranger. Extraction
+// is deliberately conservative: genuinely public professional facts only,
+// never speculation about personality, bias, or anything not grounded in
+// real fetched content.
+export type InterviewerBackground = {
+  summary: string;
+  priorCompanies: string[];
+  interviewPrepNote: string;
+  sources: string[];
+};
+
+const interviewerBackgroundSchema = z.object({
+  summary: z.string().optional().default(""),
+  priorCompanies: z.array(z.string()).optional().default([]),
+  interviewPrepNote: z.string().optional().default(""),
+});
+
+export async function researchInterviewerBackground(
+  name: string,
+  company: string,
+): Promise<{ success: true; background: InterviewerBackground } | { success: false; error: string }> {
+  try {
+    const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`"${name}" "${company}" LinkedIn`)}`;
+    let sourceText = await fetchViaJinaReader(searchUrl);
+    let sources: string[] = [];
+
+    // See looksLikeSearchBlockPage's comment — Google's CAPTCHA wall is
+    // verbose enough to pass a plain length check on its own.
+    if (!sourceText || sourceText.length < 200 || looksLikeSearchBlockPage(sourceText)) {
+      const perplexity = await fetchViaPerplexity(
+        `What is ${name}'s public professional background at ${company}? Focus only on their real career history — prior companies, role, and area of expertise. Do not speculate about personality or private details.`,
+      );
+      if (perplexity) {
+        sourceText = perplexity.text;
+        sources = perplexity.citations;
+      }
+    }
+
+    if (!sourceText) {
+      return { success: false, error: "No public professional information found for this person." };
+    }
+
+    const background = await extractStructured(
+      sourceText,
+      "This is real search content about a specific named professional. Extract only genuinely public professional facts: a short career summary, prior companies/roles, and one practical interview-prep note connecting their background to what to expect (e.g. an engineering background suggesting a technical interview). Never speculate about personality, bias, or anything not grounded in the actual content given. If the content doesn't clearly match this specific person at this specific company, return empty values rather than guessing.",
+      interviewerBackgroundSchema,
+      `{ "summary": string, "priorCompanies": string[], "interviewPrepNote": string }`,
+    );
+
+    if (!background || !background.summary) {
+      return { success: false, error: "Could not find enough public information about this person." };
+    }
+
+    return { success: true, background: { ...background, sources } };
+  } catch (error) {
+    console.error("[agent/research] researchInterviewerBackground", error);
+    return { success: false, error: "Interviewer research failed." };
   }
 }
 

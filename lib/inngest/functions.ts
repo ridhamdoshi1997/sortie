@@ -1,8 +1,10 @@
 import { inngest } from "./client";
 import { resolveProvider } from "@/lib/access";
-import { evaluateJobCompatibility } from "@/lib/evaluator";
+import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator";
+import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
+import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
-import type { Profile } from "@/types";
+import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
     return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -16,7 +18,7 @@ export const evaluateJobsAsync = inngest.createFunction(
         name: "Evaluate Scraped Jobs via Gemini",
         triggers: [{ event: "jobs/evaluate" }]
     },
-    async ({ event, step }: any) => {
+    async ({ event, step }) => {
         const { jobIds, filters, userId, runId } = event.data as {
             jobIds: string[];
             filters: Record<string, string>;
@@ -90,6 +92,14 @@ export const evaluateJobsAsync = inngest.createFunction(
             throw new Error(message);
         }
 
+        // §Q2 correction memory — fetched once per run (typically a small
+        // table per user), filtered per-job by role family inside
+        // evaluateJobCompatibility rather than re-queried per chunk.
+        const { data: corrections } = await admin.database
+            .from("skill_corrections")
+            .select("role_family,skill,correction_type")
+            .eq("user_id", userId);
+
         const provider = resolveProvider(profile.preferred_model, profile.email);
         // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
         // the richer 2-3 sentence per-dimension notes cause the model to
@@ -101,9 +111,15 @@ export const evaluateJobsAsync = inngest.createFunction(
         const jobChunks = chunkArray(rawJobs, 5);
 
         try {
-            for (const chunk of jobChunks) {
-                await step.run(`Evaluate Chunk of ${chunk.length}`, async () => {
-                    const evaluations = await evaluateJobCompatibility(chunk, filters, profile, provider);
+            for (const [chunkIndex, chunk] of jobChunks.entries()) {
+                await step.run(`evaluate-chunk-${chunkIndex}`, async () => {
+                    const evaluations = await evaluateJobCompatibility(
+                        chunk,
+                        filters,
+                        profile,
+                        provider,
+                        (corrections ?? []) as SkillCorrection[],
+                    );
 
                     for (const job of chunk) {
                         const evalResult = evaluations.find((e) => e.id === job.id);
@@ -119,6 +135,34 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 evaluation: evalResult?.dimensions ?? null,
                                 recommendation_score: evalResult?.recommendationScore ?? null,
                                 overall_grade: evalResult?.overallGrade ?? null,
+                                responsibilities: evalResult?.responsibilities || [],
+                                requirements: evalResult?.requirements || [],
+                                nice_to_have: evalResult?.niceToHave || [],
+                                benefits: evalResult?.benefits || [],
+                                about_role: evalResult?.aboutRole || null,
+                                hiring_process: evalResult?.hiringProcess || [],
+                                seniority_level: evalResult?.seniorityLevel || null,
+                                years_experience_required: evalResult?.yearsExperienceRequired || null,
+                                title_scope_mismatch: evalResult?.titleScopeMismatch ?? null,
+                                // Fallback only — never overwrite a real
+                                // structured salary already on the row
+                                // (e.g. from the scraper's own source data).
+                                ...(job.salary ? {} : { salary: evalResult?.salary || null }),
+                                // Fallback only — never overwrite a real
+                                // scraped thumbnail from SerpApi. Built from
+                                // the model's own knowledge of the company's
+                                // real domain (see companyDomain's comment in
+                                // evaluator.ts), not the old naive
+                                // lowercase-the-name guess — that guess is
+                                // what actually caused most missing/wrong
+                                // logos, confirmed live 2026-07-28. Source is
+                                // unavatar.io, not Clearbit — Clearbit's Logo
+                                // API turned out to be fully DNS-dead as of
+                                // 2026-07-28 (confirmed live), not
+                                // ad-blocker-blocked as first guessed.
+                                ...(job.company_logo_url || !evalResult?.companyDomain
+                                    ? {}
+                                    : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
                             })
                             .eq("id", job.id);
 
@@ -129,7 +173,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                     }
                 });
 
-                await step.sleep("delay-between-ai-calls", "3s");
+                await step.sleep(`delay-between-ai-calls-${chunkIndex}`, "3s");
             }
         } catch (err) {
             console.error("Chunk evaluation failed:", err);
@@ -151,4 +195,598 @@ export const evaluateJobsAsync = inngest.createFunction(
 
         return { message: `Successfully evaluated ${rawJobs.length} jobs.` };
     }
+);
+
+// §Q4c Always-warm résumé — fired from actions/accomplishments.ts's
+// addAccomplishment right after a real insert, same trigger pattern as
+// jobs/evaluate above. One suggested bullet per accomplishment, queued as
+// 'pending' for review through the existing was/now diff-card UI — never
+// written directly into the résumé.
+function currentOrMostRecentRole(workExperience: WorkExperience[] | null | undefined): { title: string; company: string } {
+    const roles = workExperience ?? [];
+    const current = roles.find((r) => r.is_current);
+    if (current) return { title: current.title, company: current.company };
+
+    const mostRecent = [...roles].sort(
+        (a, b) => new Date(b.end_date ?? b.start_date).getTime() - new Date(a.end_date ?? a.start_date).getTime(),
+    )[0];
+    if (mostRecent) return { title: mostRecent.title, company: mostRecent.company };
+
+    return { title: "Professional", company: "your background" };
+}
+
+export const generateResumeSuggestionAsync = inngest.createFunction(
+    { id: "generate-resume-suggestion", name: "Generate Always-Warm Résumé Suggestion", triggers: [{ event: "accomplishments/logged" }] },
+    async ({ event, step }) => {
+        const { accomplishmentId, userId } = event.data as { accomplishmentId: string; userId: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: accomplishment } = await step.run("fetch-accomplishment", async () => {
+            return admin.database
+                .from("accomplishments")
+                .select("id,title,description")
+                .eq("id", accomplishmentId)
+                .eq("user_id", userId)
+                .maybeSingle<{ id: string; title: string; description: string | null }>();
+        });
+
+        if (!accomplishment) {
+            return { message: `Accomplishment ${accomplishmentId} not found, skipping.` };
+        }
+
+        const { data: profile } = await step.run("fetch-profile", async () => {
+            return admin.database
+                .from("profiles")
+                .select("work_experience,preferred_model,email")
+                .eq("id", userId)
+                .maybeSingle<Pick<Profile, "work_experience" | "preferred_model" | "email">>();
+        });
+
+        // Same minimum-cost-launch policy as every other AI action (lib/usage.ts)
+        // — reuses bullet_rewrite's cap rather than a dedicated action, since
+        // this is the exact same cost/shape (one fast-tier bullet rewrite),
+        // just background-triggered instead of user-clicked. A capped-out day
+        // means this accomplishment simply gets no suggestion, not an error
+        // the user ever sees — consistent with this being a nice-to-have, not
+        // a required side effect of logging real career history.
+        const usage = await step.run("check-usage", () =>
+            checkAndConsumeUsage(admin, userId, profile?.email, "bullet_rewrite"),
+        );
+        if (!usage.allowed) {
+            return { message: `Daily bullet-rewrite cap reached for user ${userId}, skipping suggestion.` };
+        }
+
+        const role = currentOrMostRecentRole(profile?.work_experience);
+        const provider = resolveProvider(profile?.preferred_model, profile?.email);
+
+        const bullet = await step.run("generate-suggestion", () =>
+            generateResumeUpdateSuggestion(accomplishment.title, accomplishment.description, role, provider),
+        );
+
+        if (!bullet) {
+            return { message: `Suggestion generation failed for accomplishment ${accomplishmentId}, nothing queued.` };
+        }
+
+        const { error } = await admin.database.from("resume_update_suggestions").insert([
+            { user_id: userId, accomplishment_id: accomplishmentId, suggested_bullet: bullet },
+        ]);
+
+        if (error) {
+            throw new Error(`Failed to queue résumé suggestion for accomplishment ${accomplishmentId}: ${error.message}`);
+        }
+
+        return { message: `Queued a résumé suggestion for accomplishment ${accomplishmentId}.` };
+    },
+);
+
+// Marketing broadcasts (admin console expansion item 5) — triggered from
+// actions/adminMarketing.ts's sendBroadcast() after it flips the row to
+// "sending". Chunked via the existing chunkArray() helper (same shape as
+// evaluateJobsAsync's job-batch chunking above), each chunk its own
+// step.run() so a transient failure mid-send retries just that chunk
+// instead of resending everyone. Sends only to profiles with a real email
+// and marketing_opt_out = false — CAN-SPAM compliance (physical address +
+// unsubscribe link) is enforced inside lib/email/resend.ts's
+// sendMarketingEmail(), not duplicated here.
+export const sendMarketingBroadcastAsync = inngest.createFunction(
+    { id: "send-marketing-broadcast", name: "Send Marketing Broadcast", triggers: [{ event: "marketing/broadcast.send" }] },
+    async ({ event, step }) => {
+        const { broadcastId } = event.data as { broadcastId: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: broadcast } = await step.run("fetch-broadcast", async () => {
+            return admin.database
+                .from("marketing_broadcasts")
+                .select("id,subject,body_markdown,status,segment")
+                .eq("id", broadcastId)
+                .maybeSingle<{ id: string; subject: string; body_markdown: string; status: string; segment: "all" | "active_7d" | "inactive_30d" }>();
+        });
+
+        if (!broadcast) {
+            return { message: `Broadcast ${broadcastId} not found, skipping.` };
+        }
+
+        const { getSegmentUserIds } = await import("@/lib/admin/marketing");
+        const segmentUserIds = await step.run("resolve-segment", () => getSegmentUserIds(broadcast.segment));
+
+        const { data: recipients } = await step.run("fetch-recipients", async () => {
+            return admin.database
+                .from("profiles")
+                .select("email,unsubscribe_token")
+                .eq("marketing_opt_out", false)
+                .not("email", "is", null)
+                .in("id", segmentUserIds.length > 0 ? segmentUserIds : ["00000000-0000-0000-0000-000000000000"]);
+        });
+
+        const recipientList = (recipients ?? []) as { email: string; unsubscribe_token: string }[];
+        const chunks = chunkArray(recipientList, 25);
+
+        const { sendMarketingEmail } = await import("@/lib/email/resend");
+        const physicalAddress = process.env.MARKETING_PHYSICAL_ADDRESS ?? "";
+
+        let sentCount = 0;
+        for (let i = 0; i < chunks.length; i++) {
+            const results = await step.run(`send-chunk-${i}`, async () => {
+                const outcomes = await Promise.all(
+                    chunks[i].map((r) =>
+                        sendMarketingEmail({
+                            to: r.email,
+                            subject: broadcast.subject,
+                            body: broadcast.body_markdown,
+                            unsubscribeToken: r.unsubscribe_token,
+                            physicalAddress,
+                            broadcastId,
+                        }),
+                    ),
+                );
+                return outcomes.filter((o) => o.success).length;
+            });
+            sentCount += results;
+        }
+
+        await admin.database
+            .from("marketing_broadcasts")
+            .update({
+                status: "sent",
+                recipient_count: recipientList.length,
+                sent_count: sentCount,
+                sent_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            })
+            .eq("id", broadcastId);
+
+        return { message: `Broadcast ${broadcastId}: ${sentCount}/${recipientList.length} sent.` };
+    },
+);
+
+// Push notifications — the second Marketing broadcast channel, paired
+// with email per the original plan. A stale subscription (browser push
+// service returns 404/410 — the user uninstalled, cleared storage, etc.)
+// is deleted right here rather than left to error again on every future
+// send.
+export const sendPushBroadcastAsync = inngest.createFunction(
+    { id: "send-push-broadcast", name: "Send Push Broadcast", triggers: [{ event: "push/broadcast.send" }] },
+    async ({ event, step }) => {
+        const { title, body, url } = event.data as { title: string; body: string; url?: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: subscriptions } = await step.run("fetch-subscriptions", async () => {
+            return admin.database.from("push_subscriptions").select("id,endpoint,p256dh,auth");
+        });
+
+        const subs = (subscriptions ?? []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+        const chunks = chunkArray(subs, 25);
+        const { sendPushNotification } = await import("@/lib/push");
+
+        let sentCount = 0;
+        for (let i = 0; i < chunks.length; i++) {
+            const outcome = await step.run(`send-chunk-${i}`, async () => {
+                let sent = 0;
+                const staleIds: string[] = [];
+                await Promise.all(
+                    chunks[i].map(async (s) => {
+                        const result = await sendPushNotification(s, { title, body, url });
+                        if (result.success) {
+                            sent++;
+                        } else if (result.expired) {
+                            staleIds.push(s.id);
+                        }
+                    }),
+                );
+                if (staleIds.length > 0) {
+                    await admin.database.from("push_subscriptions").delete().in("id", staleIds);
+                }
+                return { sent, staleCount: staleIds.length };
+            });
+            sentCount += outcome.sent;
+        }
+
+        return { message: `Push broadcast: ${sentCount}/${subs.length} sent.` };
+    },
+);
+
+// Programmatic SEO/GEO content engine (Phase 18 item 1, context/RESUME.md).
+// Two triggers on the same function: a weekly cron for the automatic
+// pipeline, and a manual event fired from a "Generate now" admin button
+// (actions/adminContent.ts) for on-demand extra content or live testing —
+// both run the exact same lib/admin/geoContent.ts logic, no duplicated
+// pick-topic/draft/insert flow. Never fails loudly when there's nothing new
+// to cover — that's a normal steady state, not an error.
+// "Success Story" content repurposing pipeline (Phase 18 item 2,
+// context/RESUME.md). Fired from actions/jobs.ts's setApplicationStatus
+// right after a real 'offered' transition — see lib/admin/socialDrafts.ts
+// for the anonymization rules the draft itself is written under.
+export const generateSuccessStoryAsync = inngest.createFunction(
+    { id: "generate-success-story", name: "Generate Success Story Draft", triggers: [{ event: "success-story/consider" }] },
+    async ({ event, step }) => {
+        const { jobId, userId } = event.data as { jobId: string; userId: string };
+        const { generateAndQueueSuccessStory } = await import("@/lib/admin/socialDrafts");
+        const result = await step.run("generate-and-queue", () => generateAndQueueSuccessStory(jobId, userId));
+
+        return result
+            ? { message: `Queued a success story draft ${result.draftId} for job ${jobId}.` }
+            : { message: `No draft queued for job ${jobId} (job not found or already has one).` };
+    },
+);
+
+// Follow-up timing nudges (build-plan.md §C) — the proactive half of the
+// feature; the inline banner (FollowUpNudge.tsx) is the reactive half. No
+// new paid-API cost (a plain DB query + the already-shipped push infra),
+// unlike Job Alerts' blocked background-search shape — a real, deliberate
+// distinction, not an oversight. Never re-nudges the same job twice
+// (jobs.follow_up_nudged_at is set once and never cleared).
+export const sendFollowUpNudgesAsync = inngest.createFunction(
+    { id: "send-follow-up-nudges", name: "Send Follow-up Timing Nudges", triggers: [{ cron: "0 14 * * 1" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+        const { data: eligibleJobs } = await step.run("find-eligible-jobs", async () => {
+            return admin.database
+                .from("jobs")
+                .select("id,user_id,title,company")
+                .eq("application_status", "applied")
+                .is("follow_up_nudged_at", null)
+                .lte("application_status_updated_at", sevenDaysAgo);
+        });
+
+        const jobs = (eligibleJobs ?? []) as { id: string; user_id: string; title: string | null; company: string | null }[];
+        if (jobs.length === 0) {
+            return { message: "No jobs eligible for a follow-up nudge right now." };
+        }
+
+        const jobsByUser = new Map<string, typeof jobs>();
+        for (const job of jobs) {
+            jobsByUser.set(job.user_id, [...(jobsByUser.get(job.user_id) ?? []), job]);
+        }
+
+        const { sendPushNotification } = await import("@/lib/push");
+        let nudgedUsers = 0;
+
+        for (const [userId, userJobs] of jobsByUser.entries()) {
+            await step.run(`nudge-user-${userId}`, async () => {
+                const { data: subs } = await admin.database
+                    .from("push_subscriptions")
+                    .select("id,endpoint,p256dh,auth")
+                    .eq("user_id", userId);
+
+                const subscriptions = (subs ?? []) as { id: string; endpoint: string; p256dh: string; auth: string }[];
+
+                if (subscriptions.length > 0) {
+                    const count = userJobs.length;
+                    const title = "Time to follow up?";
+                    const body =
+                        count === 1
+                            ? `Your application to ${userJobs[0].company ?? "a company"} has had no update in a week.`
+                            : `${count} applications have had no update in a week.`;
+
+                    const staleIds: string[] = [];
+                    for (const sub of subscriptions) {
+                        const result = await sendPushNotification(sub, { title, body, url: "/missions" });
+                        if (!result.success && result.expired) staleIds.push(sub.id);
+                    }
+                    if (staleIds.length > 0) {
+                        await admin.database.from("push_subscriptions").delete().in("id", staleIds);
+                    }
+                }
+
+                // Marked nudged regardless of whether a push subscription
+                // existed — the inline banner already covers users without
+                // push enabled, and this stops the same job from being
+                // re-evaluated by this cron every week forever.
+                await admin.database
+                    .from("jobs")
+                    .update({ follow_up_nudged_at: new Date().toISOString() })
+                    .in("id", userJobs.map((j) => j.id));
+            });
+            nudgedUsers += 1;
+        }
+
+        return { message: `Evaluated ${jobs.length} stale applications across ${nudgedUsers} users.` };
+    },
+);
+
+// Proactive weekly AI briefing (build-plan.md §H, "AI heavy dashboard" part
+// 2, direct user request). Same "find eligible users, loop, one step per
+// user" shape as sendFollowUpNudgesAsync above. Deliberately does NOT run
+// for every user — only those with real activity this week or a real
+// upcoming deadline, both queried directly (not a blanket "every user gets
+// a call" cron, which would be real recurring cost on completely dormant
+// accounts for zero value). Not gated through checkAndConsumeUsage — that's
+// for user-initiated actions with a daily cap; this is a system-scheduled
+// job already inherently bounded to once/week per eligible user by its own
+// cadence and eligibility filter.
+export const generateWeeklyBriefingsAsync = inngest.createFunction(
+    { id: "generate-weekly-briefings", name: "Generate Weekly AI Dashboard Briefings", triggers: [{ cron: "0 9 * * 1" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+        const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+        const now = new Date().toISOString();
+
+        const eligibleUserIds = await step.run("find-eligible-users", async () => {
+            const ids = new Set<string>();
+
+            const { data: newJobs } = await admin.database
+                .from("jobs")
+                .select("user_id")
+                .gte("found_at", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of newJobs ?? []) ids.add(row.user_id);
+
+            const { data: appEvents } = await admin.database
+                .from("application_events")
+                .select("user_id")
+                .gte("event_date", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of appEvents ?? []) ids.add(row.user_id);
+
+            const { data: interviewEvents } = await admin.database
+                .from("interview_events")
+                .select("user_id")
+                .gte("event_date", sevenDaysAgo)
+                .returns<{ user_id: string }[]>();
+            for (const row of interviewEvents ?? []) ids.add(row.user_id);
+
+            const { data: deadlineJobs } = await admin.database
+                .from("jobs")
+                .select("user_id")
+                .gte("next_deadline_at", now)
+                .lte("next_deadline_at", sevenDaysFromNow)
+                .returns<{ user_id: string }[]>();
+            for (const row of deadlineJobs ?? []) ids.add(row.user_id);
+
+            return Array.from(ids);
+        });
+
+        if (eligibleUserIds.length === 0) {
+            return { message: "No users with real activity or an upcoming deadline this week — nothing generated." };
+        }
+
+        const { generateWeeklyBriefing } = await import("@/lib/weeklyBriefing");
+        let generatedCount = 0;
+
+        for (const userId of eligibleUserIds) {
+            await step.run(`generate-for-${userId}`, async () => {
+                const [{ data: newJobsForUser }, { data: appEventsForUser }, { data: interviewEventsForUser }, { data: deadlineJobsForUser }, { data: profile }] =
+                    await Promise.all([
+                        admin.database.from("jobs").select("id").eq("user_id", userId).gte("found_at", sevenDaysAgo),
+                        admin.database.from("application_events").select("event_type").eq("user_id", userId).gte("event_date", sevenDaysAgo),
+                        admin.database.from("interview_events").select("id").eq("user_id", userId).gte("event_date", sevenDaysAgo),
+                        admin.database
+                            .from("jobs")
+                            .select("title,company,next_deadline_at,next_deadline_label")
+                            .eq("user_id", userId)
+                            .gte("next_deadline_at", now)
+                            .lte("next_deadline_at", sevenDaysFromNow)
+                            .returns<{ title: string | null; company: string | null; next_deadline_at: string; next_deadline_label: string | null }[]>(),
+                        admin.database
+                            .from("profiles")
+                            .select("preferred_model,email,marketing_opt_out,unsubscribe_token")
+                            .eq("id", userId)
+                            .maybeSingle<
+                                Pick<Profile, "preferred_model" | "email"> & {
+                                    marketing_opt_out: boolean;
+                                    unsubscribe_token: string;
+                                }
+                            >(),
+                    ]);
+
+                const applicationsThisWeek = (appEventsForUser ?? []).filter((e: { event_type: string }) => e.event_type === "applied").length;
+                const offersThisWeek = (appEventsForUser ?? []).filter((e: { event_type: string }) => e.event_type === "offered").length;
+
+                const snapshot = {
+                    jobsFoundThisWeek: (newJobsForUser ?? []).length,
+                    applicationsThisWeek,
+                    interviewsThisWeek: (interviewEventsForUser ?? []).length,
+                    offersThisWeek,
+                    upcomingDeadlines: (deadlineJobsForUser ?? []).map((j) => ({
+                        label: j.next_deadline_label || `${j.title ?? "A job"} at ${j.company ?? "a company"}`,
+                        daysAway: Math.max(0, Math.ceil((new Date(j.next_deadline_at).getTime() - Date.now()) / (24 * 60 * 60 * 1000))),
+                    })),
+                };
+
+                const provider = resolveProvider(profile?.preferred_model, profile?.email ?? undefined);
+                const result = await generateWeeklyBriefing(snapshot, provider);
+
+                await admin.database
+                    .from("profiles")
+                    .update({ weekly_briefing: result.summary, weekly_briefing_generated_at: new Date().toISOString() })
+                    .eq("id", userId);
+
+                // Proactive match digest email (build-plan.md §G) — same
+                // real summary already computed above for the in-app card,
+                // reused as the email body rather than a second AI call.
+                // Same CAN-SPAM gate as sendMarketingBroadcastAsync above
+                // (marketing_opt_out + physical address + real unsubscribe
+                // link, all enforced inside sendMarketingEmail itself).
+                const physicalAddress = process.env.MARKETING_PHYSICAL_ADDRESS ?? "";
+                if (profile?.email && profile.marketing_opt_out === false && profile.unsubscribe_token && physicalAddress) {
+                    const { sendMarketingEmail } = await import("@/lib/email/resend");
+                    await sendMarketingEmail({
+                        to: profile.email,
+                        subject: "Your weekly Sortie digest",
+                        body: result.summary,
+                        unsubscribeToken: profile.unsubscribe_token,
+                        physicalAddress,
+                        broadcastId: `weekly-digest-${userId}`,
+                    });
+                }
+            });
+            generatedCount += 1;
+        }
+
+        return { message: `Generated weekly briefings for ${generatedCount} user${generatedCount === 1 ? "" : "s"}.` };
+    },
+);
+
+export const generateGeoContentAsync = inngest.createFunction(
+    {
+        id: "generate-geo-content",
+        name: "Generate Programmatic SEO/GEO Page",
+        triggers: [{ event: "geo/generate-content" }, { cron: "0 8 * * 1" }],
+    },
+    async ({ step }) => {
+        const { generateAndQueueGeoPage } = await import("@/lib/admin/geoContent");
+        const result = await step.run("generate-and-queue", () => generateAndQueueGeoPage());
+
+        return result
+            ? { message: `Queued a new GEO draft page: ${result.slug}` }
+            : { message: "No fresh, well-sampled topic to cover right now — nothing queued." };
+    },
+);
+
+// Vanguard (build-plan.md §J, direct user request) is a one-time $149
+// lifetime purchase, not a Stripe subscription — so unlike Command, there's
+// no recurring invoice.paid webhook to advance current_period_start/
+// current_period_end on api_usage_metrics' own monthly-rolling schedule
+// (lib/subscription.ts's checkUsageLimit keys entirely off that period).
+// Runs daily rather than on a fixed calendar day so each Vanguard holder's
+// own purchase-anniversary period rolls forward on ITS OWN schedule, same
+// "not a shared calendar-month boundary" principle the original
+// api_usage_metrics migration established for every other plan — a user
+// who buys mid-month keeps resetting mid-month forever, not on the 1st.
+// Bulk query bounded to at most `max_seats` (250) rows ever, so a plain
+// per-row loop (same shape as sendFollowUpNudgesAsync/
+// generateWeeklyBriefingsAsync above) is plenty, no batching needed.
+// Inbox/Pipeline split's own TTL auto-archive (same direct user request as
+// the Vanguard/lifetime-plan work above, `agy`-researched — see
+// context/RESUME.md's "draft logic" entry). A job sitting in "inbox"
+// (pre-pipeline, untriaged — see the add-inbox-shortlisted-stages
+// migration) that's still there 14 days after it was found gets archived
+// (is_hidden = true, same lever bulkHideJobs/the Missions "Archive
+// selected" bulk action already use) rather than left to pile up forever —
+// real trackers researched (Huntr/Teal/JobRight) all auto-archive an
+// untouched inbox item instead of letting it become permanent dead weight.
+// A plain bulk UPDATE across all users, not a per-row loop — this is a
+// zero-AI-cost DB-only operation the same shape as the seat-claim work
+// above, just admin-wide instead of user-scoped.
+const INBOX_ARCHIVE_AFTER_DAYS = 14;
+
+export const archiveStaleInboxJobsAsync = inngest.createFunction(
+    { id: "archive-stale-inbox-jobs", name: "Archive Stale Inbox Jobs", triggers: [{ cron: "0 4 * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const archivedCount = await step.run("archive-untouched-inbox-jobs", async () => {
+            const cutoff = new Date(Date.now() - INBOX_ARCHIVE_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+            const { count } = await admin.database
+                .from("jobs")
+                .select("id", { count: "exact", head: true })
+                .eq("application_status", "inbox")
+                .eq("is_hidden", false)
+                .lte("found_at", cutoff);
+
+            if (!count) return 0;
+
+            const { error } = await admin.database
+                .from("jobs")
+                .update({ is_hidden: true })
+                .eq("application_status", "inbox")
+                .eq("is_hidden", false)
+                .lte("found_at", cutoff);
+
+            if (error) {
+                console.error("[inngest] archiveStaleInboxJobsAsync", error);
+                return 0;
+            }
+
+            return count;
+        });
+
+        return { message: `Archived ${archivedCount} untouched Inbox job${archivedCount === 1 ? "" : "s"}.` };
+    },
+);
+
+export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
+    { id: "reset-lifetime-plan-usage-periods", name: "Reset Lifetime-Plan Usage Periods", triggers: [{ cron: "0 3 * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const resetCount = await step.run("roll-expired-periods", async () => {
+            const { data: lifetimeTiers } = await admin.database
+                .from("subscription_plans")
+                .select("tier")
+                .eq("billing_period", "lifetime")
+                .returns<{ tier: string }[]>();
+
+            const tiers = (lifetimeTiers ?? []).map((p) => p.tier);
+            if (tiers.length === 0) return 0;
+
+            const nowIso = new Date().toISOString();
+            const { data: expired } = await admin.database
+                .from("user_subscriptions")
+                .select("user_id,current_period_end")
+                .in("tier", tiers)
+                .eq("status", "active")
+                .lte("current_period_end", nowIso)
+                .returns<{ user_id: string; current_period_end: string }[]>();
+
+            for (const row of expired ?? []) {
+                const newPeriodStart = new Date(row.current_period_end);
+                const newPeriodEnd = new Date(newPeriodStart);
+                newPeriodEnd.setMonth(newPeriodEnd.getMonth() + 1);
+
+                await admin.database
+                    .from("user_subscriptions")
+                    .update({
+                        current_period_start: newPeriodStart.toISOString(),
+                        current_period_end: newPeriodEnd.toISOString(),
+                        updated_at: new Date().toISOString(),
+                    })
+                    .eq("user_id", row.user_id);
+            }
+
+            return (expired ?? []).length;
+        });
+
+        return { message: `Rolled ${resetCount} lifetime-plan usage period${resetCount === 1 ? "" : "s"} forward.` };
+    },
 );

@@ -1,6 +1,8 @@
 # UI Rules
 
-Concise rules for building JobPilot UI. Design assets are available — use them as the source of truth for visual decisions. These rules cover the most important patterns and constraints to keep the UI consistent without over-specifying every detail.
+Concise rules for building Sortie (formerly JobPilot) UI. Design assets are available — use them as the source of truth for visual decisions. These rules cover the most important patterns and constraints to keep the UI consistent without over-specifying every detail.
+
+**2026-07-27 reconciliation note:** several sections below (Cards, Typography Hierarchy, Badges, Buttons, Form Inputs, Table, Empty States) had hardcoded hex values left over from a pre-rebrand draft (`#7C5CFC` purple primary button, `#E7EAF3` borders, `#101828` text, `#99A1AF` muted, etc.) that never got updated during the 2026-07-18 Sortie rebrand and directly contradicted `ui-tokens.md`'s actual amber/teal palette — see `ui-tokens.md`'s own "never hardcode hex" Invariant, which this file was itself violating. Rewritten below to reference tokens instead of literal values.
 
 ---
 
@@ -22,6 +24,20 @@ System font stack, per the approved Sortie concept mockup (corrected 2026-07-18 
 
 ---
 
+## Mobile / Responsive
+
+**Added 2026-08-13 (Phase 11)** after a real, user-caught bug: `ResumeManager.tsx`'s résumé list used a plain `<table className="min-w-[640px]">` wrapped in `overflow-x-auto` — on any phone-width screen this forced horizontal scrolling just to reach the row-actions menu ("Sync to Profile" and friends), which was flagged live, not found in review. This is now a standing rule for every new component, not a one-off fix:
+
+- **Never ship a data table/grid as the only layout for a list of real items.** A `<table>` (or a fixed multi-column grid) needs a real mobile alternative — a stacked-card list below `sm:` (`hidden sm:block` on the table, a separate `sm:hidden` card list with the same data and actions) — not just `overflow-x-auto` as the mobile story. `ResumeManager.tsx`'s fix is the reference pattern: same data, same actions (including the row menu), zero horizontal scroll on either layout.
+- **If a component renders the same interactive controls twice for two layouts** (e.g. a "..." actions-menu trigger in both a mobile card and a desktop table row for the same item), any shared state driving which one is "open" needs to be tagged by which layout triggered it (see `menuState`'s `view: "mobile" | "desktop"` in `ResumeManager.tsx`) — both layouts render simultaneously in the DOM (one CSS-hidden), so untagged shared state opens the same menu twice at once.
+- **Any 2-column split layout** (a workspace with a live preview on one side and tabs/controls on the other, e.g. `ResumeWorkspace.tsx`/`ResumeSlotWorkspace.tsx`'s `lg:grid-cols-[...]`) already collapses to a single stacked column below `lg:` via `grid-cols-1` — keep this pattern for any new workspace-shaped component rather than inventing a new one.
+- Check new components at a real 375px viewport width before considering them done, not just at the default desktop preview size.
+- **Tab bars (`components/ui/Tabs.tsx`) need `overflow-x-auto` on the tablist itself, not just `flex`.** Found 2026-08-20 on `/profile`'s 4-tab set (Personal/Education/Work Experience/Preferences) — a plain `flex w-fit shrink-0` row with no wrap/scroll handling sat right at the edge of a real 375px viewport with zero margin, silently pushing the whole page into horizontal scroll instead of failing loudly. `Tabs.tsx` now contains overflow to the pill bar itself (`overflow-x-auto`, `w-full sm:w-fit`) — this fix is shared, so it already covers every page using this component, not just Profile.
+- **Any page-level `<main>` with `flex flex-col` needs an explicit `w-full`, not just `mx-auto`+`max-w-*`.** Found 2026-08-19 on Missions: the root layout's `<body>` is `flex flex-col` (shared by every page), so a page's own `<main>` is a flex-column item, and a flex-column item's cross-axis (width) sizing doesn't reliably shrink to fit its parent from `align-items: stretch` alone when a descendant is wide enough — it needs both `min-w-0` cascaded down through every flex-column ancestor in the chain **and** an explicit `w-full` on `<main>` itself, confirmed by removing them one at a time and re-measuring `document.documentElement.scrollWidth`. Any component with genuinely wide, fixed-width content (a Kanban board's columns, a wide table, a chart) can silently stretch the whole page horizontally otherwise — check `document.documentElement.scrollWidth === clientWidth` at 375px for any new page, not just that content renders.
+- `app/layout.tsx`'s `<body>` has `overflow-x-hidden` as a defense-in-depth safety net for exactly this class of bug — don't remove it, and don't rely on it as the primary fix (fix the actual overflowing element/ancestor chain first, same as above).
+
+---
+
 ## Navbar
 
 Three nav items: Dashboard, Find Jobs, Profile. Dark ink chrome (`bg-overlay`), per the approved concept mockup — corrected 2026-07-18 (was a plain white bar, which was never actually the approved design).
@@ -36,17 +52,17 @@ Three nav items: Dashboard, Find Jobs, Profile. Dark ink chrome (`bg-overlay`), 
 
 ## Cards
 
-Every content section lives in a card.
+Every content section lives in a card. Flat, not glass — as of 2026-07-27, blur/`backdrop-filter` is reserved exclusively for genuinely floating/sticky chrome (`Navbar`, `JobActionBar`, `FindJobsForm`'s console — see `ui-tokens.md`'s Liquid Glass section), never for an ordinary content card.
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-border-radius: 16px
-padding: 24px
-box-shadow: 0px 1px 3px rgba(0,0,0,0.1), 0px 1px 2px -1px rgba(0,0,0,0.1)
+background: bg-surface
+border: border border-border
+border-radius: rounded-2xl (16px)
+padding: p-6 (24px)
+box-shadow: shadow-card
 ```
 
-Never use colored card backgrounds — always white. Color goes inside cards via badges, bars, and text, never on the card surface itself.
+Never use colored card backgrounds. Color goes inside cards via badges, bars, and text, never on the card surface itself.
 
 ---
 
@@ -59,7 +75,7 @@ Three levels used consistently throughout:
 ```
 font-size: 16px
 font-weight: 600
-color: #101828
+color: text-text-primary
 line-height: 24px
 ```
 
@@ -68,7 +84,7 @@ line-height: 24px
 ```
 font-size: 14px
 font-weight: 500
-color: #101828
+color: text-text-primary
 line-height: 20px
 ```
 
@@ -77,11 +93,11 @@ line-height: 20px
 ```
 font-size: 12px
 font-weight: 400
-color: #99A1AF
+color: text-text-muted
 line-height: 16px
 ```
 
-Stat numbers on dashboard use 30px / weight 600 / color #101828.
+Stat numbers on dashboard use 30px / weight 600 / `text-text-primary`.
 
 ---
 
@@ -95,7 +111,7 @@ font-size: 12px
 font-weight: 500
 ```
 
-Trend badges on stat cards use `border-radius: 4px` (not pill) with `#ECFDF5` background and `#009966` text.
+Trend badges on stat cards use `border-radius: 4px` (`rounded-sm`, not pill) with `bg-success-lightest` background and `text-success-darker` text.
 
 ---
 
@@ -104,10 +120,10 @@ Trend badges on stat cards use `border-radius: 4px` (not pill) with `#ECFDF5` ba
 **Primary button:**
 
 ```
-background: #7C5CFC
-color: #FFFFFF
-border-radius: 8px
-padding: 8px 16px
+background: bg-accent
+color: text-accent-foreground
+border-radius: rounded-md (8px)
+padding: px-4 py-2 (16px / 8px)
 font-size: 14px
 font-weight: 500
 ```
@@ -115,11 +131,11 @@ font-weight: 500
 **Secondary button:**
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-color: #101828
-border-radius: 8px
-padding: 8px 16px
+background: bg-surface
+border: border border-border
+color: text-text-primary
+border-radius: rounded-md (8px)
+padding: px-4 py-2 (16px / 8px)
 ```
 
 ---
@@ -127,13 +143,13 @@ padding: 8px 16px
 ## Form Inputs
 
 ```
-background: #FFFFFF
-border: 1px solid #E7EAF3
-border-radius: 8px
-padding: 8px 12px
+background: bg-surface
+border: border border-border
+border-radius: rounded-md (8px)
+padding: px-3 py-2 (12px / 8px)
 font-size: 14px
-color: #101828
-placeholder color: #99A1AF
+color: text-text-primary
+placeholder color: text-text-muted
 focus: ring-1 ring-accent border-accent
 ```
 
@@ -141,11 +157,11 @@ focus: ring-1 ring-accent border-accent
 
 ## Table (Jobs List)
 
-- No alternating row colors — white rows only, separated by border
-- Row border: `1px solid #E7EAF3` between rows
-- Column headers: uppercase, 12px, font-weight 500, color `#6A7282`
-- Row text: 14px, color `#101828`
-- Hover state: `background: #F9FAFB`
+- No alternating row colors — `bg-surface` rows only, separated by border
+- Row border: `border-b border-border` between rows
+- Column headers: uppercase, 12px, font-weight 500, `text-text-secondary`
+- Row text: 14px, `text-text-primary`
+- Hover state: `hover:bg-surface-secondary`
 
 ---
 
@@ -156,14 +172,14 @@ Inline progress bar shown next to the percentage number.
 ```
 height: 4px
 border-radius: 9999px
-background track: #E7EAF3
+background track: bg-border-light
 ```
 
 Fill color by score:
 
-- 80-100%: `#3F7A4F` (green, `--color-success`)
-- 60-79%: `#4472A8` (steel blue, `--color-info`)
-- Below 60%: `#B5502E` (red-orange, `--color-warning`)
+- 80-100%: `bg-success` (green)
+- 60-79%: `bg-info` (steel blue)
+- Below 60%: `bg-warning` (red-orange)
 
 Score numbers themselves (not the bar) render in `font-mono font-semibold tabular-nums`, colored the same tier — see `FindJobsForm.tsx` job cards for the reference implementation.
 
@@ -178,7 +194,7 @@ border-left: 2px solid var(--color-agent)
 border-radius: 0 8px 8px 0 (rounded only on the non-border side)
 background: bg-agent-light
 padding: px-4 py-3
-label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark, reading "Agent read"
+label: font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark, reading "AI Navigator reads" (renamed from "Agent read" 2026-08-17, per direct user request)
 body: text-sm text-agent-dark
 ```
 
@@ -192,7 +208,7 @@ The point is reliability, not decoration: a user should be able to tell "the AI 
 
 Every section that can be empty must have an empty state. Keep it minimal:
 
-- Short descriptive text in `color: #99A1AF`
+- Short descriptive text in `text-text-muted`
 - Optional icon above text
 - CTA button if there's a logical next action
 

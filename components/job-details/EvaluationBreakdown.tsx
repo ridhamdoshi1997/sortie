@@ -14,6 +14,7 @@ import {
 
 import type { DimensionName } from "@/lib/evaluator";
 import type { JobEvaluationDimension } from "@/types";
+import { Tooltip } from "@/components/ui/Tooltip";
 
 type Props = {
     evaluation: JobEvaluationDimension[];
@@ -23,14 +24,22 @@ type Props = {
 
 type Grade = "A" | "B" | "C" | "D" | "F";
 
-// A 5-step traffic-light gradient across the app's existing semantic colors
-// (success/info/warning/error) instead of collapsing A/B and C/D/F into
-// just two buckets — every grade gets its own distinct, scannable color.
+// Redesigned 2026-07-28 — the previous version was a literal 5-color
+// traffic-light gradient (green/blue/amber/red/dark-red), flagged by design
+// review as reading like a generic B2B dashboard rather than a premium tool.
+// Every grade here is AI-generated evaluation output, so per ui-tokens.md's
+// invariant (`--color-accent` is reserved for user actions, never AI
+// content), the "good" end of the scale uses `--color-agent` (teal, the
+// app's existing AI-content signal) at varying intensity instead of amber —
+// the same bg-agent-light/text-agent-dark pairing MatchScore.tsx's "Agent
+// read" callout already uses. Only the two genuinely-concerning grades keep
+// warning/error — a middling grade isn't an error, so it stays neutral gray
+// rather than defaulting to a "yellow alert" the way a rainbow scale would.
 const GRADE_STYLES: Record<Grade, { label: string; badge: string }> = {
-    A: { label: "Excellent", badge: "bg-success-lightest text-success-foreground" },
-    B: { label: "Good", badge: "bg-info-lightest text-info-foreground" },
-    C: { label: "Fair", badge: "bg-warning/10 text-warning" },
-    D: { label: "Weak", badge: "bg-error/10 text-error" },
+    A: { label: "Excellent", badge: "bg-agent text-agent-foreground" },
+    B: { label: "Good", badge: "bg-agent-light text-agent-dark" },
+    C: { label: "Fair", badge: "bg-surface-secondary text-text-secondary" },
+    D: { label: "Weak", badge: "bg-warning/10 text-warning" },
     F: { label: "Poor", badge: "bg-error text-error-foreground" },
 };
 
@@ -50,6 +59,26 @@ const DIMENSION_ICONS: Record<DimensionName, LucideIcon> = {
     Legitimacy: ShieldCheck,
 };
 
+// Contextual tooltips (build-plan.md §H) — what each dimension GENERALLY
+// measures, distinct from `dim.note`'s per-job-specific reasoning already
+// shown below it. A first-time user has no way to know what "Application
+// effort-to-value" or "Legitimacy" even mean as categories without this.
+// Upgraded 2026-08-20 from a plain native `title` attribute to the new
+// components/ui/Tooltip.tsx primitive — same copy, a real positioned panel
+// instead of the browser's own delayed/inconsistently-styled tooltip.
+const DIMENSION_EXPLANATIONS: Record<DimensionName, string> = {
+    "Skills/tech match": "How well your listed skills align with what this job actually requires.",
+    "Seniority/level fit": "Whether this role's real seniority matches your experience level — not just the job title.",
+    "Compensation fit": "How the posted or inferred pay compares to your stated salary expectations.",
+    "Location/remote fit": "Whether the role's location/remote policy matches your own preferences.",
+    "Domain/industry fit": "How closely this company's industry matches your background or stated interests.",
+    "Growth trajectory": "What this role signals about your career trajectory — a step up, sideways, or down.",
+    "Culture/values signal": "What the job posting and company research suggest about working style and values fit.",
+    "Visa/work-authorization fit": "Whether your work authorization status is likely compatible with this role, based on what's disclosed.",
+    "Application effort-to-value": "Whether the likely effort to apply well is proportionate to the role's real upside.",
+    Legitimacy: "Real-listing signals — vague requirements, generic descriptions, or other red flags of a low-quality posting.",
+};
+
 function DimensionCard({ dim }: { dim: JobEvaluationDimension }) {
     const style = GRADE_STYLES[dim.grade];
     const Icon = DIMENSION_ICONS[dim.dimension as DimensionName] ?? Gauge;
@@ -61,7 +90,11 @@ function DimensionCard({ dim }: { dim: JobEvaluationDimension }) {
             </span>
             <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <div className="flex items-center justify-between gap-2">
-                    <p className="text-sm font-medium leading-5 text-text-primary">{dim.dimension}</p>
+                    <Tooltip content={DIMENSION_EXPLANATIONS[dim.dimension as DimensionName]}>
+                        <p className="text-sm font-medium leading-5 text-text-primary underline decoration-dotted decoration-text-muted/50 underline-offset-2">
+                            {dim.dimension}
+                        </p>
+                    </Tooltip>
                     <span
                         className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-mono text-[11px] font-semibold ${style.badge}`}
                     >
@@ -83,7 +116,7 @@ export function EvaluationBreakdown({ evaluation, recommendationScore, overallGr
     const overallStyle = overallGrade ? GRADE_STYLES[overallGrade] : null;
 
     return (
-        <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+        <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
             <div className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
                     10-Dimension Evaluation

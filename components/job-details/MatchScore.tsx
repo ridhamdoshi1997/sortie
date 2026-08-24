@@ -6,6 +6,7 @@ type Props = {
     matchReason: string | null;
     evaluation?: JobEvaluationDimension[] | null;
     recommendationScore?: number | null;
+    titleScopeMismatch?: { flagged: boolean; note: string } | null;
 };
 
 // Below this, Phase 9's spec calls it out visually — never hidden, never
@@ -19,6 +20,7 @@ export function MatchScore({
     matchReason,
     evaluation,
     recommendationScore,
+    titleScopeMismatch,
 }: Props) {
     const safeEvaluation = evaluation ?? [];
 
@@ -27,14 +29,15 @@ export function MatchScore({
         legitimacyDimension && (legitimacyDimension.grade === "D" || legitimacyDimension.grade === "F");
     const belowThreshold =
         recommendationScore != null && recommendationScore < RECOMMENDATION_THRESHOLD;
+    const scopeMismatchFlag = titleScopeMismatch?.flagged ?? false;
 
     return (
         <>
-            <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+            <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
                 <div className="mb-4 flex items-center gap-2">
                     <span className="h-1.5 w-1.5 rounded-full bg-agent" />
                     <h2 className="font-mono text-[11px] font-semibold tracking-wide text-agent uppercase">
-                        Agent read
+                        AI Navigator reads
                     </h2>
                 </div>
                 <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
@@ -43,8 +46,16 @@ export function MatchScore({
                     </p>
                 </div>
 
-                {(legitimacyFlag || belowThreshold) && (
+                {(legitimacyFlag || belowThreshold || scopeMismatchFlag) && (
                     <div className="mt-4 flex flex-col gap-2">
+                        {scopeMismatchFlag && (
+                            <div className="flex items-start gap-2 rounded-lg bg-warning/10 px-4 py-3">
+                                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
+                                <p className="text-sm font-medium leading-6 text-warning">
+                                    Possible title/scope mismatch — {titleScopeMismatch!.note}
+                                </p>
+                            </div>
+                        )}
                         {legitimacyFlag && (
                             <div className="flex items-start gap-2 rounded-lg bg-error/10 px-4 py-3">
                                 <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />

@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@insforge/sdk/ssr";
 
-const allowedProviders = new Set(["google", "github"]);
-const verifierCookieName = "jobpilot_oauth_code_verifier";
+const allowedProviders = new Set(["google", "github", "linkedin", "apple", "microsoft"]);
+const verifierCookieName = "sortie_oauth_code_verifier";
 
 type RouteContext = {
   params: Promise<{

@@ -1,9 +1,5 @@
 <div align="center">
   <br />
-    <a href="https://youtu.be/9dKA2hq4vf0" target="_blank">
-      <img src="public/readme/readme-hero.webp" alt="Project Banner">
-    </a>
-  <br />
 
   <div>
 <img src="https://img.shields.io/badge/-Next.js-black?style=for-the-badge&logo=Next.js&logoColor=white" />
@@ -11,169 +7,131 @@
 <img src="https://img.shields.io/badge/-Tailwind%20CSS-06B6D4?style=for-the-badge&logo=Tailwind%20CSS&logoColor=white" />
 <img src="https://img.shields.io/badge/-shadcn%2Fui-000000?style=for-the-badge&logo=shadcnui&logoColor=white" />
 <br />
-<img src="https://img.shields.io/badge/-OpenAI%20GPT--4o-412991?style=for-the-badge&logo=OpenAI&logoColor=white" />
+<img src="https://img.shields.io/badge/-Gemini%20%7C%20GPT--4o%20%7C%20Claude-412991?style=for-the-badge" />
 <img src="https://img.shields.io/badge/-Stagehand-orange?style=for-the-badge" />
 <img src="https://img.shields.io/badge/-Browserbase-000000?style=for-the-badge" />
 <img src="https://img.shields.io/badge/-InsForge-darkgreen?style=for-the-badge" />
 
   </div>
 
-  <h3 align="center">JobPilot | Match-tracking AI Agent</h3>
+  <h3 align="center">Sortie — your career operations command center</h3>
 
-   <div align="center">
-     Build this project step by step with our detailed tutorial on <a href="https://www.youtube.com/watch?v=XUkNR-JfHwo" target="_blank"><b>JavaScript Mastery</b></a> YouTube. Join the JSM family!
-    </div>
+  <div align="center">
+    Scan the field, score what's worth your time, and land with a file on every target.
+  </div>
 </div>
- 
-## 📋 <a name="table">Table of Contents</a>
+
+## 📋 Table of Contents
 
 1. ✨ [Introduction](#introduction)
 2. ⚙️ [Tech Stack](#tech-stack)
-3. 🔋 [Features](#features)
+3. 🔋 [What it does](#features)
 4. 🤸 [Quick Start](#quick-start)
-5. 🔗 [Assets](#links)
-6. 🚀 [More](#more)
-
-## 🚨 Tutorial
-
-This repository contains the code corresponding to an in-depth tutorial available on our YouTube channel, <a href="https://www.youtube.com/@javascriptmastery/videos" target="_blank"><b>JavaScript Mastery</b></a>.
-
-If you prefer visual learning, this is the perfect resource for you. Follow our tutorial to learn how to build projects like these step-by-step in a beginner-friendly manner!
-
-<a href="https://youtu.be/9dKA2hq4vf0" target="_blank"><img src="https://github.com/sujatagunale/EasyRead/assets/151519281/1736fca5-a031-4854-8c09-bc110e3bc16d" /></a>
 
 ## <a name="introduction">✨ Introduction</a>
 
-JobPilot is an autonomous, full-stack AI agent that transforms how technical job seekers find work by simultaneously browsing LinkedIn, Wellfound, and YC Jobs to discover, score, and apply to roles. Powered by Next.js, GPT-4o, and Browserbase/Stagehand automation, the app dynamically customizes resumes and executes real browser application forms autonomously. More than just a utility, JobPilot serves as a masterclass in modern agentic engineering, utilizing five core open-source skills—/architect, /remember, /review, /recover, and /imprint—to demonstrate how a single developer with a structured system can rapidly ship durable, production-grade AI software.
+Sortie is a full-stack AI career-ops tool: it discovers jobs across multiple sources, grades each one against your real profile on a 10-dimension A–F rubric, researches the company behind it, and helps you carry that intelligence all the way through interviews, negotiation, and a portable long-term career record — not just a single job search.
 
-An experimental Browserbase/Stagehand apply path is included for review — see [BROWSERBASE_REPORT.md](BROWSERBASE_REPORT.md) for full details on what was attempted and where it currently stands.
+It deliberately does **not** auto-apply or mass-autofill applications. The product's whole point is aiming carefully at a shortlist worth your time, not spraying applications everywhere.
 
-If you're getting started and need assistance or face any bugs, join our active Discord community with over **50k+** members. It's a place where people help each other out.
-
-<a href="https://discord.com/invite/n6EdbFJ" target="_blank"><img src="https://github.com/sujatagunale/EasyRead/assets/151519281/618f4872-1e10-42da-8213-1d69e486d02e" /></a>
+Sortie began as a fork of a JavaScript Mastery tutorial project (`adrianhajdin/job_pilot`) but has since been rebuilt into a distinct product with its own name, design system, and feature set — nothing from that original scope is still an accurate description of what's here today.
 
 ## <a name="tech-stack">⚙️ Tech Stack</a>
 
-- **[Next.js](https://nextjs.org/)** is a full-stack React framework that powers JobPilot's user interface, utilizing the App Router, Server Actions, and API Routes to deliver server-rendered components and high-performance client-side navigation.
-- **[TypeScript](https://www.typescriptlang.org/)** is a strongly typed programming language that builds on JavaScript, ensuring strict type safety across the entire codebase and providing a maintainable environment for complex agent orchestration.
-- **[Tailwind v4](https://tailwindcss.com/)** is a utility-first CSS framework used for rapid UI development, providing a clean, responsive, and easily customized styling infrastructure.
-- **[shadcn/ui](https://ui.shadcn.com/)** is a collection of re-usable UI components built using Radix Primitives and Tailwind CSS, serving as the design system for the app's dashboard, tables, and job inventory views.
-- **[OpenAI GPT-4o](https://openai.com/)** is a highly capable multimodal AI model that serves as the core intelligence engine, parsing job descriptions to compute match scores, tailoring resumes, and driving the form-filling automation logic.
-- **[Stagehand](https://github.com/browserbase/stagehand)** is an AI-driven browser agent built on top of Playwright that uses LLMs to interpret page elements dynamically, allowing JobPilot to execute LinkedIn Easy Apply paths and handle external ATS form-filling.
-- **[Browserbase](https://www.browserbase.com/)** is a headless cloud browser platform that manages infrastructure, session persistence, authentication states, and CAPTCHA solving so background jobs can run through realistic browser instances.
-- **[InsForge](https://insforge.com/)** is a comprehensive backend-as-a-service provider that supplies the relational PostgreSQL database to manage the job inventory, handles user authentication, and provides secure file storage for assets.
-- **[PostHog](https://posthog.com/)** is an all-in-one product analytics platform used to track user engagement, system performance metrics, and the success rates of automated application paths.
+- **[Next.js](https://nextjs.org/)** — App Router, Server Actions, and API Routes for the full-stack UI.
+- **[TypeScript](https://www.typescriptlang.org/)** — strict types across the codebase.
+- **[Tailwind CSS](https://tailwindcss.com/)** + **[shadcn/ui](https://ui.shadcn.com/)** — the design system, driven entirely by design tokens (see `context/ui-tokens.md`).
+- **[InsForge](https://insforge.dev/)** — Postgres database, auth (Google/GitHub OAuth), storage, and row-level security.
+- **Multi-provider AI router** — Gemini, GPT-4o, Claude, and OpenRouter behind one interface (`lib/models.ts`), user-selectable per feature.
+- **[SerpApi](https://serpapi.com/)** — primary job-discovery source (Google Jobs), with fallback account chaining.
+- **[Stagehand](https://github.com/browserbase/stagehand)** on **[Browserbase](https://www.browserbase.com/)** — AI-driven headless browsing for company research.
+- **[Inngest](https://www.inngest.com/)** — background jobs and scheduled crons (e.g. the weekly AI briefing).
+- **[PostHog](https://posthog.com/)** — product analytics.
+- **[Resend](https://resend.com/)** — transactional email.
 
+## <a name="features">🔋 What it does</a>
 
-## <a name="features">🔋 Features</a>
+👉 **Multi-source job discovery** — searches across configured sources and normalizes results into one pipeline, with dedup and staleness checks.
 
-👉 **LinkedIn Job Discovery**: Authenticated LinkedIn search utilizing a saved Browserbase context session to fetch job titles, companies, locations, and source/apply URLs automatically.
+👉 **10-dimension AI evaluation** — every job is graded A–F across ten fixed dimensions with a one-line justification each, plus matched/missing skills against your real profile.
 
-👉 **Match Scoring**: Advanced evaluation where each discovered job is parsed and scored against your professional profile by an LLM, then ranked by match percentage.
+👉 **Deep company research** — an AI browser agent visits a company's public pages and builds a structured dossier (overview, tech stack, culture, why the role exists, interview talking points).
 
-👉 **Job Inventory**: A central, filterable dashboard table that organizes matched jobs with quick access to source links, external apply links, application types, and real-time status.
+👉 **Document generation** — tailored ATS resumes and cover letters generated from your profile and the specific job, with an AI co-pilot chat for revisions, plus PDF/DOCX/Markdown export.
 
-👉 **Job Details**: A dedicated, per-job review view featuring a transparent match breakdown, full descriptions, direct resume controls, and manual apply triggers.
+👉 **Application tracking ("Missions")** — a Kanban + list pipeline across the full lifecycle, from saved through applied, interviewing, offered, or rejected.
 
-👉 **Resume Generation & Tailoring**: Dynamic engine that generates a foundational resume from your user profile, then instantly customizes it to target specific job descriptions.
+👉 **Interview & negotiation prep** — predicted behavioral and technical questions, STAR-shaped answers pulled from your own story bank, and negotiation scripts built from a leverage synthesis.
 
-👉 **LinkedIn Easy Apply**: An experimental, automated application path utilizing saved LinkedIn session contexts and Stagehand DOM mode to submit applications directly.
+👉 **Career OS** — a portable, own-your-data career timeline that outlives any single job search: promotion/review prep, an always-warm resume, and a private "why I left" log.
 
-👉 **External Apply Attempt**: An experimental, hybrid-mode browser path powered by Stagehand designed to navigate complex external ATS forms and complete inputs autonomously.
+👉 **Navigator** — a global AI copilot available throughout the app for ad hoc questions grounded in your real data.
 
-👉 **Session Recordings**: Complete transparency layer that links every automated application attempt to a Browserbase video recording URL for auditing and debugging.
-
-And many more, including code architecture and reusability.
+This list is intentionally a summary, not the full inventory — see `context/build-plan.md`'s Master Feature Inventory for the complete, currently-tracked feature map, and `context/RESUME.md` for what's actually shipped right now.
 
 ## <a name="quick-start">🤸 Quick Start</a>
 
-Follow these steps to set up the project locally on your machine.
-
 **Prerequisites**
-
-Make sure you have the following installed on your machine:
 
 - [Git](https://git-scm.com/)
 - [Node.js](https://nodejs.org/en)
-- [npm](https://www.npmjs.com/) (Node Package Manager)
+- [npm](https://www.npmjs.com/)
 
-**Cloning the Repository**
-
-```bash
-git clone https://github.com/adrianhajdin/job_pilot.git
-cd job_pilot
-```
-
-**Installation**
-
-Install the project dependencies using npm:
+**Clone and install**
 
 ```bash
+git clone https://github.com/ridhamdoshi1997/sortie.git
+cd sortie
 npm install
 ```
 
-**Set Up Environment Variables**
+**Environment variables**
 
-Create a new file named `.env` in the root of your project and add the following content:
+Create a `.env` in the project root. These are the variables the app reads (get real values from each provider's own dashboard — InsForge, SerpApi, Google AI Studio/OpenAI/Anthropic/OpenRouter, Browserbase, PostHog, Resend, Inngest, Apify):
 
 ```env
-NEXT_PUBLIC_INSFORGE_URL=https://9zb7h4wq.us-east.insforge.app
+NEXT_PUBLIC_INSFORGE_URL=
 NEXT_PUBLIC_INSFORGE_ANON_KEY=
+INSFORGE_API_KEY=
 
 NEXT_PUBLIC_POSTHOG_KEY=
-NEXT_PUBLIC_POSTHOG_HOST=https://eu.i.posthog.com
+NEXT_PUBLIC_POSTHOG_HOST=
 
+GEMINI_API_KEY=
 OPENAI_API_KEY=
+ANTHROPIC_API_KEY=
+OPENROUTER_API_KEY=
+PERPLEXITY_API_KEY=
+
+SERPAPI_KEY=
+SERPAPI_KEY_FALLBACK=
+SERPAPI_KEY_FALLBACK_2=
+ADZUNA_APP_ID=
+ADZUNA_APP_KEY=
+APIFY_API_TOKEN=
 
 BROWSERBASE_API_KEY=
 BROWSERBASE_PROJECT_ID=
 
-ADZUNA_APP_ID=
-ADZUNA_APP_KEY=
+INNGEST_EVENT_KEY=
+INNGEST_SIGNING_KEY=
+
+RESEND_API_KEY=
+
+NEXT_PUBLIC_VAPID_PUBLIC_KEY=
+VAPID_PRIVATE_KEY=
+
+ADMIN_EMAILS=
 ```
 
-Replace the placeholder values with your real credentials. You can get these by signing up at: [**InsForge**](https://insforge.dev/), [**Browserbase**](https://www.browserbase.com/), [**OpenAI**](https://platform.openai.com/), [**PostHog**](https://posthog.com/), [**Adzuna**](https://www.adzuna.com/)
-**Running the Project**
+**Run it**
 
 ```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser to view the project.
+Open [http://localhost:3001](http://localhost:3001) (see `package.json`'s `dev` script for the port) in your browser.
 
-**How It Works**
+**Deploying**
 
-1. **Set up your profile** — fill in your experience, skills, target role, salary expectations, and upload a base resume PDF
-2. **Connect LinkedIn** — save a LinkedIn browser session via Browserbase so job discovery can run authenticated
-3. **Find Jobs** — the agent searches LinkedIn for roles matching your target, scores each one, and saves strong matches to your job inventory
-4. **Review matches** — browse the `/jobs` list, click into any role for the full description, match breakdown, and apply links
-5. **Tailor and apply** — generate a tailored resume for a specific role, then use the apply links directly or trigger the experimental Browserbase apply attempt
-
-**Browserbase Integration**
-
-See BROWSERBASE_REPORT.md for a detailed report on how Browserbase and Stagehand are used in this project, including the full history of the apply automation experiments and the current project state.
-
-**Deploy on Vercel**
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out the [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
-
-## <a name="links">🔗 Assets</a>
-
-Assets and snippets used in the project can be found in the **[video kit](https://jsm.dev/jobpilot-kit)**.
-
-<a href="https://jsm.dev/jobpilot-kit" target="_blank">
-  <img src="public/readme/readme-videokit.webp" alt="Video Kit Banner">
-</a>
-
-## <a name="more">🚀 More</a>
-
-**Advance your skills with our Pro Course**
-
-Enjoyed creating this project? Dive deeper into our PRO courses for a richer learning adventure. They're packed with
-detailed explanations, cool features, and exercises to boost your skills. Give it a go!
-
-<a href="https://jsm.dev/jobpilot-jsm" target="_blank">
-  <img src="public/readme/readme-jsmpro.webp" alt="Project Banner">
-</a>
+Deployed via the [Vercel Platform](https://vercel.com/). After any deploy that touches scheduled functions, re-sync Inngest with `curl -X PUT <your-deployment-url>/api/inngest`.

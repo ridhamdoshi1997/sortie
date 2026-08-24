@@ -28,11 +28,23 @@ type Props = {
     usageLabel?: string;
     isGenerating?: boolean;
     onImprove?: () => void;
+    /** Model/resume-theme controls, rendered by the caller — this component
+     * doesn't know about ModelSelector/ThemeSelector's own prop shapes, it
+     * just has a slot for them in its header. */
+    settingsRow?: React.ReactNode;
 };
 
 // Sortie's own scoring language. Deliberately not quoting an industry
 // "ATS threshold" statistic — this is our assessment of fit against this
 // posting, and the copy says so rather than implying an external standard.
+//
+// Redesigned 2026-07-28 — top two tiers were a literal green/blue traffic
+// light. This score is AI-generated, so "Strong fit" uses --color-agent
+// (the app's AI-content signal, not a generic success green) and "Decent
+// fit" is neutral gray rather than an "info" blue — a decent-but-unremarkable
+// fit isn't a notable event worth its own color. The bottom two tiers keep
+// warning/error: their copy already carries real cautionary guidance
+// ("reconsider the role"), so that severity stays intentional, not decorative.
 function scoreBand(score: number): {
     label: string;
     ring: string;
@@ -43,18 +55,18 @@ function scoreBand(score: number): {
     if (score >= 8) {
         return {
             label: "Strong fit",
-            ring: "text-success",
-            text: "text-success-foreground",
-            chip: "bg-success-lightest text-success-foreground",
+            ring: "text-agent",
+            text: "text-agent-dark",
+            chip: "bg-agent-light text-agent-dark",
             guidance: "This resume already lines up well with the posting. Tailoring will be light-touch.",
         };
     }
     if (score >= 6) {
         return {
             label: "Decent fit",
-            ring: "text-info",
-            text: "text-info-foreground",
-            chip: "bg-info-lightest text-info-foreground",
+            ring: "text-text-secondary",
+            text: "text-text-primary",
+            chip: "bg-surface-secondary text-text-secondary",
             guidance: "A solid base with real gaps worth closing before you apply.",
         };
     }
@@ -141,12 +153,12 @@ function StatusIcon({ status }: { status: GapStatus }) {
     );
 }
 
-export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove }: Props) {
+export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove, settingsRow }: Props) {
     const band = scoreBand(data.score);
     const totalKeywords = data.matchedKeywords.length + data.missingKeywords.length;
 
     return (
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
             {/* Header */}
             <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
                 <div className="flex items-center gap-3">
@@ -157,11 +169,14 @@ export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove }:
                         Resume fit for this job
                     </h2>
                 </div>
-                {usageLabel && (
-                    <span className="rounded-full border border-border px-3 py-1 font-mono text-[11px] tracking-wide text-text-muted">
-                        {usageLabel}
-                    </span>
-                )}
+                <div className="flex flex-wrap items-center gap-4">
+                    {usageLabel && (
+                        <span className="rounded-full border border-border px-3 py-1 font-mono text-[11px] tracking-wide text-text-muted">
+                            {usageLabel}
+                        </span>
+                    )}
+                    {settingsRow}
+                </div>
             </div>
 
             {/* Score + guidance */}
@@ -259,18 +274,24 @@ export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove }:
                 )}
             </div>
 
-            {/* CTA */}
-            <div className="border-t border-border bg-surface-secondary p-6">
-                <button
-                    type="button"
-                    disabled={isGenerating}
-                    onClick={onImprove}
-                    className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
-                >
-                    {isGenerating ? "Tailoring your resume..." : "Improve my resume for this job"}
-                    {!isGenerating && <ArrowRight className="h-4 w-4" />}
-                </button>
-            </div>
+            {/* CTA — only when a caller actually wires onImprove. The
+                job-details page doesn't: DocumentGenerator right below this
+                panel already owns the real "generate tailored resume" flow,
+                so rendering this unconditionally was a second, non-functional
+                button duplicating it. */}
+            {onImprove && (
+                <div className="border-t border-border bg-surface-secondary p-6">
+                    <button
+                        type="button"
+                        disabled={isGenerating}
+                        onClick={onImprove}
+                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                    >
+                        {isGenerating ? "Tailoring your resume..." : "Improve my resume for this job"}
+                        {!isGenerating && <ArrowRight className="h-4 w-4" />}
+                    </button>
+                </div>
+            )}
         </section>
     );
 }

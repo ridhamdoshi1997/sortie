@@ -9,7 +9,7 @@ type CompletionInput = {
   years_experience: number | null;
   skills: string[];
   work_experience: { company: string }[] | null;
-  education: { degree: string | null } | null;
+  education: { degree: string | null }[] | null;
 };
 
 type CompletionResult = {
@@ -28,7 +28,7 @@ export function calculateCompletion(data: CompletionInput): CompletionResult {
     { field: "YEARS EXP", filled: data.years_experience !== null },
     { field: "SKILLS", filled: (data.skills ?? []).length > 0 },
     { field: "WORK EXPERIENCE", filled: (data.work_experience ?? []).length > 0 },
-    { field: "EDUCATION", filled: !!data.education?.degree },
+    { field: "EDUCATION", filled: (data.education ?? []).some((e) => !!e.degree) },
   ];
 
   const missingFields = checks.filter((c) => !c.filled).map((c) => c.field);

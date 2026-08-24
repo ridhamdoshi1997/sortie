@@ -1,4 +1,8 @@
-import { GitBranch, Globe, ShieldCheck } from "lucide-react";
+import { ShieldCheck } from "lucide-react";
+
+import { EmailPasswordForm } from "@/components/auth/EmailPasswordForm";
+import { GoogleOneTap } from "@/components/auth/GoogleOneTap";
+import { AppleIcon, GitHubIcon, GoogleIcon, LinkedInIcon, MicrosoftIcon } from "@/components/auth/BrandIcons";
 
 const errorMessages: Record<string, string> = {
   callback: "We could not finish signing you in. Please try again.",
@@ -10,70 +14,105 @@ type Props = {
   error?: string;
 };
 
+// Redesigned 2026-08-20 per agy research on modern dev-tool auth cards
+// (Linear/Vercel/Raycast-style): a single centered card, not the previous
+// split hero/form layout — research flagged split screens as reading
+// "enterprise B2B," which this app's own dark mission-console identity
+// doesn't need. Form-first ordering (not OAuth-first, the research's
+// general default) was kept per the user's own reference screenshot,
+// which explicitly showed credentials first with a provider icon row
+// below. Google is the one full-width "primary" provider — the research's
+// hybrid pattern for apps supporting more than 2-3 providers — with the
+// other four as a secondary icon row, rather than 5 stacked full-width
+// buttons or 5 equal-weight icons.
 export function LoginCard({ error }: Props) {
   const message = error ? errorMessages[error] : null;
 
   return (
-    <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
-      <div className="grid w-full max-w-5xl overflow-hidden rounded-[24px] border border-border bg-surface shadow-card lg:grid-cols-[1.05fr_0.95fr]">
-        <div className="landing-hero-glow flex min-h-[440px] flex-col justify-between border-b border-border p-8 sm:p-10 lg:border-b-0 lg:border-r">
-          <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-text-secondary">
-              <ShieldCheck aria-hidden className="h-4 w-4 text-accent" />
-              OAuth secured by InsForge
-            </div>
-            <h1 className="mt-8 max-w-xl text-[clamp(2.35rem,5vw,4.25rem)] font-semibold leading-[0.96] tracking-[-0.04em] text-text-slate">
-              Sign in and let the agent prep your next application.
-            </h1>
-            <p className="mt-6 max-w-lg text-base leading-7 text-text-secondary sm:text-lg">
-              Connect with Google or GitHub to start building your profile,
-              matching jobs, and creating tailored application materials.
-            </p>
+    <section className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
+      <GoogleOneTap />
+      <div className="w-full max-w-sm rounded-2xl border border-border bg-surface p-8 shadow-card">
+        <div className="flex flex-col items-center text-center">
+          <div className="inline-flex items-center gap-2 rounded-full border border-border bg-surface-secondary px-3 py-1 text-xs font-medium text-text-secondary">
+            <ShieldCheck aria-hidden className="h-4 w-4 text-accent" />
+            OAuth secured by InsForge
           </div>
-
-          <p className="mt-10 text-sm font-medium text-text-secondary">
-            New users are routed to profile setup after sign-in.
+          <h1 className="mt-5 text-2xl font-semibold leading-8 text-text-primary">Sign in to Sortie</h1>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Let the agent prep your next application.
           </p>
         </div>
 
-        <div className="flex flex-col justify-center p-8 sm:p-10">
-          <div>
-            <p className="text-sm font-medium text-text-secondary">Welcome to</p>
-            <h2 className="mt-2 text-3xl font-semibold leading-9 text-text-primary">
-              Sortie
-            </h2>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Choose your preferred provider to continue.
-            </p>
+        {message ? (
+          <div className="mt-5 rounded-md border border-error bg-surface px-4 py-3 text-sm font-medium text-error">
+            {message}
           </div>
+        ) : null}
 
-          {message ? (
-            <div className="mt-6 rounded-md border border-error bg-surface px-4 py-3 text-sm font-medium text-error">
-              {message}
-            </div>
-          ) : null}
-
-          <div className="mt-8 grid gap-3">
-            <form action="/api/auth/oauth/google" method="get">
-              <button
-                type="submit"
-                className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <Globe aria-hidden className="h-5 w-5 text-accent" />
-                Continue with Google
-              </button>
-            </form>
-            <form action="/api/auth/oauth/github" method="get">
-              <button
-                type="submit"
-                className="inline-flex min-h-12 w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 py-2 text-sm font-medium text-text-primary transition-colors hover:bg-surface-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-              >
-                <GitBranch aria-hidden className="h-5 w-5 text-text-primary" />
-                Continue with GitHub
-              </button>
-            </form>
-          </div>
+        <div className="mt-6">
+          <EmailPasswordForm />
         </div>
+
+        <div className="mt-6 flex items-center gap-3">
+          <div className="h-px flex-1 bg-border" />
+          <span className="text-xs font-medium text-text-muted">or continue with</span>
+          <div className="h-px flex-1 bg-border" />
+        </div>
+
+        <form action="/api/auth/oauth/google" method="get" className="mt-5">
+          <button
+            type="submit"
+            className="inline-flex min-h-11 w-full items-center justify-center gap-3 rounded-md border border-border bg-surface px-4 text-sm font-medium text-text-primary transition-colors hover:bg-surface-secondary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          >
+            <GoogleIcon className="h-4.5 w-4.5 text-accent" />
+            Continue with Google
+          </button>
+        </form>
+
+        <div className="mt-3 flex items-center justify-center gap-3">
+          <form action="/api/auth/oauth/github" method="get">
+            <button
+              type="submit"
+              aria-label="Continue with GitHub"
+              title="Continue with GitHub"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <GitHubIcon className="h-4.5 w-4.5" />
+            </button>
+          </form>
+          <form action="/api/auth/oauth/linkedin" method="get">
+            <button
+              type="submit"
+              aria-label="Continue with LinkedIn"
+              title="Continue with LinkedIn"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <LinkedInIcon className="h-4.5 w-4.5" />
+            </button>
+          </form>
+          <form action="/api/auth/oauth/microsoft" method="get">
+            <button
+              type="submit"
+              aria-label="Continue with Microsoft"
+              title="Continue with Microsoft"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <MicrosoftIcon className="h-4.5 w-4.5" />
+            </button>
+          </form>
+          <form action="/api/auth/oauth/apple" method="get">
+            <button
+              type="submit"
+              aria-label="Continue with Apple"
+              title="Continue with Apple"
+              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            >
+              <AppleIcon className="h-4.5 w-4.5" />
+            </button>
+          </form>
+        </div>
+
+        <p className="mt-6 text-center text-xs text-text-muted">New users are routed to profile setup after sign-in.</p>
       </div>
     </section>
   );

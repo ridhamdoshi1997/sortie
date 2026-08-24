@@ -1,16 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { useTheme } from "next-themes";
 import { Moon, Sun } from "lucide-react";
+
+const emptySubscribe = () => () => {};
 
 export function ThemeToggle() {
   const { resolvedTheme, setTheme } = useTheme();
   // Theme is only known client-side (next-themes reads localStorage/system
   // preference after mount) — render a neutral placeholder until then so
   // server and first-client render match and nothing flashes the wrong icon.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // useSyncExternalStore's getServerSnapshot/getSnapshot split gives us that
+  // without a setState-in-effect (React always re-renders once the client
+  // snapshot differs from the server one).
+  const mounted = useSyncExternalStore(
+    emptySubscribe,
+    () => true,
+    () => false,
+  );
 
   if (!mounted) {
     return <span className="inline-block h-5 w-5" aria-hidden="true" />;

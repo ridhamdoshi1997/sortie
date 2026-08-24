@@ -1,40 +1,33 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent, CardFooter } from "@/components/ui/card";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
-import Link from "next/link";
+import { toUserMessage } from "@/lib/errors";
+import { JobResultCard } from "@/components/shared/JobResultCard";
+import { JobDetailDrawer } from "@/components/find-jobs/JobDetailDrawer";
+import { FilterBar } from "@/components/find-jobs/FilterBar";
+import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from "@/lib/jobFilters";
+import type { ReappearanceSignal } from "@/lib/churnSignal";
+import type { Job } from "@/types";
 
 type Props = {
     userId: string;
-    initialJobs?: any[];
+    initialJobs?: Job[];
+    reappearanceSignals?: Record<string, ReappearanceSignal>;
     lastRunAt?: string | null;
     initialTitle?: string | null;
     initialLocation?: string | null;
 };
 
-function scoreTierClass(score: number) {
-    if (score >= 80) return "text-success";
-    if (score >= 60) return "text-info";
-    return "text-warning";
-}
-
-// Real tag pills from actual job fields — never fabricated placeholder tags.
-function jobTags(job: any): string[] {
-    const tags: string[] = [];
-    if (job.job_type) tags.push(job.job_type);
-    if (job.location && /remote/i.test(job.location)) tags.push("Remote");
-    if (Array.isArray(job.matched_skills)) tags.push(...job.matched_skills.slice(0, 2));
-    return tags.slice(0, 3);
-}
-
 export function FindJobsForm({
     userId,
     initialJobs = [],
+    reappearanceSignals = {},
     lastRunAt = null,
     initialTitle = "",
     initialLocation = "",
@@ -42,18 +35,53 @@ export function FindJobsForm({
     const [title, setTitle] = useState(initialTitle ?? "");
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
+    // Job detail drawer / split view (build-plan.md §H) — fast browsing
+    // without a full navigation. Find & Evaluate is deliberately the one
+    // page this is wired into (job cards elsewhere — Missions, Career — are
+    // in a tracking context, not a rapid-browsing one).
+    const [drawerJob, setDrawerJob] = useState<Job | null>(null);
     const [searchError, setSearchError] = useState<string | null>(null);
-    const [jobs, setJobs] = useState<any[]>(initialJobs);
+    // Distinguishes "haven't run a search this session yet" from "ran one,
+    // got zero matches" — the latter needs its own empty state, not silence.
+    const [hasSearched, setHasSearched] = useState(false);
+    const [jobs, setJobs] = useState<Job[]>(initialJobs);
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
     const [jobIds, setJobIds] = useState<string[]>(
         initialJobs.filter((job) => job.match_score === null).map((job) => job.id)
     );
+    // Same hydration-mismatch fix as JobActionBar.tsx's foundAtLabel —
+    // formatTimeAgo(lastRunAt) computed inline in JSX renders a different
+    // string at SSR-time than at client-hydration-time whenever real time
+    // crosses a bucket boundary between those two moments.
+    const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
+    useEffect(() => {
+        if (!lastRunAt) return;
+        const timer = setTimeout(() => setLastRunLabel(formatTimeAgo(lastRunAt)), 0);
+        return () => clearTimeout(timer);
+    }, [lastRunAt]);
 
-    const [filters, setFilters] = useState({
-        visa_sponsorship: "",
-        remote_policy: "",
-    });
+    const router = useRouter();
+    const urlSearchParams = useSearchParams();
+    // Initialized once from the URL on mount (shareable/bookmarkable filtered
+    // searches, per agy's competitor research) — not kept in sync with
+    // urlSearchParams afterward, since the effect below is the one writing
+    // to the URL from here, not the other way around.
+    const [searchFilters, setSearchFilters] = useState(() => searchParamsToFilters(urlSearchParams));
+    // Date Posted is the one filter that can't be applied to already-fetched
+    // results — it narrows the SerpApi query itself (lib/jobScraper.ts's
+    // `chips` param), so changing it only takes effect on the NEXT search.
+    // Tracked separately from searchFilters.datePosted so a real, visible
+    // prompt can appear instead of the change silently doing nothing —
+    // caught live: a real user picked a Date Posted option and the list
+    // didn't move, with no indication why.
+    const [lastSearchedDatePosted, setLastSearchedDatePosted] = useState(searchFilters.datePosted);
+    useEffect(() => {
+        const params = filtersToSearchParams(searchFilters);
+        const query = params.toString();
+        router.replace(query ? `?${query}` : "?", { scroll: false });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchFilters]);
     const [showSavedOnly, setShowSavedOnly] = useState(false);
 
     // --- AUTO-REFRESH POLLING LOGIC ---
@@ -77,12 +105,12 @@ export function FindJobsForm({
                         // other already-scored job from view each tick.
                         setJobs((prev) =>
                             prev.map(
-                                (job) => updatedJobs.find((updated: any) => updated.id === job.id) ?? job
+                                (job) => updatedJobs.find((updated) => updated.id === job.id) ?? job
                             )
                         );
 
                         // Stop polling once every job we're watching has a score.
-                        if (updatedJobs.every((job: any) => job.match_score !== null)) {
+                        if (updatedJobs.every((job) => job.match_score !== null)) {
                             clearInterval(interval);
                         }
                     }
@@ -96,66 +124,84 @@ export function FindJobsForm({
     }, [jobIds]);
     // ----------------------------------
 
-    const updateFilter = (key: string, value: string) => {
-        setFilters((prev) => ({ ...prev, [key]: value }));
-    };
-
-    const handleSearch = async (e: React.FormEvent) => {
-        e.preventDefault();
+    const runSearch = async () => {
         setLoading(true);
         setSearchError(null);
 
+        // The AI evaluator still gets visa/remote as free-text context (score
+        // nuance on jobs that already pass the hard filter below) — same
+        // signal the old loose text boxes provided, now derived from the
+        // structured filter state instead of typed separately. date_posted
+        // goes to SerpApi itself (lib/jobScraper.ts), not the evaluator.
+        const evaluatorFilters: Record<string, string> = {
+            visa_sponsorship: searchFilters.visaSponsorshipOnly
+                ? "Only consider jobs that explicitly offer or are open to visa sponsorship (H1B, TN, sponsorship, OPT/CPT, etc.)."
+                : "",
+            remote_policy: searchFilters.remotePolicy.length > 0
+                ? `Candidate is looking for one of: ${searchFilters.remotePolicy.join(", ")}.`
+                : "",
+        };
+        if (searchFilters.datePosted !== "any") evaluatorFilters.date_posted = searchFilters.datePosted;
+
         try {
-            const savedJobs = await scrapeAndEvaluateJobs(title, location, filters, userId);
+            const savedJobs = await scrapeAndEvaluateJobs(title, location, evaluatorFilters, userId);
             setJobs(savedJobs ?? []);
-            setJobIds((savedJobs ?? []).map((job: any) => job.id));
+            setJobIds((savedJobs ?? []).map((job) => job.id));
+            setHasSearched(true);
+            setLastSearchedDatePosted(searchFilters.datePosted);
         } catch (error) {
             console.error("Pipeline failed:", error);
-            setSearchError(
-                error instanceof Error ? error.message : "Search failed. Please try again."
-            );
+            setSearchError(toUserMessage(error, "Search failed. Please try again."));
         } finally {
             setLoading(false);
         }
     };
 
+    const handleSearch = (e: React.FormEvent) => {
+        e.preventDefault();
+        void runSearch();
+    };
+
+    // Date Posted is the one filter that costs a real paid SerpApi call
+    // (every other filter here just re-filters jobs already on screen, for
+    // free) — auto-firing it on every click would silently spend a call per
+    // option while someone's still deciding between "Past week"/"Past
+    // month". Debounced so only the value the user settles on triggers a
+    // real search, not every intermediate click. Only fires once a search
+    // has already run this session (jobs.length > 0) and only when the
+    // value actually changed from what produced the results on screen.
+    useEffect(() => {
+        if (jobs.length === 0) return;
+        if (searchFilters.datePosted === lastSearchedDatePosted) return;
+        const timer = setTimeout(() => {
+            void runSearch();
+        }, 700);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [searchFilters.datePosted]);
+
     const savedCount = jobs.filter((job) => job.is_saved).length;
-    const visibleJobs = showSavedOnly ? jobs.filter((job) => job.is_saved) : jobs;
+    const filteredJobs = useMemo(() => applyClientFilters(jobs, searchFilters), [jobs, searchFilters]);
+    const visibleJobs = showSavedOnly ? filteredJobs.filter((job) => job.is_saved) : filteredJobs;
+    // Gated on real jobs being on screen, not on hasSearched — jobs loaded
+    // from the server on initial page load (the common case, no client-side
+    // search run yet this session) never flip hasSearched, so that gate
+    // silently hid this prompt even though results were visible (user-caught
+    // live: picked a Date Posted option, saw no prompt, no change).
+    const datePostedNeedsNewSearch = jobs.length > 0 && searchFilters.datePosted !== lastSearchedDatePosted;
 
     return (
         <div className="mx-auto mt-0 w-full max-w-6xl space-y-8">
             {/* Mission console — dark ink chrome, matches the app-wide brand frame */}
-            <div className="rounded-2xl border border-overlay bg-overlay p-8 shadow-card md:p-12">
+            <div className="glass-panel-overlay rounded-2xl p-8 md:p-12">
                 <div className="mb-8 max-w-2xl">
-                    <h2 className="mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
+                    <h2 className="fade-in-up mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
                         <span className="text-accent">&#9670;</span>
                         Run a sortie
                     </h2>
                     <p className="text-lg text-overlay-foreground/60">
                         Scan the field and score every result against your profile before you spend a click on it.
                     </p>
-                </div>
-
-                <div className="mb-6 grid w-full grid-cols-1 gap-4 md:grid-cols-2">
-                    {Object.entries(filters).map(([key, value]) => (
-                        <div key={key} className="flex flex-col gap-1">
-                            <label className="font-mono text-xs font-semibold uppercase tracking-wider text-overlay-foreground/50">
-                                {key.replace("_", " ")}
-                            </label>
-                            <Input
-                                value={value}
-                                onChange={(e) => updateFilter(key, e.target.value)}
-                                className="rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 text-overlay-foreground placeholder:text-overlay-foreground/40"
-                                placeholder={
-                                    key === "visa_sponsorship"
-                                        ? "e.g. Must support TN Visa for Canadian citizens"
-                                        : key === "remote_policy"
-                                            ? "e.g. Must allow remote work"
-                                            : undefined
-                                }
-                            />
-                        </div>
-                    ))}
                 </div>
 
                 <form
@@ -197,11 +243,41 @@ export function FindJobsForm({
                             </>
                         )}
                     </Button>
-                    {searchError && (
-                        <p className="mt-3 text-sm text-error">{searchError}</p>
-                    )}
                 </form>
+                {searchError && <p className="mt-3 text-sm text-error">{searchError}</p>}
+
+                <div className="mt-5">
+                    <FilterBar filters={searchFilters} onChange={setSearchFilters} />
+                </div>
+
+                {/* Date Posted narrows the SerpApi query itself, so it can't
+                    re-filter results already on screen — every other filter
+                    here does. It auto-fires a real search ~700ms after the
+                    user settles on an option (debounced in the effect above,
+                    so clicking through several options only spends one real
+                    call) — this is just a visible status while that's
+                    in flight, not an action the user has to take. */}
+                {datePostedNeedsNewSearch && (
+                    <div className="mt-3 flex items-center gap-2 rounded-lg border border-accent/30 bg-accent-muted px-4 py-2.5">
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-accent" />
+                        <p className="text-xs text-accent">
+                            {loading ? "Applying the new date filter…" : "Date posted changed — applying shortly…"}
+                        </p>
+                    </div>
+                )}
             </div>
+
+            {/* A completed search with zero matches is a real outcome, not
+                a failure — give it its own quiet empty state instead of
+                just rendering nothing where results would normally appear. */}
+            {hasSearched && !loading && jobs.length === 0 && (
+                <div className="border-t border-border pt-6 text-center">
+                    <p className="text-sm text-text-secondary">No listings matched that search.</p>
+                    <p className="mt-1 text-xs text-text-muted">
+                        Try a broader role title or a nearby location.
+                    </p>
+                </div>
+            )}
 
             {/* Results */}
             {jobs.length > 0 && (
@@ -209,6 +285,7 @@ export function FindJobsForm({
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
                             Active targets — {visibleJobs.length}
+                            {visibleJobs.length !== jobs.length && ` of ${jobs.length}`}
                         </p>
                         {savedCount > 0 && (
                             <button
@@ -225,79 +302,30 @@ export function FindJobsForm({
                             </button>
                         )}
                     </div>
-                    {visibleJobs.length === 0 && (
+                    {visibleJobs.length === 0 && showSavedOnly && (
                         <p className="text-sm text-text-muted">No saved jobs yet — save one from its detail page.</p>
                     )}
+                    {visibleJobs.length === 0 && !showSavedOnly && (
+                        <p className="text-sm text-text-muted">No jobs match the current filters — try clearing one or two.</p>
+                    )}
                     <div className="flex flex-col gap-4">
-                        {visibleJobs.map((job) => {
-                            const tags = jobTags(job);
-                            return (
-                                <Link href={`/find-jobs/${job.id}`} key={job.id}>
-                                    <Card className="grid cursor-pointer grid-cols-[1fr_auto] items-start gap-4 border-border bg-surface p-5 transition-all hover:border-accent hover:shadow-md">
-                                        <div>
-                                            <p className="text-[15px] font-semibold leading-tight text-text-primary">
-                                                {job.title}
-                                            </p>
-                                            <p className="mt-1 flex items-center gap-1 text-sm text-text-secondary">
-                                                {job.company}
-                                                {job.location && (
-                                                    <>
-                                                        <span aria-hidden="true">·</span>
-                                                        <span className="flex items-center gap-1 text-accent">
-                                                            <MapPin className="h-3.5 w-3.5" /> {job.location}
-                                                        </span>
-                                                    </>
-                                                )}
-                                            </p>
-                                            {tags.length > 0 && (
-                                                <div className="mt-2.5 flex flex-wrap gap-1.5">
-                                                    {tags.map((tag) => (
-                                                        <span
-                                                            key={tag}
-                                                            className="rounded-[5px] border border-border px-2 py-0.5 text-[11px] text-text-secondary"
-                                                        >
-                                                            {tag}
-                                                        </span>
-                                                    ))}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {job.match_score !== undefined && job.match_score !== null && (
-                                            <div className="text-right">
-                                                <div
-                                                    className={`font-mono text-2xl font-semibold tabular-nums ${scoreTierClass(job.match_score)}`}
-                                                >
-                                                    {job.match_score}
-                                                </div>
-                                                <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wide text-text-muted">
-                                                    Match
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Agent read — reserved teal treatment for AI-generated
-                                            content, never used for anything else in the app */}
-                                        {job.match_reason && (
-                                            <div className="col-span-2 rounded-r-lg border-l-2 border-agent bg-agent-light px-3.5 py-2.5">
-                                                <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-agent-dark">
-                                                    Agent read
-                                                </p>
-                                                <p className="text-xs leading-5 text-agent-dark">
-                                                    {job.match_reason}
-                                                </p>
-                                            </div>
-                                        )}
-                                    </Card>
-                                </Link>
-                            );
-                        })}
+                        {visibleJobs.map((job, index) => (
+                            <JobResultCard
+                                key={job.id}
+                                job={job}
+                                index={index}
+                                reappearanceSignal={reappearanceSignals[job.id] ?? null}
+                                onQuickView={() => setDrawerJob(job)}
+                            />
+                        ))}
                     </div>
+
+                    <JobDetailDrawer job={drawerJob} onClose={() => setDrawerJob(null)} />
 
                     {lastRunAt && (
                         <div className="mt-6 flex items-center gap-2 font-mono text-xs text-text-muted">
                             <span className="h-1.5 w-1.5 rounded-full bg-success" />
-                            Last sortie · {formatTimeAgo(lastRunAt)}
+                            Last sortie · {lastRunLabel}
                         </div>
                     )}
                 </div>

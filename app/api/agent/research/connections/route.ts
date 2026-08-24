@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { researchInsiderConnections } from "@/agent/research";
 import { getCurrentUser } from "@/lib/auth";
-import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkUsageLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { toUserMessage } from "@/lib/errors";
 import type { AgentLog, CompanyResearchDossier, Job, Profile } from "@/types";
 
 type RequestBody = {
@@ -157,9 +158,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       });
     }
 
-    const usage = await checkAndConsumeUsage(insforge, userId, user.email, "insider_connections");
+    const usage = await checkUsageLimit(insforge, userId, user.email, "insider_connections");
     if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: usage.error,
+          reason: usage.reason,
+          ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+        },
+        { status: 429 },
+      );
     }
 
     const { data: profile, error: profileError } = await insforge.database
@@ -219,7 +228,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error("[api/agent/research/connections]", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: toUserMessage(error) },
       { status: 500 },
     );
   }

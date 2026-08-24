@@ -13,9 +13,13 @@ import { getModel } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
-import { ResumePDF } from "@/app/api/resume/generate/ResumePDF";
-import { CoverLetterPDF } from "./CoverLetterPDF";
+import { toUserMessage } from "@/lib/errors";
+import { ResumePDF } from "@/components/documents/ResumePDF";
+import { CoverLetterPDF } from "@/components/documents/CoverLetterPDF";
+import { buildDefaultStyle, mergeGeneratedContent } from "@/lib/resumeSections";
+import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
+import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 type RequestBody = {
   jobId?: unknown;
@@ -163,17 +167,51 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       }
     }
 
-    const theme = profile.preferred_resume_theme ?? "modern";
     let pdfBuffer: Buffer;
     let generatedContentText: string;
+    // Only set for kind === "resume" — the résumé editor workspace's own
+    // per-copy content/style snapshot, saved to `applications` right after
+    // persistGeneratedDocument below confirms the row exists.
+    let resumeSections: ResumeSection[] | null = null;
+    let resumeStyle: ResumeStyle | null = null;
 
     if (kind === "resume") {
+      // Regenerate preserves whatever's already in the workspace (manual
+      // skills/education edits, section order/visibility, chosen style) —
+      // only the AI-authored summary/bullets get refreshed. First-ever
+      // generate for this job has nothing to preserve, so it builds fresh.
+      const { data: existingApp } = await insforge.database
+        .from("applications")
+        .select("resume_sections,resume_style")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId)
+        .maybeSingle<{ resume_sections: ResumeSection[] | null; resume_style: ResumeStyle | null }>();
+
       const generated = await generateTailoredResume({ job, profile, dossier, provider });
       generatedContentText = JSON.stringify(generated);
+      resumeSections = mergeGeneratedContent(existingApp?.resume_sections ?? null, generated, profile);
+      resumeStyle = existingApp?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
       pdfBuffer = await renderToBuffer(
-        React.createElement(ResumePDF, { profile, generated, theme }) as unknown as React.ReactElement<DocumentProps>,
+        React.createElement(ResumePDF, {
+          profile,
+          sections: resumeSections,
+          style: resumeStyle,
+        }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
+      // Cover letters share the tailored résumé's exact style (same
+      // template+theme, one visually matched suite per job — see
+      // CoverLetterPDF.tsx's own comment) — read whatever's already saved
+      // for this job's résumé, falling back to the user's preferred theme
+      // default if no résumé has been styled yet.
+      const { data: existingStyleRow } = await insforge.database
+        .from("applications")
+        .select("resume_style,cover_letter_salutation")
+        .eq("user_id", user.id)
+        .eq("job_id", jobId)
+        .maybeSingle<{ resume_style: ResumeStyle | null; cover_letter_salutation: string | null }>();
+      const coverLetterStyle = existingStyleRow?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
+
       const letterBody = await generateCoverLetter({ job, profile, dossier, provider });
       generatedContentText = letterBody;
       pdfBuffer = await renderToBuffer(
@@ -181,7 +219,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           profile,
           company: job.company,
           letterBody,
-          theme,
+          style: coverLetterStyle,
+          salutation: existingStyleRow?.cover_letter_salutation,
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     }
@@ -203,16 +242,30 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
+    let scoreJump: ScoreJumpResult | null = null;
+    if (resumeSections && resumeStyle) {
+      const { error: sectionsError } = await insforge.database
+        .from("applications")
+        .update({ resume_sections: resumeSections, resume_style: resumeStyle, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .eq("job_id", jobId);
+      if (sectionsError) {
+        console.error("[api/documents/generate] save resume_sections/resume_style", sectionsError);
+      }
+      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider);
+    }
+
     revalidatePath(`/find-jobs/${jobId}`);
+    revalidatePath(`/resume/tailored/${jobId}`);
 
     return NextResponse.json({
       success: true,
-      data: { pdfUrl: persistResult.storagePath },
+      data: { pdfUrl: persistResult.storagePath, scoreJump, sections: resumeSections, style: resumeStyle },
     });
   } catch (error) {
     console.error("[api/documents/generate]", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: toUserMessage(error) },
       { status: 500 },
     );
   }

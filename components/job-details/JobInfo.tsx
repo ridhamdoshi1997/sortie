@@ -1,14 +1,8 @@
 import Link from "next/link";
-import {
-  BriefcaseBusiness,
-  Building2,
-  CalendarDays,
-  DollarSign,
-  ExternalLink,
-  MapPin,
-} from "lucide-react";
+import { BriefcaseBusiness, CalendarDays, DollarSign, ExternalLink, MapPin } from "lucide-react";
 
 import { formatDate } from "@/lib/utils";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import type { Job } from "@/types";
 
 type InfoItem = {
@@ -39,7 +33,7 @@ function InfoCard({ item }: { item: InfoItem }) {
   const Icon = item.icon;
 
   return (
-    <article className="flex min-h-20 items-center gap-4 rounded-2xl border border-border bg-surface p-4 shadow-card">
+    <article className="border border-border bg-surface shadow-card flex min-h-20 items-center gap-4 rounded-2xl p-4">
       <div
         className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl ${item.iconBackgroundClassName}`}
       >
@@ -97,14 +91,12 @@ export function JobInfo({ job }: Props) {
 
   return (
     <div className="flex flex-col gap-6">
-      <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+      <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-4">
-            <div className="flex h-14 w-14 flex-shrink-0 items-center justify-center rounded-2xl border border-border bg-surface-secondary">
-              <Building2 className="h-7 w-7 text-text-muted" />
-            </div>
+            <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="lg" />
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold leading-8 text-text-primary">
+              <h1 className="truncate text-2xl font-semibold leading-8 tracking-tight text-text-primary">
                 {job.title ?? "Untitled role"}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2">

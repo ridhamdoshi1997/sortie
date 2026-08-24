@@ -11,26 +11,34 @@
      concept mockup. Never for body copy or UI chrome. */
   --font-display: "Avenir Next", "Century Gothic", "Segoe UI Semibold", ui-sans-serif, sans-serif;
 
-  --color-background: #f3f4f2;
+  /* Raycast-style neutral ramp (2026-07-27) — fully achromatic grays (0%
+     saturation), not the sage/green-tinted neutrals this app used before.
+     Raycast's own site has no light mode to source values from directly,
+     so these are derived using the same elevation logic as its real dark
+     tokens (bg/bg-100/bg-200 steps, hairline borders, tiered fg opacity),
+     just inverted for a light ground. Accent/agent/success/etc. below are
+     UNCHANGED — only the neutral chrome moved, per explicit direction to
+     keep this app's own accent, not Raycast's blue. */
+  --color-background: #f7f7f8;
   --color-surface: #ffffff;
-  --color-surface-secondary: #eaebe7;
-  --color-surface-tertiary: #f7f7f5;
-  --color-surface-muted: #eef0ec;
+  --color-surface-secondary: #eeeef0;
+  --color-surface-tertiary: #fbfbfc;
+  --color-surface-muted: #f2f2f4;
 
-  --color-border: #d8dbd6;
-  --color-border-light: #e4e6e2;
-  --color-border-muted: #dcded9;
+  --color-border: #e2e3e5;
+  --color-border-light: #ececee;
+  --color-border-muted: #e6e7e9;
 
-  --color-text-primary: #15181d;
-  --color-text-secondary: #565c56;
-  --color-text-muted: #8a8f89;
-  --color-text-dark: #2c3129;
-  --color-text-darker: #1e211c;
-  --color-text-darkest: #15181d;
-  --color-text-black: #0d0f0c;
-  --color-text-slate: #2c3129;
-  --color-text-slate-medium: #565c56;
-  --color-chart-axis: #8a8f89;
+  --color-text-primary: #17181a;
+  --color-text-secondary: #55585c;
+  --color-text-muted: #8a8d91;
+  --color-text-dark: #26282b;
+  --color-text-darker: #1c1e20;
+  --color-text-darkest: #17181a;
+  --color-text-black: #0a0a0b;
+  --color-text-slate: #26282b;
+  --color-text-slate-medium: #55585c;
+  --color-chart-axis: #8a8d91;
 
   /* Signal — primary accent. Reserved for primary actions and the
      wordmark; never used for AI-generated content (see --color-agent). */
@@ -75,17 +83,30 @@
   --color-linkedin-light: #dce6f1;
   --color-linkedin-foreground: #ffffff;
 
-  --color-overlay: #15181d;
-  --color-overlay-dark: #0d0f12;
+  /* Indeed brand — #003A9B confirmed via research (agy, 2026-08-18) against
+     current brand guidelines, not guessed. Same token shape as LinkedIn
+     above: base/light-tint/foreground + a dark-mode override for the light
+     tier only (see the .dark block). */
+  --color-indeed: #003a9b;
+  --color-indeed-light: #dbe4f3;
+  --color-indeed-foreground: #ffffff;
+
+  --color-overlay: #111213;
+  --color-overlay-dark: #0a0b0c;
   /* Fixed — the overlay chrome stays dark in both app themes, so its
      content color never changes. Never reuse --color-surface for
      text/borders/backgrounds on top of --color-overlay. */
   --color-overlay-foreground: #ffffff;
 
+  /* Tightened 2026-07-27 to match Raycast's smaller, more geometric radius
+     scale (their own --radius-md is 6px) — was 8/12/14, read as noticeably
+     rounder/softer than the reference. --radius-sm and the shadcn-derived
+     --radius (below, drives rounded-2xl/3xl/4xl used on most cards) moved
+     the same direction. */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
 
   --shadow-card: 0px 1px 3px rgb(0 0 0 / 0.1), 0px 1px 2px -1px rgb(0 0 0 / 0.1);
@@ -116,7 +137,10 @@
   --chart-3: oklch(0.439 0 0);
   --chart-4: oklch(0.371 0 0);
   --chart-5: oklch(0.269 0 0);
-  --radius: 0.625rem;
+  /* Tightened 2026-07-27 (was 0.625rem) alongside --radius-sm/md/lg/xl in
+     the @theme block above — drives rounded-2xl/3xl/4xl, used on nearly
+     every content card app-wide, toward Raycast's tighter geometric feel. */
+  --radius: 0.5rem;
   --sidebar: oklch(0.985 0 0);
   --sidebar-foreground: oklch(0.145 0 0);
   --sidebar-primary: oklch(0.205 0 0);
@@ -140,7 +164,12 @@ html {
 
 body {
   min-height: 100vh;
-  background: var(--color-background);
+  /* Fully flat, no ambient gradient at all (2026-07-27) — Raycast's own
+     page background has zero gradient wash, not even a faint one; matching
+     it exactly means dropping the single low-alpha highlight the prior
+     pass kept. Structure now comes entirely from the background/surface/
+     border step system below, same as the reference. */
+  background-color: var(--color-background);
   color: var(--color-text-primary);
   font-family: var(--font-sans);
 }
@@ -152,150 +181,265 @@ body {
   font-family: var(--font-display);
 }
 
-.landing-panel {
+/* Entrance animation (2026-07-27) — a single restrained fade-up on load,
+   matching the reference's own hero-text reveal (opacity + a small upward
+   drift, ease timing, no bounce/spring). Deliberately applied to page-title
+   -level elements only (see call sites), not sprinkled across every card —
+   the reference itself only uses this on its hero, not on every section. */
+.fade-in-up {
+  animation: fade-in-up 500ms ease both;
+}
+
+@keyframes fade-in-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Toast notification entrance (components/ui/ToastProvider.tsx) — a
+   separate, smaller/faster rise-and-fade than .fade-in-up above, which is
+   deliberately reserved for page-title-level elements. */
+.toast-enter {
+  animation: toast-enter 200ms ease both;
+}
+
+@keyframes toast-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Indeterminate progress sweep (components/ui/GenerationProgress.tsx) — a
+   bounded-but-unknown-duration AI wait, per this app's own "no invented
+   progress percentage" principle (see SearchLoadingState.tsx's comment):
+   a sliding segment conveys "actively working," never a specific % claim
+   the app can't actually back. Standard Material-style indeterminate bar
+   shape (grow while sliding right, then shrink while continuing right,
+   loop) rather than a flat pulse, so it reads as forward motion, not just
+   opacity flicker. */
+.generation-progress-fill {
+  animation: generation-progress-sweep 1.6s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes generation-progress-sweep {
+  0% {
+    left: -35%;
+    right: 100%;
+  }
+  60% {
+    left: 100%;
+    right: -35%;
+  }
+  100% {
+    left: 100%;
+    right: -35%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up,
+  .toast-enter {
+    animation: none;
+  }
+  .generation-progress-fill {
+    animation: none;
+    left: 0;
+    right: 40%;
+  }
+}
+
+/* === Surface system ==========================================================
+   Retired 2026-07-27, blur fully retired 2026-07-27 (same day, second pass):
+   ordinary content cards (job-details/profile/dashboard) no longer use a
+   `.glass-panel` class at all — every real "modern/premium" reference this
+   redesign is based on (Apple's own site, Linear, Vercel, Raycast, measured
+   via live computed styles) treats blur/glass as at most a floating-chrome
+   material, never the default surface for an ordinary in-flow card. Content
+   cards use the plain Tailwind utilities directly at each call site:
+   `border border-border bg-surface shadow-card` — the exact pre-Liquid-Glass
+   pattern this class used to replace. `--shadow-card` is intentionally
+   near-invisible on the near-black dark surfaces; elevation comes from the
+   background/surface/border gray-step difference, same as Linear/Raycast,
+   not from a shadow.
+
+   Second pass, matching Raycast specifically: its own header/nav has ZERO
+   backdrop-filter (confirmed via getComputedStyle — `blur: "none"`) and the
+   page background has no ambient gradient at all. `.glass-panel-strong`/
+   `.glass-panel-overlay`/`.glass-pill` (the sticky/floating chrome) dropped
+   backdrop-filter entirely and became solid flat surfaces with a hairline
+   border — the class names stay (still describe "chrome treatment," just no
+   longer glass) so call sites didn't need touching. This also fully retires
+   the two Lightning CSS `color-mix()` + `backdrop-filter`/`animation`
+   gotchas as a live risk in this file — there's no backdrop-filter left to
+   trigger them. Still documented in context/ui-tokens.md's Liquid Glass
+   section as a lesson for any future glass/gradient work, even though
+   nothing here currently exercises it. */
+
+/* Interactive hover glow (job-search result cards) — the app's one
+   genuinely "alive" touch, kept and toned down rather than removed: a
+   small lift + a soft cursor-tracked highlight, not a glass sheen. Renamed
+   from .glass-panel-interactive since it no longer has anything to do with
+   glass — just a hover effect layered on top of the same plain flat
+   utilities every other card uses. Cursor tracking (--mouse-x/--mouse-y)
+   still comes from the single document-level listener in
+   components/ui/GlassCursorGlow.tsx; only the selector name changed. */
+.card-interactive-glow {
   position: relative;
-  overflow: hidden;
-  border: 1px solid var(--color-border);
+  isolation: isolate;
+  /* ease-in-out, not ease — matches the ~200ms ease-in-out timing Raycast
+     uses on its own nav-link hover transitions, kept consistent across
+     every interactive element in this file rather than mixing easing
+     curves per component. */
+  transition: transform 200ms ease-in-out, box-shadow 200ms ease-in-out, border-color 200ms ease-in-out;
+}
+
+.card-interactive-glow::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 250ms ease;
+  background: radial-gradient(
+    180px circle at var(--mouse-x, 50%) var(--mouse-y, 50%),
+    color-mix(in srgb, var(--color-accent) 16%, transparent) 0%,
+    transparent 70%
+  );
+  pointer-events: none;
+}
+
+.card-interactive-glow:hover::after {
+  opacity: 1;
+}
+
+.card-interactive-glow:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border) 55%);
+  box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-overlay) 14%, transparent);
+}
+
+.dark .card-interactive-glow:hover {
+  box-shadow: 0 12px 24px -8px color-mix(in srgb, var(--color-overlay) 40%, transparent);
+}
+
+/* Dashboard visual-hierarchy pass (2026-08-18) — researched via agy against
+   real premium dashboards (Linear/Vercel/Stripe/Raycast) after the redesign
+   shipped flat and "8 identical gray boxes." Two of agy's literal
+   prescriptions were deliberately NOT taken: a static per-card ambient
+   radial-gradient "hero wash," and a noise-texture overlay. Both were
+   already tried at the page/body level and reverted 2026-07-27 after real
+   computed-style research against Raycast found zero ambient gradient wash
+   on its actual UI (see "Fully flat, no ambient gradient at all" above) —
+   this app's own settled answer is that elevation/hierarchy comes from
+   background/surface/border token steps, not decorative gradients. These
+   three classes achieve agy's actual goal (an anchor card that reads as
+   heavier than its neighbors, an inset "well" for the heatmap, distinct
+   from a "hero wash") using that same token-step approach instead.
+
+   card-interactive-glow above already establishes a real precedent for a
+   restrained *hover-only* radial glow on interactive cards — these classes
+   stay in that spirit (subtle, structural, no static decoration) rather
+   than reintroducing something already found not to match real references.
+
+   REAL GOTCHA HIT WHILE BUILDING THIS (confirmed live via getComputedStyle,
+   not assumed): the first version grouped `border`/`box-shadow` (both
+   color-mix()-based) together with plain `background` in one rule per
+   class — Lightning CSS's @supports(color-mix) rewrite silently dropped
+   BOTH box-shadow declarations entirely (computed style came back "none").
+   This is the exact documented gotcha further up this file ("Lightning CSS
+   silently drops properties that share a declaration block with a
+   color-mix() value") — fixed the same documented way: every color-mix()-
+   bearing property gets its own single-property rule, never combined with
+   another declaration in the same block. */
+.dashboard-hero-card {
   background: var(--color-surface);
 }
 
-.landing-grid {
-  background-image:
-    linear-gradient(
-      to right,
-      color-mix(in srgb, var(--color-border) 38%, transparent) 1px,
-      transparent 1px
-    ),
-    linear-gradient(
-      to bottom,
-      color-mix(in srgb, var(--color-border) 38%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 156px 156px;
+.dashboard-hero-card {
+  border: 1px solid color-mix(in srgb, var(--color-accent) 24%, var(--color-border) 76%);
 }
 
-.landing-hero-glow {
+.dashboard-hero-card {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.dashboard-well {
+  background: var(--color-background);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard-well {
+  box-shadow: inset 0 2px 6px color-mix(in srgb, var(--color-overlay) 10%, transparent);
+}
+
+.dark .dashboard-well {
+  box-shadow: inset 0 2px 8px color-mix(in srgb, var(--color-overlay-dark) 55%, transparent);
+}
+
+/* Secondary chrome bar (JobActionBar) — solid, not blurred (2026-07-27):
+   Raycast's own sticky/floating chrome has zero backdrop-filter, relying on
+   a solid background + hairline border instead. JobActionBar itself is no
+   longer sticky (stacking it under the now-floating Navbar read as two
+   competing pinned bars) but this class keeps the same solid recipe since
+   it's still the "secondary chrome" surface, just in normal document flow
+   now. No position declaration here on purpose (see the cascade-layer
+   invariant elsewhere in this file) — call sites own their own position,
+   and this class silently overriding one is exactly the bug class that bit
+   JobActionBar once already when it WAS sticky. */
+.glass-panel-strong {
   background-color: var(--color-surface);
-  background-image:
-    radial-gradient(
-      circle at 18% 20%,
-      color-mix(in srgb, var(--color-accent-light) 90%, transparent) 0%,
-      transparent 25%
-    ),
-    radial-gradient(
-      circle at 50% 55%,
-      color-mix(in srgb, var(--color-info-light) 80%, transparent) 0%,
-      transparent 28%
-    ),
-    radial-gradient(
-      circle at 82% 18%,
-      color-mix(in srgb, var(--color-info-lightest) 90%, transparent) 0%,
-      transparent 24%
-    ),
-    radial-gradient(
-      circle at 90% 80%,
-      color-mix(in srgb, var(--color-accent-light) 72%, transparent) 0%,
-      transparent 26%
-    ),
-    radial-gradient(
-      circle at 35% 88%,
-      color-mix(in srgb, var(--color-accent-muted) 90%, transparent) 0%,
-      transparent 25%
-    );
-}
-
-.landing-divider {
-  background-image: repeating-linear-gradient(
-    -45deg,
-    var(--color-surface) 0,
-    var(--color-surface) 4px,
-    var(--color-surface-secondary) 4px,
-    var(--color-surface-secondary) 8px
-  );
-}
-
-.landing-card-shadow {
-  box-shadow: var(--shadow-card);
-}
-
-.landing-browser-frame {
-  border: 1px solid color-mix(in srgb, var(--color-border) 90%, transparent);
-}
-
-.landing-browser-shadow {
-  box-shadow:
-    0 1px 3px color-mix(in srgb, var(--color-overlay) 10%, transparent),
-    0 1px 2px -1px color-mix(in srgb, var(--color-overlay) 10%, transparent),
-    0 34px 60px color-mix(in srgb, var(--color-info-dark) 28%, transparent);
-}
-
-.landing-button-primary,
-.landing-button-secondary {
-  display: inline-flex;
-  min-height: 3rem;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--radius-md);
-  padding: 0.75rem 1.5rem;
-  font-size: 0.875rem;
-  font-weight: 500;
-  line-height: 1.25rem;
-  transition:
-    transform 200ms ease,
-    background-color 200ms ease,
-    border-color 200ms ease,
-    color 200ms ease,
-    box-shadow 200ms ease;
-}
-
-.landing-button-primary {
-  /* Dark ink gradient, not the accent color — needs light text regardless
-     of what --color-accent-foreground resolves to for accent-colored
-     surfaces elsewhere, so it sets its own color explicitly. */
-  color: var(--color-surface);
-  border: 1px solid color-mix(in srgb, var(--color-overlay) 86%, var(--color-accent) 14%);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-text-darker) 84%, var(--color-overlay-dark) 16%) 0%,
-      color-mix(in srgb, var(--color-overlay-dark) 92%, var(--color-overlay) 8%) 100%
-    );
-  box-shadow:
-    0 10px 20px color-mix(in srgb, var(--color-overlay) 10%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-surface) 18%, transparent);
-}
-
-.landing-button-primary:hover {
-  transform: translateY(-2px);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-text-black) 82%, var(--color-accent) 18%) 0%,
-      color-mix(in srgb, var(--color-overlay-dark) 82%, var(--color-accent) 18%) 100%
-    );
-  box-shadow:
-    0 14px 28px color-mix(in srgb, var(--color-overlay) 16%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-surface) 20%, transparent);
-}
-
-.landing-button-primary:focus-visible,
-.landing-button-secondary:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
-.landing-button-secondary {
   border: 1px solid var(--color-border);
-  background: color-mix(in srgb, var(--color-surface) 92%, var(--color-surface-secondary) 8%);
-  color: var(--color-text-primary);
-  box-shadow:
-    0 1px 2px color-mix(in srgb, var(--color-overlay) 5%, transparent),
-    inset 0 1px 0 color-mix(in srgb, var(--color-surface) 88%, transparent);
+  box-shadow: 0 1px 0 var(--color-border);
 }
 
-.landing-button-secondary:hover {
-  background: var(--color-surface-secondary);
-  border-color: color-mix(in srgb, var(--color-border) 70%, var(--color-accent-light) 30%);
+.dark .glass-panel-strong {
+  background-color: var(--color-overlay);
+  border-color: var(--color-border);
+}
+
+/* Dark ink chrome (navbar, mission-console hero) — same solid, flat recipe,
+   tinted from --color-overlay instead of --color-surface since that chrome
+   stays dark in both app themes (and now converges with --color-background
+   in dark mode, matching how Raycast's own header sits flush on its page).
+   Full border on all sides, not just border-bottom (changed 2026-07-27) —
+   Navbar is now a floating rounded-corner bar (see Navbar.tsx), and
+   FindJobsForm's console already combines this class with `rounded-2xl`;
+   a rounded box with only a bottom edge drawn looked broken on 3 sides. */
+.glass-panel-overlay {
+  background-color: var(--color-overlay);
+  border: 1px solid var(--color-border);
+}
+
+/* Small pill-shaped controls (action-bar buttons) — still round, solid
+   surface, no blur (sits on an already-solid JobActionBar so there's
+   nothing behind it to obscure anyway). Transition timing matches Raycast's
+   own ~200ms ease-in-out nav/link hover speed. */
+.glass-pill {
+  border-radius: var(--radius-full);
+  background-color: var(--color-surface-secondary);
+  border: 1px solid var(--color-border);
+  transition: transform 200ms ease-in-out, border-color 200ms ease-in-out;
+}
+
+.glass-pill:hover {
+  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--color-accent) 40%, var(--color-border) 60%);
+}
+
+.dark .glass-pill {
+  background-color: var(--color-surface-secondary);
+  border-color: var(--color-border);
 }
 
 @layer base {
@@ -406,26 +550,37 @@ body {
      agent/success all come directly from the mockup's dark variant);
      the rest are derived by the same lightening-for-dark-bg pattern since
      this app has more granular roles than the mockup covered. */
-  --color-background: #14171b;
-  --color-surface: #1b1f24;
-  --color-surface-secondary: #20242a;
-  --color-surface-tertiary: #171a1f;
-  --color-surface-muted: #1e2227;
+  /* Raycast's own real dark tokens (2026-07-27, replacing the earlier
+     near-black approximation) — pulled directly via getComputedStyle() on
+     raycast.com: --color-bg #07080a, --color-bg-100 rgb(16,17,17),
+     --color-bg-200 rgb(24,25,26), --color-fg hsl(240,11%,96%), --color-fg-200
+     rgb(194,199,202), --color-fg-300 #78787c, --color-border hsl(195,5%,15%).
+     Mapped 1:1 onto this app's existing role names below — accent/agent/
+     success/etc. further down are UNCHANGED, only the neutral ramp moved,
+     per explicit direction to keep this app's own accent rather than
+     Raycast's blue. --color-overlay/-overlay-dark converge with background
+     below (see that block) since Raycast's own chrome isn't a separate
+     darker tone from its page background. */
+  --color-background: #07080a;
+  --color-surface: #101111;
+  --color-surface-secondary: #18191a;
+  --color-surface-tertiary: #0a0b0c;
+  --color-surface-muted: #131415;
 
-  --color-border: #2c3138;
-  --color-border-light: #23272d;
-  --color-border-muted: #272c32;
+  --color-border: #232526;
+  --color-border-light: #18191a;
+  --color-border-muted: #1c1d1f;
 
-  --color-text-primary: #eceeec;
-  --color-text-secondary: #a3aaa3;
-  --color-text-muted: #6d746d;
-  --color-text-dark: #dfe3dc;
-  --color-text-darker: #e5e8e2;
-  --color-text-darkest: #eceeec;
-  --color-text-black: #f2f4f0;
-  --color-text-slate: #dfe3dc;
-  --color-text-slate-medium: #a3aaa3;
-  --color-chart-axis: #6d746d;
+  --color-text-primary: #f3f3f5;
+  --color-text-secondary: #c2c7ca;
+  --color-text-muted: #78787c;
+  --color-text-dark: #e4e6e7;
+  --color-text-darker: #eceeef;
+  --color-text-darkest: #f3f3f5;
+  --color-text-black: #ffffff;
+  --color-text-slate: #e4e6e7;
+  --color-text-slate-medium: #c2c7ca;
+  --color-chart-axis: #5e6366;
 
   --color-accent: #e0913f;
   --color-accent-dark: #f6d9b6;
@@ -462,9 +617,20 @@ body {
   --color-error-foreground: #2e1c18;
 
   --color-linkedin-light: #16232f;
+  --color-indeed-light: #16202f;
 
-  --color-overlay: #0d0f12;
-  --color-overlay-dark: #08090b;
+  /* Reverted the "converge with background" attempt from earlier the same
+     day (2026-07-27) — that made the floating navbar card invisible: with
+     overlay === background, the "gap" around the bar and the bar itself
+     render as literally the same pixel color, so no card shape reads at
+     all regardless of the margin/border being correct (confirmed via a
+     real screenshot showing the bar completely flush, no floating effect
+     visible). Raycast's own real screenshot shows its nav bar as a
+     visibly lighter panel than the page behind it — matches
+     --color-surface (Raycast's own bg-100 elevation tier) here instead;
+     -dark is one step further (bg-200) for hover/pressed states. */
+  --color-overlay: #101111;
+  --color-overlay-dark: #18191a;
 }
 
 @layer base {
@@ -477,4 +643,17 @@ body {
   html {
     @apply font-sans;
   }
+}
+
+/* Chrome/Safari inject a stark white/yellow background on autofilled
+   inputs that ignores plain background-color — the standard override is
+   an inset box-shadow the same size as the field. Uses this app's own
+   design tokens (--color-surface/--color-text-primary), not raw hex, so
+   it tracks light/dark mode automatically like everything else. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--color-surface) inset;
+  -webkit-text-fill-color: var(--color-text-primary);
+  transition: background-color 9999s ease-in-out 0s;
 }

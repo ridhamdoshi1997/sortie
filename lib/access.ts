@@ -21,13 +21,23 @@ export function isAdminUser(email: string | null | undefined): boolean {
 // The single point every AI call site should go through to decide which
 // provider actually runs — not just setPreferredModel's write-time check.
 // Guards against a stale non-Gemini value already saved on a profile
-// (e.g. set before this policy existed) still being honored at generation
-// time for a non-admin account.
+// (e.g. set before this policy existed, or before a paid subscription
+// lapsed back to a free plan) still being honored at generation time for
+// an ineligible account.
+//
+// `llmUnlocked` is optional and backward-compatible: call sites that don't
+// yet pass it keep today's exact behavior (gemini-only unless admin).
+// Source it from lib/subscription.ts's getUserSubscription(...).plan.llmUnlocked
+// — a plan-level flag, not a hardcoded tier-name check, since tiers are now
+// admin-managed (addable/removable) rather than a fixed recon/command pair.
+// Not every call site has been migrated to pass this yet; the ones that
+// haven't are still safe (they just don't unlock a paid plan's model choice).
 export function resolveProvider(
   preferredModel: ModelProvider | null | undefined,
   email: string | null | undefined,
+  llmUnlocked?: boolean | null,
 ): ModelProvider {
-  if (!isAdminUser(email)) return "gemini";
+  if (!isAdminUser(email) && !llmUnlocked) return "gemini";
   return preferredModel ?? "gemini";
 }
 

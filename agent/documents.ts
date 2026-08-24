@@ -1,6 +1,7 @@
 import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES } from "@/lib/writingStyle";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
-import type { GeneratedContent } from "@/app/api/resume/generate/ResumePDF";
+import type { GeneratedContent } from "@/components/documents/ResumePDF";
 
 type DocumentJob = Pick<
   Job,
@@ -67,7 +68,7 @@ export async function generateTailoredResume({
 }: DocumentInput): Promise<GeneratedContent> {
   const raw = await complete(getModel(provider, "smart"), {
     systemPrompt:
-      "You are an expert resume writer producing a polished, ATS-optimized resume for one specific job application. Given the candidate's profile, the target job posting, and research about the target company, produce a professional summary and rewrite each work experience entry's responsibilities as achievement-focused bullet points.\n\nRules:\n- Summary: 2-3 sentences, specific to this candidate and role. Never open with generic resume clichés like 'results-oriented', 'proven track record', 'dynamic professional', or similar boilerplate — state concretely what the candidate does and their strongest strength for this specific role.\n- Bullets: 3-5 per role, each a single tight line (roughly 15-22 words), starting with a strong action verb. Never repeat the same opening verb across bullets in the resume. Quantify impact (scale, time saved, performance gain, team size) whenever the candidate's real experience supports a number — never invent a metric that isn't grounded in their profile.\n- Mirror the exact terminology and keywords from the job posting and its required skills wherever the candidate's real experience genuinely supports it — this is for ATS keyword matching.\n- Use only standard characters and punctuation (no special symbols, emoji, or unusual unicode) so the text extracts cleanly in ATS parsers.\n- Keep total content tight enough to fit cleanly on one page for a typical candidate — favor the most relevant, highest-impact bullets over exhaustive coverage of every responsibility.\n- Never claim a skill or a piece of experience the candidate does not actually have.\n\nReturn only valid JSON.",
+      `You are an expert resume writer producing a polished, ATS-optimized resume for one specific job application. Given the candidate's profile, the target job posting, and research about the target company, produce a professional summary and rewrite each work experience entry's responsibilities as achievement-focused bullet points.\n\nRules:\n- Summary: 2-3 sentences, specific to this candidate and role. Never open with generic resume clichés like 'results-oriented', 'proven track record', 'dynamic professional', or similar boilerplate — state concretely what the candidate does and their strongest strength for this specific role.\n- Bullets: 3-5 per role, each a single tight line (roughly 15-22 words), starting with a strong action verb. Never repeat the same opening verb across bullets in the resume. ${BULLET_QUALITY_RULES}\n- Use only standard characters and punctuation (no special symbols, emoji, or unusual unicode) so the text extracts cleanly in ATS parsers.\n- Keep total content tight enough to fit cleanly on one page for a typical candidate — favor the most relevant, highest-impact bullets over exhaustive coverage of every responsibility.\n- Never claim a skill or a piece of experience the candidate does not actually have.\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
     userPrompt: `Generate a tailored resume and return JSON matching this exact shape:
 {
   "summary": "string — 2-3 sentence professional summary tailored to this role",
@@ -109,7 +110,7 @@ export async function generateCoverLetter({
 }: DocumentInput): Promise<string> {
   const raw = await complete(getModel(provider, "smart"), {
     systemPrompt:
-      "You are a career strategist writing a cover letter for one specific candidate applying to one specific role. Ground every claim about the company in the provided research — never invent funding, customers, headcount, or facts. Choose whichever angle (mission-driven, technical-depth, culture-fit, or growth-story) best fits what the research actually supports, rather than forcing one. Structure: an opening hook connecting the candidate to something specific and real about the company or role, one to two body paragraphs connecting the candidate's actual experience to the role's needs (address a real gap honestly if one matters, don't ignore it), and a closing paragraph with a clear call to action. Keep it under 350 words, no generic filler phrases. Return only the letter body — start with \"Dear Hiring Team,\" and sign off with the candidate's full name. No markdown, no JSON, no placeholder brackets.",
+      `You are a career strategist writing a cover letter for one specific candidate applying to one specific role. Ground every claim about the company in the provided research — never invent funding, customers, headcount, or facts. Choose whichever angle (mission-driven, technical-depth, culture-fit, or growth-story) best fits what the research actually supports, rather than forcing one. Structure: an opening hook connecting the candidate to something specific and real about the company or role, one to two body paragraphs connecting the candidate's actual experience to the role's needs (address a real gap honestly if one matters, don't ignore it), and a closing paragraph with a clear call to action. Keep it under 350 words, no generic filler phrases. Return only the letter body — start with "Dear Hiring Team," and sign off with the candidate's full name. No markdown, no JSON, no placeholder brackets.\n\n${HUMANIZED_WRITING_RULES}`,
     userPrompt: `CANDIDATE PROFILE:
 ${buildProfileContext(profile)}
 
@@ -138,7 +139,7 @@ export async function reviseTailoredResume({
 }> {
   const raw = await complete(getModel(provider, "smart"), {
     systemPrompt:
-      "You are a professional resume writer revising an already-generated resume based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current resume content, preserving everything they didn't ask to change. Keep mirroring the real job posting's terminology for ATS matching, and never claim a skill or experience the candidate does not have. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised 'content' in the same shape as the current content.",
+      `You are a professional resume writer revising an already-generated resume based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current resume content, preserving everything they didn't ask to change. ${BULLET_QUALITY_RULES} Never claim a skill or experience the candidate does not have.\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised 'content' in the same shape as the current content.`,
     userPrompt: `Return JSON matching this exact shape:
 {
   "reply": "string — one or two sentences confirming what you changed",
@@ -193,7 +194,7 @@ export async function reviseCoverLetter({
 }> {
   const raw = await complete(getModel(provider, "smart"), {
     systemPrompt:
-      "You are a career strategist revising an already-written cover letter based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current letter, preserving everything they didn't ask to change. Keep every company claim grounded in the provided research — never invent facts. Return only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised letter body as 'content' (same format as before — starts with 'Dear Hiring Team,', signs off with the candidate's full name, no markdown).",
+      `You are a career strategist revising an already-written cover letter based on the candidate's feedback. Apply the candidate's latest instruction (the last message in the conversation) to the current letter, preserving everything they didn't ask to change. Keep every company claim grounded in the provided research — never invent facts.\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON with a short conversational 'reply' summarizing what you changed, and the full revised letter body as 'content' (same format as before — starts with 'Dear Hiring Team,', signs off with the candidate's full name, no markdown).`,
     userPrompt: `Return JSON matching this exact shape:
 {
   "reply": "string — one or two sentences confirming what you changed",

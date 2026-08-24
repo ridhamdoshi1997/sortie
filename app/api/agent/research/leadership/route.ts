@@ -3,10 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { researchLeadershipTeam } from "@/agent/research";
 import { getCurrentUser } from "@/lib/auth";
-import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkUsageLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
+import { toUserMessage } from "@/lib/errors";
 import type { AgentLog, CompanyResearchDossier, Job } from "@/types";
 
 type RequestBody = {
@@ -142,9 +143,17 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     // Shares the same "company_research" spend bucket as the main dossier —
     // it's conceptually the same kind of spend, not a separate quota to manage.
-    const usage = await checkAndConsumeUsage(insforge, userId, user.email, "company_research");
+    const usage = await checkUsageLimit(insforge, userId, user.email, "company_research");
     if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: usage.error,
+          reason: usage.reason,
+          ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+        },
+        { status: 429 },
+      );
     }
 
     await logAgentMessage({
@@ -192,7 +201,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   } catch (error) {
     console.error("[api/agent/research/leadership]", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error" },
+      { success: false, error: toUserMessage(error) },
       { status: 500 },
     );
   }

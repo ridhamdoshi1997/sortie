@@ -8,7 +8,9 @@ export type Feature =
   | "document_generation"
   | "company_research"
   | "resume_extract"
-  | "resume_analysis";
+  | "resume_analysis"
+  | "resume_quality_analysis"
+  | "bullet_rewrite";
 
 const FEATURE_ENV_VARS: Record<Feature, string> = {
   search: "FEATURE_SEARCH_ENABLED",
@@ -16,6 +18,8 @@ const FEATURE_ENV_VARS: Record<Feature, string> = {
   company_research: "FEATURE_COMPANY_RESEARCH_ENABLED",
   resume_extract: "FEATURE_RESUME_EXTRACT_ENABLED",
   resume_analysis: "FEATURE_RESUME_ANALYSIS_ENABLED",
+  resume_quality_analysis: "FEATURE_RESUME_QUALITY_ANALYSIS_ENABLED",
+  bullet_rewrite: "FEATURE_BULLET_REWRITE_ENABLED",
 };
 
 const FEATURE_LABELS: Record<Feature, string> = {
@@ -24,6 +28,8 @@ const FEATURE_LABELS: Record<Feature, string> = {
   company_research: "Company research",
   resume_extract: "Resume import",
   resume_analysis: "Resume fit analysis",
+  resume_quality_analysis: "Resume quality analysis",
+  bullet_rewrite: "AI bullet suggestions",
 };
 
 export function isFeatureEnabled(feature: Feature): boolean {

@@ -1,13 +1,11 @@
+import { AntiAutoApply } from "@/components/homepage/AntiAutoApply";
+import { BentoFeatures } from "@/components/homepage/BentoFeatures";
 import { CTASection } from "@/components/homepage/CTASection";
-import { Features } from "@/components/homepage/Features";
 import { Hero } from "@/components/homepage/Hero";
-import { HowItWorks } from "@/components/homepage/HowItWorks";
 import { SuccessStory } from "@/components/homepage/SuccessStory";
+import { TheLifecycle } from "@/components/homepage/TheLifecycle";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
-
-const dividerClassName =
-  "landing-divider mx-auto h-10 max-w-[1440px] border-x border-border bg-surface";
 
 export default function HomePage() {
   return (
@@ -15,18 +13,10 @@ export default function HomePage() {
       <Navbar />
       <main className="pb-0">
         <Hero />
-        <HowItWorks />
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className={dividerClassName} />
-        </div>
-        <Features />
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className={dividerClassName} />
-        </div>
         <SuccessStory />
-        <div className="px-4 sm:px-6 lg:px-8">
-          <div className={dividerClassName} />
-        </div>
+        <BentoFeatures />
+        <AntiAutoApply />
+        <TheLifecycle />
         <CTASection />
       </main>
       <div className="px-4 sm:px-6 lg:px-8">

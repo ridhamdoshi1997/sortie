@@ -2,7 +2,9 @@
 
 ## About the Project
 
-JobPilot is a full stack AI-powered job hunting assistant. The user sets up their profile once, uploads their resume, and the agent automatically discovers relevant jobs from Adzuna — scoring each one against the user's profile using GPT-4o. For jobs they're interested in, the agent researches the company across their public web pages and builds a structured dossier — company overview, tech stack, culture, why the role exists, and interview prep. The user reviews everything and applies with one click.
+Sortie is a full stack AI-powered job hunting assistant. The user sets up their profile once, uploads their resume, and the agent automatically discovers relevant jobs from Adzuna — scoring each one against the user's profile using GPT-4o.
+
+> **Note (2026-08-20): this doc describes the original v1 spec and is stale.** The live product has moved well past Adzuna/GPT-4o-only discovery — see `context/RESUME.md` for the actively-maintained current state, and `context/build-plan.md`'s Master Feature Inventory for the real, current feature set. This file wasn't rewritten as part of the JobPilot→Sortie branding cleanup since that's a much larger content task; flagging it here so nobody mistakes it for current. For jobs they're interested in, the agent researches the company across their public web pages and builds a structured dossier — company overview, tech stack, culture, why the role exists, and interview prep. The user reviews everything and applies with one click.
 
 The entire process is tracked on a dashboard with PostHog-powered analytics and a recent activity feed.
 
@@ -12,7 +14,7 @@ The entire process is tracked on a dashboard with PostHog-powered analytics and 
 
 Job hunting is one of the most repetitive and time-consuming tasks a developer faces. Reading dozens of job descriptions, deciding if a role fits, researching each company from scratch — all of this before even clicking apply.
 
-JobPilot eliminates all of that preparation work. The agent finds the jobs, scores them intelligently against the user's actual skills, and researches each company so the user arrives at every application fully informed. The user just decides which ones to apply to and clicks.
+Sortie eliminates all of that preparation work. The agent finds the jobs, scores them intelligently against the user's actual skills, and researches each company so the user arrives at every application fully informed. The user just decides which ones to apply to and clicks.
 
 ---
 
@@ -201,7 +203,6 @@ Full width layout on all pages. No sidebar.
 - Scheduled agent runs — manually triggered only
 - Multiple saved resume versions — one active resume per user at a time
 - Payment or subscription system
-- Browser extension
 
 ---
 

@@ -3,6 +3,7 @@ import { Users } from "lucide-react";
 
 import { EmailLookupButton } from "@/components/job-details/EmailLookupButton";
 import { InsiderConnectionsButton } from "@/components/job-details/InsiderConnectionsButton";
+import { OutreachMessageButton } from "@/components/job-details/OutreachMessageButton";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
 import type { ConnectionPerson, InsiderConnections as InsiderConnectionsData } from "@/types";
 
@@ -11,6 +12,7 @@ type Props = {
   company: string;
   connections: InsiderConnectionsData | null | undefined;
   lookedUp: boolean | undefined;
+  insiderConnectionsAllowed: boolean;
 };
 
 function getInitials(name: string): string {
@@ -24,11 +26,15 @@ function getInitials(name: string): string {
 }
 
 function PersonRow({
+  jobId,
   person,
   companyLinkedinUrl,
+  connectionReason,
 }: {
+  jobId: string;
   person: ConnectionPerson;
   companyLinkedinUrl?: string;
+  connectionReason: string | null;
 }) {
   return (
     <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
@@ -47,6 +53,12 @@ function PersonRow({
         )}
       </div>
       <div className="flex flex-shrink-0 items-center gap-1.5">
+        <OutreachMessageButton
+          jobId={jobId}
+          personName={person.name}
+          personTitle={person.title ?? null}
+          connectionReason={connectionReason}
+        />
         {companyLinkedinUrl && (
           <EmailLookupButton
             firstName={person.firstName}
@@ -72,15 +84,19 @@ function PersonRow({
 }
 
 function Bucket({
+  jobId,
   title,
   headerClassName,
   people,
   companyLinkedinUrl,
+  connectionReason,
 }: {
+  jobId: string;
   title: string;
   headerClassName: string;
   people: ConnectionPerson[];
   companyLinkedinUrl?: string;
+  connectionReason: string | null;
 }) {
   return (
     <div className="flex flex-1 flex-col gap-2 rounded-xl border border-border bg-surface-secondary p-3">
@@ -94,8 +110,10 @@ function Bucket({
           {people.map((person) => (
             <PersonRow
               key={`${person.name}-${person.title}`}
+              jobId={jobId}
               person={person}
               companyLinkedinUrl={companyLinkedinUrl}
+              connectionReason={person.pastEmployer ? `previously worked at ${person.pastEmployer}` : connectionReason}
             />
           ))}
         </div>
@@ -106,14 +124,14 @@ function Bucket({
   );
 }
 
-export function InsiderConnections({ jobId, company, connections, lookedUp }: Props) {
+export function InsiderConnections({ jobId, company, connections, lookedUp, insiderConnectionsAllowed }: Props) {
   const hasAny =
     (connections?.beyondNetwork.length ?? 0) > 0 ||
     (connections?.previousCompany.length ?? 0) > 0 ||
     (connections?.school.length ?? 0) > 0;
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-6">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
@@ -123,29 +141,35 @@ export function InsiderConnections({ jobId, company, connections, lookedUp }: Pr
             Insider Connection @{company}
           </h2>
         </div>
-        {!lookedUp && <InsiderConnectionsButton jobId={jobId} />}
+        {!lookedUp && <InsiderConnectionsButton jobId={jobId} allowed={insiderConnectionsAllowed} />}
       </div>
 
       <div className="p-6">
         {hasAny && connections ? (
           <div className="flex flex-col gap-4 md:flex-row">
             <Bucket
+              jobId={jobId}
               title="Beyond Your Network"
               headerClassName="bg-success-lightest text-success-foreground"
               people={connections.beyondNetwork}
               companyLinkedinUrl={connections.companyLinkedinUrl}
+              connectionReason={null}
             />
             <Bucket
+              jobId={jobId}
               title="From Your Previous Company"
               headerClassName="bg-info-lightest text-info"
               people={connections.previousCompany}
               companyLinkedinUrl={connections.companyLinkedinUrl}
+              connectionReason={null}
             />
             <Bucket
+              jobId={jobId}
               title="From Your School"
               headerClassName="bg-accent-muted text-accent"
               people={connections.school}
               companyLinkedinUrl={connections.companyLinkedinUrl}
+              connectionReason="attended the same school as the candidate"
             />
           </div>
         ) : lookedUp ? (

@@ -45,7 +45,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
     if (!previousEmployer && searchTerms.length === 0) return null;
 
     return (
-        <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+        <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
             <div className="flex items-center gap-3 border-b border-border p-6">
                 <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
                     <Users className="h-4 w-4 text-accent" />
@@ -69,7 +69,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
 
                 {searchTerms.length > 0 && (
                     <div className="flex flex-wrap items-center gap-2 text-xs text-text-muted">
-                        <span>Once you're on LinkedIn, look for people who also list:</span>
+                        <span>Once you&apos;re on LinkedIn, look for people who also list:</span>
                         {searchTerms.map((term) => (
                             <span
                                 key={term}

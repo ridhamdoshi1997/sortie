@@ -2,21 +2,54 @@ import { FileSearch, Sparkles } from "lucide-react";
 
 import { AnalyzeResumeFitButton } from "@/components/job-details/AnalyzeResumeFitButton";
 import { ResumeGapAnalysis } from "@/components/job-details/ResumeGapAnalysis";
+import { ModelSelector } from "@/components/shared/ModelSelector";
+import { ThemeSelector } from "@/components/shared/ThemeSelector";
+import type { ModelProvider } from "@/lib/models";
+import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import type { ResumeGapAnalysisResult } from "@/types";
 
 type Props = {
   jobId: string;
   company: string;
   analysis: ResumeGapAnalysisResult | null;
+  modelValue: ModelProvider;
+  isAdmin: boolean;
+  themeValue: ResumeTheme;
 };
 
-export function ResumeFitSection({ jobId, company, analysis }: Props) {
+export function ResumeFitSection({
+  jobId,
+  company,
+  analysis,
+  modelValue,
+  isAdmin,
+  themeValue,
+}: Props) {
+  const settingsRow = (
+    <div className="flex flex-wrap items-center gap-4">
+      <ModelSelector value={modelValue} isAdmin={isAdmin} />
+      <ThemeSelector value={themeValue} />
+    </div>
+  );
+
   if (analysis) {
-    return <ResumeGapAnalysis data={analysis} />;
+    return <ResumeGapAnalysis data={analysis} settingsRow={settingsRow} />;
   }
 
   return (
-    <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    // Single CTA only (2026-07-28) — this used to render AnalyzeResumeFitButton
+    // twice, once here and once in the empty-state body below. No other
+    // empty state on this page duplicates its own CTA; kept the more
+    // prominent body one, matching CompanyResearch's single-CTA empty state.
+    //
+    // Model/theme settings folded into this header (2026-07-28) — they used
+    // to float on their own between InsiderConnections and this section,
+    // the only uncontained controls on the whole page, which read as
+    // detached from everything around them. They configure exactly what
+    // this section (and Application Documents below it) generates, so this
+    // is also where they actually belong, not just a fix for the floating
+    // look.
+    <section className="fade-in-up border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
       <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
@@ -26,8 +59,7 @@ export function ResumeFitSection({ jobId, company, analysis }: Props) {
             Resume fit for this job
           </h2>
         </div>
-
-        <AnalyzeResumeFitButton jobId={jobId} />
+        {settingsRow}
       </div>
 
       <div className="flex min-h-64 flex-col items-center justify-center px-6 py-14 text-center">

@@ -442,6 +442,9 @@ export default function PreviewPage() {
                     {[
                         ["/preview/onboarding", "Onboarding flow"],
                         ["/preview/resume", "Résumé workspace"],
+                        ["/preview/profile", "Profile — Command Center direction"],
+                        ["/preview/profile-document", "Profile — Interactive Document direction"],
+                        ["/preview/profile-split", "Profile — Split-View Canvas direction"],
                         ["/preview/more", "Interview bank, settings & more"],
                     ].map(([href, label]) => (
                         <a
@@ -499,6 +502,7 @@ export default function PreviewPage() {
                     jobId="preview-dummy-id"
                     company="Manulife"
                     lookedUp
+                    insiderConnectionsAllowed
                     connections={{
                         beyondNetwork: [
                             {
