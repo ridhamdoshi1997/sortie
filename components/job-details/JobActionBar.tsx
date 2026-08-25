@@ -309,7 +309,7 @@ export function JobActionBar({
             href={applyUrl}
             target="_blank"
             rel="noreferrer"
-            className="inline-flex min-h-9 items-center gap-2 rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium text-accent-foreground"
           >
             Apply at {company}
             <ExternalLink className="h-4 w-4" />

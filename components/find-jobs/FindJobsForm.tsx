@@ -231,7 +231,7 @@ export function FindJobsForm({
                     <Button
                         type="submit"
                         disabled={loading}
-                        className="h-12 rounded-lg bg-accent px-8 text-md font-semibold text-accent-foreground hover:opacity-90"
+                        className="btn-signal h-12 rounded-lg px-8 text-md font-semibold text-accent-foreground"
                     >
                         {loading ? (
                             <>
