@@ -195,7 +195,7 @@ export function FindJobsForm({
             {/* Mission console — dark ink chrome, matches the app-wide brand frame */}
             <div className="glass-panel-overlay rounded-2xl p-8 md:p-12">
                 <div className="mb-8 max-w-2xl">
-                    <h2 className="fade-in-up mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
+                    <h2 className="font-display fade-in-up mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
                         <span className="text-accent">&#9670;</span>
                         Run a sortie
                     </h2>
