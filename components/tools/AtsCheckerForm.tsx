@@ -117,7 +117,7 @@ export function AtsCheckerForm() {
         type="button"
         disabled={isPending || resumeText.trim().length < 100}
         onClick={handleSubmit}
-        className="inline-flex min-h-11 w-fit items-center gap-2 rounded-lg bg-accent px-6 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+        className="btn-signal inline-flex min-h-11 w-fit items-center gap-2 rounded-lg px-6 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-50"
       >
         <Sparkles className="h-4 w-4" />
         {isPending ? "Analyzing..." : "Check my resume"}
@@ -189,7 +189,7 @@ export function AtsCheckerForm() {
             </p>
             <Link
               href="/login"
-              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+              className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground"
             >
               Try it free
               <ArrowRight className="h-4 w-4" />

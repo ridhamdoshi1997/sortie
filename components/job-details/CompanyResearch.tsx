@@ -332,7 +332,7 @@ export function CompanyResearch({ company, jobId, research, companyResearchAllow
           </p>
           <Link
             href="/pricing"
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="btn-signal mt-5 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
           >
             <TrendingUp className="h-4 w-4" />
             See Command plan

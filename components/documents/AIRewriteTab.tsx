@@ -163,7 +163,7 @@ export function AIRewriteTab({
             <button
               type="button"
               onClick={handleAnalyzeClick}
-              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90"
+              className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-xs font-medium text-accent-foreground"
             >
               <Gauge className="h-3.5 w-3.5" />
               Check my fit score

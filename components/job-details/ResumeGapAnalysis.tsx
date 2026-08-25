@@ -285,7 +285,7 @@ export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove, s
                         type="button"
                         disabled={isGenerating}
                         onClick={onImprove}
-                        className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-accent px-5 py-2.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+                        className="btn-signal inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-5 py-2.5 text-sm font-medium text-accent-foreground disabled:opacity-60"
                     >
                         {isGenerating ? "Tailoring your resume..." : "Improve my resume for this job"}
                         {!isGenerating && <ArrowRight className="h-4 w-4" />}

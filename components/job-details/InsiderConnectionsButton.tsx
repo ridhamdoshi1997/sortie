@@ -70,7 +70,7 @@ export function InsiderConnectionsButton({ jobId, allowed }: Props) {
         type="button"
         disabled={isPending}
         onClick={handleClick}
-        className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
       >
         {allowed ? <Users className="h-4 w-4" /> : <Lock className="h-4 w-4" />}
         {isPending ? "Finding connections..." : "Find Connections"}

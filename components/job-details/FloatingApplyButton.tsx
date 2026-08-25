@@ -33,7 +33,7 @@ export function FloatingApplyButton({ applyUrl, company }: Props) {
         href={applyUrl}
         target="_blank"
         rel="noreferrer"
-        className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-accent-foreground shadow-lg transition-transform hover:-translate-y-0.5 hover:opacity-90"
+        className="btn-signal pointer-events-auto inline-flex items-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-accent-foreground"
       >
         Apply at {company}
         <ExternalLink className="h-4 w-4" />
