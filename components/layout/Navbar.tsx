@@ -267,7 +267,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
             <Link
               href="/login"
               onClick={() => trackPostHogClientEvent("marketing_cta_clicked", { location: "nav_desktop" })}
-              className="hidden min-h-10 items-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 md:inline-flex"
+              className="btn-signal hidden min-h-10 items-center rounded-md px-4 text-sm font-medium text-accent-foreground md:inline-flex"
             >
               Start for free
             </Link>

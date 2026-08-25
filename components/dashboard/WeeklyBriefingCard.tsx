@@ -17,20 +17,28 @@ export function WeeklyBriefingCard({
 }) {
   if (!briefing) return null;
 
+  // Signal redesign — this is one of the few genuinely-AI-generated,
+  // page-leading moments (see WeeklyBriefingCard's own header comment:
+  // pre-generated once by a cron, zero live AI cost on render), so it
+  // gets the new .ai-hero-card treatment instead of the plain inline
+  // Agent-Content Callout every other AI-content mention in the app uses
+  // — that smaller pattern is still correct everywhere else and is left
+  // untouched.
   return (
-    <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-      <div className="mb-1 flex items-center justify-between gap-2">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
+    <div className="ai-hero-card px-6 py-5">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="flex items-center gap-2 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
+          <span className="ai-eyebrow-dot" />
           Your Weekly Briefing
         </p>
         {generatedAt && (
-          <span className="flex items-center gap-1 font-mono text-[10px] text-agent-dark/70">
+          <span className="flex items-center gap-1 font-mono text-[10px] text-text-muted">
             <CalendarClock className="h-3 w-3" />
             {formatDate(generatedAt)}
           </span>
         )}
       </div>
-      <p className="text-sm leading-6 text-agent-dark">{briefing}</p>
+      <p className="text-sm leading-6 text-text-primary">{briefing}</p>
     </div>
   );
 }

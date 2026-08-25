@@ -105,7 +105,11 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
     // nested inside a <button>), confirmed live: the nested button's clicks
     // never fired. Same fix EditorTab.tsx's SortableList already applies
     // for the same reason ("avoiding accidental parent-drag").
-    <div ref={setNodeRef} style={style} className="glass-panel flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="card-interactive-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card"
+    >
       <div className="flex items-start gap-2">
         <button
           type="button"

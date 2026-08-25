@@ -262,13 +262,138 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .fade-in-up,
-  .toast-enter {
+  .toast-enter,
+  .ai-eyebrow-dot {
     animation: none;
   }
   .generation-progress-fill {
     animation: none;
     left: 0;
     right: 40%;
+  }
+}
+
+/* ============================================================
+   Signal redesign (feature/signal-redesign) — shared primitives.
+   Kept as plain named classes, same convention as .dashboard-hero-card/
+   .card-interactive-glow above, rather than inline Tailwind soup at every
+   call site — one definition, many call sites, easy to revert.
+
+   Every color-mix()-bearing property below gets its own single-property
+   rule, never combined with another declaration in the same block — the
+   documented Lightning CSS gotcha this file has hit 4 times already
+   (search "color-mix" above): the @supports(color-mix) fallback rewrite
+   silently drops sibling properties that share a block with a color-mix()
+   declaration.
+   ============================================================ */
+
+/* Premium primary button — real depth (layered inset highlight + tinted
+   outer glow) instead of the flat bg-accent fill most buttons use today.
+   Applied at specific high-traffic CTA call sites, not globally on
+   <button>, since not every button in the app should carry this much
+   visual weight (secondary/ghost/destructive actions stay as they are). */
+.btn-signal {
+  position: relative;
+  transition: transform 180ms ease-in-out, filter 150ms ease-in-out;
+}
+.btn-signal {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--color-accent) 88%, white 14%),
+    var(--color-accent) 60%,
+    color-mix(in srgb, var(--color-accent) 92%, black 6%)
+  );
+}
+.btn-signal {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    inset 0 -1px 0 rgb(0 0 0 / 0.08);
+}
+.btn-signal {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.35),
+    inset 0 -1px 0 rgb(0 0 0 / 0.08),
+    0 10px 22px -12px color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+.btn-signal:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.btn-signal:hover {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.4),
+    inset 0 -1px 0 rgb(0 0 0 / 0.08),
+    0 14px 26px -12px color-mix(in srgb, var(--color-accent) 60%, transparent);
+}
+.btn-signal:active {
+  transform: translateY(0) scale(0.98);
+  filter: brightness(0.97);
+}
+.btn-signal:disabled {
+  opacity: 0.5;
+  filter: none;
+  transform: none;
+  cursor: not-allowed;
+}
+
+/* AI-hero callout — for the one or two genuinely-AI-generated moments per
+   page that deserve to lead (WeeklyBriefingCard's summary, a page-level
+   AI insight), NOT a replacement for the small inline Agent-Content
+   Callout (border-l-2 border-agent bg-agent-light) used everywhere else —
+   that pattern stays exactly as documented in ui-tokens.md, this is a
+   distinct, deliberately rarer "hero" tier above it. Agent-teal only,
+   per the app's own strict Agent-content invariant — never accent. */
+.ai-hero-card {
+  position: relative;
+  border-radius: var(--radius-xl);
+}
+.ai-hero-card {
+  background: radial-gradient(
+    120% 140% at 0% 0%,
+    color-mix(in srgb, var(--color-agent) 12%, var(--color-surface)),
+    var(--color-surface) 60%
+  );
+}
+.ai-hero-card {
+  border: 1px solid color-mix(in srgb, var(--color-agent) 28%, var(--color-border));
+}
+.ai-hero-card {
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04);
+}
+.ai-hero-card {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 20px 40px -28px color-mix(in srgb, var(--color-agent) 26%, transparent);
+}
+.dark .ai-hero-card {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 20px 40px -28px color-mix(in srgb, var(--color-agent) 38%, transparent);
+}
+
+/* Small pulsing dot for the "AI Navigator reads"-style eyebrow label on an
+   .ai-hero-card — opacity/scale only (no color-mix inside the keyframe:
+   var(--color-agent) already differs correctly per theme, but animating a
+   color-mix()'d shadow color inside @keyframes hasn't been verified safe
+   against the gotcha above, so this stays deliberately simple). */
+.ai-eyebrow-dot {
+  display: inline-block;
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: var(--color-agent);
+  animation: ai-dot-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes ai-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.8;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.3);
   }
 }
 

@@ -93,7 +93,7 @@ function PlanCard({
         {action === "upgrade" && (
           <UpgradeButton
             tier={plan.tier}
-            className="w-full rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal w-full rounded-md px-3 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-60"
           >
             Upgrade to {plan.displayName}
           </UpgradeButton>
@@ -111,7 +111,7 @@ function PlanCard({
         {action === "buy_once" && (
           <UpgradeButton
             tier={plan.tier}
-            className="w-full rounded-md bg-accent px-3 py-2 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal w-full rounded-md px-3 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-60"
           >
             Buy {plan.displayName} — ${(plan.priceCents / 100).toFixed(0)} once
           </UpgradeButton>
