@@ -68,7 +68,7 @@ export function SkillGapTracker() {
         type="button"
         disabled={isPending || !gaps || gaps.length === 0}
         onClick={handleSynthesize}
-        className="mt-4 inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="btn-signal mt-4 inline-flex h-10 items-center gap-1.5 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
       >
         <Sparkles className="h-3.5 w-3.5" />
         {isPending ? "Thinking..." : pathing ? "Get another read" : "What should I do about this?"}

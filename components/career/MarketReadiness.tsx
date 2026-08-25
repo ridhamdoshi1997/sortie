@@ -44,7 +44,7 @@ export function MarketReadiness() {
         type="button"
         disabled={isChecking}
         onClick={handleCheck}
-        className="inline-flex h-10 items-center gap-1.5 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="btn-signal inline-flex h-10 items-center gap-1.5 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
       >
         <Sparkles className="h-3.5 w-3.5" />
         {isChecking ? "Checking..." : result ? "Check again" : "Check my market readiness"}

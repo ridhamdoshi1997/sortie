@@ -116,7 +116,7 @@ export function InterviewPanel({ jobId, company, members }: Props) {
             type="button"
             disabled={isPending}
             onClick={handleAdd}
-            className="h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal h-10 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             Add
           </button>

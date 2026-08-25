@@ -137,7 +137,7 @@ export function ExternalJobForm() {
       <button
         type="submit"
         disabled={isSubmitting}
-        className="inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="btn-signal inline-flex min-h-11 items-center justify-center rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
       >
         {isSubmitting ? "Evaluating..." : "Add & evaluate"}
       </button>

@@ -10,7 +10,7 @@ const inputClass =
   "h-11 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus-visible:border-accent";
 
 const primaryButtonClass =
-  "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60";
+  "btn-signal inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-60";
 
 const linkButtonClass = "text-xs font-medium text-accent hover:underline";
 
