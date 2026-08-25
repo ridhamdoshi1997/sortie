@@ -79,12 +79,20 @@ const DIMENSION_EXPLANATIONS: Record<DimensionName, string> = {
     Legitimacy: "Real-listing signals — vague requirements, generic descriptions, or other red flags of a low-quality posting.",
 };
 
-function DimensionCard({ dim }: { dim: JobEvaluationDimension }) {
+// index drives a capped entrance stagger on first reveal (same convention
+// JobResultCard.tsx already uses for its own list) — a real evaluation
+// just loaded, not a per-interaction animation, so this stays inside the
+// "occasional" tier rather than something that fires on every dashboard
+// visit.
+function DimensionCard({ dim, index = 0 }: { dim: JobEvaluationDimension; index?: number }) {
     const style = GRADE_STYLES[dim.grade];
     const Icon = DIMENSION_ICONS[dim.dimension as DimensionName] ?? Gauge;
 
     return (
-        <div className="flex gap-3 rounded-xl border border-border bg-surface-secondary p-4">
+        <div
+            className="dim-card-in flex gap-3 rounded-xl border border-border bg-surface-secondary p-4"
+            style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+        >
             <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${style.badge}`}>
                 <Icon className="h-4.5 w-4.5" />
             </span>
@@ -122,7 +130,13 @@ export function EvaluationBreakdown({ evaluation, recommendationScore, overallGr
                     10-Dimension Evaluation
                 </h2>
                 {overallGrade && overallStyle && (
-                    <div className="flex items-center gap-3 rounded-xl border border-border bg-surface-secondary px-4 py-2">
+                    // Signal redesign — every grade here is AI-generated
+                    // output (see GRADE_STYLES's own comment), so the
+                    // overall-grade summary gets a real agent-teal tint
+                    // instead of the neutral surface-secondary box it used
+                    // to sit in, matching the same invariant the per-grade
+                    // badge colors already follow.
+                    <div className="flex items-center gap-3 rounded-xl border border-agent/25 bg-agent-light/50 px-4 py-2">
                         <span
                             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-lg font-bold ${overallStyle.badge}`}
                         >
@@ -143,8 +157,8 @@ export function EvaluationBreakdown({ evaluation, recommendationScore, overallGr
             </div>
 
             <div className="mt-5 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {evaluation.map((dim) => (
-                    <DimensionCard key={dim.dimension} dim={dim} />
+                {evaluation.map((dim, i) => (
+                    <DimensionCard key={dim.dimension} dim={dim} index={i} />
                 ))}
             </div>
         </section>

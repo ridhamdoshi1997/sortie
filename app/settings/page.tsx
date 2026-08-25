@@ -21,7 +21,7 @@ export default async function SettingsPage() {
           display:none (not counted in shrink-to-fit sizing), so `main`'s
           width tracked whichever tab happened to be visible. */}
       <main className="mx-auto w-full max-w-4xl px-4 py-10 sm:px-6 lg:px-8">
-        <h1 className="mb-6 text-2xl font-bold text-text-primary">Settings</h1>
+        <h1 className="font-display mb-6 text-2xl font-bold text-text-primary">Settings</h1>
         <SettingsPanel
           email={data.user?.email ?? user.email ?? ""}
           providers={data.user?.providers ?? []}

@@ -94,7 +94,7 @@ export default async function CareerPage() {
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-1">
-            <h1 className="fade-in-up text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
+            <h1 className="font-display fade-in-up text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
               Career Record
             </h1>
             <p className="text-base text-text-secondary sm:text-lg">

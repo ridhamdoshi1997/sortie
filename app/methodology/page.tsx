@@ -32,7 +32,7 @@ export default function MethodologyPage() {
             <ShieldCheck className="h-3.5 w-3.5" />
             Methodology
           </p>
-          <h1 className="text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
+          <h1 className="font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
             Why auto-apply is broken, and what Sortie does instead
           </h1>
           <p className="text-lg leading-8 text-text-secondary">

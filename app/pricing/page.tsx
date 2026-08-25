@@ -36,7 +36,7 @@ export default async function PricingPage() {
       <Navbar isAuthenticated={Boolean(user)} />
       <main className="pb-0">
         <div className="mx-auto max-w-3xl px-4 pt-16 text-center sm:px-6 lg:px-8">
-          <h1 className="text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Pricing</h1>
+          <h1 className="font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Pricing</h1>
         </div>
         <CTASection />
         <div className="mx-auto flex max-w-2xl flex-col gap-8 px-4 pb-16 sm:px-6 lg:px-8">

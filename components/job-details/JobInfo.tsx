@@ -96,7 +96,7 @@ export function JobInfo({ job }: Props) {
           <div className="flex min-w-0 items-center gap-4">
             <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="lg" />
             <div className="min-w-0">
-              <h1 className="truncate text-2xl font-semibold leading-8 tracking-tight text-text-primary">
+              <h1 className="font-display truncate text-2xl font-semibold leading-8 tracking-tight text-text-primary">
                 {job.title ?? "Untitled role"}
               </h1>
               <div className="mt-1 flex flex-wrap items-center gap-2">
