@@ -113,7 +113,7 @@ export function SupportTab() {
             type="button"
             onClick={handleReply}
             disabled={isPending || !reply.trim()}
-            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             <Send className="h-3.5 w-3.5" />
             Send
@@ -150,7 +150,7 @@ export function SupportTab() {
           <button
             type="submit"
             disabled={isPending}
-            className="inline-flex h-9 w-fit items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal inline-flex h-9 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             Send message
           </button>

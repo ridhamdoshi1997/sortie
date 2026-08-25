@@ -56,7 +56,7 @@ export function OutlookCalendarTab() {
       {!status.connected ? (
         <a
           href="/api/auth/outlook-calendar/start"
-          className="inline-flex min-h-9 w-fit items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          className="btn-signal inline-flex min-h-9 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground"
         >
           <Calendar className="h-4 w-4" />
           Connect Outlook Calendar

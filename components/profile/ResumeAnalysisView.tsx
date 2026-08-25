@@ -253,7 +253,7 @@ function BulletDrillDown({
               <button
                 onClick={applyFix}
                 disabled={isPending}
-                className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-50"
               >
                 {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
                 Save this version
@@ -340,7 +340,7 @@ function EditResumeInfoModal({
           <button
             onClick={save}
             disabled={isPending}
-            className="inline-flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             {isPending && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
             Update
@@ -478,7 +478,7 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
           <button
             onClick={runAnalysis}
             disabled={isPending}
-            className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             {isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
             {isPending ? "Analyzing…" : analysis ? "Re-Analyze" : "Analyze Résumé"}
@@ -565,7 +565,7 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
                     </div>
                     <button
                       onClick={() => setDrillDownKey(sectionKeyOf(s))}
-                      className="rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                      className="btn-signal rounded-lg px-3 py-1.5 text-xs font-semibold text-accent-foreground"
                     >
                       FIX
                     </button>

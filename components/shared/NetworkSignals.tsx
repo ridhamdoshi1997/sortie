@@ -85,7 +85,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
                     href={buildLinkedInPeopleSearchUrl(company)}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="inline-flex w-fit items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+                    className="btn-signal inline-flex w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
                 >
                     Find people at {company} on LinkedIn
                 </a>

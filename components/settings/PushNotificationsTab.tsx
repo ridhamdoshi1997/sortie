@@ -114,7 +114,7 @@ export function PushNotificationsTab() {
           type="button"
           onClick={handleEnable}
           disabled={isPending}
-          className="inline-flex h-9 w-fit items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal inline-flex h-9 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
         >
           <Bell className="h-4 w-4" />
           Enable push notifications

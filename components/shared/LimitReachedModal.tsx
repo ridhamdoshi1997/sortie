@@ -84,7 +84,7 @@ export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onC
           {isUpgrade && (
             <Link
               href="/pricing"
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+              className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
             >
               See Command plan
             </Link>

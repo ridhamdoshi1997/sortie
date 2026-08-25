@@ -75,7 +75,7 @@ export function AddToCompareButton({ jobId, title, company }: { jobId: string; t
       {entries.length >= 2 && (
         <Link
           href={`/compare?ids=${entries.map((e) => e.id).join(",")}`}
-          className="inline-flex min-h-9 items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          className="btn-signal inline-flex min-h-9 items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium text-accent-foreground"
         >
           Compare {entries.length} jobs
           <ArrowRight className="h-4 w-4" />

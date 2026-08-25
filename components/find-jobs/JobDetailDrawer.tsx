@@ -125,7 +125,7 @@ export function JobDetailDrawer({ job, onClose }: { job: Job | null; onClose: ()
 
           <Link
             href={`/find-jobs/${job.id}`}
-            className="mt-2 inline-flex items-center justify-center gap-2 rounded-md bg-accent px-4 py-2.5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="btn-signal mt-2 inline-flex items-center justify-center gap-2 rounded-md px-4 py-2.5 text-sm font-medium text-accent-foreground"
           >
             View full details
             <ArrowRight className="h-3.5 w-3.5" />

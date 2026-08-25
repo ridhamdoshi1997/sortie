@@ -113,7 +113,7 @@ export function ConnectedAccounts({
               type="button"
               onClick={handleSaveContext}
               disabled={isSaving}
-              className="flex items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="btn-signal flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
             >
               {isSaving ? "Saving…" : "I'm Connected"}
             </button>

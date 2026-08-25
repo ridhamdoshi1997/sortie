@@ -199,7 +199,7 @@ export function PracticeSandbox({
           type="button"
           onClick={handleRunAll}
           disabled={running}
-          className="inline-flex w-fit items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal inline-flex w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
         >
           {running ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
           {running ? "Running…" : isSql ? "Run Query" : "Run Tests"}

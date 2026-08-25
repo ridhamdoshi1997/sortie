@@ -154,7 +154,7 @@ export function NotionTab() {
               type="button"
               disabled={isPending || !token.trim()}
               onClick={handleListDatabases}
-              className="inline-flex min-h-9 w-fit items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              className="btn-signal inline-flex min-h-9 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Database className="h-4 w-4" />
               {isPending ? "Checking…" : "Find databases"}
@@ -181,7 +181,7 @@ export function NotionTab() {
                 type="button"
                 disabled={isPending}
                 onClick={handleConnect}
-                className="inline-flex min-h-9 w-fit items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+                className="btn-signal inline-flex min-h-9 w-fit items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-40"
               >
                 {isPending ? "Connecting…" : "Connect this database"}
               </button>
@@ -214,7 +214,7 @@ export function NotionTab() {
               type="button"
               disabled={isPending}
               onClick={handleSync}
-              className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-40"
+              className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-40"
             >
               <RefreshCw className="h-4 w-4" />
               {isPending ? "Working…" : "Sync tracked jobs to Notion"}

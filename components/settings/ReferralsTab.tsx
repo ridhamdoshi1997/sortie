@@ -71,7 +71,7 @@ export function ReferralsTab() {
           <button
             type="button"
             onClick={handleCopyLink}
-            className="inline-flex shrink-0 items-center gap-1 rounded-md bg-accent px-2.5 py-1.5 text-[11px] font-medium text-accent-foreground transition-opacity hover:opacity-90"
+            className="btn-signal inline-flex shrink-0 items-center gap-1 rounded-md px-2.5 py-1.5 text-[11px] font-medium text-accent-foreground"
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             {copied ? "Copied" : "Copy"}
