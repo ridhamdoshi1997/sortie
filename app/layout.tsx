@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Fraunces, Inter } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -10,6 +11,23 @@ import { ReferralCaptureLoader } from "@/components/referrals/ReferralCaptureLoa
 import { ReferralClaimerLoader } from "@/components/referrals/ReferralClaimerLoader";
 import { ServiceWorkerRegisterLoader } from "@/components/pwa/ServiceWorkerRegisterLoader";
 import { ToastProvider } from "@/components/ui/ToastProvider";
+
+// Signal redesign (feature/signal-redesign) — self-hosted via next/font/google
+// rather than the mockup's runtime @import, avoiding FOUC/layout shift.
+// Inter replaces the system-sans stack for UI text; Fraunces is new and
+// stays scoped to --font-display's existing narrow role (wordmark + hero
+// headings only, per ui-tokens.md's own invariant — unchanged here, just a
+// different display face). Both expose a CSS variable consumed by
+// globals.css's --font-sans/--font-display instead of a raw font-family,
+// so the system-stack fallback still applies if the webfont fails to load.
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  weight: ["500", "600"],
+  style: ["normal", "italic"],
+  variable: "--font-fraunces",
+  display: "swap",
+});
 
 // Installable PWA (build-plan.md §H). manifest + icons here are the two
 // pieces Next.js's metadata API covers; the service worker itself
@@ -42,7 +60,11 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={cn("h-full", "antialiased", "font-sans")} suppressHydrationWarning>
+    <html
+      lang="en"
+      className={cn("h-full", "antialiased", "font-sans", inter.variable, fraunces.variable)}
+      suppressHydrationWarning
+    >
       {/* overflow-x-hidden is a real, load-bearing safety net, not decorative —
           a real bug (found 2026-08-19) traced a page-wide horizontal scroll
           on /missions to Missions' Kanban board (a fixed-width-column flex

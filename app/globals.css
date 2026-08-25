@@ -5,11 +5,16 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  --font-sans: -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
+  /* Signal redesign (feature/signal-redesign) — self-hosted via
+     next/font/google in app/layout.tsx, which exposes --font-inter/
+     --font-fraunces as CSS variables on <html>; the system stack still
+     follows as a real fallback if the webfont fails to load, so this
+     isn't a hard dependency on the network the way the original mockup's
+     runtime @import was. --font-display keeps its exact same narrow role
+     (wordmark + hero headings only) — only the face changed. */
+  --font-sans: var(--font-inter), -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-  /* Display — wordmark and hero headings only, per the approved Sortie
-     concept mockup. Never for body copy or UI chrome. */
-  --font-display: "Avenir Next", "Century Gothic", "Segoe UI Semibold", ui-sans-serif, sans-serif;
+  --font-display: var(--font-fraunces), "Avenir Next", "Century Gothic", ui-sans-serif, sans-serif;
 
   /* Raycast-style neutral ramp (2026-07-27) — fully achromatic grays (0%
      saturation), not the sage/green-tinted neutrals this app used before.
@@ -41,21 +46,30 @@
   --color-chart-axis: #8a8d91;
 
   /* Signal — primary accent. Reserved for primary actions and the
-     wordmark; never used for AI-generated content (see --color-agent). */
-  --color-accent: #c9711f;
-  --color-accent-dark: #7a4713;
-  --color-accent-light: #f4e3d0;
-  --color-accent-muted: #faf1e6;
-  --color-accent-foreground: #1c1204;
+     wordmark; never used for AI-generated content (see --color-agent).
+     Signal redesign (feature/signal-redesign, 2026-08-24): shifted to the
+     amber pair the Signal design direction actually settled on (light
+     mode gets the darker half of the pair for contrast on a light
+     ground, same real pattern this token already used before — dark mode
+     below gets the brighter half). Surrounding tint/shade values are
+     Tailwind's own amber-100/200/800/950 stops, not hand-picked, so they
+     stay accessible and internally consistent. */
+  --color-accent: #d97706;
+  --color-accent-dark: #92400e;
+  --color-accent-light: #fde68a;
+  --color-accent-muted: #fef3c7;
+  --color-accent-foreground: #451a03;
 
   /* Radar — reserved exclusively for content the AI agent generated
      (match reasoning, research findings, generated drafts). Never used
-     for anything else, so its appearance is a reliable signal on its own. */
-  --color-agent: #2e7d82;
-  --color-agent-dark: #184a4d;
-  --color-agent-light: #dcecec;
-  --color-agent-muted: #eef6f6;
-  --color-agent-foreground: #0f3436;
+     for anything else, so its appearance is a reliable signal on its own.
+     Signal redesign — shifted to the teal pair Signal settled on; same
+     Tailwind-scale-derived tint/shade approach as accent above. */
+  --color-agent: #0f766e;
+  --color-agent-dark: #134e4a;
+  --color-agent-light: #ccfbf1;
+  --color-agent-muted: #f0fdfa;
+  --color-agent-foreground: #042f2e;
 
   --color-success: #3f7a4f;
   --color-success-alt: #2f9e5c;
@@ -582,17 +596,22 @@ body {
   --color-text-slate-medium: #c2c7ca;
   --color-chart-axis: #5e6366;
 
-  --color-accent: #e0913f;
-  --color-accent-dark: #f6d9b6;
-  --color-accent-light: #35281a;
-  --color-accent-muted: #2c2013;
+  /* Signal redesign — dark mode gets the brighter half of the amber/teal
+     pair (matches this token's existing light/dark contrast pattern:
+     brighter accent on a dark ground, darker accent on a light one).
+     Tint/shade neighbors are Tailwind's amber-300/950/900 and
+     teal-200/900 stops. */
+  --color-accent: #f59e0b;
+  --color-accent-dark: #fcd34d;
+  --color-accent-light: #451a03;
+  --color-accent-muted: #2c1a08;
   --color-accent-foreground: #1c1204;
 
-  --color-agent: #4fa8ad;
-  --color-agent-dark: #bfe6e8;
-  --color-agent-light: #172b2c;
-  --color-agent-muted: #142526;
-  --color-agent-foreground: #d7eeef;
+  --color-agent: #2dd4bf;
+  --color-agent-dark: #99f6e4;
+  --color-agent-light: #134e4a;
+  --color-agent-muted: #0c3733;
+  --color-agent-foreground: #ccfbf1;
 
   --color-success: #6bb47c;
   --color-success-alt: #4fcf82;
