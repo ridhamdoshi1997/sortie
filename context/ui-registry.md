@@ -18,6 +18,16 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Signal design primitives (`.btn-signal`, `.ai-hero-card`, `.ai-eyebrow-dot`)
+
+Files: `app/globals.css` (definitions), applied at ~35 real call sites across every consumer-facing page — see `context/RESUME.md`'s Phase 24 entry for the full list, don't re-derive it from scratch.
+Route: sitewide (Signal redesign branch `feature/signal-redesign`, not yet merged as of this writing — check whether it has been before assuming these classes are live in whatever branch you're on)
+Last updated: 2026-08-25 (Phase 24). Real, reusable primitives — match these exactly rather than hand-rolling a similar gradient/glow inline.
+- **`.btn-signal`** — the premium primary-button treatment (gradient fill + layered inset/outer glow + hover lift + press scale). Apply to a button/link alongside its existing sizing/radius/text classes, but **remove** `bg-accent` and any `hover:opacity-*`/`transition-opacity` from that same element first — `.btn-signal` supplies its own background, shadow, and transition. Reserved for the genuinely *primary* action on a given surface — do not apply to secondary/ghost/destructive buttons, or to small per-item repeated actions (a "rewrite this one bullet" button, a step-indicator dot) where it would just be visual noise. Uses the new `--ease-out`/`--ease-in-out` @theme tokens (see below), not a hand-rolled curve.
+- **`.ai-hero-card`** + **`.ai-eyebrow-dot`** — an agent-teal radial-gradient hero callout with a pulsing status dot, for the rare genuinely page-leading AI-generated moment (currently: `WeeklyBriefingCard` only). This is **not** a replacement for the standard small inline Agent-Content Callout (`border-l-2 border-agent bg-agent-light`, documented in `ui-tokens.md`) — that pattern is correct and unchanged everywhere else it's used (Rejection Radar, Negotiation Script, per-job "AI Navigator reads" blocks, etc.). Only reach for `.ai-hero-card` when something is a real standalone hero moment, not just any AI-generated text.
+- **`--ease-out: cubic-bezier(0.23, 1, 0.32, 1)`** / **`--ease-in-out: cubic-bezier(0.77, 0, 0.175, 1)`** — new real easing tokens in the `@theme` block (previously this file had no custom easing curves at all; every transition used a bare `ease`/`ease-in-out` keyword). Use `var(--ease-out)` for anything entering/exiting or a discrete state-lift (hover, button press); reach for `var(--ease-in-out)` only for genuine continuous on-screen movement. Don't add a third parallel easing system — extend these if a new curve is ever needed.
+- **`.dim-card-in`** (`EvaluationBreakdown.tsx` only, currently) — a capped staggered-entrance keyframe (opacity+translateY, 280ms, per-card `animationDelay` via inline style, index capped at 8) for a grid of items that all arrive together once per page load. Reasonable to reuse for another "a real data set just loaded" grid, but per the `animate` skill's own frequency gate, do NOT apply broad entrance staggers to anything visited many times a day (Dashboard's own card grid deliberately has none, for exactly this reason).
+
 ### Hide Reason Panel (job detail)
 
 Files: `components/job-details/JobActionBar.tsx` (`HideReasonPanel`)
