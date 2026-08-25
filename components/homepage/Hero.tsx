@@ -49,7 +49,7 @@ export function Hero() {
                 href="/login"
                 eventName="marketing_cta_clicked"
                 eventProperties={{ location: "hero" }}
-                className="inline-flex min-h-12 items-center rounded-md bg-accent px-8 text-base font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                className="btn-signal inline-flex min-h-12 items-center rounded-md px-8 text-base font-semibold text-accent-foreground"
               >
                 Start for free
               </TrackedCtaLink>

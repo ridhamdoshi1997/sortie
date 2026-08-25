@@ -131,7 +131,7 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
           type="button"
           disabled={isPending}
           onClick={handleGenerate}
-          className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
         >
           {hasDocument ? "Regenerate" : "Generate"}
         </button>

@@ -226,7 +226,7 @@ function StepRoles({
         <button
           type="button"
           onClick={onNext}
-          className="inline-flex min-h-11 w-fit items-center justify-center rounded-lg bg-accent px-6 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
+          className="btn-signal inline-flex min-h-11 w-fit items-center justify-center rounded-lg px-6 text-sm font-medium text-accent-foreground"
         >
           Continue
         </button>
@@ -344,7 +344,7 @@ function StepUpload({
               type="button"
               disabled={isExtracting}
               onClick={handleExtract}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+              className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
             >
               {isExtracting ? "Extracting…" : state.extracted ? "Re-extract" : "Extract Profile"}
             </button>
@@ -480,7 +480,7 @@ function StepConfirm({
             type="button"
             disabled={isSubmitting}
             onClick={handleSubmit}
-            className="inline-flex min-h-11 items-center justify-center rounded-lg bg-accent px-6 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal inline-flex min-h-11 items-center justify-center rounded-lg px-6 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             {isSubmitting ? "Saving…" : "Confirm & continue"}
           </button>

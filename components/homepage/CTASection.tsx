@@ -69,7 +69,7 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
       ) : plan.stripePriceId ? (
         <UpgradeButton
           tier={plan.tier}
-          className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground disabled:opacity-60"
         >
           {isLifetime ? `Buy ${plan.displayName} — one-time` : `Upgrade to ${plan.displayName}`}
         </UpgradeButton>
@@ -116,7 +116,7 @@ export async function CTASection() {
               href="/login"
               eventName="marketing_cta_clicked"
               eventProperties={{ location: "pricing" }}
-              className="mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md bg-accent px-6 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+              className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground"
             >
               Start for free
             </TrackedCtaLink>
