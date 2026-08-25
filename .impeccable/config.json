@@ -1,0 +1,89 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/missions/KanbanCard.tsx"
+        ],
+        "createdAt": "2026-08-25T02:07:59.741Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session, not introduced or changed by it"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/dashboard/PipelineStrategyCard.tsx"
+        ],
+        "createdAt": "2026-08-25T02:07:59.875Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/career/BragDocGenerator.tsx"
+        ],
+        "createdAt": "2026-08-25T02:07:59.991Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/career/MarketReadiness.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:00.125Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/career/SkillGapTracker.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:00.241Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/interview/QuestionBankPanel.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:32.701Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session, appears twice in this file"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/interview/StarStoryMatrix.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:32.810Z",
+        "reason": "Pre-existing error callout (border-l-2 border-error bg-error/10) using this app's same established inline-message idiom as the Agent-Content Callout, just error-toned — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/job-details/InterviewPanel.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:32.949Z",
+        "reason": "Pre-existing Agent-Content Callout (border-l-2 border-agent bg-agent-light), documented as this app's deliberate AI-content signal in context/ui-tokens.md — predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "components/homepage/Hero.tsx"
+        ],
+        "createdAt": "2026-08-25T02:08:33.063Z",
+        "reason": "Pre-existing Agent-Content Callout in the hero's static evaluator-preview mockup (border-l-2 border-agent bg-agent-light) — same documented AI-content pattern, predates this session"
+      }
+    ]
+  }
+}
