@@ -344,7 +344,7 @@ function SyncModal({
               <button
                 onClick={confirmSync}
                 disabled={selected.size === 0}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+                className="btn-signal inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-50"
               >
                 <Check className="h-3.5 w-3.5" />
                 Sync selected
@@ -352,7 +352,7 @@ function SyncModal({
             </>
           )}
           {(stage === "done" || stage === "error") && (
-            <button onClick={onClose} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90">
+            <button onClick={onClose} className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground">
               Done
             </button>
           )}
@@ -433,7 +433,7 @@ function EditDetailsModal({ resume, onClose }: { resume: ResumeRow; onClose: () 
           <button
             onClick={save}
             disabled={saving}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             {saving ? "Saving…" : "Save"}
           </button>
@@ -514,7 +514,7 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
         <button
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg bg-accent text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal mt-4 inline-flex min-h-10 w-full items-center justify-center gap-2 rounded-lg text-sm font-medium text-accent-foreground disabled:opacity-60"
         >
           <Upload className="h-4 w-4" />
           {uploading ? "Uploading…" : "Upload"}
@@ -595,7 +595,7 @@ export function ResumeManager({ initialResumes, onSynced }: Props) {
         <button
           onClick={() => setUploadOpen(true)}
           disabled={resumes.length >= MAX_SLOTS}
-          className="inline-flex min-h-9 items-center gap-2 rounded-lg bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
+          className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-50"
         >
           <Plus className="h-4 w-4" />
           Add résumé
