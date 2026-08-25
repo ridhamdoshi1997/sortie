@@ -138,7 +138,7 @@ export function NavigatorLauncher() {
         type="button"
         onClick={() => (open ? closePanel() : openPanel())}
         aria-label={open ? "Close Navigator" : "Open Navigator"}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-accent text-accent-foreground shadow-lg transition-opacity hover:opacity-90"
+        className="btn-signal fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-accent-foreground"
       >
         {/* Crossfade + rotate between the two icons instead of an instant
             swap — a purely decorative touch (motion-consistency), so it's
