@@ -40,20 +40,30 @@ function PlanCard({
 }) {
   return (
     <div
-      className={`flex flex-col rounded-2xl border p-5 transition-colors ${
-        isCurrent ? "border-2 border-accent bg-surface" : "border-border bg-surface-secondary opacity-90"
+      className={`signal-plan flex flex-col rounded-2xl border p-5 ${
+        isCurrent
+          ? "signal-plan-current bg-surface"
+          : plan.maxSeats !== null
+            ? "signal-plan-featured"
+            : "border-border bg-surface-secondary opacity-90"
       }`}
     >
-      <div className="flex items-center justify-between">
-        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-secondary">
-          {plan.displayName}
-        </p>
-        {isCurrent && (
-          <span className="rounded-full bg-accent-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">
-            Current plan
-          </span>
-        )}
-      </div>
+      {/* Tag sits on its own line above the plan name, self-start — the
+          mockup's own .plan-tag placement. Not in a justify-between row
+          with the name: these cards are narrow, and a two-word tag wraps
+          into an unreadable blob over the name at this column width. */}
+      {(isCurrent || plan.maxSeats !== null) && (
+        <span
+          className={`mb-2 w-fit whitespace-nowrap rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+            isCurrent ? "bg-accent/15 text-accent" : "bg-agent-light text-agent-dark"
+          }`}
+        >
+          {isCurrent ? "Current plan" : `Limited — ${plan.maxSeats} seats`}
+        </span>
+      )}
+      <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-secondary">
+        {plan.displayName}
+      </p>
       <p className={`mt-2 text-2xl font-bold ${isCurrent ? "text-text-primary" : "text-text-secondary"}`}>
         {plan.priceCents === 0 ? "$0" : `$${(plan.priceCents / 100).toFixed(0)}`}
         {plan.priceCents > 0 && plan.billingPeriod !== "lifetime" && (
@@ -65,10 +75,14 @@ function PlanCard({
       </p>
       {plan.maxSeats !== null && (
         <div className="mt-3">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary">
+          <div className="signal-meter-track w-full">
             <div
-              className="h-full rounded-full bg-accent transition-[width]"
-              style={{ width: `${Math.min(100, Math.round((plan.seatsClaimed / Math.max(1, plan.maxSeats)) * 100))}%` }}
+              className="signal-meter-fill signal-fill-in"
+              style={
+                {
+                  "--fill": Math.min(1, plan.seatsClaimed / Math.max(1, plan.maxSeats)),
+                } as React.CSSProperties
+              }
             />
           </div>
           <p className="mt-1 text-[11px] font-medium text-text-muted">
@@ -278,8 +292,14 @@ export function SubscriptionTab() {
         })}
       </div>
 
+      {/* Signal redesign: this was tone="danger" by default — wrong tone
+          for a routine, non-destructive plan change (no data is lost, the
+          user keeps current access until period end). "neutral" is the
+          honest fit: amber .btn-signal primary, no red/AlertTriangle. */}
       <ConfirmDialog
         open={downgradeTarget !== null}
+        tone="neutral"
+        eyebrow="Plan change"
         title={`Downgrade to ${downgradeTarget?.displayName ?? ""}?`}
         description={`You'll keep ${summary.displayName} access through ${new Date(summary.periodEnd).toLocaleDateString("en-US", { month: "long", day: "numeric" })} — it only switches to ${downgradeTarget?.displayName ?? "the new plan"} after that, no early cutoff. This opens Stripe's billing portal to confirm.`}
         confirmLabel="Continue to billing portal"

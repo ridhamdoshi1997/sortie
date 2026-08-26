@@ -287,7 +287,7 @@ export function CommandPalette() {
                         item.run();
                       }}
                       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm font-medium transition-colors ${
-                        isActive ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary"
+                        isActive ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary"
                       }`}
                     >
                       <Icon className="h-4 w-4 shrink-0" />

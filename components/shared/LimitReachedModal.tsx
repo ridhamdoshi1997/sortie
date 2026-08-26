@@ -44,7 +44,7 @@ export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onC
           <div className="flex items-center gap-3">
             <span
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                isUpgrade ? "bg-accent-muted text-accent" : "bg-surface-secondary text-text-secondary"
+                isUpgrade ? "bg-accent/15 text-accent" : "bg-surface-secondary text-text-secondary"
               }`}
             >
               {isUpgrade ? <TrendingUp className="h-4.5 w-4.5" /> : <Lock className="h-4.5 w-4.5" />}

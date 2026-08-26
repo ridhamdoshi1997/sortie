@@ -428,7 +428,7 @@ function StepConfirm({
                 type="button"
                 onClick={() => setState((prev) => ({ ...prev, experienceLevel: level }))}
                 className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-left transition-colors ${
-                  on ? "border-accent bg-accent-muted" : "border-border hover:bg-surface-secondary"
+                  on ? "border-accent bg-accent/15" : "border-border hover:bg-surface-secondary"
                 }`}
               >
                 <span

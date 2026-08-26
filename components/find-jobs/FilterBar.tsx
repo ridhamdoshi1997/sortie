@@ -65,7 +65,7 @@ function FilterPopover({
         className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors ${
           isActive
             ? "border-accent bg-accent-muted text-accent"
-            : "border-overlay-foreground/15 bg-overlay-foreground/8 text-overlay-foreground/80 hover:border-overlay-foreground/30"
+            : "border-border bg-surface-secondary text-text-secondary hover:border-text-muted"
         }`}
       >
         {isActive ? activeLabel ?? label : label}
@@ -155,7 +155,7 @@ function RadioOption({
       type="button"
       onClick={onSelect}
       className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
-        checked ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary"
+        checked ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary"
       }`}
     >
       <span
@@ -182,7 +182,7 @@ function CheckboxOption({
       type="button"
       onClick={onToggle}
       className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
-        checked ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary"
+        checked ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary"
       }`}
     >
       <span
@@ -364,7 +364,7 @@ export function FilterBar({ filters, onChange }: Props) {
           className={`inline-flex h-9 items-center gap-1.5 rounded-full border px-3.5 text-xs font-medium transition-colors ${
             secondaryActiveCount > 0
               ? "border-accent bg-accent-muted text-accent"
-              : "border-overlay-foreground/15 bg-overlay-foreground/8 text-overlay-foreground/80 hover:border-overlay-foreground/30"
+              : "border-border bg-surface-secondary text-text-secondary hover:border-text-muted"
           }`}
         >
           <SlidersHorizontal className="h-3.5 w-3.5" />
@@ -450,7 +450,7 @@ export function FilterBar({ filters, onChange }: Props) {
         <button
           type="button"
           onClick={() => onChange(DEFAULT_FILTERS)}
-          className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground"
+          className="inline-flex h-9 items-center gap-1 rounded-full px-3 text-xs font-medium text-text-muted transition-colors hover:text-text-primary"
         >
           <X className="h-3.5 w-3.5" />
           Clear all
