@@ -14,6 +14,7 @@ import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 type ApplicationRow = {
   generated_resume: string | null;
+  generated_cover_letter: string | null;
   resume_sections: ResumeSection[] | null;
   resume_style: ResumeStyle | null;
   updated_at: string | null;
@@ -40,7 +41,7 @@ export default async function TailoredResumeEditorPage({
     insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     insforge.database
       .from("applications")
-      .select("generated_resume,resume_sections,resume_style,updated_at,quality_analysis,quality_analyzed_at")
+      .select("generated_resume,generated_cover_letter,resume_sections,resume_style,updated_at,quality_analysis,quality_analyzed_at")
       .eq("user_id", user.id)
       .eq("job_id", jobId)
       .maybeSingle<ApplicationRow>(),
@@ -69,7 +70,7 @@ export default async function TailoredResumeEditorPage({
             </h1>
             <p className="text-sm text-text-secondary">{job.company ?? "Unknown company"}</p>
           </div>
-          <DocumentSwitcher jobId={jobId} active="resume" />
+          <DocumentSwitcher jobId={jobId} active="resume" otherExists={Boolean(application.generated_cover_letter)} />
         </div>
 
         <ResumeWorkspace

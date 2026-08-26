@@ -489,7 +489,7 @@ function UploadModal({ onClose, onUploaded }: { onClose: () => void; onUploaded:
             if (file) handleFile(file);
           }}
           className={`mx-auto mt-6 flex h-32 flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed transition-colors ${
-            dragging ? "border-accent bg-accent-muted" : "border-border bg-surface-secondary"
+            dragging ? "border-accent bg-accent/15" : "border-border bg-surface-secondary"
           }`}
         >
           {uploading ? (

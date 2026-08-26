@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Gauge, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { ActionPlan } from "@/components/documents/ActionPlan";
@@ -19,14 +19,37 @@ function scoreLabel(score: number): string {
   return "Weak";
 }
 
+// Tone tracks the score itself, not a fixed agent-teal regardless of value
+// (professional-polish pass, 2026-08-26, direct user report) — same tiering
+// idea as EvaluationBreakdown.tsx's GRADE_STYLES: a strong score reads
+// agent-teal (this is an AI judgement), a weak one reads warning, so the
+// gauge's own color is honest about what it's showing, not just decorative.
+function scoreTone(score: number): { stroke: string; chip: string } {
+  if (score >= 7) return { stroke: "var(--color-agent)", chip: "bg-agent-light text-agent-dark" };
+  if (score >= 4) return { stroke: "var(--color-text-muted)", chip: "bg-surface text-text-secondary" };
+  return { stroke: "var(--color-warning)", chip: "bg-warning/15 text-warning" };
+}
+
+// Grows in from empty + counts up on mount, not full on first paint (same
+// pattern as JobIdentityRail's match score / ResumeGapAnalysis's ScoreRing)
+// — a real result just arrived, worth a real reveal instead of appearing
+// instantly.
 function ScoreGauge({ score }: { score: number }) {
+  const [grown, setGrown] = useState(false);
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => setGrown(true));
+    return () => cancelAnimationFrame(raf);
+  }, [score]);
+
+  const tone = scoreTone(score);
   const pct = Math.min(1, Math.max(0, score / 10));
   const r = 60;
   const circumference = Math.PI * r;
-  const dash = circumference * pct;
+  const dash = circumference * (grown ? pct : 0);
+  const displayScore = grown ? score : 0;
 
   return (
-    <div className="flex shrink-0 flex-col items-center gap-1.5">
+    <div className="flex shrink-0 flex-col items-center gap-2">
       <div className="relative h-20 w-36">
         <svg width="144" height="80" viewBox="0 0 144 80" className="absolute inset-0">
           <path
@@ -39,17 +62,18 @@ function ScoreGauge({ score }: { score: number }) {
           <path
             d="M 12 72 A 60 60 0 0 1 132 72"
             fill="none"
-            stroke="var(--color-agent)"
+            stroke={tone.stroke}
             strokeWidth="10"
             strokeLinecap="round"
             strokeDasharray={`${dash} ${circumference}`}
+            style={{ transition: "stroke-dasharray 900ms var(--ease-out)" }}
           />
         </svg>
         <div className="absolute inset-x-0 bottom-0 flex justify-center">
-          <p className="text-2xl font-bold text-text-primary">{score.toFixed(1)}</p>
+          <p className="font-mono text-2xl font-bold tabular-nums text-text-primary">{displayScore.toFixed(1)}</p>
         </div>
       </div>
-      <span className="rounded-full bg-agent-light px-2.5 py-0.5 text-[11px] font-semibold text-agent-dark">
+      <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${tone.chip}`}>
         {scoreLabel(score)}
       </span>
     </div>
@@ -119,7 +143,11 @@ export function AIRewriteTab({
   return (
     <div className="flex flex-col gap-4">
       {scoreJump ? (
-        <div className="flex items-center gap-4 rounded-xl bg-surface-secondary p-4">
+        // Real depth, not a flat bg-surface-secondary fill (2026-08-26,
+        // direct user report) — an agent-tinted border matches this app's
+        // "AI-derived result" convention (the gauge's own color already
+        // signals it's a judgement, not raw data).
+        <div className="dim-card-in flex items-center gap-4 rounded-xl border border-agent/20 bg-surface p-4 shadow-card">
           <ScoreGauge score={scoreJump.score} />
           <div className="flex-1">
             {scoreJump.previousScore != null ? (

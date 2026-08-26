@@ -207,7 +207,7 @@ export function ResumeWorkspace({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    <div className="fade-in-up overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Résumé workspace</h3>
@@ -224,6 +224,11 @@ export function ResumeWorkspace({
         </div>
 
         <div className="flex flex-col">
+          {/* Underline, not a filled pill (2026-08-26, same fix as
+             components/ui/Tabs.tsx) — `bg-accent-muted` resolves to
+             `#2c1a08` in dark mode, the identical muddy-fill bug already
+             fixed there; a border-bottom in `--color-accent` stays vivid
+             in both themes. */}
           <div className="flex gap-1 border-b border-border p-3">
             {(
               [
@@ -236,15 +241,20 @@ export function ResumeWorkspace({
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                  tab === key ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+                className={`flex-1 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                  tab === key
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="max-h-[560px] overflow-y-auto p-5">
+          {/* Keyed on `tab` so a tab switch remounts this wrapper and
+             replays the entrance animation — a real state transition
+             (switching panels), not decoration for its own sake. */}
+          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 max-h-[560px] overflow-y-auto p-5 duration-200">
             {tab === "ai-rewrite" && (
               <AIRewriteTab
                 jobId={jobId}

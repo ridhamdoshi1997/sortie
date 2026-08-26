@@ -1,4 +1,5 @@
 import type { MissingField } from "@/types";
+import { AnimatedScoreValue } from "@/components/job-details/AnimatedScoreValue";
 
 type Props = {
   completionPercent: number;
@@ -42,10 +43,11 @@ export function ProfileAttentionBanner({
         </p>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          {missingFields.map((field) => (
+          {missingFields.map((field, i) => (
             <span
               key={field}
-              className="rounded-sm bg-warning px-2 py-0.5 text-xs font-medium text-warning-foreground"
+              className="dim-card-in rounded-full bg-warning/15 px-3 py-1 text-xs font-medium text-warning"
+              style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
             >
               {field}
             </span>
@@ -78,7 +80,7 @@ export function ProfileAttentionBanner({
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center">
           <span className="text-xl font-semibold leading-none text-text-primary">
-            {completionPercent}%
+            <AnimatedScoreValue value={completionPercent} />%
           </span>
         </div>
       </div>

@@ -205,9 +205,10 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="rounded-xl bg-agent-light p-4">
-        <p className="text-xs leading-6 text-agent-dark">
-          <strong>Edits here apply only to this copy.</strong> The résumé data this was built from is never
+      <div className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-secondary p-4">
+        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-agent" />
+        <p className="text-xs leading-6 text-text-secondary">
+          <strong className="text-text-primary">Edits here apply only to this copy.</strong> The résumé data this was built from is never
           touched — for a change you want to carry into every future résumé, update your profile instead.
         </p>
       </div>
@@ -320,7 +321,11 @@ function SortableSectionRow({
   }
 
   return (
-    <div ref={setNodeRef} style={style} className="rounded-xl border border-border bg-surface-secondary">
+    <div
+      ref={setNodeRef}
+      style={style}
+      className="rounded-xl border border-border bg-surface-secondary transition-colors hover:border-agent/25"
+    >
       <div className="flex items-center gap-2 px-3 py-2.5">
         <button
           {...attributes}
@@ -671,7 +676,7 @@ function BulletDiffCard({
   onTryAgain: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-agent/30 bg-agent-light/50 p-2.5">
+    <div className="animate-in fade-in-0 slide-in-from-top-1 flex flex-col gap-2 rounded-lg border border-agent/30 bg-agent-light/50 p-2.5 duration-200">
       <div className="flex items-start gap-1.5 text-[11px] leading-5 text-text-muted">
         <span className="mt-0.5 shrink-0 font-mono text-[9px] uppercase tracking-wide text-text-muted">Was</span>
         <span className="line-through decoration-text-muted/50">{original}</span>

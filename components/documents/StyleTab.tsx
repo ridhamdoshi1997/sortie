@@ -134,7 +134,7 @@ function Segmented<T extends string | number>({
           type="button"
           onClick={() => onSelect(o.value)}
           className={`flex-1 rounded-md px-2 py-1.5 text-xs font-medium transition-colors ${
-            o.value === active ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+            o.value === active ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text-primary"
           }`}
         >
           {o.label}
@@ -166,7 +166,7 @@ function IconSegmented<T extends string | number>({
           aria-label={o.label}
           onClick={() => onSelect(o.value)}
           className={`flex flex-1 items-center justify-center rounded-md py-1.5 transition-colors ${
-            o.value === active ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+            o.value === active ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text-primary"
           }`}
         >
           <o.icon className="h-3.5 w-3.5" />
@@ -301,7 +301,7 @@ function DropdownPanel<T extends string>({
           type="button"
           onClick={() => onSelect(o.value)}
           className={`block w-full whitespace-nowrap rounded-md px-2.5 py-1.5 text-left text-xs font-medium transition-colors ${
-            o.value === value ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
+            o.value === value ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
           }`}
         >
           {o.label}
@@ -480,7 +480,7 @@ export function StyleTab({ style, onChange, documentType = "resume" }: Props) {
                 type="button"
                 onClick={() => set("template", t)}
                 className={`flex flex-col gap-2 rounded-lg border p-2 transition-colors ${
-                  style.template === t ? "border-accent bg-accent-muted" : "border-border hover:border-accent"
+                  style.template === t ? "border-accent bg-accent/15" : "border-border hover:border-accent"
                 }`}
               >
                 <TemplateThumbnail template={t} />

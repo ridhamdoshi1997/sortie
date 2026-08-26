@@ -133,7 +133,7 @@ export function CoverLetterWorkspace({
   }
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    <div className="fade-in-up overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Cover letter workspace</h3>
@@ -156,6 +156,8 @@ export function CoverLetterWorkspace({
         </div>
 
         <div className="flex flex-col">
+          {/* Underline, not a filled pill — same fix as ResumeWorkspace.tsx's
+             own tab switcher (2026-08-26). */}
           <div className="flex gap-1 border-b border-border p-3">
             {(
               [
@@ -167,8 +169,10 @@ export function CoverLetterWorkspace({
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                  tab === key ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+                className={`flex-1 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                  tab === key
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
                 }`}
               >
                 {label}
@@ -176,12 +180,16 @@ export function CoverLetterWorkspace({
             ))}
           </div>
 
-          <div className="max-h-[560px] overflow-y-auto p-5">
+          {/* Keyed on `tab` — see ResumeWorkspace.tsx's own comment. */}
+          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 max-h-[560px] overflow-y-auto p-5 duration-200">
             {tab === "editor" && (
               <div className="flex flex-col gap-4">
-                <div className="rounded-xl bg-agent-light p-4">
-                  <p className="text-xs leading-6 text-agent-dark">
-                    <strong>This cover letter shares its look with the tailored résumé for this job.</strong> Change the
+                {/* Static UI copy, not AI output — a neutral bordered hint,
+                   not the flat agent-light wash it used to be (2026-08-26). */}
+                <div className="flex items-start gap-3 rounded-xl border border-border bg-surface-secondary p-3.5">
+                  <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-agent" />
+                  <p className="text-xs leading-6 text-text-secondary">
+                    <strong className="text-text-primary">This cover letter shares its look with the tailored résumé for this job.</strong> Change the
                     template, theme, or colors in the Style tab and both documents update together.
                   </p>
                 </div>

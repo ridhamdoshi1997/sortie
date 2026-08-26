@@ -18,6 +18,7 @@ import {
 
 import { analyzeResume, applyResumeBulletFix, deleteResume, renameResume, type ResumeRow } from "@/actions/resumes";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import type { ResumeAnalysis, ResumeBulletIssue, ResumeSectionAnalysis } from "@/types";
 
 // Identifies a section without holding a stale snapshot of it — the drill-
@@ -178,7 +179,7 @@ function BulletDrillDown({
               key={b.originalText}
               onClick={() => setActiveIndex(i)}
               className={`flex items-center gap-2 rounded-lg px-3 py-2 text-left text-xs font-medium transition-colors ${
-                i === activeIndex ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary"
+                i === activeIndex ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary"
               }`}
             >
               <span
@@ -503,20 +504,27 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
             <p className="text-sm leading-6 text-text-secondary">{analysis.summary}</p>
           </div>
 
-          <div className="rounded-2xl border border-agent/30 bg-agent-light p-6">
-            <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-agent-dark">
-              <Sparkles className="h-4 w-4" /> Strategic Narrative
-            </h2>
-            <p className="text-sm leading-6 text-agent-dark">{analysis.narrativeInsight}</p>
-          </div>
+          {/* Was a flat bg-agent-light wash — real AiReadsCard treatment
+              (2026-08-26, professional-polish pass, same fix already
+              applied across the job-detail page this session). */}
+          <AiReadsCard label="Strategic Narrative">
+            <p className="text-sm leading-6 text-text-primary">{analysis.narrativeInsight}</p>
+          </AiReadsCard>
 
           <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
-            <h2 className="mb-4 text-sm font-semibold text-text-primary">10-Dimension Role-Fit Matrix</h2>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {analysis.dimensions.map((d) => (
-                <div key={d.dimension} className="flex items-start gap-3 rounded-xl border border-border p-3.5">
+            <h2 className="mb-3 text-sm font-semibold text-text-primary">10-Dimension Role-Fit Matrix</h2>
+            {/* Divided list, not a grid of same-size bordered tiles — same
+                "lazy checklist" fix already applied to EvaluationBreakdown.tsx
+                on the job-detail page. */}
+            <div className="flex flex-col gap-0.5">
+              {analysis.dimensions.map((d, i) => (
+                <div
+                  key={d.dimension}
+                  className="dim-card-in flex items-start gap-3 rounded-xl px-2 py-3 transition-colors hover:bg-surface-secondary/70"
+                  style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                >
                   <GradeBadge grade={d.grade} label="" size="sm" />
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1 pt-1">
                     <p className="text-sm font-semibold text-text-primary">{d.dimension}</p>
                     <p className="text-xs leading-5 text-text-secondary">{d.note}</p>
                   </div>
@@ -535,8 +543,12 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
                 the résumé.
               </p>
               <div className="space-y-3">
-                {analysis.vulnerabilities.map((v) => (
-                  <div key={v.title} className="rounded-xl border border-warning/30 bg-warning/5 p-3.5">
+                {analysis.vulnerabilities.map((v, i) => (
+                  <div
+                    key={v.title}
+                    className="dim-card-in rounded-xl border border-warning/30 bg-warning/5 p-3.5"
+                    style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                  >
                     <p className="text-sm font-semibold text-text-primary">{v.title}</p>
                     <p className="text-xs leading-5 text-text-secondary">{v.description}</p>
                   </div>
@@ -549,10 +561,11 @@ export function ResumeAnalysisView({ resume: initialResume }: { resume: ResumeRo
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
               <h2 className="mb-4 text-sm font-semibold text-text-primary">Flagged Sections</h2>
               <div className="space-y-2">
-                {analysis.sections.map((s) => (
+                {analysis.sections.map((s, i) => (
                   <div
                     key={`${s.section}-${s.entryCompany ?? ""}`}
-                    className="flex items-center justify-between rounded-xl border border-border px-4 py-3"
+                    className="dim-card-in flex items-center justify-between rounded-xl border border-border px-4 py-3 transition-colors hover:bg-surface-secondary/60"
+                    style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
                   >
                     <div>
                       <p className="text-sm font-medium text-text-primary">

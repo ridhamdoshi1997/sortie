@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
 
 import { analyzeATSFormatting, computeATSScore } from "@/lib/atsChecker";
+import { AnimatedScoreValue } from "@/components/job-details/AnimatedScoreValue";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 type Props = {
@@ -57,6 +58,10 @@ export function ATSAuditCard({
   // a genuine fresh pass rather than being a decorative no-op.
   const [recheckKey, setRecheckKey] = useState(0);
   const [checkedAt, setCheckedAt] = useState<string | null>(null);
+  // A real result to spin over, not decoration for its own sake — spins for
+  // exactly as long as the recheck button's own click affordance needs to
+  // read as "something happened," then stops.
+  const [spinning, setSpinning] = useState(false);
 
   const result = useMemo(
     () => computeATSScore(analyzeATSFormatting(style, sections, contact), matchedKeywords, missingKeywords),
@@ -75,12 +80,21 @@ export function ATSAuditCard({
   const displayScore = hasKeywordData ? result.overallScore : result.formatting.score * 2;
   const tone = scoreTone(displayScore);
 
+  function handleRecheck(): void {
+    setRecheckKey((k) => k + 1);
+    setCheckedAt(new Date().toISOString());
+    setSpinning(true);
+    setTimeout(() => setSpinning(false), 500);
+  }
+
   return (
-    <div className="rounded-xl border border-border bg-surface-secondary p-4">
+    <div className="dim-card-in rounded-xl border border-border bg-surface p-4 shadow-card">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2.5">
-          <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl font-mono text-sm font-bold ${tone.badge}`}>
-            {displayScore}
+        <div className="flex items-center gap-3">
+          <span
+            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-mono text-sm font-bold transition-transform duration-300 ${tone.badge} ${spinning ? "scale-110" : ""}`}
+          >
+            <AnimatedScoreValue value={displayScore} />
           </span>
           <div>
             <p className="text-sm font-medium text-text-primary">{tone.label}</p>
@@ -101,27 +115,25 @@ export function ATSAuditCard({
           )}
           <button
             type="button"
-            onClick={() => {
-              setRecheckKey((k) => k + 1);
-              setCheckedAt(new Date().toISOString());
-            }}
-            className="rounded-md p-1 text-text-muted hover:text-accent"
+            onClick={handleRecheck}
+            className="rounded-md p-1 text-text-muted transition-colors hover:bg-surface-secondary hover:text-accent"
             aria-label="Recheck ATS score"
             title="Recheck ATS score"
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            <RefreshCw className={`h-3.5 w-3.5 transition-transform duration-500 ${spinning ? "rotate-180" : ""}`} />
           </button>
         </div>
       </div>
 
       {result.formatting.issues.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-2">
-          {result.formatting.issues.map((issue) => (
+          {result.formatting.issues.map((issue, i) => (
             <li
               key={issue.id}
-              className={`rounded-lg border-l-2 px-2.5 py-2 text-[11px] leading-snug ${
+              className={`dim-card-in rounded-lg border-l-2 px-2.5 py-2 text-[11px] leading-snug ${
                 issue.severity === "critical" ? "border-error bg-error/5 text-text-primary" : "border-warning bg-warning/5 text-text-primary"
               }`}
+              style={{ animationDelay: `${Math.min(i, 6) * 40}ms` }}
             >
               <p className="font-semibold">{issue.title}</p>
               <p className="mt-0.5 text-text-secondary">{issue.description}</p>

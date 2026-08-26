@@ -143,7 +143,7 @@ export function ResumeSlotWorkspace({
   );
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+    <div className="fade-in-up overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
           <h3 className="text-sm font-semibold text-text-primary">Edit & style</h3>
@@ -169,7 +169,7 @@ export function ResumeSlotWorkspace({
                     type="button"
                     onClick={() => setPreviewView(key)}
                     className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
-                      previewView === key ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+                      previewView === key ? "bg-accent/15 text-accent" : "text-text-muted hover:text-text-primary"
                     }`}
                   >
                     {label}
@@ -188,10 +188,10 @@ export function ResumeSlotWorkspace({
             </div>
           ) : (
             <div className="flex flex-col gap-3">
-              <div className="flex items-start gap-2.5 rounded-xl bg-agent-light p-3.5">
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-agent-dark" />
-                <p className="text-xs leading-5 text-agent-dark">
-                  <strong>This is the original file you uploaded.</strong> The Editor tab has an editable copy
+              <div className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-secondary p-3.5">
+                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-text-secondary" />
+                <p className="text-xs leading-5 text-text-secondary">
+                  <strong className="text-text-primary">This is the original file you uploaded.</strong> The Editor tab has an editable copy
                   ready to go — the preview switches to your live edits as soon as you change something there.
                 </p>
               </div>
@@ -217,15 +217,19 @@ export function ResumeSlotWorkspace({
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`flex-1 rounded-lg px-3 py-2 text-xs font-semibold transition-colors ${
-                  tab === key ? "bg-accent-muted text-accent" : "text-text-muted hover:text-text-primary"
+                className={`flex-1 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                  tab === key
+                    ? "border-accent text-text-primary"
+                    : "border-transparent text-text-muted hover:text-text-primary"
                 }`}
               >
                 {label}
               </button>
             ))}
           </div>
-          <div className="max-h-[560px] overflow-y-auto p-5">
+          {/* Keyed on `tab` — see ResumeWorkspace.tsx's own comment on this
+             same pattern. */}
+          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 max-h-[560px] overflow-y-auto p-5 duration-200">
             {tab === "insights" && (
               <div className="flex flex-col gap-4">
                 <ATSAuditCard

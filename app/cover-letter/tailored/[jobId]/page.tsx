@@ -12,6 +12,7 @@ import type { Profile } from "@/types";
 import type { ResumeStyle } from "@/types/resumeEditor";
 
 type ApplicationRow = {
+  generated_resume: string | null;
   generated_cover_letter: string | null;
   cover_letter_salutation: string | null;
   resume_style: ResumeStyle | null;
@@ -37,7 +38,7 @@ export default async function TailoredCoverLetterEditorPage({
     insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     insforge.database
       .from("applications")
-      .select("generated_cover_letter,cover_letter_salutation,resume_style,updated_at")
+      .select("generated_resume,generated_cover_letter,cover_letter_salutation,resume_style,updated_at")
       .eq("user_id", user.id)
       .eq("job_id", jobId)
       .maybeSingle<ApplicationRow>(),
@@ -65,7 +66,7 @@ export default async function TailoredCoverLetterEditorPage({
             </h1>
             <p className="text-sm text-text-secondary">{job.company ?? "Unknown company"}</p>
           </div>
-          <DocumentSwitcher jobId={jobId} active="cover_letter" />
+          <DocumentSwitcher jobId={jobId} active="cover_letter" otherExists={Boolean(application.generated_resume)} />
         </div>
 
         <CoverLetterWorkspace
