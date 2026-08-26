@@ -138,7 +138,16 @@ export function NavigatorLauncher() {
         type="button"
         onClick={() => (open ? closePanel() : openPanel())}
         aria-label={open ? "Close Navigator" : "Open Navigator"}
-        className="btn-signal fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-accent-foreground"
+        // Job-detail pages render their own fixed-bottom Apply bar below lg
+        // (JobIdentityRail.tsx's MobileApplyBar — p-3 padding around a
+        // min-h-11 button centers it 34px above the viewport bottom).
+        // bottom-1.5 centers this FAB (h-14) on that same line instead of
+        // the two floating elements sitting at visibly different heights;
+        // lg:bottom-6 reverts to the standard offset once that bar is
+        // lg:hidden and there's nothing to align to.
+        className={`btn-signal fixed right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-accent-foreground ${
+          jobPageMatch ? "bottom-1.5 lg:bottom-6" : "bottom-6"
+        }`}
       >
         {/* Crossfade + rotate between the two icons instead of an instant
             swap — a purely decorative touch (motion-consistency), so it's

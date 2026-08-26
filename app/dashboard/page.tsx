@@ -109,7 +109,7 @@ export default async function DashboardPage() {
 
   const researchItems: ActivityItem[] = (researchedJobs ?? []).map((j) => ({
     id: `research-${j.id}`,
-    text: `Researched ${j.company}`,
+    text: `Researched ${j.company.trim()}`,
     time: formatDate(j.found_at),
     type: "researched" as const,
     sortKey: new Date(j.found_at).getTime(),

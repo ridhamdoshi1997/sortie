@@ -32,7 +32,7 @@ import { ShareJobLink } from "@/components/job-details/ShareJobLink";
 import { FollowUpNudge } from "@/components/job-details/FollowUpNudge";
 import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
-import { JobIdentityRail } from "@/components/job-details/JobIdentityRail";
+import { JobIdentityRail, MobileApplyBar } from "@/components/job-details/JobIdentityRail";
 import { SectionHeader } from "@/components/job-details/SectionHeader";
 import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
 import { WhyILeftReflection } from "@/components/job-details/WhyILeftReflection";
@@ -171,7 +171,12 @@ export default async function JobDetailsPage({ params }: Props) {
           for the whole scroll. FloatingApplyButton is gone with it; it
           existed only because Apply used to scroll away, and it duplicated
           the toolbar's own Apply on the same viewport. */}
-      <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 lg:px-8">
+      {/* pb-24 reserves MobileApplyBar's own fixed-bottom footprint below lg
+          (~56px button + 24px padding + safe margin) so it never covers the
+          last real content on the page while scrolled to the bottom — lg:pb-8
+          matches every other page's bottom padding once the bar itself is
+          hidden at that breakpoint. */}
+      <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-7xl flex-col gap-5 px-4 py-8 pb-24 sm:px-6 lg:px-8 lg:pb-8">
         <div className="fade-in-up">
           <JobActionBar
             jobId={job.id}
@@ -466,6 +471,7 @@ export default async function JobDetailsPage({ params }: Props) {
           </div>
         </div>
       </main>
+      <MobileApplyBar job={job} />
     </>
   );
 }

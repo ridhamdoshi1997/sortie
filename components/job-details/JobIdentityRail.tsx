@@ -106,12 +106,19 @@ export function JobIdentityRail({ job }: { job: Job }) {
         <MetaRow label="Found" value={formatDate(job.found_at)} />
       </dl>
 
+      {/* Desktop only below lg — the rail is sticky there, so this stays
+          visible for the whole scroll and a second copy would just repeat
+          it in the same viewport (the exact duplicate this redesign
+          removed FloatingApplyButton to avoid). Below lg the rail isn't
+          sticky (see page.tsx's order-first comment), so mobile gets its
+          own persistent copy — MobileApplyBar below — instead of losing
+          Apply the moment the user scrolls past the rail. */}
       {applyUrl ? (
         <Link
           href={applyUrl}
           target="_blank"
           rel="noreferrer"
-          className="btn-signal inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-accent-foreground"
+          className="btn-signal hidden min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-accent-foreground lg:inline-flex"
         >
           Apply at {company}
           <span className="btn-signal-icon">
@@ -120,12 +127,47 @@ export function JobIdentityRail({ job }: { job: Job }) {
         </Link>
       ) : (
         <div
-          className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-surface-secondary px-4 text-sm font-medium text-text-muted"
+          className="hidden min-h-11 w-full cursor-not-allowed items-center justify-center gap-2 rounded-xl border border-border bg-surface-secondary px-4 text-sm font-medium text-text-muted lg:inline-flex"
           title="No application link was saved for this job"
         >
           No application link
         </div>
       )}
+    </div>
+  );
+}
+
+// Mobile/tablet equivalent of the rail's own Apply button, which is
+// deliberately `hidden lg:inline-flex` above — below lg the rail sits
+// `order-first` in normal flow (page.tsx), not sticky, so Apply would
+// otherwise scroll away exactly like the pre-redesign page did. Fixed to
+// the viewport bottom instead, matching the rail's "Apply always reachable"
+// intent for the breakpoint that can't use `position: sticky` for it.
+// `pr-20` reserves the Navigator FAB's own footprint (h-14 fixed bottom-6
+// right-6, i.e. an ~80px bottom-right square — NavigatorLauncher.tsx) so
+// the button's real tap target never sits under it; a real collision
+// there, confirmed live on a job with several status badges pushing this
+// bar's content down into the FAB's fixed corner, silently ate the right
+// third of "Apply at {company}"'s clickable area.
+export function MobileApplyBar({ job }: { job: Job }) {
+  const company = job.company ?? "Unknown company";
+  const applyUrl = job.external_apply_url ?? job.source_url ?? job.url;
+
+  if (!applyUrl) return null;
+
+  return (
+    <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 p-3 pr-24 backdrop-blur-sm lg:hidden">
+      <Link
+        href={applyUrl}
+        target="_blank"
+        rel="noreferrer"
+        className="btn-signal flex min-h-11 w-full items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold text-accent-foreground"
+      >
+        <span className="truncate">Apply at {company}</span>
+        <span className="btn-signal-icon shrink-0">
+          <ExternalLink className="h-3 w-3" />
+        </span>
+      </Link>
     </div>
   );
 }
