@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Download, FileText, Sparkles } from "lucide-react";
 
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { generateBragDocAction } from "@/actions/bragDoc";
 import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import type { BragDocResult } from "@/lib/bragDoc";
@@ -83,9 +84,9 @@ export function BragDocGenerator() {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
       <div className="mb-1 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <FileText className="h-4 w-4 text-text-secondary" />
-        </div>
+        <span className="signal-icon-chip">
+          <FileText className="h-4 w-4" />
+        </span>
         <h2 className="text-base font-semibold text-text-primary">Brag Doc</h2>
       </div>
       <p className="mb-4 mt-1 text-sm text-text-secondary">
@@ -135,12 +136,9 @@ export function BragDocGenerator() {
 
       {bragDoc && (
         <div className="mt-4 flex flex-col gap-4">
-          <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-            <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-              AI Navigator reads
-            </p>
-            <p className="text-sm leading-6 text-agent-dark">{bragDoc.summary}</p>
-          </div>
+          <AiReadsCard>
+            <p className="text-sm leading-6 text-text-primary">{bragDoc.summary}</p>
+          </AiReadsCard>
 
           {bragDoc.highlights.length > 0 && (
             <div>

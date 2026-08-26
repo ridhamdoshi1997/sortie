@@ -100,24 +100,27 @@ export default async function FindJobsPage() {
     return (
         <>
             <Navbar isAuthenticated />
-            <main className="mx-auto flex w-full max-w-7xl flex-col gap-8 p-8">
-                {/* 1. Page Header — width-matched to FindJobsForm's own
-                    mx-auto max-w-6xl wrapper below, not just this page's
-                    outer max-w-7xl <main>. FindJobsForm re-centers itself
-                    independently at a narrower max-width for its own visual
-                    balance, so without this match the heading's left edge
-                    sits further left than the search box's — caught live by
-                    direct user report. */}
-                <div className="mx-auto flex w-full max-w-6xl flex-col gap-1">
-                    <h1 className="fade-in-up text-4xl font-bold tracking-tight text-text-primary">Find & Evaluate</h1>
-                    <p className="text-lg text-text-secondary">
-                        Source new opportunities and run them through the job search engine.
+            {/* Job-search redesign (2026-08-25, direct user request to
+                redesign this page from scratch). The old page stacked THREE
+                headers before the search box was reachable: a page h1 +
+                subtitle ("Find & Evaluate — Source new opportunities…"), a
+                full Recently Viewed strip, then the search card's OWN hero
+                (a second 3xl heading + subtitle + p-8/p-12 padding) — on a
+                laptop-height viewport the "Execute search" button sat below
+                the fold on first load, confirmed live. The page-level
+                header and the search card's own hero said the same thing
+                twice, so one of them goes: the eyebrow here replaces both,
+                the search card keeps its identity but tightens up
+                (FindJobsForm.tsx), and Recently Viewed moves below the
+                search bar so a returning user reaches "type and search"
+                first, sees their recent jobs second. */}
+            <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-8">
+                <div className="mx-auto flex w-full max-w-6xl items-center justify-between gap-3">
+                    <p className="fade-in-up font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                        Jobs · Search &amp; Evaluate
                     </p>
                 </div>
 
-                <RecentlyViewed jobs={recentlyViewedJobs ?? []} />
-
-                {/* 2. Pass the user.id and any existing jobs to the form */}
                 <FindJobsForm
                     userId={user.id}
                     initialJobs={initialJobs}
@@ -126,6 +129,8 @@ export default async function FindJobsPage() {
                     initialTitle={initialTitle}
                     initialLocation={initialLocation}
                 />
+
+                <RecentlyViewed jobs={recentlyViewedJobs ?? []} />
             </main>
         </>
     );

@@ -5,6 +5,8 @@ import { Sparkles, Target } from "lucide-react";
 
 import { getPipelineSnapshot, generatePipelineStrategyReadAction } from "@/actions/pipelineStrategy";
 import type { PipelineSnapshot, PipelineStrategyResult } from "@/lib/pipelineStrategy";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 // Pipeline Strategy Read (build-plan.md §H, "AI heavy dashboard" direct
 // request) — same aggregate-real-data-then-one-synthesis-call shape as
@@ -85,19 +87,20 @@ export function PipelineStrategyCard() {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
+      {isPending && (
+        <AiThinkingCard className="mt-4" status="Reading your pipeline snapshot…" />
+      )}
+
       {read && (
-        <div className="mt-4 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-          <p className="mb-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-            AI Navigator reads
-          </p>
+        <AiReadsCard className="mt-4">
           <div className="flex flex-col gap-2">
             {read.observations.map((obs, i) => (
-              <p key={i} className="text-sm leading-6 text-agent-dark">
+              <p key={i} className="text-sm leading-6 text-text-primary">
                 {obs}
               </p>
             ))}
           </div>
-        </div>
+        </AiReadsCard>
       )}
     </section>
   );

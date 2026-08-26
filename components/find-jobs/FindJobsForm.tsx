@@ -192,38 +192,58 @@ export function FindJobsForm({
 
     return (
         <div className="mx-auto mt-0 w-full max-w-6xl space-y-8">
-            {/* Mission console — dark ink chrome, matches the app-wide brand frame */}
-            <div className="glass-panel-overlay rounded-2xl p-8 md:p-12">
-                <div className="mb-8 max-w-2xl">
-                    <h2 className="font-display fade-in-up mb-3 flex items-center gap-2 text-3xl font-bold tracking-tight text-overlay-foreground md:text-4xl">
+            {/* Mission console. Compacted 2026-08-25: this card's own hero
+                (3xl/4xl heading + subtitle + p-8/p-12 padding) was the
+                other half of the "search box below the fold" problem — the
+                page-level header removed in app/find-jobs/page.tsx said the
+                same thing this heading does. Kept the identity (the
+                diamond mark, "Run a sortie") as one compact inline row
+                instead of dropping it outright, since it's this page's
+                real brand voice, not filler.
+
+                Decoupled from the `overlay` tokens entirely (2026-08-25,
+                direct user request) — this card used to share Navbar's
+                fixed-dark-in-both-themes chrome, so it stayed a near-black
+                console in light mode while every surface around it went
+                light. The Navbar keeps that fixed-dark treatment on
+                purpose (explicit user call, same session) — only this
+                card's identity was ever meant to track the page theme,
+                since it's a normal content card, not permanent app chrome.
+                Now plain surface/text tokens, same as every other card,
+                so it lights up correctly with the rest of the page.
+                FilterBar.tsx's pills below share this same card visually
+                and were swapped the same way — see that file. */}
+            <div className="rounded-2xl border border-border bg-surface p-5 shadow-card md:p-6">
+                <div className="mb-4 flex items-baseline gap-2">
+                    <h2 className="font-display fade-in-up flex items-center gap-2 text-xl font-bold tracking-tight text-text-primary">
                         <span className="text-accent">&#9670;</span>
                         Run a sortie
                     </h2>
-                    <p className="text-lg text-overlay-foreground/60">
-                        Scan the field and score every result against your profile before you spend a click on it.
+                    <p className="truncate text-sm text-text-muted">
+                        Scan the field and score every result against your profile first.
                     </p>
                 </div>
 
                 <form
                     onSubmit={handleSearch}
-                    className="flex flex-col gap-4 rounded-xl border border-overlay-foreground/10 bg-overlay-dark/50 p-4 shadow-inner backdrop-blur-md md:flex-row"
+                    className="flex flex-col gap-4 rounded-xl border border-border bg-surface-secondary p-4 shadow-inner md:flex-row"
                 >
                     <div className="relative flex-1">
-                        <Briefcase className="absolute top-3.5 left-4 h-5 w-5 text-overlay-foreground/40" />
+                        <Briefcase className="absolute top-3.5 left-4 h-5 w-5 text-text-muted" />
                         <Input
                             value={title}
                             onChange={(e) => setTitle(e.target.value)}
-                            className="h-12 rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 pl-12 text-lg text-overlay-foreground placeholder:text-overlay-foreground/40"
+                            className="h-12 rounded-lg border-border bg-surface pl-12 text-lg text-text-primary placeholder:text-text-muted"
                             placeholder="Target role"
                             required
                         />
                     </div>
                     <div className="relative flex-1">
-                        <MapPin className="absolute top-3.5 left-4 h-5 w-5 text-overlay-foreground/40" />
+                        <MapPin className="absolute top-3.5 left-4 h-5 w-5 text-text-muted" />
                         <Input
                             value={location}
                             onChange={(e) => setLocation(e.target.value)}
-                            className="h-12 rounded-lg border-overlay-foreground/15 bg-overlay-foreground/8 pl-12 text-lg text-overlay-foreground placeholder:text-overlay-foreground/40"
+                            className="h-12 rounded-lg border-border bg-surface pl-12 text-lg text-text-primary placeholder:text-text-muted"
                             placeholder="Target location"
                             required
                         />

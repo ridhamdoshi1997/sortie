@@ -3,8 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { Sparkles, Target } from "lucide-react";
 
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { getSkillGaps, generateSkillGapPathingAction } from "@/actions/skillGapTracking";
 import type { SkillGap, SkillGapPathingResult } from "@/lib/skillGapTracking";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 // Skill-gap tracking & career pathing (build-plan.md §E). Same
 // aggregate-real-data-then-one-synthesis-call shape as MarketReadiness.tsx.
@@ -38,9 +40,9 @@ export function SkillGapTracker() {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
       <div className="mb-1 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <Target className="h-4 w-4 text-text-secondary" />
-        </div>
+        <span className="signal-icon-chip">
+          <Target className="h-4 w-4" />
+        </span>
         <h2 className="text-base font-semibold text-text-primary">Recurring Skill Gaps</h2>
       </div>
       <p className="mb-4 mt-1 text-sm text-text-secondary">
@@ -76,17 +78,20 @@ export function SkillGapTracker() {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
+      {isPending && (
+        <AiThinkingCard className="mt-4" status="Comparing gaps across your evaluated jobs…" />
+      )}
+
       {pathing && (
-        <div className="mt-4 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-          <p className="mb-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">AI Navigator reads</p>
+        <AiReadsCard className="mt-4">
           <div className="flex flex-col gap-2">
             {pathing.observations.map((obs, i) => (
-              <p key={i} className="text-sm leading-6 text-agent-dark">
+              <p key={i} className="text-sm leading-6 text-text-primary">
                 {obs}
               </p>
             ))}
           </div>
-        </div>
+        </AiReadsCard>
       )}
     </section>
   );

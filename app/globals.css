@@ -109,7 +109,11 @@
   --color-overlay-dark: #0a0b0c;
   /* Fixed — the overlay chrome stays dark in both app themes, so its
      content color never changes. Never reuse --color-surface for
-     text/borders/backgrounds on top of --color-overlay. */
+     text/borders/backgrounds on top of --color-overlay. Still true for
+     the Navbar (2026-08-25: user confirmed keep as-is) — FindJobsForm's
+     "Run a sortie" card, which used to share these same tokens, was
+     decoupled from `overlay` entirely instead of touching this shared
+     value; see that component. */
   --color-overlay-foreground: #ffffff;
 
   /* Tightened 2026-07-27 to match Raycast's smaller, more geometric radius
@@ -299,8 +303,24 @@ body {
    Applied at specific high-traffic CTA call sites, not globally on
    <button>, since not every button in the app should carry this much
    visual weight (secondary/ghost/destructive actions stay as they are). */
+/* NO `position` here, deliberately. These Signal rules are unlayered and
+   sit at the END of this file — after Tailwind's utilities, which are
+   also unlayered and at the same (0,1,0) specificity. Source order
+   therefore decides, and anything declared here silently BEATS the
+   matching utility at every call site.
+
+   This shipped as a real, site-wide bug: `.btn-signal position: relative`
+   overrode the Navigator FAB's own `fixed`, so the launcher computed to
+   left:-24px / bottom:896px in a 695px viewport — off-screen on every
+   authenticated page, on all of them at once, until 2026-08-25.
+
+   So: only declare a property here that no call site would ever want to
+   override with a utility. Layout/position/display are exactly the
+   properties call sites DO override — keep them out. The FAB's own
+   `fixed` supplies the containing block for its absolutely-positioned
+   icons; no `.btn-signal` call site relies on this class for one
+   (verified by grep, 2026-08-25). */
 .btn-signal {
-  position: relative;
   /* Hover lift is a discrete "enter the raised state" motion, not
      continuous on-screen movement, so it takes ease-out per the
      animate/emil-design-eng decision tree, not ease-in-out. */
@@ -412,6 +432,635 @@ body {
   }
 }
 
+/* ============================================================
+   Signal redesign, pass 2 — the STRUCTURAL patterns from the Signal
+   mockup. Pass 1 only ported tokens + the primary button, so pages
+   like /career still rendered the old layout wearing new colors
+   (direct user feedback, confirmed against the mockup source: its
+   .rail/.track/.dot rows, .icon-circle chips and settings/plan
+   treatments were never carried across at all).
+
+   Same color-mix() one-property-per-rule discipline as the block
+   above — see its header for the Lightning CSS gotcha this file has
+   now hit 4 times.
+   ============================================================ */
+
+/* Rail — a flush, single-bordered stack of rows (mockup's .rail),
+   replacing the loose "<li> + 6px dot + gap-4" lists /career uses
+   today. One border around the group, hairline connector stubs
+   between rows, each row its own hover target. */
+.signal-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.signal-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  background: var(--color-surface);
+  transition: background 150ms var(--ease-out);
+}
+
+.signal-track:hover {
+  background: var(--color-surface-secondary);
+}
+
+/* Short connector stub, not a full spine — the mockup's own cue that
+   these rows are one continuous track. Sits under the dot column. */
+.signal-track:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 26px;
+  bottom: -1px;
+  width: 1px;
+  height: 10px;
+  background: var(--color-border);
+}
+
+.signal-dot {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  border: 2px solid var(--color-text-muted);
+  transition:
+    transform 150ms var(--ease-out),
+    border-color 150ms var(--ease-out);
+}
+
+/* Direct user request: hovering a rail row makes that row's dot
+   BLINK, not just grow. Scale is the discrete state-entry (ease-out
+   per the animate skill's decision tree); the opacity pulse is the
+   blink itself. Deliberately hover-scoped — running this ambiently
+   down a long timeline would be pure noise. Specificity (0,3,0)
+   beats .signal-track-warm's (0,2,0), so hovering a warm row swaps
+   its slow ambient pulse for this faster blink rather than fighting
+   it. */
+.signal-track:hover .signal-dot {
+  transform: scale(1.3);
+  animation: signal-dot-blink 900ms var(--ease-in-out) infinite;
+}
+
+@keyframes signal-dot-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.3;
+  }
+}
+
+/* "Warm" row — the one live/in-motion entry in a list (an active
+   interview, a moving application). Accent-amber + a slow ambient
+   pulse, exactly the mockup's .track.warm. */
+.signal-track-warm .signal-dot {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  animation: signal-dot-pulse 2.4s ease-in-out infinite;
+}
+
+.signal-track-warm .signal-dot {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 50%, transparent);
+}
+
+/* Opacity/scale only — never a color-mix()'d shadow inside a
+   keyframe, same unverified-against-the-gotcha reasoning as
+   ai-dot-pulse above. */
+@keyframes signal-dot-pulse {
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+}
+
+/* Compact AI-reads tier — the mockup's own .ai-mini, a genuinely
+   separate tier from .ai-hero-card rather than a shrunken copy of it.
+   For AI output nested inside an already-dense card: same agent-teal
+   semantic, flat tint instead of the gradient + outer glow.
+   Job-search result rows and the find-jobs drawer were on this tier
+   originally (the mockup's own "fifty result cards each carrying a
+   hero glow is noise" reasoning) but moved to .ai-hero-card
+   (2026-08-25, direct user preference — see JobResultCard.tsx's own
+   comment). Kanban cards (missions/KanbanCard.tsx) still use this
+   tier; revisit only if asked. */
+.ai-mini-card {
+  position: relative;
+  border-radius: var(--radius-xl);
+}
+
+.ai-mini-card {
+  background: color-mix(in srgb, var(--color-agent) 10%, var(--color-surface));
+}
+
+.ai-mini-card {
+  border: 1px solid color-mix(in srgb, var(--color-agent) 26%, var(--color-border));
+}
+
+/* The compact tier's dot does not pulse — motion is what marks the
+   hero tier as the page's one live AI moment. */
+.ai-eyebrow-dot-static {
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  border-radius: var(--radius-full);
+  background: var(--color-agent);
+}
+
+/* Toast (mockup's .toast) — Sonner-backed but rendered HEADLESS via
+   toast.custom(), so these token-driven rules style it directly rather
+   than fighting Sonner's injected stylesheet with !important. That's the
+   ask-sonner skill's own escalation ladder: a design-system toast belongs
+   at the headless rung, not the classNames-with-!important rung.
+
+   Going headless also sidesteps Sonner's `theme` prop entirely — these
+   rules read the app's own CSS variables, so the toast follows the .dark
+   class automatically instead of needing next-themes wired into it. */
+.signal-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  max-width: 320px;
+  padding: 12px 14px;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface-secondary);
+}
+
+.signal-toast {
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.04),
+    0 16px 34px -14px rgb(0 0 0 / 0.65);
+}
+
+/* Agent variant — for AI-authored notifications only, same Agent-content
+   invariant the rest of the app follows. Never used for a plain
+   success/error, which stay on the neutral surface above. */
+.signal-toast-agent {
+  border-color: color-mix(in srgb, var(--color-agent) 40%, var(--color-border));
+}
+
+.signal-toast-agent {
+  background: linear-gradient(
+    155deg,
+    color-mix(in srgb, var(--color-agent) 14%, var(--color-surface-secondary)),
+    var(--color-surface-secondary) 55%
+  );
+}
+
+/* Confirm modal card (mockup's .modal-card) — plain surface + hairline
+   border under a deep soft shadow, replacing the glass-panel recipe this
+   dialog used before. */
+.signal-modal-card {
+  box-shadow: 0 30px 60px -20px rgb(0 0 0 / 0.6);
+}
+
+/* Nested icon puck inside a primary button (mockup's .icon-wrap) — a
+   darker disc on the amber fill that nudges up-right with the button's
+   own hover lift. Purely decorative, so it's dropped under
+   reduced-motion rather than left running. */
+.btn-signal-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 21px;
+  height: 21px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: rgb(0 0 0 / 0.14);
+  transition: transform 200ms var(--ease-out);
+}
+
+.btn-signal:hover .btn-signal-icon {
+  transform: translate(1.5px, -1.5px) scale(1.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn-signal:hover .btn-signal-icon {
+    transform: none;
+  }
+}
+
+/* Job-detail redesign, fragment 1 (2026-08-25) — direct user report that
+   the page still felt like "too much on the page" with "no proper
+   navigation inside the page" even after the sticky identity rail landed.
+   Root cause: the Overview tab was 10 components in one undifferentiated
+   flex-col stack, every one wearing the identical bg-surface/border-border
+   card — nothing marked where one topic ended and the next began. Fixed
+   by grouping into labeled sections (SectionHeader component). An earlier
+   version of this also added a jump-nav pill row above the sections —
+   removed per direct follow-up: a pill row repeating the same labels the
+   headers already show was decoration, not real navigation value. This
+   fragment is scoped to the Overview/Resume Evolution tabs; Company/
+   Interview/Offer tabs and the job-search page are deliberately untouched
+   here. */
+
+/* ---- Dashboard primitives (mockup's Dashboard page) ---- */
+
+/* Pipeline funnel bar. Accent-amber, NOT teal: the pipeline is the user's
+   own progress through their own applications, not AI output — the Agent
+   colour would misreport what it is. Same scaleX-not-width technique as
+   .signal-meter-fill. */
+.signal-funnel-track {
+  height: 5px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+}
+
+.signal-funnel-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  transform-origin: left center;
+  transform: scaleX(var(--fill, 0));
+  transition: transform 1.2s var(--ease-out);
+}
+
+/* Fill-from-zero on load (the mockup animates these in on every reload).
+   Driven by a `--fill` custom property rather than JS, so it works inside
+   a SERVER component — the funnel and seat meter both render server-side,
+   and a useEffect would have meant converting them to client components
+   purely for a decorative entrance.
+
+   Opt-in via this class, NOT baked into .signal-funnel-fill/-meter-fill:
+   a bar whose value changes at runtime (the progress loader) wants the
+   plain transition instead, and an `animation` with fill-mode both would
+   clobber it. */
+.signal-fill-in {
+  animation: signal-fill-in 1.2s var(--ease-out) both;
+}
+
+@keyframes signal-fill-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(var(--fill, 0));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-fill-in {
+    animation: none;
+    transform: scaleX(var(--fill, 0));
+  }
+}
+
+.signal-funnel-fill {
+  background: linear-gradient(
+    90deg,
+    var(--color-accent),
+    color-mix(in srgb, var(--color-accent) 55%, transparent)
+  );
+}
+
+.signal-funnel-fill {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+/* Activity heatmap cells — agent-teal tiers (mockup .heat-cell.lit1/2/3).
+   Teal here is right: these count AI-evaluated jobs. */
+.signal-heat-cell {
+  aspect-ratio: 1;
+  border-radius: 2px;
+  background: var(--color-surface-tertiary);
+  transition: transform 120ms var(--ease-out);
+}
+
+.signal-heat-cell:hover {
+  transform: scale(1.35);
+}
+
+.signal-heat-1 {
+  background: color-mix(in srgb, var(--color-agent) 25%, var(--color-surface-tertiary));
+}
+
+.signal-heat-2 {
+  background: color-mix(in srgb, var(--color-agent) 55%, var(--color-surface-tertiary));
+}
+
+.signal-heat-3 {
+  background: var(--color-agent);
+}
+
+.signal-heat-3 {
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-agent) 50%, transparent);
+}
+
+/* Activity pulse point — a tinted halo around a solid core, the "radar
+   blip" shape the dashboard used before the Signal pass. The mockup's own
+   activity list has no dot at all, and the first port followed it and
+   dropped these; restored by direct user request, recoloured into the
+   Signal palette (was success-green / info-blue, two hues that exist
+   nowhere else in this design).
+
+   Staggered by --i so a column of them reads as organic activity rather
+   than a synchronised strobe. */
+.signal-pulse-dot {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+}
+
+/* Resting state: a static halo, no motion. Ten of these pulsing on their
+   own is ambient noise on a page the user visits many times a day — the
+   same frequency-gate reasoning already applied to .signal-track's dots.
+   The pulse is a response to attention, not a permanent state. */
+.signal-pulse-dot::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  opacity: 0.45;
+  transform: scale(0.82);
+  transition:
+    opacity 200ms var(--ease-out),
+    transform 200ms var(--ease-out);
+}
+
+.signal-pulse-dot::before {
+  background: color-mix(in srgb, var(--color-agent) 24%, transparent);
+}
+
+/* Pulses only while its row is hovered. No animation-delay here — a
+   stagger made sense for ten ambient dots, but on a single hovered row it
+   would just read as lag before the response starts. */
+.signal-activity-item:hover .signal-pulse-dot::before {
+  animation: signal-pulse-halo 1.4s ease-in-out infinite;
+}
+
+.signal-pulse-dot::after {
+  content: "";
+  position: relative;
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-full);
+  background: var(--color-agent);
+}
+
+/* Hollow core keeps the two activity types distinguishable without
+   reintroducing a second hue — the distinction the green/blue dots used
+   to carry, on one colour. */
+.signal-pulse-dot-hollow::after {
+  background: transparent;
+  box-shadow: inset 0 0 0 2px var(--color-agent);
+}
+
+@keyframes signal-pulse-halo {
+  0%,
+  100% {
+    opacity: 0.4;
+    transform: scale(0.8);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-activity-item:hover .signal-pulse-dot::before {
+    animation: none;
+    opacity: 0.8;
+  }
+}
+
+/* Activity row. The mockup nudges these with padding-left on hover; using
+   transform instead — same 3px motion, composited rather than laid out. */
+.signal-activity-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--color-border-light);
+  transition: transform 150ms var(--ease-out);
+}
+
+.signal-activity-item:hover {
+  transform: translateX(3px);
+}
+
+.signal-activity-item:last-child {
+  border-bottom: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-heat-cell:hover,
+  .signal-activity-item:hover {
+    transform: none;
+  }
+}
+
+/* Indeterminate agent-teal sweep (mockup's .sweep-track/.sweep-fill) —
+   for "the AI is working and we genuinely cannot estimate progress".
+   Distinct on purpose from .signal-meter-fill above, which is DETERMINATE
+   and must only ever be driven by a real measured value. Never fake a
+   percentage to make this look more precise than it is. */
+.signal-sweep-track {
+  position: relative;
+  height: 4px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+}
+
+.signal-sweep-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  border-radius: var(--radius-full);
+  background: linear-gradient(90deg, transparent, var(--color-agent), transparent);
+  animation: signal-sweep 1.5s ease-in-out infinite;
+}
+
+/* Fill is 40% of the track, so 250% of its own width clears the far edge. */
+@keyframes signal-sweep {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+
+.signal-think-icon {
+  animation: signal-think-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes signal-think-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(0.9);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-sweep-fill,
+  .signal-think-icon {
+    animation: none;
+  }
+  /* Without the sweep animation the fill would sit invisibly off-track at
+     its keyframe start, reading as a broken empty bar — park it as a
+     static partial fill instead, which still says "working". */
+  .signal-sweep-fill {
+    transform: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* Settled-outcome dots. Filled rather than hollow because these are
+   resolved states, and deliberately NOT pulsing — only a live row
+   earns motion. */
+.signal-dot-positive {
+  background: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.signal-dot-negative {
+  background: var(--color-error);
+  border-color: var(--color-error);
+}
+
+/* Top-aligned variant, for rows whose body runs to two or more lines
+   (a story with tags, an entry with a note) — a modifier rather than
+   a Tailwind items-start override, since these rules are unlayered
+   and would otherwise win the cascade against the utility. */
+.signal-track-top {
+  align-items: flex-start;
+}
+
+.signal-track-top .signal-dot {
+  margin-top: 4px;
+}
+
+/* Icon chip (mockup's .icon-circle) — agent-teal glyph on a recessed
+   surface, replacing the muted-gray icons these cards ship today.
+   Teal rather than accent-amber on purpose: every card carrying one
+   of these is an AI-backed tool, so it follows the app's existing
+   Agent-content invariant. */
+.signal-icon-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  color: var(--color-agent);
+}
+
+/* Settings nav — the mockup's inset amber edge marker, instead of
+   the fully-filled accent-muted pill the panel ships today. */
+.signal-nav-active {
+  box-shadow: inset 2px 0 0 var(--color-accent);
+}
+
+/* Pricing plan cards (mockup's .plan / .plan.current / .plan.featured).
+   Two distinct emphases rather than one: "current" is amber because it
+   reflects the user's own state, "featured" is agent-teal because it's
+   the scarcity-capped offer being promoted. Keeping those on different
+   hues is what stops the grid reading as three shouting cards. */
+.signal-plan {
+  transition: transform 180ms var(--ease-out);
+}
+
+.signal-plan:hover {
+  transform: translateY(-2px);
+}
+
+.signal-plan-current {
+  border-color: color-mix(in srgb, var(--color-accent) 45%, var(--color-border));
+}
+
+.signal-plan-current {
+  box-shadow: 0 16px 30px -20px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+.signal-plan-featured {
+  border-color: color-mix(in srgb, var(--color-agent) 45%, var(--color-border));
+}
+
+.signal-plan-featured {
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--color-agent) 10%, var(--color-surface)),
+    var(--color-surface) 65%
+  );
+}
+
+.signal-plan-featured {
+  box-shadow: 0 16px 30px -20px color-mix(in srgb, var(--color-agent) 32%, transparent);
+}
+
+/* Seat scarcity meter — agent-teal, matching the featured card it sits
+   inside rather than the accent-amber the bar uses today. */
+.signal-meter-track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+}
+
+/* Fills via transform, not width. The mockup (and this app's two older
+   meters, PipelineFunnel/CTASection) animate `width`, which lays out on
+   every frame; scaleX composites instead. The usual reasons not to do
+   this don't apply here — the fill holds no text to distort, and the
+   track's own overflow:hidden + radius already shape both caps, so the
+   only casualty is a hair of horizontal squash on a 6px-tall bar. Set
+   the ratio inline as `transform: scaleX(n)`. */
+.signal-meter-fill {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  transform-origin: left center;
+  transform: scaleX(var(--fill, 0));
+  transition: transform 1.2s var(--ease-out);
+}
+
+.signal-meter-fill {
+  background: linear-gradient(90deg, color-mix(in srgb, var(--color-agent) 65%, black 10%), var(--color-agent));
+}
+
+.signal-meter-fill {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--color-agent) 50%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .signal-track:hover .signal-dot,
+  .signal-track-warm .signal-dot {
+    animation: none;
+  }
+}
+
 /* 10-Dimension Evaluation grid entrance (EvaluationBreakdown.tsx) — a real
    evaluation just arrived (state indication, per the `animate` skill's
    purpose taxonomy), fires once per page load rather than per-interaction,
@@ -434,6 +1083,31 @@ body {
 
 @media (prefers-reduced-motion: reduce) {
   .dim-card-in {
+    animation: none;
+  }
+}
+
+/* Grade-distribution strip (EvaluationBreakdown.tsx, professional-polish
+   pass 2026-08-25) — a real evaluation just arrived, same "occasional" tier
+   as .dim-card-in above; each of the 10 segments fills in left-to-right on
+   the same capped stagger. transform only (scaleX from a fixed transform-
+   origin), never width — same reasoning as .signal-meter-fill. */
+.dim-bar-in {
+  transform-origin: left center;
+  animation: dim-bar-in 500ms var(--ease-out) both;
+}
+
+@keyframes dim-bar-in {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dim-bar-in {
     animation: none;
   }
 }

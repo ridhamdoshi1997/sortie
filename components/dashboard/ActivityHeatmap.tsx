@@ -20,13 +20,16 @@ type DayCell = { date: string; count: number };
 // itself sits in `.dashboard-well` (globals.css) — a slightly darker,
 // inset-shadowed container — so the colored cells look embedded rather
 // than floating on the same flat card surface as everything else.
+// Signal redesign: agent-teal tiers, not info-blue. These cells count
+// AI-evaluated jobs, so teal is the semantically correct colour here —
+// blue was off-palette entirely and read as a third accent alongside
+// amber and teal.
 function intensityClass(count: number, maxCount: number): string {
-  if (count === 0) return "bg-transparent ring-1 ring-inset ring-border/40";
+  if (count === 0) return "signal-heat-cell ring-1 ring-inset ring-border/40";
   const ratio = count / maxCount;
-  if (ratio >= 0.75) return "bg-info ring-1 ring-inset ring-info-light/60";
-  if (ratio >= 0.5) return "bg-info/70";
-  if (ratio >= 0.25) return "bg-info/45";
-  return "bg-info/25";
+  if (ratio >= 0.75) return "signal-heat-cell signal-heat-3";
+  if (ratio >= 0.5) return "signal-heat-cell signal-heat-2";
+  return "signal-heat-cell signal-heat-1";
 }
 
 // Builds a fixed 12-week grid ending today, columns = weeks (oldest to
@@ -73,21 +76,32 @@ export function ActivityHeatmap({ countsByDate }: { countsByDate: Record<string,
           <p className="text-sm text-text-muted">No jobs found yet — run a search to see activity here.</p>
         </div>
       ) : (
-        <div className="dashboard-well mt-5 overflow-x-auto p-3">
-          <div className="flex gap-[3px]">
-            {weeks.map((week, weekIndex) => (
-              <div key={weekIndex} className="flex flex-col gap-[3px]">
-                {week.map((cell) => (
-                  <div
-                    key={cell.date}
-                    onMouseEnter={() => setHovered(cell)}
-                    onMouseLeave={() => setHovered(null)}
-                    className={`h-3 w-3 rounded-[2px] transition-transform hover:scale-125 ${intensityClass(cell.count, maxCount)}`}
-                    aria-label={`${cell.count} job${cell.count === 1 ? "" : "s"} found on ${cell.date}`}
-                  />
-                ))}
-              </div>
-            ))}
+        // Cells size themselves off the card width (mockup's .heat-grid:
+        // repeat(N, 1fr) + aspect-ratio 1) instead of the fixed 12px squares
+        // this used before, which left the grid marooned in a fraction of the
+        // card. Column-flow with 7 explicit rows keeps the same Sun..Sat-per-
+        // column layout the date math builds. overflow-x-auto is gone with it
+        // — the grid now fits by construction rather than scrolling.
+        <div className="dashboard-well mt-5 p-3">
+          <div
+            className="grid gap-[4px]"
+            style={{
+              gridAutoFlow: "column",
+              gridTemplateRows: "repeat(7, minmax(0, 1fr))",
+              gridTemplateColumns: `repeat(${weeks.length}, minmax(0, 1fr))`,
+            }}
+          >
+            {weeks.flatMap((week) =>
+              week.map((cell) => (
+                <div
+                  key={cell.date}
+                  onMouseEnter={() => setHovered(cell)}
+                  onMouseLeave={() => setHovered(null)}
+                  className={intensityClass(cell.count, maxCount)}
+                  aria-label={`${cell.count} job${cell.count === 1 ? "" : "s"} found on ${cell.date}`}
+                />
+              )),
+            )}
           </div>
         </div>
       )}

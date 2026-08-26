@@ -83,6 +83,15 @@
         ],
         "createdAt": "2026-08-25T02:08:33.063Z",
         "reason": "Pre-existing Agent-Content Callout in the hero's static evaluator-preview mockup (border-l-2 border-agent bg-agent-light) — same documented AI-content pattern, predates this session"
+      },
+      {
+        "rule": "side-tab",
+        "value": "*",
+        "files": [
+          "app/career/page.tsx"
+        ],
+        "createdAt": "2026-08-25T15:06:37.701Z",
+        "reason": "Pre-existing freshness-nudge callout (border-l-2 border-warning bg-warning/10) — the warning-toned twin of this app's documented Agent-Content Callout idiom in context/ui-tokens.md. Verified against git HEAD as byte-identical and untouched by this session's change to this file (which only wrapped MarketReadiness/BragDocGenerator in a 2-up grid at L148). Same sanctioned exception already recorded for components/interview/StarStoryMatrix.tsx."
       }
     ]
   }

@@ -390,7 +390,7 @@ export function SettingsPanel({ email, providers }: Props) {
               onClick={() => selectTab(key)}
               className={`flex min-w-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm transition-colors ${
                 tab === key
-                  ? "bg-accent-muted font-medium text-accent"
+                  ? "signal-nav-active bg-surface font-medium text-text-primary"
                   : "text-text-secondary hover:bg-surface"
               }`}
             >

@@ -3,10 +3,12 @@
 import { useState, useTransition } from "react";
 import { Sparkles, TrendingUp } from "lucide-react";
 
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { generateOutcomeNarrativeAction } from "@/actions/outcomeInsights";
 import { CATEGORY_LABELS } from "@/lib/rejectionIntelligence";
 import type { OutcomeStats } from "@/actions/outcomeInsights";
 import type { OutcomeNarrativeResult } from "@/lib/outcomeNarrative";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 // §Q3 Application -> Outcome Loop. Deterministic stats (props, computed
 // server-side in app/career/page.tsx — zero AI, always shown) plus an
@@ -25,7 +27,11 @@ function RateBar({ label, applied, interviewed, rate }: { label: string; applied
       </div>
       <div className="h-2 w-full rounded-full bg-border-light">
         <div
-          className={`h-2 rounded-full ${rate >= 60 ? "bg-success" : rate >= 30 ? "bg-info" : "bg-warning"}`}
+          // Signal palette: agent-teal tiers for a rate computed off
+          // AI-evaluated jobs, warning only for a genuinely poor one.
+          // Was success-green / info-BLUE / warning — the blue in
+          // particular existed nowhere else in this design.
+          className={`h-2 rounded-full ${rate >= 60 ? "bg-agent" : rate >= 30 ? "bg-agent/55" : "bg-warning"}`}
           style={{ width: `${rate}%` }}
         />
       </div>
@@ -61,9 +67,9 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
     return (
       <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
         <div className="mb-1 flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-            <TrendingUp className="h-4 w-4 text-text-secondary" />
-          </div>
+          <span className="signal-icon-chip">
+          <TrendingUp className="h-4 w-4" />
+        </span>
           <h2 className="text-base font-semibold text-text-primary">Outcome Insights</h2>
         </div>
         <p className="mt-3 text-sm text-text-muted">
@@ -77,9 +83,9 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
       <div className="mb-1 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <TrendingUp className="h-4 w-4 text-text-secondary" />
-        </div>
+        <span className="signal-icon-chip">
+          <TrendingUp className="h-4 w-4" />
+        </span>
         <h2 className="text-base font-semibold text-text-primary">Outcome Insights</h2>
       </div>
       <p className="mb-4 mt-1 text-sm text-text-secondary">
@@ -166,18 +172,17 @@ export function OutcomeInsights({ stats }: { stats: OutcomeStats }) {
       {stats.hasEnoughData && (
       <div className="mt-5 border-t border-border pt-4">
         {narrative ? (
-          <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-            <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-              AI Navigator reads
-            </p>
+          <AiReadsCard>
             <ul className="flex flex-col gap-1">
               {narrative.observations.map((observation, i) => (
-                <li key={i} className="text-sm leading-6 text-agent-dark">
+                <li key={i} className="text-sm leading-6 text-text-primary">
                   {observation}
                 </li>
               ))}
             </ul>
-          </div>
+          </AiReadsCard>
+        ) : isPending ? (
+          <AiThinkingCard status="Looking for patterns in your tracked outcomes…" />
         ) : (
           <button
             type="button"

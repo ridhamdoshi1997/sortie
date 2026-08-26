@@ -70,9 +70,13 @@ export function MatchDistributionChart({ data }: { data: MatchBucket[] }) {
                 fontSize: 12,
               }}
             />
+            {/* Signal redesign: agent-teal, not success-green. This chart
+                plots AI-assigned match scores, so it follows the Agent
+                colour like every other AI output — green implied a
+                good/bad judgement the data doesn't make. */}
             <Bar
               dataKey="count"
-              fill="var(--color-success)"
+              fill="var(--color-agent)"
               radius={[4, 4, 0, 0]}
               maxBarSize={60}
             />

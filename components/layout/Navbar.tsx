@@ -21,9 +21,17 @@ import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { getUnreadNotificationCount } from "@/actions/notifications";
 import { trackPostHogClientEvent } from "@/lib/posthog-client";
 
+// Labels rewritten 2026-08-25 — direct user report that testers found
+// navigation confusing traced (in part) to a real mismatch: "Recommended"
+// promised a curated feed waiting for the user, but /find-jobs is a manual
+// search form (type a role/location, run a search) — nothing is
+// pre-recommended there. "Liked" used a third word for a concept the save
+// button (bookmark icon, labelled "Save" everywhere it appears) and the
+// destination page itself ("Saved Jobs") already named two other ways.
+// One vocabulary now: Search / Saved / External.
 const jobsSubItems = [
-  { href: "/find-jobs", label: "Recommended" },
-  { href: "/saved-jobs", label: "Liked" },
+  { href: "/find-jobs", label: "Search" },
+  { href: "/saved-jobs", label: "Saved" },
   { href: "/jobs/external", label: "External" },
 ];
 

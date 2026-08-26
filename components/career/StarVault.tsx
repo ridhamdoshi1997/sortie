@@ -60,9 +60,9 @@ export function StarVault({
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-            <Star className="h-4 w-4 text-text-secondary" />
-          </div>
+          <span className="signal-icon-chip">
+            <Star className="h-4 w-4" />
+          </span>
           <h2 className="text-base font-semibold text-text-primary">STAR Vault</h2>
         </div>
         <button
@@ -87,12 +87,14 @@ export function StarVault({
       {stories.length === 0 ? (
         <p className="text-sm text-text-muted">No stories yet. Add one to start your vault.</p>
       ) : (
-        <div className="flex flex-col gap-2">
+        <div className="signal-rail">
           {stories.map((story) => {
             const linkedEvent = story.interview_event_id ? eventsById.get(story.interview_event_id) : null;
             const isLinking = linkingId === story.id;
             return (
-              <div key={story.id} className="rounded-xl border border-border bg-surface-secondary p-4">
+              <div key={story.id} className="signal-track signal-track-top">
+                <span className="signal-dot" />
+                <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
@@ -169,6 +171,7 @@ export function StarVault({
                       Log an interview outcome on a job to link stories here.
                     </span>
                   )}
+                </div>
                 </div>
               </div>
             );

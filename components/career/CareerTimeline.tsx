@@ -8,13 +8,23 @@ import { addAccomplishment, deleteAccomplishment } from "@/actions/accomplishmen
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { AddAccomplishmentModal } from "@/components/career/AddAccomplishmentModal";
 import { formatDate } from "@/lib/utils";
-import type { CareerEpoch, EducationEntry, JobOutcomeEntry, TimelineEntry } from "@/lib/careerTimeline";
+import type {
+  CareerEpoch,
+  EducationEntry,
+  JobOutcomeEntry,
+  TimelineEntry,
+  TimelineEntryTone,
+} from "@/lib/careerTimeline";
 import type { AccomplishmentRow } from "@/actions/accomplishments";
 
-const TIMELINE_DOT_CLASSES: Record<TimelineEntry["kind"], string> = {
-  accomplishment: "bg-accent",
-  education: "bg-info",
-  application_event: "bg-agent",
+// Signal rail dot styling per tone. "warm" carries no dot class of its own —
+// it's driven by .signal-track-warm on the ROW, because the amber pulse and
+// the row's own warm treatment have to move together.
+const TONE_DOT_CLASSES: Record<TimelineEntryTone, string> = {
+  neutral: "",
+  warm: "",
+  positive: "signal-dot-positive",
+  negative: "signal-dot-negative",
 };
 
 function todayIso(): string {
@@ -276,21 +286,27 @@ export function CareerTimeline({ epochs, unassigned, education, jobOutcomes, fla
         </div>
       ) : view === "timeline" ? (
         <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+          <h2 className="text-base font-semibold text-text-primary">Career Timeline</h2>
           {flatTimeline.length > 0 ? (
-            <ul className="flex flex-col gap-4">
+            <ul className="signal-rail mt-4">
               {flatTimeline.map((entry) => (
-                <li key={`${entry.kind}-${entry.id}`} className="flex items-start gap-3">
-                  <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${TIMELINE_DOT_CLASSES[entry.kind]}`} />
-                  <div>
+                <li
+                  key={`${entry.kind}-${entry.id}`}
+                  className={`signal-track signal-track-top ${entry.tone === "warm" ? "signal-track-warm" : ""}`}
+                >
+                  <span className={`signal-dot ${TONE_DOT_CLASSES[entry.tone]}`} />
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium leading-5 text-text-primary">{entry.title}</p>
                     {entry.subtitle && <p className="mt-1 text-sm text-text-secondary">{entry.subtitle}</p>}
-                    <p className="mt-1 text-xs text-text-muted">{formatDate(entry.date)}</p>
                   </div>
+                  <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                    {formatDate(entry.date)}
+                  </span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-text-muted">Nothing logged yet.</p>
+            <p className="mt-4 text-sm text-text-muted">Nothing logged yet.</p>
           )}
         </div>
       ) : (
@@ -345,11 +361,11 @@ export function CareerTimeline({ epochs, unassigned, education, jobOutcomes, fla
           {education.length > 0 && (
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
               <h2 className="text-base font-semibold text-text-primary">Education</h2>
-              <ul className="mt-4 flex flex-col gap-3">
+              <ul className="signal-rail mt-4">
                 {education.map((entry) => (
-                  <li key={entry.id} className="flex items-start gap-3">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-info" />
-                    <div>
+                  <li key={entry.id} className="signal-track signal-track-top">
+                    <span className="signal-dot" />
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-5 text-text-primary">{entry.title}</p>
                       {entry.subtitle && <p className="text-xs text-text-secondary">{entry.subtitle}</p>}
                     </div>
@@ -362,15 +378,17 @@ export function CareerTimeline({ epochs, unassigned, education, jobOutcomes, fla
           {jobOutcomes.length > 0 && (
             <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
               <h2 className="text-base font-semibold text-text-primary">Job search activity</h2>
-              <ul className="mt-4 flex flex-col gap-3">
+              <ul className="signal-rail mt-4">
                 {jobOutcomes.map((entry) => (
-                  <li key={entry.id} className="flex items-start gap-3">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-text-muted" />
-                    <div>
+                  <li key={entry.id} className="signal-track signal-track-top">
+                    <span className="signal-dot" />
+                    <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium leading-5 text-text-primary">{entry.title}</p>
                       {entry.subtitle && <p className="text-xs text-text-secondary">{entry.subtitle}</p>}
-                      <p className="mt-1 text-xs text-text-muted">{formatDate(entry.sortDate)}</p>
                     </div>
+                    <span className="shrink-0 font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                      {formatDate(entry.sortDate)}
+                    </span>
                   </li>
                 ))}
               </ul>

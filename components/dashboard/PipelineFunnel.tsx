@@ -40,13 +40,16 @@ export function PipelineFunnel({ counts }: { counts: Record<ApplicationStatus, n
                   original h-2.5 track to a 3px "instrument" line with a
                   soft glow on the fill, closer to how Linear/Vercel treat
                   inline progress indicators than a thick utilitarian bar. */}
-              <div className="h-[3px] w-full overflow-hidden rounded-full bg-surface-secondary">
+              {/* Signal redesign: the mockup's .funnel-track/.funnel-fill —
+                  amber gradient with a soft glow, and driven by scaleX
+                  rather than width so it composites instead of laying out
+                  on every frame. */}
+              <div className="signal-funnel-track w-full">
                 <div
-                  className="h-full rounded-full bg-accent transition-[width] group-hover:opacity-90"
-                  style={{
-                    width: `${widthPercent}%`,
-                    boxShadow: "0 0 6px color-mix(in srgb, var(--color-accent) 55%, transparent)",
-                  }}
+                  className="signal-funnel-fill signal-fill-in group-hover:opacity-90"
+                  style={
+                    { "--fill": Math.min(1, Math.max(0, widthPercent / 100)) } as React.CSSProperties
+                  }
                 />
               </div>
             </Link>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AlertTriangle, ArrowRight, Info, Sparkles } from "lucide-react";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 import type { DashboardInsight } from "@/lib/dashboardInsights";
 
@@ -37,26 +37,29 @@ export function AIActionCenter({ insights }: { insights: DashboardInsight[] }) {
           Nothing needs your attention right now — you&apos;re caught up.
         </p>
       ) : (
-        <ul className="mt-5 flex flex-1 flex-col gap-2.5">
-          {insights.map((insight) => {
-            const Icon = insight.tone === "warning" ? AlertTriangle : Info;
-            return (
-              <li key={insight.id}>
-                <Link
-                  href={insight.href}
-                  className={`flex items-center gap-3 rounded-xl border px-4 py-3 text-sm transition-colors ${
-                    insight.tone === "warning"
-                      ? "border-warning/20 bg-warning/5 text-warning hover:bg-warning/10"
-                      : "border-info/20 bg-info-lightest text-info-foreground hover:bg-info-light"
-                  }`}
-                >
-                  <Icon className="h-4 w-4 shrink-0" />
-                  <span className="flex-1 font-medium leading-5">{insight.message}</span>
-                  <ArrowRight className="h-3.5 w-3.5 shrink-0 opacity-60" />
-                </Link>
-              </li>
-            );
-          })}
+        // Signal redesign: the mockup's Action Center rail. Was two tinted
+        // card styles (warning-amber and info-BLUE) — the blue was a third
+        // accent that exists nowhere else in the Signal palette. Now a
+        // neutral bordered row carrying a status dot, with the urgent tone
+        // marked by a warm amber pulsing dot instead of a whole tinted card.
+        // Same signal-in-the-dot language as the Career rails.
+        <ul className="mt-5 flex flex-1 flex-col gap-2">
+          {insights.map((insight) => (
+            <li key={insight.id}>
+              <Link
+                href={insight.href}
+                className={`signal-track rounded-xl border border-border ${
+                  insight.tone === "warning" ? "signal-track-warm" : ""
+                }`}
+              >
+                <span className="signal-dot" />
+                <span className="min-w-0 flex-1 text-[13px] font-medium leading-5 text-text-primary">
+                  {insight.message}
+                </span>
+                <ArrowRight className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+              </Link>
+            </li>
+          ))}
         </ul>
       )}
     </div>

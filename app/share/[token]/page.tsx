@@ -6,6 +6,7 @@ import { MapPin } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import type { JobEvaluationDimension } from "@/types";
 
@@ -64,15 +65,12 @@ export default async function SharedEvaluationPage({ params }: { params: Promise
     <>
       <Navbar />
       <main className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mb-6 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-          <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-            AI Navigator reads
-          </p>
-          <p className="text-sm text-agent-dark">
+        <AiReadsCard className="mb-6">
+          <p className="text-sm leading-6 text-text-primary">
             This is a shared, read-only view of one person&apos;s AI-generated job-fit evaluation from Sortie — not
             a job listing, and not affiliated with the employer.
           </p>
-        </div>
+        </AiReadsCard>
 
         <h1 className="text-2xl font-semibold leading-tight text-text-primary">{job.title ?? "Untitled role"}</h1>
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-text-secondary">

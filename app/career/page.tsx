@@ -148,9 +148,15 @@ export default async function CareerPage() {
           interviewEvents={interviewEventsResult.data ?? []}
         />
 
-        <BragDocGenerator />
-
-        <MarketReadiness />
+        {/* Two-up, matching the Signal mockup's own .grid-2 on this page —
+            these are the page's two short opt-in tool cards, and running
+            them full-width (as every card here did) is what made /career
+            read as a stack of unrelated blocks rather than the mockup's
+            layout. Collapses to one column below sm. */}
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+          <MarketReadiness />
+          <BragDocGenerator />
+        </div>
 
         <SkillGapTracker />
 

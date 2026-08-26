@@ -139,12 +139,20 @@ export function buildJobOutcomeEntries(jobOutcomes: JobOutcomeRow[]): JobOutcome
 
 export type TimelineEntryKind = "accomplishment" | "education" | "application_event";
 
+// Signal rail tone. Derived from the real ApplicationEventType below, never
+// string-matched off the rendered title — the timeline's dot color is the
+// only place a reader learns "this one is still live", so it has to track
+// actual event data. Accomplishments and education stay neutral on purpose:
+// they're settled historical facts, not in-motion states.
+export type TimelineEntryTone = "neutral" | "warm" | "positive" | "negative";
+
 export type TimelineEntry = {
   id: string;
   date: string;
   title: string;
   subtitle: string | null;
   kind: TimelineEntryKind;
+  tone: TimelineEntryTone;
 };
 
 export const APPLICATION_EVENT_LABELS: Record<ApplicationEventType, string> = {
@@ -171,6 +179,21 @@ export const COMPENSATION_EVENT_LABELS: Record<CompensationEventType, string> = 
   equity_grant: "Equity grant",
 };
 
+// "Warm" is reserved for genuinely in-motion stages — a scheduled or just-
+// completed interview is the one thing on this timeline still awaiting an
+// outcome, which is exactly what the Signal rail's pulsing amber dot means.
+// Withdrawn is neutral, not negative: it was the user's own call, not a
+// rejection.
+const APPLICATION_EVENT_TONES: Record<ApplicationEventType, TimelineEntryTone> = {
+  applied: "neutral",
+  interview_scheduled: "warm",
+  interview_completed: "warm",
+  offer_received: "positive",
+  rejected: "negative",
+  ghosted: "negative",
+  withdrawn: "neutral",
+};
+
 export type JobLookupRow = { id: string; title: string | null; company: string | null };
 
 export function buildFlatTimeline(
@@ -191,6 +214,7 @@ export function buildFlatTimeline(
         title: accomplishment.title,
         subtitle: accomplishment.description,
         kind: "accomplishment",
+        tone: "neutral",
       });
     }
   }
@@ -201,10 +225,18 @@ export function buildFlatTimeline(
       title: accomplishment.title,
       subtitle: accomplishment.description,
       kind: "accomplishment",
+      tone: "neutral",
     });
   }
   for (const entry of education) {
-    entries.push({ id: entry.id, date: entry.sortDate, title: entry.title, subtitle: entry.subtitle, kind: "education" });
+    entries.push({
+      id: entry.id,
+      date: entry.sortDate,
+      title: entry.title,
+      subtitle: entry.subtitle,
+      kind: "education",
+      tone: "neutral",
+    });
   }
   for (const event of applicationEvents) {
     const job = jobsById.get(event.job_id);
@@ -215,6 +247,7 @@ export function buildFlatTimeline(
       title: `${APPLICATION_EVENT_LABELS[event.event_type]} — ${jobLabel}`,
       subtitle: event.notes,
       kind: "application_event",
+      tone: APPLICATION_EVENT_TONES[event.event_type],
     });
   }
 
