@@ -109,7 +109,7 @@ export function PushBroadcastForm({ subscriberCount, viewerRole }: { subscriberC
             type="button"
             onClick={() => setConfirmSend(true)}
             disabled={isPending || !title.trim() || !body.trim()}
-            className="h-9 w-fit rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal h-9 w-fit rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             Send to {subscriberCount} subscribers
           </button>

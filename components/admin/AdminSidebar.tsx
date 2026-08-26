@@ -26,7 +26,12 @@ export function AdminSidebar() {
   return (
     <aside className="flex w-56 flex-shrink-0 flex-col bg-overlay text-overlay-foreground">
       <div className="border-b border-overlay-foreground/10 px-4 py-4">
-        <p className="font-display text-sm font-bold uppercase tracking-wide">Sortie</p>
+        {/* Inter, not font-display (Phase 26, admin-redesign Phase 2) — the
+            agy research is explicit that an internal-ops tool should
+            restrict Fraunces to consumer surfaces and use Inter exclusively
+            for operator density/readability; this was the one Fraunces
+            usage left anywhere under /admin. */}
+        <p className="text-sm font-bold uppercase tracking-wide">Sortie</p>
         <p className="font-mono text-[10px] uppercase tracking-widest text-overlay-foreground/40">Admin</p>
       </div>
       <nav className="flex flex-col gap-0.5 p-2">

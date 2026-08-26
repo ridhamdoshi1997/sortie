@@ -47,7 +47,7 @@ export function MarketingList({
           {canWrite && (
             <Link
               href="/admin/marketing/new"
-              className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90"
+              className="btn-signal inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-accent-foreground"
             >
               <Plus className="h-3.5 w-3.5" />
               New broadcast

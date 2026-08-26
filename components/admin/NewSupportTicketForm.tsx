@@ -67,7 +67,7 @@ export function NewSupportTicketForm() {
       <button
         type="submit"
         disabled={isPending}
-        className="h-9 w-fit rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+        className="btn-signal h-9 w-fit rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
       >
         Create ticket
       </button>

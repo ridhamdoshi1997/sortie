@@ -77,7 +77,7 @@ export function AdminNavigatorLauncher() {
         type="button"
         onClick={() => (open ? closePanel() : openPanel())}
         aria-label={open ? "Close Admin Navigator" : "Open Admin Navigator"}
-        className="fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full bg-accent text-accent-foreground shadow-lg transition-opacity hover:opacity-90"
+        className="btn-signal fixed bottom-6 right-6 z-40 flex h-14 w-14 items-center justify-center overflow-hidden rounded-full text-accent-foreground"
       >
         <Sparkles
           className={`absolute h-5 w-5 transition-all duration-200 motion-reduce:transition-none ${

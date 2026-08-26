@@ -226,7 +226,7 @@ function PlanForm({
           type="button"
           onClick={onSave}
           disabled={pending || !draft.displayName.trim() || (isNew && !draft.tier.trim())}
-          className="inline-flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+          className="btn-signal inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-medium text-accent-foreground disabled:opacity-60"
         >
           <Save className="h-3 w-3" />
           {isNew ? "Create plan" : "Save changes"}
