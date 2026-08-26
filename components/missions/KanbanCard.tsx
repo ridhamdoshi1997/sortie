@@ -15,6 +15,7 @@ import { diagnoseRejection, toggleJobPriority } from "@/actions/jobs";
 import { CATEGORY_LABELS, type RejectionReasonCategory } from "@/lib/rejectionIntelligence";
 import { formatTimeAgo } from "@/lib/utils";
 import type { Job } from "@/types";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 
 export type KanbanJob = Pick<
   Job,
@@ -37,7 +38,15 @@ export type KanbanJob = Pick<
   | "rejection_diagnosed_at"
 >;
 
-export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: string | null }) {
+export function KanbanCard({
+  job,
+  appliedAt,
+  index = 0,
+}: {
+  job: KanbanJob;
+  appliedAt?: string | null;
+  index?: number;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
   const signal = job.application_status === "shortlisted" ? getListingSignal(job) : null;
   const [diagnosis, setDiagnosis] = useState(job.rejection_diagnosis);
@@ -82,6 +91,10 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
     transform: CSS.Transform.toString(transform),
     transition,
     opacity: isDragging ? 0.5 : 1,
+    // Entrance stagger only ever needs to fire once, at mount — dnd-kit's
+    // own transform/transition above already take over the instant a real
+    // drag starts, so there's no ongoing conflict with this.
+    animationDelay: `${Math.min(index, 8) * 40}ms`,
   };
 
   function handleDiagnose(): void {
@@ -108,7 +121,7 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
     <div
       ref={setNodeRef}
       style={style}
-      className="card-interactive-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card"
+      className="dim-card-in card-interactive-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card"
     >
       <div className="flex items-start gap-2">
         <button
@@ -209,13 +222,10 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
       {job.application_status === "rejected" && (
         <div className="border-t border-border pt-2">
           {diagnosis ? (
-            <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-2.5 py-2">
-              <p className="mb-1 font-mono text-[9px] font-semibold uppercase tracking-wide text-agent-dark">
-                AI Navigator reads
-              </p>
+            <AiReadsCard variant="compact">
               <ul className="flex flex-col gap-1">
                 {diagnosis.possibleReasons.map((reason, i) => (
-                  <li key={i} className="text-[11px] leading-snug text-agent-dark">
+                  <li key={i} className="text-[11px] leading-snug text-text-primary">
                     <span className="font-semibold">
                       {CATEGORY_LABELS[reason.category as RejectionReasonCategory] ?? reason.category}:
                     </span>{" "}
@@ -223,11 +233,11 @@ export function KanbanCard({ job, appliedAt }: { job: KanbanJob; appliedAt?: str
                   </li>
                 ))}
               </ul>
-              <p className="mt-1.5 text-[11px] font-medium leading-snug text-agent-dark">
+              <p className="mt-1.5 text-[11px] font-medium leading-snug text-text-primary">
                 Next: {diagnosis.suggestedNextAction}
               </p>
-              <p className="mt-1 text-[10px] italic text-agent-dark/70">{diagnosis.confidenceNote}</p>
-            </div>
+              <p className="mt-1 text-[10px] italic text-text-muted">{diagnosis.confidenceNote}</p>
+            </AiReadsCard>
           ) : (
             <button
               type="button"

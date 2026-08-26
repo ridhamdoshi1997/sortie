@@ -148,7 +148,7 @@ function RadioOption({ label, checked, onSelect }: { label: string; checked: boo
       type="button"
       onClick={onSelect}
       className={`flex w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-left text-sm transition-colors ${
-        checked ? "bg-accent-muted text-accent" : "text-text-secondary hover:bg-surface-secondary"
+        checked ? "bg-accent/15 text-accent" : "text-text-secondary hover:bg-surface-secondary"
       }`}
     >
       <span className={`h-3.5 w-3.5 shrink-0 rounded-full border-2 ${checked ? "border-accent bg-accent" : "border-border"}`} />

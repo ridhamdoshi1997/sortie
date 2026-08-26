@@ -70,7 +70,9 @@ function KanbanColumn({
           {jobs.length === 0 ? (
             <p className="px-2 py-6 text-center text-xs text-text-muted">{EMPTY_MESSAGES[status]}</p>
           ) : (
-            jobs.map((job) => <KanbanCard key={job.id} job={job} appliedAt={appliedAtByJobId?.[job.id]} />)
+            jobs.map((job, i) => (
+              <KanbanCard key={job.id} job={job} appliedAt={appliedAtByJobId?.[job.id]} index={i} />
+            ))
           )}
         </SortableContext>
       </div>

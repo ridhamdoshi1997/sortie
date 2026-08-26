@@ -29,14 +29,15 @@ export function UpcomingDeadlines({ jobs }: { jobs: DeadlineJob[] }) {
         Upcoming deadlines
       </p>
       <div className="flex gap-3 overflow-x-auto pb-2">
-        {withDeadlines.map((job) => {
+        {withDeadlines.map((job, i) => {
           const timeLabel = formatTimeUntil(job.next_deadline_at);
           const overdue = timeLabel === "Overdue";
           return (
             <Link
               key={job.id}
               href={`/find-jobs/${job.id}`}
-              className="flex w-64 flex-shrink-0 items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card transition-colors hover:bg-surface-secondary"
+              className="dim-card-in flex w-64 flex-shrink-0 items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card transition-all hover:-translate-y-0.5 hover:border-accent/30 hover:bg-surface-secondary"
+              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
             >
               <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="sm" />
               <div className="min-w-0 flex-1">
