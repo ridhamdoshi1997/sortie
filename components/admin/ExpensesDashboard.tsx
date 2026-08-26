@@ -210,12 +210,15 @@ function ExpensesTable({
       {expenses.length === 0 ? (
         <p className="mt-6 text-sm text-text-muted">No expenses logged yet.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        // Same Operate-mode density as SupportInbox.tsx/UsersTable.tsx
+        // (Phase 26, admin-redesign Phase 2) — sticky header, tighter rows,
+        // row-hover.
+        <div className="mt-4 max-h-[70vh] overflow-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
-              <tr className="bg-surface-secondary">
+              <tr className="sticky top-0 z-10 bg-surface-secondary">
                 {["Name", "Category", "Amount", "Cadence", "Added", ""].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  <th key={h} className="px-5 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                     {h}
                   </th>
                 ))}
@@ -223,13 +226,13 @@ function ExpensesTable({
             </thead>
             <tbody>
               {expenses.map((e) => (
-                <tr key={e.id} className="border-t border-border">
-                  <td className="px-5 py-4 text-text-primary">{e.name}</td>
-                  <td className="px-5 py-4 text-text-secondary">{e.category}</td>
-                  <td className="px-5 py-4 font-mono text-text-primary">{formatCents(e.amountCents)}</td>
-                  <td className="px-5 py-4 text-text-secondary">{CADENCE_LABELS[e.cadence]}</td>
-                  <td className="px-5 py-4 font-mono text-text-secondary">{formatDate(e.createdAt)}</td>
-                  <td className="px-5 py-4">
+                <tr key={e.id} className="border-t border-border transition-colors hover:bg-surface-secondary/60">
+                  <td className="px-5 py-2.5 text-text-primary">{e.name}</td>
+                  <td className="px-5 py-2.5 text-text-secondary">{e.category}</td>
+                  <td className="px-5 py-2.5 font-mono text-text-primary">{formatCents(e.amountCents)}</td>
+                  <td className="px-5 py-2.5 text-text-secondary">{CADENCE_LABELS[e.cadence]}</td>
+                  <td className="px-5 py-2.5 font-mono text-text-secondary">{formatDate(e.createdAt)}</td>
+                  <td className="px-5 py-2.5">
                     {canWrite && (
                       <button
                         type="button"
@@ -271,12 +274,12 @@ function AiCostRatesTable({
         {canEdit ? " Update a rate as providers reprice." : " Only an owner can update rates."}
       </p>
 
-      <div className="mt-4 overflow-x-auto">
+      <div className="mt-4 max-h-[70vh] overflow-auto">
         <table className="w-full min-w-[680px] text-sm">
           <thead>
-            <tr className="bg-surface-secondary">
+            <tr className="sticky top-0 z-10 bg-surface-secondary">
               {["Action", "Provider", "Rate / call", "Calls (30d)", "Est. cost (30d)", ""].map((h) => (
-                <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                <th key={h} className="px-5 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                   {h}
                 </th>
               ))}
@@ -328,7 +331,7 @@ function RateRow({
   }
 
   return (
-    <tr className="border-t border-border">
+    <tr className="border-t border-border transition-colors hover:bg-surface-secondary/60">
       <td className="px-5 py-3 text-text-primary">{rate.label}</td>
       <td className="px-5 py-3">
         {canEdit ? (

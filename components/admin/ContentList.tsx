@@ -63,12 +63,15 @@ export function ContentList({ pages, viewerRole }: { pages: PageListRow[]; viewe
       {pages.length === 0 ? (
         <p className="mt-6 text-sm text-text-muted">No pages yet.</p>
       ) : (
-        <div className="mt-4 overflow-x-auto">
+        // Same Operate-mode density as SupportInbox.tsx/UsersTable.tsx
+        // (Phase 26, admin-redesign Phase 2) — sticky header, tighter rows,
+        // row-hover.
+        <div className="mt-4 max-h-[70vh] overflow-auto">
           <table className="w-full min-w-[560px] text-sm">
             <thead>
-              <tr className="bg-surface-secondary">
+              <tr className="sticky top-0 z-10 bg-surface-secondary">
                 {["Title", "Slug", "Status", "Published", "Updated"].map((h) => (
-                  <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                  <th key={h} className="px-5 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                     {h}
                   </th>
                 ))}
@@ -76,8 +79,8 @@ export function ContentList({ pages, viewerRole }: { pages: PageListRow[]; viewe
             </thead>
             <tbody>
               {pages.map((p) => (
-                <tr key={p.id} className="border-t border-border">
-                  <td className="px-5 py-4">
+                <tr key={p.id} className="border-t border-border transition-colors hover:bg-surface-secondary/60">
+                  <td className="px-5 py-2.5">
                     <div className="flex items-center gap-2">
                       <Link href={`/admin/content/${p.id}`} className="text-accent hover:underline">
                         {p.title}
@@ -93,16 +96,16 @@ export function ContentList({ pages, viewerRole }: { pages: PageListRow[]; viewe
                       )}
                     </div>
                   </td>
-                  <td className="px-5 py-4 font-mono text-text-secondary">/{p.slug}</td>
-                  <td className="px-5 py-4">
+                  <td className="px-5 py-2.5 font-mono text-text-secondary">/{p.slug}</td>
+                  <td className="px-5 py-2.5">
                     {p.status === "published" ? (
                       <span className="rounded-full bg-agent-light px-2.5 py-1 text-xs font-medium text-agent-dark">Published</span>
                     ) : (
                       <span className="rounded-full bg-surface-secondary px-2.5 py-1 text-xs font-medium text-text-secondary">Draft</span>
                     )}
                   </td>
-                  <td className="px-5 py-4 font-mono text-text-secondary">{formatDate(p.publishedAt)}</td>
-                  <td className="px-5 py-4 font-mono text-text-secondary">{formatDate(p.updatedAt)}</td>
+                  <td className="px-5 py-2.5 font-mono text-text-secondary">{formatDate(p.publishedAt)}</td>
+                  <td className="px-5 py-2.5 font-mono text-text-secondary">{formatDate(p.updatedAt)}</td>
                 </tr>
               ))}
             </tbody>

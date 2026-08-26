@@ -30,41 +30,56 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
   const isSoldOut = plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats;
 
   return (
-    <div className="fade-in-up card-interactive-glow rounded-2xl border border-border bg-surface p-8 shadow-card" style={{ animationDelay: "60ms" }}>
-      <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">{plan.displayName}</p>
-      <p className="mt-2 text-3xl font-bold text-text-primary">
-        ${(plan.priceCents / 100).toFixed(0)}
-        <span className="text-base font-medium text-text-secondary">{isLifetime ? " once" : `/${plan.billingPeriod}`}</span>
-      </p>
-      <p className="mt-1 text-sm text-text-secondary">
-        {isLifetime
-          ? "Pay once, keep it forever — limited seats."
-          : "For a heavy, ongoing search that needs the deeper research tools."}
-      </p>
-      {plan.maxSeats !== null && (
-        <div className="mt-4">
-          {/* transform-based fill, not `width` — same real layout-thrash
-             fix already applied to the dashboard funnel and Settings' own
-             seat meter (this instance was missed in that earlier pass). */}
-          <div className="signal-meter-track w-full">
-            <div
-              className="signal-meter-fill signal-fill-in"
-              style={{ "--fill": Math.min(1, plan.seatsClaimed / Math.max(1, plan.maxSeats)) } as React.CSSProperties}
-            />
+    // flex h-full flex-col, content wrapped in flex-1 below — direct user
+    // report that the three pricing buttons didn't line up: each card was
+    // sized to its own content (Vanguard has 3 more bullets than Free), and
+    // a grid's default `align-items: stretch` only equalizes the CARDS'
+    // height, not where a button sits inside one once its own content is
+    // shorter than a sibling's. h-full pulls each card up to the row's
+    // real height; wrapping everything above the button in `flex-1` lets
+    // THAT div absorb the leftover space instead of the button itself, so
+    // the button keeps a real, constant mt-8 gap above it on every card
+    // (including the tallest one, which has zero leftover space) while
+    // still landing at the same Y position across all three — a bare
+    // `mt-auto` on the button would have resolved to 0 on the tallest
+    // card, losing that breathing room there specifically.
+    <div className="fade-in-up card-interactive-glow flex h-full flex-col rounded-2xl border border-border bg-surface p-8 shadow-card" style={{ animationDelay: "60ms" }}>
+      <div className="flex-1">
+        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">{plan.displayName}</p>
+        <p className="mt-2 text-3xl font-bold text-text-primary">
+          ${(plan.priceCents / 100).toFixed(0)}
+          <span className="text-base font-medium text-text-secondary">{isLifetime ? " once" : `/${plan.billingPeriod}`}</span>
+        </p>
+        <p className="mt-1 text-sm text-text-secondary">
+          {isLifetime
+            ? "Pay once, keep it forever — limited seats."
+            : "For a heavy, ongoing search that needs the deeper research tools."}
+        </p>
+        {plan.maxSeats !== null && (
+          <div className="mt-4">
+            {/* transform-based fill, not `width` — same real layout-thrash
+               fix already applied to the dashboard funnel and Settings' own
+               seat meter (this instance was missed in that earlier pass). */}
+            <div className="signal-meter-track w-full">
+              <div
+                className="signal-meter-fill signal-fill-in"
+                style={{ "--fill": Math.min(1, plan.seatsClaimed / Math.max(1, plan.maxSeats)) } as React.CSSProperties}
+              />
+            </div>
+            <p className="mt-1.5 text-[11px] font-medium text-text-muted">
+              {plan.seatsClaimed} / {plan.maxSeats} seats claimed
+            </p>
           </div>
-          <p className="mt-1.5 text-[11px] font-medium text-text-muted">
-            {plan.seatsClaimed} / {plan.maxSeats} seats claimed
-          </p>
-        </div>
-      )}
-      <ul className="mt-6 flex flex-col gap-2.5 text-left">
-        {plan.featureBullets.map((item) => (
-          <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
-            <Check className="h-4 w-4 shrink-0 text-success" />
-            {item}
-          </li>
-        ))}
-      </ul>
+        )}
+        <ul className="mt-6 flex flex-col gap-2.5 text-left">
+          {plan.featureBullets.map((item) => (
+            <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
+              <Check className="h-4 w-4 shrink-0 text-success" />
+              {item}
+            </li>
+          ))}
+        </ul>
+      </div>
       {isSoldOut ? (
         <div className="mt-8 inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-md border border-border bg-surface-secondary px-6 text-sm font-semibold text-text-muted">
           Sold out — all {plan.maxSeats} seats claimed
@@ -103,18 +118,20 @@ export async function CTASection() {
         </div>
 
         <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${paidPlans.length > 1 ? "lg:grid-cols-3" : ""}`}>
-          <div className="fade-in-up card-interactive-glow rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">Free</p>
-            <p className="mt-2 text-3xl font-bold text-text-primary">$0</p>
-            <p className="mt-1 text-sm text-text-secondary">Everything you need to run a real search today.</p>
-            <ul className="mt-6 flex flex-col gap-2.5 text-left">
-              {FREE_INCLUDES.map((item) => (
-                <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
-                  <Check className="h-4 w-4 shrink-0 text-success" />
-                  {item}
-                </li>
-              ))}
-            </ul>
+          <div className="fade-in-up card-interactive-glow flex h-full flex-col rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
+            <div className="flex-1">
+              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">Free</p>
+              <p className="mt-2 text-3xl font-bold text-text-primary">$0</p>
+              <p className="mt-1 text-sm text-text-secondary">Everything you need to run a real search today.</p>
+              <ul className="mt-6 flex flex-col gap-2.5 text-left">
+                {FREE_INCLUDES.map((item) => (
+                  <li key={item} className="flex items-center gap-2 text-sm text-text-secondary">
+                    <Check className="h-4 w-4 shrink-0 text-success" />
+                    {item}
+                  </li>
+                ))}
+              </ul>
+            </div>
             <TrackedCtaLink
               href="/login"
               eventName="marketing_cta_clicked"
@@ -128,14 +145,16 @@ export async function CTASection() {
           {paidPlans.length > 0 ? (
             paidPlans.map((plan) => <PaidPlanCard key={plan.tier} plan={plan} />)
           ) : (
-            <div className="rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
-              <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                Pro — Coming soon
-              </p>
-              <p className="mt-2 text-3xl font-bold text-text-muted">&mdash;</p>
-              <p className="mt-1 text-sm text-text-muted">
-                Higher usage limits and deeper research tools for a heavy, ongoing search.
-              </p>
+            <div className="flex h-full flex-col rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
+              <div className="flex-1">
+                <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                  Pro — Coming soon
+                </p>
+                <p className="mt-2 text-3xl font-bold text-text-muted">&mdash;</p>
+                <p className="mt-1 text-sm text-text-muted">
+                  Higher usage limits and deeper research tools for a heavy, ongoing search.
+                </p>
+              </div>
               <button
                 type="button"
                 disabled

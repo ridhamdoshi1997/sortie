@@ -119,12 +119,17 @@ export function TeamRoster({ initialAdmins, viewerRole }: { initialAdmins: Admin
       )}
       {error && <p className="text-xs text-error">{error}</p>}
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-card">
+      {/* Same Operate-mode density as SupportInbox.tsx/UsersTable.tsx
+         (Phase 26, admin-redesign Phase 2) — sticky header, tighter rows,
+         row-hover. max-h-[70vh]+overflow-auto handles both axes here
+         (this table's wrapper carries the card chrome directly, unlike
+         the others' separate outer card). */}
+      <div className="max-h-[70vh] overflow-auto rounded-2xl border border-border bg-surface shadow-card">
         <table className="w-full min-w-[560px] text-sm">
           <thead>
-            <tr className="bg-surface-secondary">
+            <tr className="sticky top-0 z-10 bg-surface-secondary">
               {["Person", "Role", "Added", ""].map((h) => (
-                <th key={h} className="px-5 py-3 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                <th key={h} className="px-5 py-2 text-left font-mono text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                   {h}
                 </th>
               ))}
@@ -132,15 +137,15 @@ export function TeamRoster({ initialAdmins, viewerRole }: { initialAdmins: Admin
           </thead>
           <tbody>
             {admins.map((a) => (
-              <tr key={a.id} className="border-t border-border">
-                <td className="px-5 py-4 text-text-primary">{a.email ?? "—"}</td>
-                <td className="px-5 py-4">
+              <tr key={a.id} className="border-t border-border transition-colors hover:bg-surface-secondary/60">
+                <td className="px-5 py-2.5 text-text-primary">{a.email ?? "—"}</td>
+                <td className="px-5 py-2.5">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${ROLE_CHIP_CLASS[a.role]}`}>
                     {ROLE_LABELS[a.role]}
                   </span>
                 </td>
-                <td className="px-5 py-4 font-mono text-text-secondary">{formatDate(a.createdAt)}</td>
-                <td className="px-5 py-4">
+                <td className="px-5 py-2.5 font-mono text-text-secondary">{formatDate(a.createdAt)}</td>
+                <td className="px-5 py-2.5">
                   {isOwner &&
                     (a.role === "owner" && ownerCount <= 1 ? (
                       <span className="text-xs text-text-muted">Can&apos;t remove last owner</span>
