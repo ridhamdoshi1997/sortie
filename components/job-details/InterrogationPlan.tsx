@@ -6,6 +6,7 @@ import { Sparkles, Swords } from "lucide-react";
 
 import { getInterrogationPlan } from "@/actions/jobs";
 import type { Job } from "@/types";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -59,10 +60,12 @@ export function InterrogationPlan({ jobId, plan }: Props) {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
-      {plan ? (
+      {isPending && <AiThinkingCard className="mt-4" status="Building your interrogation plan…" />}
+
+      {!isPending && plan ? (
         <div className="mt-4 flex flex-col gap-4">
           {plan.generalQuestions.length > 0 && (
-            <div className="rounded-xl border border-border bg-surface-secondary p-4">
+            <div className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4">
               <p className="mb-2 text-[11px] font-medium uppercase tracking-wide text-text-muted">
                 General strategic questions
               </p>
@@ -77,8 +80,12 @@ export function InterrogationPlan({ jobId, plan }: Props) {
             </div>
           )}
 
-          {plan.perInterviewer.map((entry) => (
-            <div key={entry.name} className="rounded-xl border border-border bg-surface-secondary p-4">
+          {plan.perInterviewer.map((entry, i) => (
+            <div
+              key={entry.name}
+              className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4"
+              style={{ animationDelay: `${Math.min(i + 1, 8) * 40}ms` }}
+            >
               <p className="mb-1 text-[11px] font-medium uppercase tracking-wide text-text-muted">
                 For {entry.name}
               </p>

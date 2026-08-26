@@ -6,6 +6,7 @@ import { Compass, ShieldAlert, Sparkles } from "lucide-react";
 
 import { getStrategicMoatBriefing } from "@/actions/jobs";
 import type { Job } from "@/types";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -17,16 +18,21 @@ function ListSection({
   items,
   icon: Icon,
   variant,
+  index = 0,
 }: {
   title: string;
   items: string[];
   icon: typeof Compass;
   variant: "accent" | "error";
+  index?: number;
 }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-surface-secondary p-4">
+    <div
+      className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-agent/25"
+      style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+    >
       <div className="mb-3 flex items-center gap-2">
         <div
           className={`flex h-7 w-7 items-center justify-center rounded-lg ${
@@ -88,21 +94,26 @@ export function StrategicMoatBriefing({ jobId, briefing }: Props) {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
-      {briefing ? (
+      {isPending && <AiThinkingCard className="mt-4" status="Researching strategic priorities and threats…" />}
+
+      {!isPending && briefing ? (
         <div className="mt-4 flex flex-col gap-3">
           <ListSection
+            index={0}
             title="Strategic priorities"
             items={briefing.strategicPriorities}
             icon={Compass}
             variant="accent"
           />
           <ListSection
+            index={1}
             title="Existential threats"
             items={briefing.existentialThreats}
             icon={ShieldAlert}
             variant="error"
           />
           <ListSection
+            index={2}
             title="Sharp questions to ask"
             items={briefing.smartQuestions}
             icon={Sparkles}

@@ -154,15 +154,17 @@ export function TakeHomeEstimator({ jobId, initialInputs, defaultGrossIncome }: 
       </div>
 
       {result && (
-        <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface-secondary p-4 sm:grid-cols-4">
-          <Stat label="Federal tax" value={formatCurrency(result.federalTax)} />
-          <Stat label={inputs.country === "us" ? "State tax" : "Provincial tax"} value={formatCurrency(result.regionalTax)} />
-          <Stat label={inputs.country === "us" ? "FICA" : "CPP + EI"} value={formatCurrency(result.payrollTax)} />
-          <Stat label="Total tax" value={formatCurrency(result.totalTax)} warn />
-          <Stat label="Net annual pay" value={formatCurrency(result.netAnnual)} />
-          <Stat label="Net monthly pay" value={formatCurrency(result.netMonthly)} />
+        // Same "results panel" treatment as EquityDecoder.tsx's Stat grid —
+        // see that file's comment (2026-08-25, direct user report).
+        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-accent/25 bg-border-light sm:grid-cols-4">
+          <Stat index={0} label="Federal tax" value={formatCurrency(result.federalTax)} />
+          <Stat index={1} label={inputs.country === "us" ? "State tax" : "Provincial tax"} value={formatCurrency(result.regionalTax)} />
+          <Stat index={2} label={inputs.country === "us" ? "FICA" : "CPP + EI"} value={formatCurrency(result.payrollTax)} />
+          <Stat index={3} label="Total tax" value={formatCurrency(result.totalTax)} warn />
+          <Stat index={4} label="Net annual pay" value={formatCurrency(result.netAnnual)} />
+          <Stat index={5} label="Net monthly pay" value={formatCurrency(result.netMonthly)} />
           {result.effectiveRate !== null && (
-            <Stat label="Effective tax rate" value={`${(result.effectiveRate * 100).toFixed(1)}%`} />
+            <Stat index={6} label="Effective tax rate" value={`${(result.effectiveRate * 100).toFixed(1)}%`} />
           )}
         </div>
       )}
@@ -170,11 +172,14 @@ export function TakeHomeEstimator({ jobId, initialInputs, defaultGrossIncome }: 
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Stat({ label, value, warn, index = 0 }: { label: string; value: string; warn?: boolean; index?: number }) {
   return (
-    <div>
+    <div
+      className="dim-card-in flex flex-col gap-1 bg-surface-secondary p-4 transition-colors hover:bg-surface"
+      style={{ animationDelay: `${index * 35}ms` }}
+    >
       <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">{label}</p>
-      <p className={`font-mono text-sm font-semibold tabular-nums ${warn ? "text-warning" : "text-text-primary"}`}>
+      <p className={`font-mono text-base font-bold tabular-nums ${warn ? "text-warning" : "text-text-primary"}`}>
         {value}
       </p>
     </div>

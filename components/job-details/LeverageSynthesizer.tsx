@@ -7,6 +7,8 @@ import { MessageSquareQuote, Sparkles } from "lucide-react";
 import { synthesizeLeverage } from "@/actions/jobs";
 import { LEVERAGE_LABELS, type LeverageLevel } from "@/lib/leverageSynthesizer";
 import type { Job } from "@/types";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -65,18 +67,20 @@ export function LeverageSynthesizer({ jobId, synthesis }: Props) {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
-      {synthesis ? (
-        <div className="mt-4 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-          <div className="flex items-center justify-between gap-2">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">AI Navigator reads</p>
+      {isPending && <AiThinkingCard className="mt-4" status="Weighing your leverage factors…" />}
+
+      {!isPending && synthesis ? (
+        <AiReadsCard
+          className="mt-4"
+          meta={
             <span className={`rounded-full px-2.5 py-0.5 text-[10px] font-semibold ${LEVEL_CLASSES[synthesis.leverageLevel]}`}>
               {LEVERAGE_LABELS[synthesis.leverageLevel]}
             </span>
-          </div>
-
-          <ul className="mt-3 flex flex-col gap-2">
+          }
+        >
+          <ul className="flex flex-col gap-2">
             {synthesis.factors.map((factor, i) => (
-              <li key={i} className="text-sm leading-6 text-agent-dark">
+              <li key={i} className="text-sm leading-6 text-text-primary">
                 <span className="font-semibold">{factor.label}:</span> {factor.explanation}
               </li>
             ))}
@@ -87,7 +91,7 @@ export function LeverageSynthesizer({ jobId, synthesis }: Props) {
               <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-agent-dark">Talking points</p>
               <ul className="flex flex-col gap-1.5">
                 {synthesis.talkingPoints.map((point, i) => (
-                  <li key={i} className="flex gap-2 text-sm leading-6 text-agent-dark">
+                  <li key={i} className="flex gap-2 text-sm leading-6 text-text-primary">
                     <span className="mt-2 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-agent" />
                     <span>{point}</span>
                   </li>
@@ -96,8 +100,8 @@ export function LeverageSynthesizer({ jobId, synthesis }: Props) {
             </div>
           )}
 
-          <p className="mt-3 text-xs italic text-agent-dark/70">{synthesis.confidenceNote}</p>
-        </div>
+          <p className="mt-3 text-xs italic text-text-muted">{synthesis.confidenceNote}</p>
+        </AiReadsCard>
       ) : (
         !isPending && (
           <p className="mt-3 text-sm text-text-muted">

@@ -48,13 +48,12 @@ export function JobTagsAndNotes({
   }
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <NotebookPen className="h-4 w-4 text-text-secondary" />
-        </div>
-        <h2 className="text-base font-semibold text-text-primary">Tags &amp; Notes</h2>
-      </div>
+    // Pane inside the shared Tracking card — see JobDeadline.tsx's comment.
+    <div className="border-t border-border-light px-6 py-6 first:border-t-0">
+      <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        <NotebookPen className="h-3.5 w-3.5" />
+        Tags &amp; Notes
+      </h3>
 
       <div className="flex flex-col gap-4">
         <div>
@@ -78,6 +77,6 @@ export function JobTagsAndNotes({
           {!notesSaved && <p className="mt-1 text-[11px] text-text-muted">Saves when you click away</p>}
         </div>
       </div>
-    </section>
+    </div>
   );
 }

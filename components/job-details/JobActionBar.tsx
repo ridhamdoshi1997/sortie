@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState, useTransition, type MouseEvent as ReactMouseEvent } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, ArrowLeft, Bookmark, ChevronDown, Eye, EyeOff, ExternalLink, Repeat } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Bookmark, ChevronDown, Eye, EyeOff, Repeat } from "lucide-react";
 
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob, unmarkJobUnavailable } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
@@ -13,8 +13,6 @@ import { formatTimeAgo } from "@/lib/utils";
 
 type Props = {
   jobId: string;
-  applyUrl: string | null;
-  company: string;
   initialSaved: boolean;
   initialHidden: boolean;
   initialApplicationStatus?: ApplicationStatus;
@@ -27,8 +25,6 @@ type Props = {
 
 export function JobActionBar({
   jobId,
-  applyUrl,
-  company,
   initialSaved,
   initialHidden,
   initialApplicationStatus,
@@ -42,9 +38,9 @@ export function JobActionBar({
   const [hidden, setHidden] = useState(initialHidden);
   const [status, setStatus] = useState<ApplicationStatus>(initialApplicationStatus ?? "inbox");
   // Fixed/portaled, not a plain absolute-positioned child — this page always
-  // has more content below the action bar (JobInfo, tabs, etc.), and a
-  // same-stacking-context absolute dropdown painted underneath that content
-  // instead of over it (confirmed live). Same fix already proven for
+  // has more content below the action bar (the identity rail, tabs, etc.),
+  // and a same-stacking-context absolute dropdown painted underneath that
+  // content instead of over it (confirmed live). Same fix already proven for
   // StyleTab.tsx's Theme/Page-size dropdowns: portal to document.body,
   // position:fixed computed from the trigger's real getBoundingClientRect(),
   // close on scroll since a fixed panel doesn't track its trigger.
@@ -304,24 +300,13 @@ export function JobActionBar({
           {markedUnavailableAt ? "Available again?" : "Mark unavailable"}
         </button>
 
-        {applyUrl ? (
-          <Link
-            href={applyUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-full px-4 py-1.5 text-sm font-medium text-accent-foreground"
-          >
-            Apply at {company}
-            <ExternalLink className="h-4 w-4" />
-          </Link>
-        ) : (
-          <div
-            className="glass-pill inline-flex min-h-9 cursor-not-allowed items-center gap-2 px-4 py-1.5 text-sm font-medium text-text-muted"
-            title="No application link was saved for this job"
-          >
-            No link available
-          </div>
-        )}
+        {/* Apply deliberately does NOT live here any more (2026-08-25
+            redesign). It moved to JobIdentityRail, which is sticky — so
+            the primary action is now always reachable instead of scrolling
+            away, and the page no longer shows two identical "Apply at X"
+            buttons in the same viewport (this one plus the old floating
+            pill). This bar keeps only the tracking actions: save, hide,
+            status, availability. */}
       </div>
     </div>
   );

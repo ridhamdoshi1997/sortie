@@ -6,6 +6,7 @@ import { ArrowRight, BriefcaseBusiness, DollarSign, MapPin, TrendingUp, X } from
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import type { Job } from "@/types";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 
 // Job detail drawer / split view (build-plan.md §H) — fast browsing without
 // leaving the results list. Deliberately a lightweight SUMMARY, not a
@@ -94,13 +95,12 @@ export function JobDetailDrawer({ job, onClose }: { job: Job | null; onClose: ()
             </div>
           )}
 
+          {/* Hero tier, not compact (2026-08-25, direct user report — see
+              JobResultCard.tsx's own comment on this same change). */}
           {job.match_reason && (
-            <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-              <p className="mb-1 font-mono text-[10px] font-semibold uppercase tracking-wide text-agent-dark">
-                AI Navigator reads
-              </p>
-              <p className="text-xs leading-5 text-agent-dark">{job.match_reason}</p>
-            </div>
+            <AiReadsCard>
+              <p className="text-xs leading-5 text-text-primary">{job.match_reason}</p>
+            </AiReadsCard>
           )}
 
           {job.matched_skills && job.matched_skills.length > 0 && (

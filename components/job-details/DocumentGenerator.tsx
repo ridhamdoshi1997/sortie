@@ -9,6 +9,8 @@ import { AlertTriangle, Download, Eye, FileText, Mail, SquarePen, Sparkles, X } 
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import { getListingSignal } from "@/lib/jobStatus";
+import { ThemeSelector } from "@/components/shared/ThemeSelector";
+import type { ResumeTheme } from "@/components/documents/ResumePDF";
 
 const GENERATION_STAGES: Record<DocumentKind, string[]> = {
   resume: [
@@ -33,6 +35,7 @@ type Props = {
   markedUnavailableAt?: string | null;
   droppedFromSearchAt?: string | null;
   foundAt?: string | null;
+  themeValue: ResumeTheme;
 };
 
 type ActionProps = {
@@ -45,9 +48,10 @@ type ActionProps = {
   // live-preview editor workspace, distinct from the raw-PDF "View" link
   // below (which just opens the last-persisted file).
   workspaceHref: string;
+  index?: number;
 };
 
-function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspaceHref }: ActionProps) {
+function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspaceHref, index = 0 }: ActionProps) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -100,7 +104,11 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
   }, []);
 
   return (
-    <div ref={containerRef} className="flex flex-1 flex-col gap-3 rounded-xl border border-border bg-surface-secondary p-4">
+    <div
+      ref={containerRef}
+      className="dim-card-in flex flex-1 flex-col gap-3 rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-agent/25"
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
       {/* Plain heading, not a link — a "click the title" affordance turned
           out to be undiscoverable even with hover styling (user-caught
           live, twice). Edit/View below are explicit, always-visibly-styled
@@ -182,6 +190,7 @@ export function DocumentGenerator({
   markedUnavailableAt,
   droppedFromSearchAt,
   foundAt,
+  themeValue,
 }: Props) {
   const [dismissed, setDismissed] = useState(false);
   const signal = getListingSignal({
@@ -198,27 +207,39 @@ export function DocumentGenerator({
 
   return (
     <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
-      <div className="flex items-center gap-3 border-b border-border p-6">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
-          <Sparkles className="h-4 w-4 text-accent" />
+      <div className="flex flex-col gap-4 border-b border-border p-6 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
+            <Sparkles className="h-4 w-4 text-accent" />
+          </div>
+          <h2 className="text-base font-semibold leading-6 text-text-primary">
+            Application Documents
+          </h2>
         </div>
-        <h2 className="text-base font-semibold leading-6 text-text-primary">
-          Application Documents
-        </h2>
+        {/* Moved here from ResumeFitSection.tsx (2026-08-25, direct user
+            report: "irrelevant there") — this is where a theme choice
+            actually applies, to the resume/cover-letter PDFs generated
+            below. Applies to both, per ThemeSelector.tsx's own comment. */}
+        <ThemeSelector value={themeValue} />
       </div>
 
       {showWarning && (
-        <div className="mx-6 mt-6 flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
-          <p className="flex-1 leading-5">
-            <strong>{signal!.label}.</strong> This posting may no longer be accepting applications — you can still
-            generate documents if you want to apply anyway.
+        // Neutral surface + colored chip, not a full bg-warning/10 wash
+        // (professional-polish pass, 2026-08-25) — same recipe as
+        // ApplyVerdictBadge/MatchScore's FlagRow.
+        <div className="mx-6 mt-6 flex items-start gap-3 rounded-xl border border-warning/25 bg-surface px-4 py-3 text-sm">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+            <AlertTriangle className="h-3.5 w-3.5" />
+          </span>
+          <p className="flex-1 pt-0.5 leading-5 text-text-secondary">
+            <strong className="text-warning">{signal!.label}.</strong> This posting may no longer be accepting
+            applications — you can still generate documents if you want to apply anyway.
           </p>
           <button
             type="button"
             onClick={() => setDismissed(true)}
             aria-label="Dismiss"
-            className="shrink-0 rounded-md p-0.5 text-warning/70 hover:text-warning"
+            className="shrink-0 rounded-md p-0.5 text-text-muted hover:text-text-primary"
           >
             <X className="h-4 w-4" />
           </button>
@@ -233,6 +254,7 @@ export function DocumentGenerator({
           hasDocument={!!resumePdfUrl}
           icon={FileText}
           workspaceHref={`/resume/tailored/${jobId}`}
+          index={0}
         />
         <DocumentAction
           jobId={jobId}
@@ -241,6 +263,7 @@ export function DocumentGenerator({
           hasDocument={!!coverLetterPdfUrl}
           icon={Mail}
           workspaceHref={`/cover-letter/tailored/${jobId}`}
+          index={1}
         />
       </div>
     </section>

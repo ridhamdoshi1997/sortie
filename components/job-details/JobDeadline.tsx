@@ -62,13 +62,20 @@ export function JobDeadline({
   }
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="mb-4 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <CalendarClock className="h-4 w-4 text-text-secondary" />
-        </div>
-        <h2 className="text-base font-semibold text-text-primary">Next deadline</h2>
-      </div>
+    // Pane inside the shared Tracking card (app/find-jobs/[id]/page.tsx) —
+    // professional-polish pass, 2026-08-25: this and its three siblings
+    // (ApplicationHistory/JobTagsAndNotes/WhyILeftReflection) used to each
+    // open their own `border shadow-card` box with an icon-chip header —
+    // four identical boxes stacked, the same "lazy container" scaffold
+    // fixed on "The Role" section earlier this pass. Now four panes inside
+    // one shared card with a hairline divider between them (`first:border-
+    // t-0` drops the divider on whichever pane actually renders first,
+    // since ApplicationHistory/WhyILeftReflection are both conditional).
+    <div className="border-t border-border-light px-6 py-6 first:border-t-0">
+      <h3 className="mb-4 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        <CalendarClock className="h-3.5 w-3.5" />
+        Next deadline
+      </h3>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div className="flex-1">
@@ -104,6 +111,6 @@ export function JobDeadline({
         </div>
       </div>
       {error && <p className="mt-2 text-xs text-error">{error}</p>}
-    </section>
+    </div>
   );
 }

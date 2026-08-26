@@ -37,7 +37,7 @@ function PersonRow({
   connectionReason: string | null;
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3">
+    <div className="flex items-start gap-3 rounded-lg border border-border bg-surface p-3 transition-colors hover:border-agent/25">
       <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-accent-muted text-xs font-semibold text-accent">
         {getInitials(person.name)}
       </div>
@@ -90,6 +90,7 @@ function Bucket({
   people,
   companyLinkedinUrl,
   connectionReason,
+  index = 0,
 }: {
   jobId: string;
   title: string;
@@ -97,9 +98,13 @@ function Bucket({
   people: ConnectionPerson[];
   companyLinkedinUrl?: string;
   connectionReason: string | null;
+  index?: number;
 }) {
   return (
-    <div className="flex flex-1 flex-col gap-2 rounded-xl border border-border bg-surface-secondary p-3">
+    <div
+      className="dim-card-in flex flex-1 flex-col gap-2 rounded-xl border border-border bg-surface-secondary p-3"
+      style={{ animationDelay: `${index * 60}ms` }}
+    >
       <span
         className={`inline-flex w-fit items-center rounded-full px-2.5 py-1 text-xs font-semibold ${headerClassName}`}
       >
@@ -107,14 +112,15 @@ function Bucket({
       </span>
       {people.length > 0 ? (
         <div className="flex flex-col gap-2">
-          {people.map((person) => (
-            <PersonRow
-              key={`${person.name}-${person.title}`}
-              jobId={jobId}
-              person={person}
-              companyLinkedinUrl={companyLinkedinUrl}
-              connectionReason={person.pastEmployer ? `previously worked at ${person.pastEmployer}` : connectionReason}
-            />
+          {people.map((person, i) => (
+            <div key={`${person.name}-${person.title}`} className="dim-card-in" style={{ animationDelay: `${index * 60 + Math.min(i, 6) * 30}ms` }}>
+              <PersonRow
+                jobId={jobId}
+                person={person}
+                companyLinkedinUrl={companyLinkedinUrl}
+                connectionReason={person.pastEmployer ? `previously worked at ${person.pastEmployer}` : connectionReason}
+              />
+            </div>
           ))}
         </div>
       ) : (
@@ -148,6 +154,7 @@ export function InsiderConnections({ jobId, company, connections, lookedUp, insi
         {hasAny && connections ? (
           <div className="flex flex-col gap-4 md:flex-row">
             <Bucket
+              index={0}
               jobId={jobId}
               title="Beyond Your Network"
               headerClassName="bg-success-lightest text-success-foreground"
@@ -156,6 +163,7 @@ export function InsiderConnections({ jobId, company, connections, lookedUp, insi
               connectionReason={null}
             />
             <Bucket
+              index={1}
               jobId={jobId}
               title="From Your Previous Company"
               headerClassName="bg-info-lightest text-info"
@@ -164,6 +172,7 @@ export function InsiderConnections({ jobId, company, connections, lookedUp, insi
               connectionReason={null}
             />
             <Bucket
+              index={2}
               jobId={jobId}
               title="From Your School"
               headerClassName="bg-accent-muted text-accent"

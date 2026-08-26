@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Users } from "lucide-react";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -49,6 +50,7 @@ export function LeadershipTeamButton({ jobId }: Props) {
         {isPending ? "Looking up leadership..." : "Find leadership team"}
       </button>
       {error && <p className="max-w-xs text-xs text-error">{error}</p>}
+      {isPending && <AiThinkingCard className="w-full max-w-sm" status="Searching for public leadership info…" />}
     </div>
   );
 }

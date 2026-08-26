@@ -5,7 +5,6 @@ import {
   CircleHelp,
   Code2,
   Compass,
-  Lightbulb,
   ListChecks,
   Lock,
   MessageSquareText,
@@ -18,6 +17,7 @@ import {
 import { CompanyResearchAutoLoader } from "@/components/job-details/CompanyResearchAutoLoader";
 import { LeadershipTeamButton } from "@/components/job-details/LeadershipTeamButton";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import type { CompanyLeader, CompanyResearchDossier } from "@/types";
 
 type Props = {
@@ -52,11 +52,14 @@ function getIconClasses(variant: SectionProps["variant"]): string {
   return "bg-accent-muted text-accent";
 }
 
-function ResearchList({ title, items, icon: Icon, variant }: SectionProps) {
+function ResearchList({ title, items, icon: Icon, variant, index = 0 }: SectionProps & { index?: number }) {
   if (items.length === 0) return null;
 
   return (
-    <div className="rounded-xl border border-border bg-surface-secondary p-4">
+    <div
+      className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-agent/25"
+      style={{ animationDelay: `${Math.min(index, 8) * 40}ms` }}
+    >
       <div className="mb-3 flex items-center gap-2">
         <div
           className={`flex h-7 w-7 items-center justify-center rounded-lg ${getIconClasses(variant)}`}
@@ -88,10 +91,11 @@ function TechStack({ items }: { items: string[] }) {
         Tech Stack
       </h3>
       <div className="flex flex-wrap gap-2">
-        {items.map((item) => (
+        {items.map((item, i) => (
           <span
             key={item}
-            className="inline-flex items-center gap-1 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent"
+            className="dim-card-in inline-flex items-center gap-1 rounded-full bg-accent-muted px-3 py-1 text-xs font-medium text-accent transition-transform hover:-translate-y-0.5"
+            style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
           >
             <Code2 className="h-3 w-3" />
             {item}
@@ -143,7 +147,7 @@ function getInitials(name: string): string {
 // path — Wikipedia/site-guess sources fall back to an initials avatar.
 function LeaderCard({ leader }: { leader: CompanyLeader }) {
   const card = (
-    <div className="flex flex-col items-center rounded-xl border border-border bg-surface-secondary p-4 text-center">
+    <div className="flex flex-col items-center rounded-xl border border-border bg-surface-secondary p-4 text-center transition-all duration-200 hover:-translate-y-0.5 hover:border-agent/25 hover:shadow-card">
       <div className="relative">
         {leader.photoUrl ? (
           // eslint-disable-next-line @next/next/no-img-element -- external, unpredictable host (LinkedIn CDN); no fixed domain to allowlist for next/image
@@ -200,7 +204,7 @@ export function CompanyResearch({ company, jobId, research, companyResearchAllow
       {research ? (
         <>
           <div className="flex flex-col gap-6 p-6">
-            <div className="rounded-xl border border-border bg-surface-secondary p-4">
+            <div className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4">
               <div className="mb-3 flex items-center gap-2">
                 <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-muted text-accent">
                   <Compass className="h-4 w-4" />
@@ -230,35 +234,41 @@ export function CompanyResearch({ company, jobId, research, companyResearchAllow
 
             <div className="grid gap-4 md:grid-cols-2">
               <ResearchList
+                index={0}
                 title="Culture"
                 items={research.culture}
                 icon={Users}
                 variant="info"
               />
               <ResearchList
+                index={1}
                 title="Your Edge"
                 items={research.yourEdge}
                 icon={ShieldCheck}
                 variant="success"
               />
               <ResearchList
+                index={2}
                 title="Gaps to Address"
                 items={research.gapsToAddress}
                 icon={ListChecks}
               />
               <ResearchList
+                index={3}
                 title="Smart Questions"
                 items={research.smartQuestions}
                 icon={CircleHelp}
                 variant="info"
               />
               <ResearchList
+                index={4}
                 title="Interview Prep"
                 items={research.interviewPrep}
                 icon={MessageSquareText}
                 variant="success"
               />
               <ResearchList
+                index={5}
                 title="Recent Updates"
                 items={research.recentUpdates ?? []}
                 icon={Newspaper}
@@ -266,19 +276,15 @@ export function CompanyResearch({ company, jobId, research, companyResearchAllow
               />
             </div>
 
-            <div className="rounded-xl border border-border bg-surface-secondary p-4">
-              <div className="mb-3 flex items-center gap-2">
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-success-lightest text-success">
-                  <Lightbulb className="h-4 w-4" />
-                </div>
-                <h3 className="text-sm font-semibold leading-5 text-text-primary">
-                  Why This Role
-                </h3>
-              </div>
-              <p className="text-sm font-medium leading-6 text-text-primary">
-                {research.whyThisRole}
-              </p>
-            </div>
+            {/* Every other box in this dossier (Culture, Tech Stack, Gaps…)
+                is factual company research; this one is the one genuinely
+                personalized read — this candidate, this role, why it fits —
+                so it's the one pane here that earns the "AI Navigator
+                reads" agent-teal treatment other opt-in AI generators on
+                this page already use. */}
+            <AiReadsCard label="Why this role fits you">
+              <p className="text-sm leading-6 text-text-primary">{research.whyThisRole}</p>
+            </AiReadsCard>
 
             <div>
               <div className="mb-3 flex items-center justify-between gap-3">

@@ -11,6 +11,8 @@ import {
   type InterviewPanelMemberRow,
 } from "@/actions/interviewPanel";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -132,8 +134,12 @@ export function InterviewPanel({ jobId, company, members }: Props) {
         </p>
       ) : (
         <div className="mt-4 flex flex-col gap-3">
-          {members.map((member) => (
-            <div key={member.id} className="rounded-xl border border-border bg-surface-secondary p-4">
+          {members.map((member, i) => (
+            <div
+              key={member.id}
+              className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-agent/25"
+              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+            >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-sm font-medium text-text-primary">{member.name}</p>
@@ -178,23 +184,24 @@ export function InterviewPanel({ jobId, company, members }: Props) {
                 </div>
               </div>
 
+              {researchingId === member.id && (
+                <AiThinkingCard className="mt-3" status={`Researching ${member.name}'s background…`} />
+              )}
+
               {member.researched_background && expandedId === member.id && (
-                <div className="mt-3 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-                  <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-                    AI Navigator reads
-                  </p>
-                  <p className="text-sm text-agent-dark">{member.researched_background.summary}</p>
+                <AiReadsCard className="animate-in fade-in-0 slide-in-from-top-1 mt-3 duration-200">
+                  <p className="text-sm text-text-primary">{member.researched_background.summary}</p>
                   {member.researched_background.priorCompanies.length > 0 && (
-                    <p className="mt-2 text-xs text-agent-dark">
+                    <p className="mt-2 text-xs text-text-primary">
                       Prior: {member.researched_background.priorCompanies.join(", ")}
                     </p>
                   )}
                   {member.researched_background.interviewPrepNote && (
-                    <p className="mt-2 text-sm font-medium text-agent-dark">
+                    <p className="mt-2 text-sm font-medium text-text-primary">
                       {member.researched_background.interviewPrepNote}
                     </p>
                   )}
-                </div>
+                </AiReadsCard>
               )}
             </div>
           ))}

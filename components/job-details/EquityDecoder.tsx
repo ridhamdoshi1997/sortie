@@ -172,19 +172,26 @@ export function EquityDecoder({ jobId, initialDetails }: Props) {
       )}
 
       {(details.baseSalary !== null || hasEquity) && (
-        <div className="mt-5 grid grid-cols-2 gap-3 rounded-xl border border-border bg-surface-secondary p-4 sm:grid-cols-4">
-          <Stat label="Year 1 total comp" value={formatCurrency(result.totalComp.year1)} />
-          <Stat label="Steady-state annual comp" value={formatCurrency(result.totalComp.steadyState)} />
-          {hasEquity && <Stat label="Full grant value at today's FMV" value={formatCurrency(result.grantValueAtFmv)} />}
-          {isOption && <Stat label="Cost to exercise full grant" value={formatCurrency(result.exerciseCost)} />}
+        // Real "results panel" treatment, not a plain bordered box
+        // (2026-08-25, direct user report — Offer Tools still not "up to
+        // par"). Accent-tinted border (this is calculated FROM user input,
+        // not AI output — accent, never agent, per ui-tokens.md's
+        // invariant), hairline dividers between cells via grid gap +
+        // bg-border-light, each cell staggers in and highlights on hover.
+        <div className="mt-5 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-accent/25 bg-border-light sm:grid-cols-4">
+          <Stat index={0} label="Year 1 total comp" value={formatCurrency(result.totalComp.year1)} />
+          <Stat index={1} label="Steady-state annual comp" value={formatCurrency(result.totalComp.steadyState)} />
+          {hasEquity && <Stat index={2} label="Full grant value at today's FMV" value={formatCurrency(result.grantValueAtFmv)} />}
+          {isOption && <Stat index={3} label="Cost to exercise full grant" value={formatCurrency(result.exerciseCost)} />}
           {isOption && result.spreadAtFmv !== null && (
             <Stat
+              index={4}
               label="Spread at today's FMV"
               value={formatCurrency(result.spreadAtFmv)}
               warn={result.isUnderwater === true}
             />
           )}
-          {result.ownershipPercent !== null && <Stat label="Approx. ownership" value={`${result.ownershipPercent}%`} />}
+          {result.ownershipPercent !== null && <Stat index={5} label="Approx. ownership" value={`${result.ownershipPercent}%`} />}
         </div>
       )}
 
@@ -198,11 +205,14 @@ export function EquityDecoder({ jobId, initialDetails }: Props) {
   );
 }
 
-function Stat({ label, value, warn }: { label: string; value: string; warn?: boolean }) {
+function Stat({ label, value, warn, index = 0 }: { label: string; value: string; warn?: boolean; index?: number }) {
   return (
-    <div>
+    <div
+      className="dim-card-in flex flex-col gap-1 bg-surface-secondary p-4 transition-colors hover:bg-surface"
+      style={{ animationDelay: `${index * 35}ms` }}
+    >
       <p className="text-[10px] font-medium uppercase tracking-wide text-text-muted">{label}</p>
-      <p className={`font-mono text-sm font-semibold tabular-nums ${warn ? "text-warning" : "text-text-primary"}`}>
+      <p className={`font-mono text-base font-bold tabular-nums ${warn ? "text-warning" : "text-text-primary"}`}>
         {value}
       </p>
     </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Award, Check, CheckCircle2, Circle, X } from "lucide-react";
+import { Check, CheckCircle2, Circle, X } from "lucide-react";
 
 import { correctSkillTag } from "@/actions/jobs";
 import { JobDescriptionDecoder } from "@/components/job-details/JobDescriptionDecoder";
@@ -100,15 +100,12 @@ export function Qualification({
   const hasSkills = matched.length > 0 || missing.length > 0;
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
+    // Pane inside the shared "The Role" card — see JobDescription.tsx's
+    // comment for why this dropped its own border/shadow/icon-chip header.
+    <div className="border-t border-border-light px-6 py-6">
       <div className="mb-1 flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-            <Award className="h-4 w-4 text-text-secondary" />
-          </div>
-          <h2 className="text-base font-semibold leading-6 text-text-primary">Qualification</h2>
-        </div>
-        <p className="mt-1 flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
+        <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">Qualification</h3>
+        <p className="flex shrink-0 items-center gap-1.5 text-xs text-text-muted">
           <Check className="h-3 w-3 text-success" />
           Represents the skills you have
         </p>
@@ -168,6 +165,6 @@ export function Qualification({
       )}
 
       {requirements.length > 0 && <JobDescriptionDecoder jobId={jobId} decoded={jdDecoder ?? null} />}
-    </section>
+    </div>
   );
 }

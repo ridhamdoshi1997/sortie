@@ -34,13 +34,12 @@ export function WhyILeftReflection({
   }
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="mb-1 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <HeartCrack className="h-4 w-4 text-text-secondary" />
-        </div>
-        <h2 className="text-base font-semibold text-text-primary">Why this ended</h2>
-      </div>
+    // Pane inside the shared Tracking card — see JobDeadline.tsx's comment.
+    <div className="border-t border-border-light px-6 py-6 first:border-t-0">
+      <h3 className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        <HeartCrack className="h-3.5 w-3.5" />
+        Why this ended
+      </h3>
       <p className="mb-4 mt-1 text-sm text-text-secondary">
         Private — just for you, for the next time you&apos;re evaluating something similar.
       </p>
@@ -76,6 +75,6 @@ export function WhyILeftReflection({
         </div>
         {!saved && <p className="text-[11px] text-text-muted">Saves when you click away</p>}
       </div>
-    </section>
+    </div>
   );
 }

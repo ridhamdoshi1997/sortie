@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { after } from "next/server";
+import { FileText, Handshake, Target, Users2 } from "lucide-react";
 
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
 import { ApplicationHistory } from "@/components/job-details/ApplicationHistory";
@@ -10,7 +11,6 @@ import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
 import { EmailDrafts } from "@/components/job-details/EmailDrafts";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
-import { FloatingApplyButton } from "@/components/job-details/FloatingApplyButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
@@ -32,7 +32,8 @@ import { ShareJobLink } from "@/components/job-details/ShareJobLink";
 import { FollowUpNudge } from "@/components/job-details/FollowUpNudge";
 import { JobDeadline } from "@/components/job-details/JobDeadline";
 import { JobDescription } from "@/components/job-details/JobDescription";
-import { JobInfo } from "@/components/job-details/JobInfo";
+import { JobIdentityRail } from "@/components/job-details/JobIdentityRail";
+import { SectionHeader } from "@/components/job-details/SectionHeader";
 import { JobTagsAndNotes } from "@/components/job-details/JobTagsAndNotes";
 import { WhyILeftReflection } from "@/components/job-details/WhyILeftReflection";
 import { MatchScore } from "@/components/job-details/MatchScore";
@@ -43,7 +44,6 @@ import { Navbar } from "@/components/layout/Navbar";
 import { NetworkSignals } from "@/components/shared/NetworkSignals";
 import { OutreachSignal } from "@/components/job-details/OutreachSignal";
 import { Tabs } from "@/components/ui/Tabs";
-import { isAdminUser, resolveProvider } from "@/lib/access";
 import { getUserSubscription } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
@@ -143,12 +143,7 @@ export default async function JobDetailsPage({ params }: Props) {
   const eventHistoryResult = await listJobEventHistory(job.id);
   const eventHistory = eventHistoryResult.data ?? [];
 
-  const isAdmin = isAdminUser(user.email);
   const subscription = await getUserSubscription(insforge, user.id, user.email);
-  // Clamp a stale non-Gemini preference (e.g. set before this policy existed,
-  // or a paid plan lapsed / was renamed) so the selector never shows/persists
-  // a provider the account isn't currently entitled to.
-  const modelValue = resolveProvider(profile?.preferred_model, user.email, subscription.plan.llmUnlocked);
 
   const isInterviewing = job.application_status === "interviewing";
 
@@ -168,21 +163,18 @@ export default async function JobDetailsPage({ params }: Props) {
     <>
       <PostHogIdentify userId={user.id} />
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-6xl flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-        {/* Staggered entrance (2026-07-28) — .fade-in-up already existed
-            (used on a few page titles) but was never applied to job-details
-            cards. Wrapping divs here, not editing each card component, so
-            this stays a page-level concern rather than 10+ files each
-            growing a delay prop. Respects prefers-reduced-motion via the
-            class itself. */}
+      {/* Job-detail redesign (2026-08-25). Was a single max-w-6xl column of
+          12 stacked blocks running 5+ screens, opening with three rows of
+          ACTIONS before it ever named the job. Now: a slim status/action
+          strip, then a two-column split — reading content left, a sticky
+          identity rail right that keeps the title, score and Apply visible
+          for the whole scroll. FloatingApplyButton is gone with it; it
+          existed only because Apply used to scroll away, and it duplicated
+          the toolbar's own Apply on the same viewport. */}
+      <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-7xl flex-col gap-5 px-4 py-8 sm:px-6 lg:px-8">
         <div className="fade-in-up">
-          <ApplyVerdictBadge verdict={applyVerdict} />
-        </div>
-        <div className="fade-in-up" style={{ animationDelay: "20ms" }}>
           <JobActionBar
             jobId={job.id}
-            applyUrl={applyUrl}
-            company={company}
             initialSaved={job.is_saved}
             initialHidden={job.is_hidden}
             initialApplicationStatus={job.application_status}
@@ -193,35 +185,36 @@ export default async function JobDetailsPage({ params }: Props) {
             reappearanceSignal={reappearanceSignal}
           />
         </div>
-        <div className="fade-in-up flex flex-wrap items-center gap-2" style={{ animationDelay: "40ms" }}>
-          <AddToCompareButton jobId={job.id} title={job.title ?? "Untitled role"} company={company} />
-          <ShareJobLink jobId={job.id} initialShareToken={job.share_token ?? null} />
+
+        <div className="grid min-w-0 grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1fr)_20rem]">
+          {/* Rail is order-first on mobile (identity should still lead when
+              the columns collapse) and order-last on desktop, where the
+              reading column deserves the left edge. */}
+          <aside className="fade-in-up order-first flex flex-col gap-4 lg:sticky lg:top-24 lg:order-last">
+            <JobIdentityRail job={job} />
+            <div className="flex flex-wrap items-center gap-2">
+              <AddToCompareButton jobId={job.id} title={job.title ?? "Untitled role"} company={company} />
+              <ShareJobLink jobId={job.id} initialShareToken={job.share_token ?? null} />
+            </div>
+          </aside>
+
+          <div className="flex min-w-0 flex-col gap-5">
+        {/* Job-detail redesign, fragment 1 cont'd (2026-08-25, direct user
+            report) — ApplicationHistory/JobTagsAndNotes/WhyILeftReflection/
+            JobDeadline used to lead the page, before a reader ever reached
+            real job content. Those four are the user's OWN tracking data
+            about this job (notes, tags, a deadline, a rejection reflection)
+            — legitimate, but not what someone opens a job page to read
+            first. They now live in their own "Tracking" tab, alongside
+            each other since they're the same kind of content. ApplyVerdict
+            and FollowUpNudge stay here: both are short, time-sensitive
+            status lines (should-I-apply, a nudge to follow up), not dense
+            content, and worth seeing immediately. */}
+        <div className="fade-in-up">
+          <ApplyVerdictBadge verdict={applyVerdict} />
         </div>
         <div className="fade-in-up" style={{ animationDelay: "50ms" }}>
           <FollowUpNudge applicationStatus={job.application_status} statusUpdatedAt={job.application_status_updated_at} />
-        </div>
-        <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
-          <JobInfo job={job} />
-        </div>
-
-        {eventHistory.length > 0 && (
-          <div className="fade-in-up" style={{ animationDelay: "90ms" }}>
-            <ApplicationHistory history={eventHistory} />
-          </div>
-        )}
-
-        <div className="fade-in-up" style={{ animationDelay: "100ms" }}>
-          <JobTagsAndNotes jobId={job.id} initialTags={job.tags ?? []} initialNotes={job.personal_notes} />
-        </div>
-
-        {job.application_status === "rejected" && (
-          <div className="fade-in-up" style={{ animationDelay: "105ms" }}>
-            <WhyILeftReflection jobId={job.id} initialLoved={job.reflection_loved} initialAvoid={job.reflection_avoid} />
-          </div>
-        )}
-
-        <div className="fade-in-up" style={{ animationDelay: "110ms" }}>
-          <JobDeadline jobId={job.id} initialDeadlineAt={job.next_deadline_at} initialLabel={job.next_deadline_label} />
         </div>
 
         <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
@@ -232,55 +225,78 @@ export default async function JobDetailsPage({ params }: Props) {
                 id: "overview",
                 label: "Overview",
                 content: (
-                  <div className="flex flex-col gap-6">
-                    <MatchScore
-                      matchReason={job.match_reason}
-                      evaluation={job.evaluation}
-                      recommendationScore={job.recommendation_score}
-                      titleScopeMismatch={job.title_scope_mismatch}
-                    />
+                  // Job-detail redesign, fragment 1 (2026-08-25) — this tab
+                  // was 10 components in one undifferentiated stack, every
+                  // one the same bg-surface card, no way to tell where a
+                  // topic ended. Grouped into four labeled sections, each
+                  // with a real icon-chip + title (SectionHeader — this
+                  // app's own established pattern from /career). No jump
+                  // nav — a pill row repeating the same four labels the
+                  // headers already show was pure decoration on top of
+                  // real content, not real navigation value.
+                  <div className="flex flex-col gap-8">
+                    <div className="flex flex-col gap-6">
+                      <SectionHeader icon={Target} label="Fit & Evaluation" />
+                      <MatchScore
+                        matchReason={job.match_reason}
+                        evaluation={job.evaluation}
+                        recommendationScore={job.recommendation_score}
+                        titleScopeMismatch={job.title_scope_mismatch}
+                      />
+                      <EvaluationBreakdown
+                        evaluation={job.evaluation ?? []}
+                        recommendationScore={job.recommendation_score}
+                        overallGrade={job.overall_grade}
+                      />
+                    </div>
 
-                    <EvaluationBreakdown
-                      evaluation={job.evaluation ?? []}
-                      recommendationScore={job.recommendation_score}
-                      overallGrade={job.overall_grade}
-                    />
-
-                    <JobDescription
-                      aboutRole={job.about_role || job.description}
-                      sourceUrl={applyUrl}
-                    />
-
-                    <Responsibilities items={job.responsibilities ?? []} />
-
-                    <Qualification
-                      jobId={job.id}
-                      matchedSkills={job.matched_skills}
-                      missingSkills={job.missing_skills}
-                      requirements={job.requirements}
-                      niceToHave={job.nice_to_have}
-                      jdDecoder={job.jd_decoder}
-                      correctionsAppliedCount={correctionsAppliedCount ?? 0}
-                      roleFamily={roleFamily}
-                    />
-
-                    <Benefits items={job.benefits ?? []} />
-
-                    <HiringProcess items={job.hiring_process ?? []} />
+                    <div className="flex flex-col gap-6">
+                      <SectionHeader icon={FileText} label="The Role" />
+                      {/* One shared card, not five identical bordered boxes
+                          stacked in a row — see JobDescription.tsx's comment
+                          for the reasoning. Each pane below draws its own
+                          top divider and only when it actually renders, so
+                          skipped panes (no benefits listed, etc.) never
+                          leave a stray double divider. */}
+                      <section className="overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+                        <JobDescription
+                          aboutRole={job.about_role}
+                          fullDescription={job.description}
+                          sourceUrl={applyUrl}
+                        />
+                        <Responsibilities items={job.responsibilities ?? []} />
+                        <Qualification
+                          jobId={job.id}
+                          matchedSkills={job.matched_skills}
+                          missingSkills={job.missing_skills}
+                          requirements={job.requirements}
+                          niceToHave={job.nice_to_have}
+                          jdDecoder={job.jd_decoder}
+                          correctionsAppliedCount={correctionsAppliedCount ?? 0}
+                          roleFamily={roleFamily}
+                        />
+                        <Benefits items={job.benefits ?? []} />
+                        <HiringProcess items={job.hiring_process ?? []} />
+                      </section>
+                    </div>
 
                     {job.application_status === "offered" && (
-                      <>
+                      <div className="flex flex-col gap-6">
+                        <SectionHeader icon={Handshake} label="Offer & Negotiation" />
                         <LeverageSynthesizer jobId={job.id} synthesis={job.leverage_synthesis} />
                         <NegotiationScript jobId={job.id} script={job.negotiation_script} />
                         <NinetyDayPlan jobId={job.id} plan={job.ninety_day_plan} />
-                      </>
+                      </div>
                     )}
 
-                    <NetworkSignals
-                      company={company}
-                      previousEmployer={previousEmployer}
-                      searchTerms={networkSearchTerms}
-                    />
+                    <div className="flex flex-col gap-6">
+                      <SectionHeader icon={Users2} label="Network" />
+                      <NetworkSignals
+                        company={company}
+                        previousEmployer={previousEmployer}
+                        searchTerms={networkSearchTerms}
+                      />
+                    </div>
                   </div>
                 ),
               },
@@ -289,27 +305,97 @@ export default async function JobDetailsPage({ params }: Props) {
                 label: "Company",
                 content: (
                   <div className="flex flex-col gap-6">
-                    <CompanyResearch
-                      company={company}
-                      jobId={job.id}
-                      research={job.company_research}
-                      companyResearchAllowed={subscription.plan.companyResearchMonthlyLimit > 0}
-                    />
+                    <div className="fade-in-up">
+                      <CompanyResearch
+                        company={company}
+                        jobId={job.id}
+                        research={job.company_research}
+                        companyResearchAllowed={subscription.plan.companyResearchMonthlyLimit > 0}
+                      />
+                    </div>
 
-                    <StrategicMoatBriefing jobId={job.id} briefing={job.strategic_moat} />
+                    <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
+                      <StrategicMoatBriefing jobId={job.id} briefing={job.strategic_moat} />
+                    </div>
 
-                    <OutreachSignal company={company} signal={hiringSignal} />
+                    <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
+                      <OutreachSignal company={company} signal={hiringSignal} />
+                    </div>
 
                     {job.company_research && (
-                      <InsiderConnections
-                        jobId={job.id}
-                        company={company}
-                        connections={job.company_research.insiderConnections}
-                        lookedUp={job.company_research.insiderConnectionsLookedUp}
-                        insiderConnectionsAllowed={subscription.plan.insiderConnectionsMonthlyLimit > 0}
-                      />
+                      <div className="fade-in-up" style={{ animationDelay: "180ms" }}>
+                        <InsiderConnections
+                          jobId={job.id}
+                          company={company}
+                          connections={job.company_research.insiderConnections}
+                          lookedUp={job.company_research.insiderConnectionsLookedUp}
+                          insiderConnectionsAllowed={subscription.plan.insiderConnectionsMonthlyLimit > 0}
+                        />
+                      </div>
                     )}
                   </div>
+                ),
+              },
+              {
+                // Direct user request (2026-08-25): pull Resume Fit,
+                // Resume/Cover-Letter Generator and Email Drafts — all
+                // "prepare your materials for this job" tools — out of the
+                // flat, un-tabbed stack that used to trail after the whole
+                // Tabs block (the very last thing on the page, easy to
+                // miss on a 40+ component page) and give them their own
+                // home. Placed right after Company: the natural order is
+                // understand the role/company, then tailor your resume,
+                // then track/interview/negotiate.
+                id: "resume-evolution",
+                label: "Resume Evolution",
+                content: (
+                  <div className="flex flex-col gap-6">
+                    <SectionHeader icon={FileText} label="Resume Evolution" />
+                    <div className="fade-in-up">
+                      <ResumeFitSection
+                        jobId={job.id}
+                        company={company}
+                        analysis={job.resume_analysis}
+                      />
+                    </div>
+                    <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
+                      <DocumentGenerator
+                        jobId={job.id}
+                        resumePdfUrl={application?.resume_pdf_url ?? null}
+                        coverLetterPdfUrl={application?.cover_letter_pdf_url ?? null}
+                        applicationStatus={job.application_status}
+                        markedUnavailableAt={job.marked_unavailable_at}
+                        droppedFromSearchAt={job.dropped_from_search_at}
+                        foundAt={job.found_at}
+                        themeValue={profile?.preferred_resume_theme ?? "modern"}
+                      />
+                    </div>
+                    <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
+                      <EmailDrafts jobId={job.id} />
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                id: "tracking",
+                label: "Tracking",
+                content: (
+                  <section className="fade-in-up overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
+                    {eventHistory.length > 0 && <ApplicationHistory history={eventHistory} />}
+                    <JobTagsAndNotes jobId={job.id} initialTags={job.tags ?? []} initialNotes={job.personal_notes} />
+                    {job.application_status === "rejected" && (
+                      <WhyILeftReflection
+                        jobId={job.id}
+                        initialLoved={job.reflection_loved}
+                        initialAvoid={job.reflection_avoid}
+                      />
+                    )}
+                    <JobDeadline
+                      jobId={job.id}
+                      initialDeadlineAt={job.next_deadline_at}
+                      initialLabel={job.next_deadline_label}
+                    />
+                  </section>
                 ),
               },
               ...(isInterviewing
@@ -332,21 +418,31 @@ export default async function JobDetailsPage({ params }: Props) {
                         // flip sidebar visually onto the right 35% column.
                         <div className="grid grid-cols-1 gap-6 md:grid-cols-[1fr_22rem] md:items-start">
                           <div className="flex flex-col gap-6 md:order-2">
-                            <TrapDoorPredictor jobId={job.id} predictions={job.trap_door_predictions} />
-                            <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
-                            <InterviewDebrief
-                              jobId={job.id}
-                              panelMembers={interviewPanelMembers.map((m) => ({ id: m.id, name: m.name }))}
-                            />
+                            <div className="fade-in-up">
+                              <TrapDoorPredictor jobId={job.id} predictions={job.trap_door_predictions} />
+                            </div>
+                            <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
+                              <InterviewPanel jobId={job.id} company={company} members={interviewPanelMembers} />
+                            </div>
+                            <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
+                              <InterviewDebrief
+                                jobId={job.id}
+                                panelMembers={interviewPanelMembers.map((m) => ({ id: m.id, name: m.name }))}
+                              />
+                            </div>
                           </div>
                           <div className="flex flex-col gap-6 md:order-1">
-                            <QuestionBankPanel
-                              initialCompany={company}
-                              initialTitle={job.title ?? ""}
-                              initialSeniority={job.seniority_level ?? ""}
-                              locked
-                            />
-                            <InterrogationPlan jobId={job.id} plan={job.interrogation_plan} />
+                            <div className="fade-in-up">
+                              <QuestionBankPanel
+                                initialCompany={company}
+                                initialTitle={job.title ?? ""}
+                                initialSeniority={job.seniority_level ?? ""}
+                                locked
+                              />
+                            </div>
+                            <div className="fade-in-up" style={{ animationDelay: "60ms" }}>
+                              <InterrogationPlan jobId={job.id} plan={job.interrogation_plan} />
+                            </div>
                           </div>
                         </div>
                       ),
@@ -367,32 +463,8 @@ export default async function JobDetailsPage({ params }: Props) {
             ]}
           />
         </div>
-
-        <div className="fade-in-up" style={{ animationDelay: "240ms" }}>
-          <ResumeFitSection
-            jobId={job.id}
-            company={company}
-            analysis={job.resume_analysis}
-            modelValue={modelValue}
-            isAdmin={isAdmin}
-            themeValue={profile?.preferred_resume_theme ?? "modern"}
-          />
+          </div>
         </div>
-        <div className="fade-in-up" style={{ animationDelay: "300ms" }}>
-          <DocumentGenerator
-            jobId={job.id}
-            resumePdfUrl={application?.resume_pdf_url ?? null}
-            coverLetterPdfUrl={application?.cover_letter_pdf_url ?? null}
-            applicationStatus={job.application_status}
-            markedUnavailableAt={job.marked_unavailable_at}
-            droppedFromSearchAt={job.dropped_from_search_at}
-            foundAt={job.found_at}
-          />
-        </div>
-        <div className="fade-in-up" style={{ animationDelay: "320ms" }}>
-          <EmailDrafts jobId={job.id} />
-        </div>
-        <FloatingApplyButton applyUrl={applyUrl} company={company} />
       </main>
     </>
   );

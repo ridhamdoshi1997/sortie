@@ -6,6 +6,7 @@ import { ScanSearch, Sparkles } from "lucide-react";
 
 import { decodeJobDescription } from "@/actions/jobs";
 import type { Job } from "@/types";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 const CLASSIFICATION_LABEL: Record<"must_have" | "likely_padding", string> = {
   must_have: "Likely a must-have",
@@ -57,10 +58,16 @@ export function JobDescriptionDecoder({ jobId, decoded }: { jobId: string; decod
 
       {error && <p className="mt-2 text-xs text-error">{error}</p>}
 
-      {decoded ? (
+      {isPending && <AiThinkingCard className="mt-3" status="Classifying must-haves vs. boilerplate…" />}
+
+      {!isPending && decoded ? (
         <ul className="mt-3 flex flex-col gap-2">
           {decoded.requirements.map((r, i) => (
-            <li key={i} className="flex flex-col gap-1 rounded-lg bg-surface-secondary p-2.5">
+            <li
+              key={i}
+              className="dim-card-in flex flex-col gap-1 rounded-lg bg-surface-secondary p-2.5"
+              style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
+            >
               <div className="flex items-start justify-between gap-2">
                 <span className="text-sm text-text-primary">{r.text}</span>
                 <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${CLASSIFICATION_CLASS[r.classification]}`}>

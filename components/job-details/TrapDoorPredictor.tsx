@@ -7,6 +7,7 @@ import { AlertTriangle, Sparkles } from "lucide-react";
 import { getTrapDoorPredictions } from "@/actions/jobs";
 import { TRAP_DOOR_CATEGORY_LABELS } from "@/lib/trapDoorPredictor";
 import type { Job } from "@/types";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 type Props = {
   jobId: string;
@@ -55,13 +56,25 @@ export function TrapDoorPredictor({ jobId, predictions }: Props) {
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
-      {predictions ? (
+      {isPending && <AiThinkingCard className="mt-4" status="Scanning for likely trap-door questions…" />}
+
+      {!isPending && predictions ? (
         <div className="mt-4 flex flex-col gap-3">
-          <div className="rounded-r-lg border-l-2 border-error bg-error/10 px-4 py-3">
-            <p className="text-xs text-error">{predictions.confidenceNote}</p>
+          {/* Neutral surface + colored chip, not a full bg-error/10 wash
+              (professional-polish pass, 2026-08-25) — same recipe as
+              ApplyVerdictBadge/MatchScore's FlagRow. */}
+          <div className="flex items-start gap-3 rounded-xl border border-error/25 bg-surface px-4 py-3">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-error/15 text-error">
+              <AlertTriangle className="h-3.5 w-3.5" />
+            </span>
+            <p className="pt-0.5 text-xs leading-5 text-text-secondary">{predictions.confidenceNote}</p>
           </div>
           {predictions.predictions.map((p, i) => (
-            <div key={i} className="rounded-xl border border-border bg-surface-secondary p-4">
+            <div
+              key={i}
+              className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4 transition-colors hover:border-error/25"
+              style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+            >
               <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
                 {TRAP_DOOR_CATEGORY_LABELS[p.category]}
               </span>

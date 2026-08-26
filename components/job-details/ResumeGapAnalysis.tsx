@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import {
     AlertTriangle,
     ArrowRight,
@@ -93,7 +94,18 @@ function ScoreRing({ score }: { score: number }) {
     const radius = 44;
     const circumference = 2 * Math.PI * radius;
     const pct = Math.max(0, Math.min(10, score)) / 10;
-    const offset = circumference * (1 - pct);
+    // Grows in from empty on mount, not full on first paint (professional-
+    // polish pass, 2026-08-25) — a real result just arrived, same
+    // "occasional" motion tier as EvaluationBreakdown's distribution strip.
+    // rAF, not a bare useState(true) default, so the browser paints the
+    // empty ring first and the stroke-dashoffset transition actually has a
+    // starting value to animate from.
+    const [grown, setGrown] = useState(false);
+    useEffect(() => {
+        const raf = requestAnimationFrame(() => setGrown(true));
+        return () => cancelAnimationFrame(raf);
+    }, []);
+    const offset = circumference * (1 - (grown ? pct : 0));
 
     return (
         <div className="relative flex h-28 w-28 shrink-0 items-center justify-center">
@@ -209,10 +221,11 @@ export function ResumeGapAnalysis({ data, usageLabel, isGenerating, onImprove, s
                     </span>
                 </div>
                 <div className="flex flex-col divide-y divide-border border-t border-border">
-                    {data.checks.map((check) => (
+                    {data.checks.map((check, i) => (
                         <div
                             key={check.label}
-                            className="grid grid-cols-1 gap-2 px-6 py-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4"
+                            className="dim-card-in grid grid-cols-1 gap-2 px-6 py-4 transition-colors hover:bg-surface-secondary/50 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] sm:gap-4"
+                            style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
                         >
                             <div className="flex items-center gap-2">
                                 <StatusIcon status={check.status} />

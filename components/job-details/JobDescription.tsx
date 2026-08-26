@@ -1,8 +1,17 @@
-import { FileText } from "lucide-react";
+"use client";
+
+import { useState } from "react";
 import Link from "next/link";
+import { ChevronDown, ChevronUp } from "lucide-react";
 
 type Props = {
+  /** AI-cleaned 2-4 sentence summary (lib/evaluator.ts) — strips job-board/
+   * ATS boilerplate out of the raw posting. Null for jobs scraped before
+   * this extraction pass, or ones that haven't re-evaluated since. */
   aboutRole: string | null;
+  /** The raw scraped posting text (jobs.description) — always the complete
+   * original, whether or not an AI summary also exists. */
+  fullDescription: string | null;
   sourceUrl: string | null;
 };
 
@@ -13,22 +22,63 @@ function isTruncatedPreview(description: string | null): boolean {
   return trimmed.endsWith("…") || trimmed.endsWith("...");
 }
 
-export function JobDescription({ aboutRole, sourceUrl }: Props) {
-  const shouldShowFullPostLink = isTruncatedPreview(aboutRole) && sourceUrl;
+// Job-detail redesign, cont'd (2026-08-25 — professional-polish pass): this
+// used to open its own `border shadow-card` box with an icon-chip header,
+// stacked above four more identical boxes (Responsibilities/Qualification/
+// Benefits/HiringProcess) — the exact "same-size cards as page structure"
+// anti-pattern a design review flags as the lazy container. All five are
+// now panes inside one shared card (see "The Role" section, app/find-jobs/
+// [id]/page.tsx) with internal dividers instead of repeated borders. This
+// pane leads without its own header — it's the first thing under "The
+// Role"'s own SectionHeader, so a second "Job Description" label directly
+// beneath it was pure restatement.
+//
+// Expand toggle added same pass, direct user report ("you are not putting
+// the full jd by extracting everything?") — the lead paragraph is the AI's
+// cleaned summary, not the full posting (a deliberate earlier fix for raw
+// scraped blobs full of job-board boilerplate — see evaluator.ts's own
+// comment on `aboutRole`). The complete original text was still fully
+// stored in `jobs.description`, just never surfaced once a summary existed.
+// User's explicit choice: keep the clean summary as the lead, add a
+// "Show full description" toggle rather than always showing both or
+// dropping the summary — least scrolling, full text still one click away.
+export function JobDescription({ aboutRole, fullDescription, sourceUrl }: Props) {
+  const [expanded, setExpanded] = useState(false);
+  const primaryText = aboutRole || fullDescription;
+
+  // Only worth a toggle when the summary and the raw text genuinely differ
+  // — with no aboutRole, primaryText already IS the full text, so a second
+  // "show full description" control would just repeat what's already shown.
+  const trimmedFull = fullDescription?.trim() ?? "";
+  const hasExpandableFull = Boolean(aboutRole) && trimmedFull.length > 0 && trimmedFull !== aboutRole?.trim();
+
+  const shouldShowFullPostLink = isTruncatedPreview(primaryText) && sourceUrl && !hasExpandableFull;
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <FileText className="h-4 w-4 text-text-secondary" />
-        </div>
-        <h2 className="text-base font-semibold leading-6 text-text-primary">
-          Job Description
-        </h2>
-      </div>
-      <p className="whitespace-pre-line text-sm font-medium leading-6 text-text-primary">
-        {aboutRole ?? "No job description is available for this role yet."}
+    <div className="px-6 py-6">
+      <p className="whitespace-pre-line text-[15px] font-medium leading-7 text-text-primary">
+        {primaryText ?? "No job description is available for this role yet."}
       </p>
+
+      {hasExpandableFull && (
+        <>
+          <button
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+            aria-expanded={expanded}
+            className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-accent transition-colors hover:text-accent-dark"
+          >
+            {expanded ? "Hide full description" : "Show full description"}
+            {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </button>
+          {expanded && (
+            <div className="animate-in fade-in-0 slide-in-from-top-1 mt-3 whitespace-pre-line rounded-lg border border-border-light bg-surface-secondary p-4 text-sm leading-6 text-text-secondary duration-200">
+              {fullDescription}
+            </div>
+          )}
+        </>
+      )}
+
       {shouldShowFullPostLink && (
         <div className="mt-6 rounded-lg border border-border bg-surface-secondary p-4">
           <p className="text-sm leading-6 text-text-secondary">
@@ -44,6 +94,6 @@ export function JobDescription({ aboutRole, sourceUrl }: Props) {
           </Link>
         </div>
       )}
-    </section>
+    </div>
   );
 }

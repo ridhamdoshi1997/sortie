@@ -1,22 +1,19 @@
-import { ArrowRight, Briefcase } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 
 type Props = {
   items: string[];
 };
 
+// Pane inside the shared "The Role" card — see JobDescription.tsx's comment
+// for why this no longer carries its own border/shadow/icon-chip header.
 export function Responsibilities({ items }: Props) {
   if (items.length === 0) return null;
 
   return (
-    <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="mb-6 flex items-center gap-3">
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-secondary">
-          <Briefcase className="h-4 w-4 text-text-secondary" />
-        </div>
-        <h2 className="text-base font-semibold leading-6 text-text-primary">
-          Responsibilities
-        </h2>
-      </div>
+    <div className="border-t border-border-light px-6 py-6">
+      <h3 className="mb-4 text-xs font-semibold uppercase tracking-wide text-text-muted">
+        Responsibilities
+      </h3>
       <ul className="flex flex-col gap-2.5">
         {items.map((item) => (
           <li key={item} className="flex items-start gap-2.5 text-sm font-medium leading-6 text-text-primary">
@@ -25,6 +22,6 @@ export function Responsibilities({ items }: Props) {
           </li>
         ))}
       </ul>
-    </section>
+    </div>
   );
 }

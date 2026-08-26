@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Sparkles, Users } from "lucide-react";
 
 /**
@@ -42,7 +43,40 @@ type Props = {
 };
 
 export function NetworkSignals({ company, previousEmployer, searchTerms }: Props) {
-    if (!previousEmployer && searchTerms.length === 0) return null;
+    // Real empty state, not a silent null (2026-08-26, direct user report:
+    // "network section is not appearing in any job"). Both signals below
+    // are computed from profiles.work_experience/education — an account
+    // with neither filled in genuinely has nothing real to show, but a
+    // section that just vanishes reads as broken, not as "add your work
+    // history." Same "prompt to complete the input" empty-state pattern as
+    // ResumeFitSection.tsx's "No analysis yet".
+    if (!previousEmployer && searchTerms.length === 0) {
+        return (
+            <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
+                <div className="flex items-center gap-3 border-b border-border p-6">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-muted">
+                        <Users className="h-4 w-4 text-accent" />
+                    </div>
+                    <h2 className="text-base font-semibold leading-6 text-text-primary">
+                        Insider Connection
+                    </h2>
+                </div>
+                <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+                    <p className="max-w-xs text-sm leading-6 text-text-muted">
+                        Add your work history and education to your profile — Sortie will flag when you
+                        already worked somewhere this company also hired from, or give you real names to
+                        search for on LinkedIn.
+                    </p>
+                    <Link
+                        href="/profile"
+                        className="btn-signal inline-flex w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
+                    >
+                        Complete your profile
+                    </Link>
+                </div>
+            </section>
+        );
+    }
 
     return (
         <section className="border border-border bg-surface shadow-card overflow-hidden rounded-2xl">
@@ -85,7 +119,7 @@ export function NetworkSignals({ company, previousEmployer, searchTerms }: Props
                     href={buildLinkedInPeopleSearchUrl(company)}
                     target="_blank"
                     rel="noreferrer noopener"
-                    className="btn-signal inline-flex w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
+                    className="btn-signal inline-flex w-fit items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground transition-transform hover:-translate-y-0.5"
                 >
                     Find people at {company} on LinkedIn
                 </a>

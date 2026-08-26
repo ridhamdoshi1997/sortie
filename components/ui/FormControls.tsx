@@ -41,7 +41,7 @@ export function FormInput({
           value={value}
           readOnly={readOnly}
           onChange={(e) => onChange?.(e.target.value)}
-          className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-surface-secondary read-only:bg-surface-secondary read-only:text-text-secondary"
+          className="w-full rounded-lg border border-border bg-surface py-2 pl-9 pr-3 text-sm text-text-primary placeholder:text-text-muted transition-shadow focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-surface-secondary read-only:bg-surface-secondary read-only:text-text-secondary"
         />
       </div>
     );
@@ -54,7 +54,7 @@ export function FormInput({
       value={value}
       readOnly={readOnly}
       onChange={(e) => onChange?.(e.target.value)}
-      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-surface-secondary read-only:bg-surface-secondary read-only:text-text-secondary"
+      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted transition-shadow focus:outline-none focus:ring-1 focus:ring-accent disabled:bg-surface-secondary read-only:bg-surface-secondary read-only:text-text-secondary"
     />
   );
 }
@@ -74,7 +74,7 @@ export function FormSelect({
     <select
       value={value}
       onChange={(e) => onChange(e.target.value)}
-      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary focus:outline-none focus:ring-1 focus:ring-accent"
+      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary transition-shadow focus:outline-none focus:ring-1 focus:ring-accent"
     >
       {placeholder && (
         <option value="" disabled className="bg-surface text-text-primary">
@@ -127,7 +127,7 @@ export function TagInput({
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={handleKeyDown}
-          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted focus:outline-none focus:ring-1 focus:ring-accent"
+          className="flex-1 rounded-lg border border-border bg-surface px-3 py-2 text-sm text-text-primary placeholder:text-text-muted transition-shadow focus:outline-none focus:ring-1 focus:ring-accent"
         />
         <button
           type="button"

@@ -6,6 +6,7 @@ import { Check, Copy, Mail, Sparkles } from "lucide-react";
 
 import { generateEmailDraftAction } from "@/actions/emailDrafts";
 import type { EmailDraft, EmailDraftType } from "@/lib/emailDrafts";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 const TYPES: Array<{ key: EmailDraftType; label: string }> = [
   { key: "cold_application", label: "Cold application" },
@@ -103,7 +104,9 @@ export function EmailDrafts({ jobId }: { jobId: string }) {
 
         {error && <p className="text-xs text-error">{error}</p>}
 
-        {draft && (
+        {isPending && <AiThinkingCard status="Drafting your email…" />}
+
+        {!isPending && draft && (
           <div className="flex flex-col gap-3 rounded-xl border border-border bg-surface-secondary p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="min-w-0 flex-1">

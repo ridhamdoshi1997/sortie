@@ -29,9 +29,18 @@ export function Tabs({ tabs, defaultTabId }: Props) {
          contains any overflow to the pill bar (real native touch-scroll),
          never the page; `w-full sm:w-fit` keeps desktop's original
          compact/centered sizing unchanged. */}
+      {/* Underline tabs, not a filled pill (professional-polish pass,
+         2026-08-25) — the previous `bg-accent-light text-accent` active
+         state read fine in light mode but resolved to `--color-accent-light:
+         #451a03` in dark mode, a muddy near-black brown with almost no
+         presence against this app's near-black dark surfaces (confirmed via
+         getComputedStyle). That token is tuned for a subtle badge wash, not
+         a primary navigation indicator. A real accent-colored underline
+         uses `--color-accent` itself, which stays a genuinely vivid amber
+         in both themes, and reads closer to Linear/Vercel's own tab bars. */}
       <div
         role="tablist"
-        className="flex w-full shrink-0 gap-1 overflow-x-auto rounded-full border border-border bg-surface p-1 sm:w-fit"
+        className="flex w-full shrink-0 gap-1 overflow-x-auto border-b border-border sm:w-fit sm:gap-2"
       >
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab?.id;
@@ -42,10 +51,10 @@ export function Tabs({ tabs, defaultTabId }: Props) {
               role="tab"
               aria-selected={isActive}
               onClick={() => setActiveId(tab.id)}
-              className={`shrink-0 whitespace-nowrap rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+              className={`shrink-0 whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-medium transition-colors ${
                 isActive
-                  ? "bg-accent-light text-accent"
-                  : "text-text-secondary hover:text-text-primary"
+                  ? "border-accent text-text-primary"
+                  : "border-transparent text-text-secondary hover:text-text-primary"
               }`}
             >
               {tab.label}

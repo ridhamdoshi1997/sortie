@@ -6,6 +6,8 @@ import { MessagesSquare, Sparkles } from "lucide-react";
 
 import { generateNegotiationScript } from "@/actions/jobs";
 import type { Job } from "@/types";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { AiThinkingCard } from "@/components/ui/SignalLoaders";
 
 // Negotiation scripts (build-plan.md §F, Phase 12) — same honesty-scoped
 // "AI Navigator reads" treatment as LeverageSynthesizer.tsx, since this is
@@ -52,13 +54,16 @@ export function NegotiationScript({ jobId, script }: { jobId: string; script: Jo
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
 
+      {isPending && (
+        <AiThinkingCard className="mt-4" status="Drafting from your leverage synthesis…" />
+      )}
+
       {script ? (
-        <div className="mt-4 rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">AI Navigator reads</p>
+        <AiReadsCard className="mt-4">
 
           <div className="mt-3">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-agent-dark">Opening ask</p>
-            <p className="text-sm leading-6 text-agent-dark">{script.openingAsk}</p>
+            <p className="text-sm leading-6 text-text-primary">{script.openingAsk}</p>
           </div>
 
           {script.counterResponses.length > 0 && (
@@ -67,8 +72,8 @@ export function NegotiationScript({ jobId, script }: { jobId: string; script: Jo
               <div className="flex flex-col gap-2.5">
                 {script.counterResponses.map((cr, i) => (
                   <div key={i} className="rounded-lg bg-surface/40 p-2.5">
-                    <p className="text-xs italic text-agent-dark/70">&quot;{cr.theirPushback}&quot;</p>
-                    <p className="mt-1 text-sm leading-6 text-agent-dark">{cr.yourResponse}</p>
+                    <p className="text-xs italic text-text-secondary">&quot;{cr.theirPushback}&quot;</p>
+                    <p className="mt-1 text-sm leading-6 text-text-primary">{cr.yourResponse}</p>
                   </div>
                 ))}
               </div>
@@ -77,9 +82,9 @@ export function NegotiationScript({ jobId, script }: { jobId: string; script: Jo
 
           <div className="mt-3 border-t border-agent-dark/10 pt-3">
             <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-agent-dark">Closing line</p>
-            <p className="text-sm leading-6 text-agent-dark">{script.closingLine}</p>
+            <p className="text-sm leading-6 text-text-primary">{script.closingLine}</p>
           </div>
-        </div>
+        </AiReadsCard>
       ) : (
         !isPending && (
           <p className="mt-3 text-sm text-text-muted">

@@ -11,10 +11,15 @@ export function FollowUpNudge({ applicationStatus, statusUpdatedAt }: { applicat
   if (days === null) return null;
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/30 bg-warning/10 px-4 py-3">
-      <div className="flex items-start gap-2.5 text-sm text-warning">
-        <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-        <p className="leading-5">
+    // Same neutral-surface + colored-chip recipe as ApplyVerdictBadge/
+    // MatchScore's FlagRow (professional-polish pass, 2026-08-25) — was a
+    // full bg-warning/10 wash across the whole row.
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-warning/25 bg-surface px-4 py-3">
+      <div className="flex items-start gap-3 text-sm text-text-secondary">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
+          <Clock className="h-4 w-4" />
+        </span>
+        <p className="pt-1.5 leading-5">
           It&apos;s been {days} days since you applied with no update — worth a follow-up.
         </p>
       </div>
