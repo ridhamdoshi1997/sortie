@@ -1,14 +1,17 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { CreditCard, ShieldOff, StickyNote } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { CreditCard, ShieldOff, StickyNote, Trash2 } from "lucide-react";
 
 import {
   addAdminNote,
+  deleteUserAsAdmin,
   setFeatureOverride,
   setUsageMultiplier,
   setUserSubscriptionTier,
   setUserSuspended,
+  setUserTester,
   type FeatureOverrideKey,
 } from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -55,10 +58,15 @@ export function UserDetailView({
   notes: AdminNoteRow[];
   plans: PlanConfig[];
 }) {
+  const router = useRouter();
   const [detail, setDetail] = useState(initialDetail);
   const [notes, setNotes] = useState(initialNotes);
   const [multiplierInput, setMultiplierInput] = useState(String(initialDetail.customUsageMultiplier));
   const [noteInput, setNoteInput] = useState("");
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const [confirmingSuspend, setConfirmingSuspend] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
@@ -85,6 +93,35 @@ export function UserDetailView({
       }
       setDetail((prev) => ({ ...prev, featureFlags: { ...prev.featureFlags, [key]: enabled } }));
     });
+  }
+
+  function toggleTester(isTester: boolean): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await setUserTester(detail.userId, isTester);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setDetail((prev) => ({ ...prev, isTester }));
+    });
+  }
+
+  // Same "type DELETE" rigor as the user's own self-service Settings →
+  // Delete my account (SettingsPanel.tsx's DeleteAccountSection) — matched
+  // deliberately, not reinvented, since this runs the identical irreversible
+  // sequence (lib/accountDeletion.ts's deleteAllUserData) just triggered by
+  // an admin instead of the account owner.
+  async function handleDeleteUser(): Promise<void> {
+    setIsDeleting(true);
+    setDeleteError(null);
+    const result = await deleteUserAsAdmin(detail.userId);
+    if (!result.success) {
+      setDeleteError(result.error);
+      setIsDeleting(false);
+      return;
+    }
+    router.push("/admin/users");
   }
 
   function toggleSuspend(suspend: boolean): void {
@@ -189,7 +226,7 @@ export function UserDetailView({
             type="button"
             onClick={saveMultiplier}
             disabled={isPending || multiplierInput === String(detail.customUsageMultiplier)}
-            className="h-9 rounded-md bg-accent px-3 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal h-9 rounded-md px-3 text-xs font-medium text-accent-foreground disabled:opacity-60"
           >
             Save
           </button>
@@ -256,6 +293,24 @@ export function UserDetailView({
             })}
           </div>
         </div>
+
+        <div className="mt-4 border-t border-border pt-4">
+          <p className="mb-2 text-[11px] font-medium text-text-muted">
+            Beta tester — sees the richer bug/feature-request form in Settings ahead of full rollout (owners/admins get it automatically)
+          </p>
+          <button
+            type="button"
+            disabled={isPending}
+            onClick={() => toggleTester(!detail.isTester)}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
+              detail.isTester
+                ? "bg-agent-light text-agent-dark"
+                : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+            }`}
+          >
+            Beta tester: {detail.isTester ? "On" : "Off"}
+          </button>
+        </div>
       </div>
 
       <TrendChart title="AI usage (14 days)" data={detail.usageLast14Days} colorVar="var(--color-info)" />
@@ -278,7 +333,7 @@ export function UserDetailView({
             type="button"
             onClick={submitNote}
             disabled={isPending || !noteInput.trim()}
-            className="h-9 rounded-md bg-accent px-3 text-xs font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal h-9 rounded-md px-3 text-xs font-medium text-accent-foreground disabled:opacity-60"
           >
             Add
           </button>
@@ -296,6 +351,65 @@ export function UserDetailView({
                 </p>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-error/30 bg-error/5 p-6">
+        <div>
+          <h2 className="text-sm font-semibold text-error">Delete this user</h2>
+          <p className="mt-1 text-xs leading-5 text-text-secondary">
+            Permanently erases their profile, jobs, evaluations, and generated documents — the same irreversible action
+            they&apos;d trigger themselves from Settings. This cannot be undone.
+          </p>
+        </div>
+
+        {!confirmingDelete ? (
+          <button
+            type="button"
+            onClick={() => setConfirmingDelete(true)}
+            className="inline-flex w-fit items-center gap-2 rounded-lg bg-error px-4 py-2 text-sm font-medium text-error-foreground transition-opacity hover:opacity-90"
+          >
+            <Trash2 className="h-4 w-4" />
+            Delete user
+          </button>
+        ) : (
+          <div className="flex flex-col gap-3 rounded-lg border border-error/30 bg-surface p-3">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-xs text-text-secondary">
+                Type <span className="font-mono font-semibold text-error">DELETE</span> to confirm deleting {detail.email ?? "this user"}.
+              </span>
+              <input
+                value={deleteConfirmText}
+                onChange={(e) => setDeleteConfirmText(e.target.value)}
+                disabled={isDeleting}
+                className="h-9 rounded-lg border border-border bg-transparent px-3 text-sm text-text-primary outline-none focus-visible:border-error"
+                placeholder="DELETE"
+              />
+            </label>
+            {deleteError && <p className="text-xs text-error">{deleteError}</p>}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={deleteConfirmText !== "DELETE" || isDeleting}
+                onClick={handleDeleteUser}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-error px-4 text-sm font-medium text-error-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                {isDeleting ? "Deleting…" : "Permanently delete"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmingDelete(false);
+                  setDeleteConfirmText("");
+                  setDeleteError(null);
+                }}
+                disabled={isDeleting}
+                className="h-9 rounded-lg border border-border px-4 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-60"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
         )}
       </div>

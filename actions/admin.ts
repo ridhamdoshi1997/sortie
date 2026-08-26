@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireAdmin, requireRole, type AdminRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
+import { deleteAllUserData } from "@/lib/accountDeletion";
 import {
   getAppSettings,
   getSignupsOverTime,
@@ -62,6 +63,114 @@ export async function setUserSuspended(targetUserId: string, suspend: boolean): 
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Feedback system Phase 1 (approved plan) — profiles.is_tester gates the
+// richer bug/feature-request form (actions/support.ts's getFeedbackAccess)
+// for real users ahead of the eventual full rollout. Owners/admins already
+// qualify via their admin_users role and don't need this set.
+export async function setUserTester(targetUserId: string, isTester: boolean): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database.from("profiles").update({ is_tester: isTester }).eq("id", targetUserId);
+    if (error) return { success: false, error: toUserMessage(error, "Failed to update this user.") };
+
+    await logAdminAction(admin, {
+      action: isTester ? "add_tester" : "remove_tester",
+      targetUserId,
+      targetTable: "profiles",
+      targetId: targetUserId,
+      after: { is_tester: isTester },
+    });
+
+    revalidatePath("/admin/users");
+    revalidatePath(`/admin/users/${targetUserId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Bulk variant for UsersTable.tsx's multi-select "Mark as tester" action —
+// per direct user request ("add the users as testers" implies more than
+// one at a time). Best-effort per row rather than one big IN(...) update,
+// so a single bad id doesn't fail the whole batch and the caller still
+// gets an accurate count of what actually changed.
+export async function bulkSetUserTester(targetUserIds: string[], isTester: boolean): Promise<{ success: true; updatedCount: number } | { success: false; error: string }> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database.from("profiles").update({ is_tester: isTester }).in("id", targetUserIds);
+
+    if (error) return { success: false, error: toUserMessage(error, "Failed to update these users.") };
+
+    await logAdminAction(admin, {
+      action: isTester ? "bulk_add_tester" : "bulk_remove_tester",
+      targetTable: "profiles",
+      after: { is_tester: isTester, count: targetUserIds.length },
+    });
+
+    revalidatePath("/admin/users");
+    return { success: true, updatedCount: targetUserIds.length };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Direct user request ("suspend the account and delete the user as an
+// admin and owner under manage users"). Reuses lib/accountDeletion.ts's
+// deleteAllUserData() — the exact same hard-won, twice-live-verified
+// sequence the user's own self-service "Delete my account" (Settings)
+// already runs, not a second hand-rolled copy. Owner+admin (not
+// support_readonly), matching the user's explicit "as an admin and owner"
+// — same gate suspend already uses on this same page.
+//
+// Self-deletion blocked here on purpose: an admin deleting their own
+// account through the admin panel is a confusing edge case (they'd lose
+// their own session and admin access mid-action) that the regular
+// Settings → Delete my account flow already covers correctly. Not a
+// capability gap, a deliberate redirect to the flow that's actually right
+// for that case.
+export async function deleteUserAsAdmin(targetUserId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+
+    if (targetUserId === admin.userId) {
+      return { success: false, error: "Use Settings → Delete my account to delete your own account." };
+    }
+
+    const client = createAdminDbClient();
+    const { data: target } = await client.database.from("profiles").select("email").eq("id", targetUserId).maybeSingle<{ email: string | null }>();
+
+    // Logged BEFORE deleting, not after — admin_audit_log.target_user_id is
+    // a real FK to auth.users(id) (ON DELETE SET NULL, confirmed live via
+    // pg_constraint), so an insert referencing targetUserId AFTER that row
+    // is gone would fail its own FK check. logAdminAction swallows its own
+    // errors (by design, see its doc comment), so that failure wouldn't
+    // surface here — it would just silently drop the one audit record that
+    // matters most in this entire file. Logging first, while the row still
+    // exists, is the actual fix, not a reason to relax the FK.
+    await logAdminAction(admin, {
+      action: "delete_user",
+      targetUserId,
+      targetTable: "profiles",
+      targetId: targetUserId,
+      before: { email: target?.email ?? null },
+    });
+
+    await deleteAllUserData(targetUserId);
+
+    revalidatePath("/admin/users");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Failed to delete this user.") };
   }
 }
 

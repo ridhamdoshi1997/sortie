@@ -167,6 +167,7 @@ export type UserListRow = {
   createdAt: string | null;
   isSuspended: boolean;
   customUsageMultiplier: number;
+  isTester: boolean;
 };
 
 export type UserListPage = { rows: UserListRow[]; totalCount: number };
@@ -184,7 +185,7 @@ export async function listUsers(page: number, search: string): Promise<UserListP
 
   let query = admin.database
     .from("profiles")
-    .select("id,email,full_name,created_at,is_suspended,custom_usage_multiplier", { count: "exact" })
+    .select("id,email,full_name,created_at,is_suspended,custom_usage_multiplier,is_tester", { count: "exact" })
     .order("created_at", { ascending: false })
     .range(from, to);
 
@@ -203,6 +204,7 @@ export async function listUsers(page: number, search: string): Promise<UserListP
       created_at: string | null;
       is_suspended: boolean;
       custom_usage_multiplier: number;
+      is_tester: boolean;
     }[]
   ).map((p) => ({
     userId: p.id,
@@ -211,6 +213,7 @@ export async function listUsers(page: number, search: string): Promise<UserListP
     createdAt: p.created_at,
     isSuspended: p.is_suspended,
     customUsageMultiplier: p.custom_usage_multiplier,
+    isTester: p.is_tester,
   }));
 
   return { rows, totalCount: count ?? 0 };
@@ -225,6 +228,7 @@ export type UserDetail = {
   createdAt: string | null;
   isSuspended: boolean;
   customUsageMultiplier: number;
+  isTester: boolean;
   featureFlags: Record<string, boolean>;
   jobCount: number;
   usageLast14Days: DailyCount[];
@@ -240,7 +244,7 @@ export async function getUserDetail(userId: string): Promise<UserDetail | null> 
 
   const { data: profile } = await admin.database
     .from("profiles")
-    .select("id,email,full_name,current_title,location,created_at,is_suspended,custom_usage_multiplier,feature_flags")
+    .select("id,email,full_name,current_title,location,created_at,is_suspended,custom_usage_multiplier,is_tester,feature_flags")
     .eq("id", userId)
     .maybeSingle<{
       id: string;
@@ -251,6 +255,7 @@ export async function getUserDetail(userId: string): Promise<UserDetail | null> 
       created_at: string | null;
       is_suspended: boolean;
       custom_usage_multiplier: number;
+      is_tester: boolean;
       feature_flags: Record<string, boolean>;
     }>();
 
@@ -281,6 +286,7 @@ export async function getUserDetail(userId: string): Promise<UserDetail | null> 
     createdAt: profile.created_at,
     isSuspended: profile.is_suspended,
     customUsageMultiplier: profile.custom_usage_multiplier,
+    isTester: profile.is_tester,
     featureFlags: profile.feature_flags ?? {},
     jobCount: jobCount ?? 0,
     usageLast14Days: buildDailySeries(14, counts),
