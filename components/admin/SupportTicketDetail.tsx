@@ -40,12 +40,14 @@ const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
   none: "Not queued",
   ready_for_ai: "Ready for AI",
   ai_in_progress: "AI in progress",
+  pr_open: "PR open",
   ai_done: "AI done",
 };
 const AGENT_STATUS_CHIP_CLASS: Record<AgentStatus, string> = {
   none: "bg-surface-secondary text-text-muted",
   ready_for_ai: "bg-agent-light text-agent-dark",
   ai_in_progress: "bg-info-light text-info",
+  pr_open: "bg-warning/10 text-warning",
   ai_done: "bg-agent-light text-agent-dark",
 };
 
@@ -325,7 +327,7 @@ export function SupportTicketDetail({
             </span>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            {(["none", "ready_for_ai", "ai_in_progress", "ai_done"] as const).map((s) => (
+            {(["none", "ready_for_ai", "ai_in_progress", "pr_open", "ai_done"] as const).map((s) => (
               <button
                 key={s}
                 type="button"

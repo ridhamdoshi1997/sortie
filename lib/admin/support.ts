@@ -2,7 +2,7 @@ import { createAdminDbClient } from "@/lib/admin/client";
 import { complete, getModel } from "@/lib/models";
 import type { TicketCategory, TicketStatus } from "@/actions/support";
 
-export type AgentStatus = "none" | "ready_for_ai" | "ai_in_progress" | "ai_done";
+export type AgentStatus = "none" | "ready_for_ai" | "ai_in_progress" | "pr_open" | "ai_done";
 
 export type AdminTicketRow = {
   id: string;
