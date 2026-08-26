@@ -4,18 +4,49 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Pencil, Sparkles, Trash2 } from "lucide-react";
 
-import { deleteTicket, generateReplyDraft, getAdminTicketDetail, reassignTicket, replyToTicketAsAdmin, setTicketStatus, updateTicketSubject } from "@/actions/adminSupport";
+import {
+  deleteTicket,
+  generateReplyDraft,
+  getAdminTicketDetail,
+  reassignTicket,
+  replyToTicketAsAdmin,
+  setTicketAgentStatus,
+  setTicketOpsNote,
+  setTicketStatus,
+  updateTicketSubject,
+} from "@/actions/adminSupport";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import type { AdminTicketMessage, AdminTicketRow } from "@/lib/admin/support";
+import type { AdminTicketMessage, AdminTicketRow, AgentStatus } from "@/lib/admin/support";
 import type { AdminRole } from "@/lib/admin/auth";
 import type { AdminRosterRow } from "@/lib/admin/queries";
-import type { TicketStatus } from "@/actions/support";
+import type { TicketCategory, TicketStatus } from "@/actions/support";
 
 const STATUS_LABELS: Record<TicketStatus, string> = { open: "Open", pending: "Pending", resolved: "Resolved" };
 const STATUS_CHIP_CLASS: Record<TicketStatus, string> = {
   open: "bg-warning/10 text-warning",
   pending: "bg-info-light text-info",
   resolved: "bg-agent-light text-agent-dark",
+};
+const CATEGORY_LABELS: Record<TicketCategory, string> = {
+  bug: "Bug",
+  feature_request: "Feature request",
+  change_request: "Change request",
+  feedback: "Feedback",
+  billing: "Subscription & billing",
+  other: "Other",
+  support: "Support",
+};
+const AGENT_STATUS_LABELS: Record<AgentStatus, string> = {
+  none: "Not queued",
+  ready_for_ai: "Ready for AI",
+  ai_in_progress: "AI in progress",
+  ai_done: "AI done",
+};
+const AGENT_STATUS_CHIP_CLASS: Record<AgentStatus, string> = {
+  none: "bg-surface-secondary text-text-muted",
+  ready_for_ai: "bg-agent-light text-agent-dark",
+  ai_in_progress: "bg-info-light text-info",
+  ai_done: "bg-agent-light text-agent-dark",
 };
 
 function formatDateTime(iso: string): string {
@@ -41,6 +72,7 @@ export function SupportTicketDetail({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [editingSubject, setEditingSubject] = useState(false);
   const [subjectInput, setSubjectInput] = useState(initialTicket.subject);
+  const [opsNoteInput, setOpsNoteInput] = useState(initialTicket.opsNote ?? "");
   const [isPending, startTransition] = useTransition();
   const [isGenerating, startGenerating] = useTransition();
 
@@ -121,6 +153,30 @@ export function SupportTicketDetail({
     });
   }
 
+  function handleAgentStatusChange(status: AgentStatus): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await setTicketAgentStatus(ticket.id, status);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      refresh();
+    });
+  }
+
+  function handleSaveOpsNote(): void {
+    setError(null);
+    startTransition(async () => {
+      const result = await setTicketOpsNote(ticket.id, opsNoteInput);
+      if (!result.success) {
+        setError(result.error);
+        return;
+      }
+      setTicket((prev) => ({ ...prev, opsNote: opsNoteInput.trim() || null }));
+    });
+  }
+
   function handleSaveSubject(): void {
     if (!subjectInput.trim() || subjectInput.trim() === ticket.subject) {
       setEditingSubject(false);
@@ -181,7 +237,12 @@ export function SupportTicketDetail({
               {ticket.userEmail ?? "Unknown user"} · Assigned: {ticket.assignedAdminEmail ?? "Unassigned"}
             </p>
           </div>
-          <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${STATUS_CHIP_CLASS[ticket.status]}`}>{STATUS_LABELS[ticket.status]}</span>
+          <div className="flex shrink-0 items-center gap-2">
+            {ticket.category !== "support" && (
+              <span className="rounded-full bg-surface-secondary px-3 py-1.5 text-xs font-medium text-text-secondary">{CATEGORY_LABELS[ticket.category]}</span>
+            )}
+            <span className={`rounded-full px-3 py-1.5 text-xs font-medium ${STATUS_CHIP_CLASS[ticket.status]}`}>{STATUS_LABELS[ticket.status]}</span>
+          </div>
         </div>
 
         {canWrite && (
@@ -232,12 +293,70 @@ export function SupportTicketDetail({
             className={`rounded-xl border p-3.5 ${m.authorType === "admin" ? "border-accent/20 bg-accent-light/40" : "border-border bg-surface-secondary"}`}
           >
             <p className="text-sm leading-6 text-text-primary">{m.body}</p>
+            {m.imageUrls.length > 0 && (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {m.imageUrls.map((key) => (
+                  <a
+                    key={key}
+                    href={`/api/support/attachment?key=${encodeURIComponent(key)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block h-16 w-16 overflow-hidden rounded-lg border border-border transition-opacity hover:opacity-80"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element -- private-bucket image, served through an authed route, not next/image-cacheable */}
+                    <img src={`/api/support/attachment?key=${encodeURIComponent(key)}`} alt="Attached screenshot" className="h-full w-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            )}
             <p className="mt-1 text-xs text-text-muted">
               {m.authorType === "admin" ? (m.authorEmail ?? "Admin") : (m.authorEmail ?? "User")} · {formatDateTime(m.createdAt)}
             </p>
           </div>
         ))}
       </div>
+
+      {canWrite && (
+        <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
+          <div className="flex items-center justify-between gap-2">
+            <label className="block text-[11px] font-medium text-text-muted">Agent status</label>
+            <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${AGENT_STATUS_CHIP_CLASS[ticket.agentStatus]}`}>
+              {AGENT_STATUS_LABELS[ticket.agentStatus]}
+            </span>
+          </div>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {(["none", "ready_for_ai", "ai_in_progress", "ai_done"] as const).map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => handleAgentStatusChange(s)}
+                disabled={isPending || ticket.agentStatus === s}
+                className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-40"
+              >
+                {AGENT_STATUS_LABELS[s]}
+              </button>
+            ))}
+          </div>
+          <label className="mt-4 mb-1 block text-[11px] font-medium text-text-muted">
+            Ops note <span className="font-normal normal-case text-text-muted/70">— technical context for whoever (or whatever) picks this up</span>
+          </label>
+          <textarea
+            value={opsNoteInput}
+            onChange={(e) => setOpsNoteInput(e.target.value)}
+            rows={2}
+            placeholder="e.g. Null pointer in BillingCard.tsx when planEndsAt is missing"
+            className="w-full rounded-md border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary outline-none focus-visible:border-accent"
+          />
+          <button
+            type="button"
+            onClick={handleSaveOpsNote}
+            disabled={isPending || opsNoteInput === (ticket.opsNote ?? "")}
+            className="mt-2 h-8 rounded-md border border-border px-3 text-xs font-medium text-text-secondary transition-colors hover:bg-surface-secondary disabled:opacity-40"
+          >
+            Save note
+          </button>
+        </div>
+      )}
 
       {canWrite && (
         <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
@@ -263,7 +382,7 @@ export function SupportTicketDetail({
             type="button"
             onClick={handleReply}
             disabled={isPending || !reply.trim()}
-            className="mt-2 h-9 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90 disabled:opacity-60"
+            className="btn-signal mt-2 h-9 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             Send reply
           </button>

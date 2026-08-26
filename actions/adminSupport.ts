@@ -6,9 +6,18 @@ import { after } from "next/server";
 import { requireAdmin, requireRole } from "@/lib/admin/auth";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { logAdminAction } from "@/lib/admin/audit";
-import { listTickets, getTicketDetail, getSupportDashboard, generateTicketReplyDraft, type AdminTicketRow, type AdminTicketMessage, type SupportDashboard } from "@/lib/admin/support";
+import {
+  listTickets,
+  getTicketDetail,
+  getSupportDashboard,
+  generateTicketReplyDraft,
+  type AdminTicketRow,
+  type AdminTicketMessage,
+  type AgentStatus,
+  type SupportDashboard,
+} from "@/lib/admin/support";
 import { sendSupportReplyEmail } from "@/lib/email/resend";
-import type { TicketStatus } from "@/actions/support";
+import type { TicketCategory, TicketStatus } from "@/actions/support";
 import { toUserMessage } from "@/lib/errors";
 
 // Support inbox (admin console expansion item 4, context/RESUME.md). Same
@@ -20,10 +29,13 @@ type ActionResult = { success: true } | { success: false; error: string };
 
 type TicketsListResult = { success: true; tickets: AdminTicketRow[] } | { success: false; error: string };
 
-export async function getAdminTicketsList(statusFilter: TicketStatus | "all"): Promise<TicketsListResult> {
+export async function getAdminTicketsList(
+  statusFilter: TicketStatus | "all",
+  categoryFilter: TicketCategory | "all" = "all",
+): Promise<TicketsListResult> {
   try {
     await requireAdmin();
-    const tickets = await listTickets(statusFilter);
+    const tickets = await listTickets(statusFilter, categoryFilter);
     return { success: true, tickets };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
@@ -114,6 +126,55 @@ export async function setTicketStatus(ticketId: string, status: TicketStatus): P
     if (error) return { success: false, error: toUserMessage(error, "Failed to update this ticket's status.") };
 
     await logAdminAction(admin, { action: "set_ticket_status", targetTable: "support_tickets", targetId: ticketId, after: { status } });
+
+    revalidatePath("/admin/support");
+    revalidatePath(`/admin/support/${ticketId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Feedback system Phase 1 (approved plan) — ops_note and agent_status are
+// the "Ready for AI" bridge: an owner/admin reproduces the bug, writes the
+// technical context here, then flips agent_status so a future session
+// working the queue (per the plan's §4) has everything it needs without
+// re-investigating. Same owner/admin gate as every other write action in
+// this file — support_readonly stays read-only.
+export async function setTicketOpsNote(ticketId: string, note: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database
+      .from("support_tickets")
+      .update({ ops_note: note.trim() || null, updated_at: new Date().toISOString() })
+      .eq("id", ticketId);
+    if (error) return { success: false, error: toUserMessage(error, "Failed to save the ops note.") };
+
+    await logAdminAction(admin, { action: "set_ticket_ops_note", targetTable: "support_tickets", targetId: ticketId });
+
+    revalidatePath(`/admin/support/${ticketId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+export async function setTicketAgentStatus(ticketId: string, agentStatus: AgentStatus): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner", "admin"]);
+    const client = createAdminDbClient();
+
+    const { error } = await client.database
+      .from("support_tickets")
+      .update({ agent_status: agentStatus, updated_at: new Date().toISOString() })
+      .eq("id", ticketId);
+    if (error) return { success: false, error: toUserMessage(error, "Failed to update the agent status.") };
+
+    await logAdminAction(admin, { action: "set_ticket_agent_status", targetTable: "support_tickets", targetId: ticketId, after: { agentStatus } });
 
     revalidatePath("/admin/support");
     revalidatePath(`/admin/support/${ticketId}`);

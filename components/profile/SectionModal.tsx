@@ -12,12 +12,18 @@ export function SectionModal({
   onClose,
   onSave,
   saving,
+  saveLabel = "Save changes",
+  savingLabel,
   children,
 }: {
   title: string;
   onClose: () => void;
   onSave: () => void;
   saving?: boolean;
+  /** Defaults to "Save changes" — every existing profile-editing caller keeps its current copy unchanged. */
+  saveLabel?: string;
+  /** Defaults to `${saveLabel}…` when omitted. */
+  savingLabel?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -60,7 +66,7 @@ export function SectionModal({
             disabled={saving}
             className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
-            {saving ? "Saving…" : "Save changes"}
+            {saving ? (savingLabel ?? `${saveLabel}…`) : saveLabel}
           </button>
         </div>
       </div>

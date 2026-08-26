@@ -1,11 +1,17 @@
 import { createAdminDbClient } from "@/lib/admin/client";
 import { complete, getModel } from "@/lib/models";
-import type { TicketStatus } from "@/actions/support";
+import type { TicketCategory, TicketStatus } from "@/actions/support";
+
+export type AgentStatus = "none" | "ready_for_ai" | "ai_in_progress" | "ai_done";
 
 export type AdminTicketRow = {
   id: string;
   subject: string;
   status: TicketStatus;
+  category: TicketCategory;
+  agentStatus: AgentStatus;
+  opsNote: string | null;
+  imageCount: number;
   userEmail: string | null;
   assignedAdminId: string | null;
   assignedAdminEmail: string | null;
@@ -18,6 +24,7 @@ export type AdminTicketMessage = {
   authorType: "user" | "admin";
   authorEmail: string | null;
   body: string;
+  imageUrls: string[];
   createdAt: string;
 };
 
@@ -25,6 +32,9 @@ type RawTicket = {
   id: string;
   subject: string;
   status: TicketStatus;
+  category: TicketCategory;
+  agent_status: AgentStatus;
+  ops_note: string | null;
   user_id: string;
   assigned_admin_id: string | null;
   created_at: string;
@@ -34,16 +44,22 @@ type RawTicket = {
 // Same two-hop lookup pattern as lib/admin/queries.ts's getAdminNotes() —
 // no direct FK-embed to profiles/admin_users' email via this project's
 // PostgREST layer.
-export async function listTickets(statusFilter: TicketStatus | "all"): Promise<AdminTicketRow[]> {
+export async function listTickets(
+  statusFilter: TicketStatus | "all",
+  categoryFilter: TicketCategory | "all" = "all",
+): Promise<AdminTicketRow[]> {
   const admin = createAdminDbClient();
 
   let query = admin.database
     .from("support_tickets")
-    .select("id,subject,status,user_id,assigned_admin_id,created_at,updated_at")
+    .select("id,subject,status,category,agent_status,ops_note,user_id,assigned_admin_id,created_at,updated_at")
     .order("updated_at", { ascending: false });
 
   if (statusFilter !== "all") {
     query = query.eq("status", statusFilter);
+  }
+  if (categoryFilter !== "all") {
+    query = query.eq("category", categoryFilter);
   }
 
   const { data } = await query;
@@ -57,10 +73,21 @@ export async function listTickets(statusFilter: TicketStatus | "all"): Promise<A
   const adminIds = Array.from(new Set(tickets.map((t) => t.assigned_admin_id).filter((id): id is string => id !== null)));
   const adminEmailByAdminId = await resolveAdminEmails(adminIds);
 
+  const ticketIds = tickets.map((t) => t.id);
+  const { data: imageRows } = await admin.database.from("support_ticket_messages").select("ticket_id,image_urls").in("ticket_id", ticketIds);
+  const imageCountByTicketId = new Map<string, number>();
+  for (const row of (imageRows ?? []) as { ticket_id: string; image_urls: string[] | null }[]) {
+    imageCountByTicketId.set(row.ticket_id, (imageCountByTicketId.get(row.ticket_id) ?? 0) + (row.image_urls?.length ?? 0));
+  }
+
   return tickets.map((t) => ({
     id: t.id,
     subject: t.subject,
     status: t.status,
+    category: t.category,
+    agentStatus: t.agent_status,
+    opsNote: t.ops_note,
+    imageCount: imageCountByTicketId.get(t.id) ?? 0,
     userEmail: emailByUserId.get(t.user_id) ?? null,
     assignedAdminId: t.assigned_admin_id,
     assignedAdminEmail: t.assigned_admin_id ? (adminEmailByAdminId.get(t.assigned_admin_id) ?? null) : null,
@@ -93,7 +120,7 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
 
   const { data: ticket } = await admin.database
     .from("support_tickets")
-    .select("id,subject,status,user_id,assigned_admin_id,created_at,updated_at")
+    .select("id,subject,status,category,agent_status,ops_note,user_id,assigned_admin_id,created_at,updated_at")
     .eq("id", ticketId)
     .maybeSingle<RawTicket>();
 
@@ -104,12 +131,19 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
     ticket.assigned_admin_id ? resolveAdminEmails([ticket.assigned_admin_id]) : Promise.resolve(new Map<string, string | null>()),
     admin.database
       .from("support_ticket_messages")
-      .select("id,author_type,author_admin_id,body,created_at")
+      .select("id,author_type,author_admin_id,body,image_urls,created_at")
       .eq("ticket_id", ticketId)
       .order("created_at", { ascending: true }),
   ]);
 
-  const messageRows = (messages ?? []) as { id: string; author_type: "user" | "admin"; author_admin_id: string | null; body: string; created_at: string }[];
+  const messageRows = (messages ?? []) as {
+    id: string;
+    author_type: "user" | "admin";
+    author_admin_id: string | null;
+    body: string;
+    image_urls: string[] | null;
+    created_at: string;
+  }[];
   const messageAdminIds = Array.from(new Set(messageRows.map((m) => m.author_admin_id).filter((id): id is string => id !== null)));
   const messageAdminEmails = await resolveAdminEmails(messageAdminIds);
 
@@ -118,6 +152,10 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
       id: ticket.id,
       subject: ticket.subject,
       status: ticket.status,
+      category: ticket.category,
+      agentStatus: ticket.agent_status,
+      opsNote: ticket.ops_note,
+      imageCount: messageRows.reduce((sum, m) => sum + (m.image_urls?.length ?? 0), 0),
       userEmail: profile?.email ?? null,
       assignedAdminId: ticket.assigned_admin_id,
       assignedAdminEmail: ticket.assigned_admin_id ? (adminEmailMap.get(ticket.assigned_admin_id) ?? null) : null,
@@ -129,6 +167,7 @@ export async function getTicketDetail(ticketId: string): Promise<AdminTicketDeta
       authorType: m.author_type,
       authorEmail: m.author_type === "user" ? (profile?.email ?? null) : m.author_admin_id ? (messageAdminEmails.get(m.author_admin_id) ?? null) : null,
       body: m.body,
+      imageUrls: m.image_urls ?? [],
       createdAt: m.created_at,
     })),
   };
