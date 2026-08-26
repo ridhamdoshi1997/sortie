@@ -18,6 +18,16 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Job-detail mobile primitives — sticky Apply bar, scroll-aware tab overflow
+
+Files: `components/job-details/JobIdentityRail.tsx` (`MobileApplyBar`), `components/ui/Tabs.tsx`, `components/agent/NavigatorLauncher.tsx`
+Route: `/find-jobs/[id]` (mobile bar + FAB alignment); `Tabs.tsx`'s overflow fix applies everywhere the shared `Tabs` component is used
+Last updated: 2026-08-26 (Phase 26). Direct user request ("make the job detail page mobile friendly"), 3 real bugs found live, not hypothetical.
+- **`<MobileApplyBar job={job}>`** — `lg:hidden fixed inset-x-0 bottom-0` Apply bar, exported alongside `JobIdentityRail`. The rail's own inline Apply button is `hidden lg:inline-flex` (was plain `inline-flex`) so there's never a duplicate visible Apply button on either breakpoint. `pr-24` reserves the Navigator FAB's own footprint on the right. If you add another primary full-width CTA near the bottom of a mobile page, check it against the FAB's fixed `bottom-6 right-6, h-14 w-14` zone before shipping — this exact collision is easy to reintroduce.
+- **FAB/bottom-bar alignment** — `NavigatorLauncher.tsx`'s FAB button className is now conditional on its own existing `jobPageMatch` check: `bottom-1.5 lg:bottom-6` on job-detail routes (vertically centers with `MobileApplyBar`, confirmed via matching `getBoundingClientRect()` centers), plain `bottom-6` everywhere else. Do not change the FAB's default offset for other routes without checking whether anything else expects `bottom-6`.
+- **Scroll-aware tab overflow** (`Tabs.tsx`) — the `role="tablist"` row now measures real `scrollLeft`/`scrollWidth`/`clientWidth` (on mount, on scroll, and via `ResizeObserver`) and renders an edge fade (`bg-gradient-to-{l,r} from-surface to-transparent`) plus a small tap-to-scroll chevron button, only on whichever side actually has more content, `sm:hidden` (desktop's `sm:w-fit` row never overflows). Don't hardcode a static always-visible fade/arrow on a tab row — it should only appear when there's real overflow, or it misleadingly implies more content on a set that already fits.
+- **`<SectionModal>`** (`components/profile/SectionModal.tsx`, previously profile-editing-only) gained optional `saveLabel`/`savingLabel` props — default to the original "Save changes"/"Saving…" so every existing caller is unchanged. Pass these when the modal's action isn't literally "saving a change" (e.g. `saveLabel="Send report"` for `SupportTab.tsx`'s feedback form).
+
 ### Signal design primitives (`.btn-signal`, `.ai-hero-card`, `.ai-eyebrow-dot`)
 
 Files: `app/globals.css` (definitions), applied at ~35 real call sites across every consumer-facing page — see `context/RESUME.md`'s Phase 24 entry for the full list, don't re-derive it from scratch.
