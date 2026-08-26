@@ -141,8 +141,9 @@ export function PracticeSandbox({
         </button>
       </div>
 
-      <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-3 py-2">
-        <p className="text-xs leading-5 text-agent-dark">
+      <div className="flex items-start gap-2.5 rounded-lg border border-border bg-surface p-3">
+        <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-agent" />
+        <p className="text-xs leading-5 text-text-secondary">
           Runs entirely in your own browser — nothing you type here is sent anywhere. Your code is saved locally as
           you type. Test cases are AI-generated to help verify your logic; trust your own judgment for real edge
           cases.
@@ -163,7 +164,7 @@ export function PracticeSandbox({
                 }}
                 className={`inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   i === activeTestIndex
-                    ? "bg-accent-light text-accent"
+                    ? "bg-accent/15 text-accent"
                     : "border border-border text-text-secondary hover:text-text-primary"
                 }`}
               >

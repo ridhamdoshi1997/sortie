@@ -2,11 +2,15 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { BookOpen, Check, Code2, Copy, Loader2, Sparkles, X } from "lucide-react";
+import { BookOpen, Check, Code2, Copy, Loader2, Search, X } from "lucide-react";
 
 import { getOrGenerateQuestionBank, getQuestionDetails, getPracticeKit } from "@/actions/interviewQuestions";
 import { PracticeSandbox } from "@/components/interview/PracticeSandbox";
 import type { InterviewQuestion, PracticeKit, QuestionBank, QuestionCategory, QuestionDetails } from "@/lib/interviewQuestions";
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { CompanyLogo } from "@/components/shared/CompanyLogo";
+
+export type QuickStartJob = { company: string; title: string; logoUrl: string | null };
 
 const CATEGORY_LABELS: Record<QuestionCategory, string> = {
   behavioral: "Behavioral",
@@ -32,11 +36,17 @@ export function QuestionBankPanel({
   initialTitle = "",
   initialSeniority = "",
   locked = false,
+  quickStartJobs = [],
 }: {
   initialCompany?: string;
   initialTitle?: string;
   initialSeniority?: string;
   locked?: boolean;
+  /** Real (company, title) pairs from the user's own tracked jobs
+   * (app/interview/page.tsx) — an honest "browse by company" grid, per agy
+   * research (2026-08-26) on how real interview-prep products expose
+   * company-directory browsing. Real data only, never fabricated stats. */
+  quickStartJobs?: QuickStartJob[];
 }) {
   const [company, setCompany] = useState(initialCompany);
   const [title, setTitle] = useState(initialTitle);
@@ -46,16 +56,22 @@ export function QuestionBankPanel({
   const [hasSearched, setHasSearched] = useState(false);
   const [activeCategory, setActiveCategory] = useState<QuestionCategory | "all">("all");
   const [studyIndex, setStudyIndex] = useState<number | null>(null);
+  const [showManualSearch, setShowManualSearch] = useState(locked || quickStartJobs.length === 0);
   const [loading, startTransition] = useTransition();
 
-  function runLookup(): void {
+  // Accepts explicit overrides so a quick-start card click can search
+  // immediately with real values, without waiting on the next render for
+  // `company`/`title` state to catch up (they're set in the same handler).
+  function runLookup(companyOverride?: string, titleOverride?: string): void {
+    const searchCompany = companyOverride ?? company;
+    const searchTitle = titleOverride ?? title;
     startTransition(async () => {
-      if (!company.trim() || !title.trim()) {
+      if (!searchCompany.trim() || !searchTitle.trim()) {
         setError("Enter at least a company and a role.");
         return;
       }
       setError(null);
-      const result = await getOrGenerateQuestionBank(company, title, seniority);
+      const result = await getOrGenerateQuestionBank(searchCompany, searchTitle, seniority);
       setHasSearched(true);
       if (!result.success) {
         setError(result.error);
@@ -64,6 +80,18 @@ export function QuestionBankPanel({
       setBank(result.bank);
       setActiveCategory("all");
     });
+  }
+
+  function handleQuickStart(job: QuickStartJob): void {
+    setCompany(job.company);
+    setTitle(job.title);
+    if (job.title.trim()) {
+      runLookup(job.company, job.title);
+    } else {
+      // No real title on record for this company — land the user in the
+      // manual form with Company pre-filled rather than guessing a role.
+      setShowManualSearch(true);
+    }
   }
 
   // Auto-fetch once on mount for the locked (job-embed) case only — same
@@ -91,7 +119,39 @@ export function QuestionBankPanel({
         </h2>
       </div>
 
-      {!locked && (
+      {/* Real "browse by company" grid — restructured 2026-08-26 (agy
+         research + direct user request): a text form asking the user to
+         retype a company/role they already have tracked was real friction
+         for the single most common case. This is the primary interaction
+         now; the manual form drops to a secondary "search a different
+         company" affordance below it. Cards, not chips — company logo +
+         real role title, one click straight into results. Never fabricated
+         stats/counts, only the user's own real job data. */}
+      {!locked && !bank && quickStartJobs.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-2.5 text-[11px] font-medium text-text-muted">Practice for a company you&apos;re tracking</p>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {quickStartJobs.map((job, i) => (
+              <button
+                key={job.company}
+                type="button"
+                disabled={loading}
+                onClick={() => handleQuickStart(job)}
+                className="dim-card-in flex items-center gap-3 rounded-xl border border-border bg-surface-secondary p-3 text-left transition-all hover:-translate-y-0.5 hover:border-accent disabled:cursor-wait disabled:opacity-60"
+                style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+              >
+                <CompanyLogo company={job.company} logoUrl={job.logoUrl} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-text-primary">{job.company}</p>
+                  <p className="truncate text-xs text-text-muted">{job.title || "Any role"}</p>
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {!locked && (quickStartJobs.length === 0 || showManualSearch || bank) && (
         <div className="mt-4 flex flex-wrap items-end gap-2 rounded-xl border border-border bg-surface-secondary p-3">
           <div className="min-w-40 flex-1">
             <label className="mb-1 block text-[11px] font-medium text-text-muted">Company</label>
@@ -125,12 +185,29 @@ export function QuestionBankPanel({
           <button
             type="button"
             disabled={loading}
-            onClick={runLookup}
+            onClick={() => runLookup()}
             className="btn-signal h-10 rounded-md px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
           >
             {loading ? "Loading..." : "Get questions"}
           </button>
         </div>
+      )}
+
+      {!locked && !bank && quickStartJobs.length > 0 && !showManualSearch && (
+        <button
+          type="button"
+          onClick={() => setShowManualSearch(true)}
+          className="mt-3 inline-flex items-center gap-1.5 text-xs font-medium text-text-muted transition-colors hover:text-accent"
+        >
+          <Search className="h-3 w-3" />
+          Search a different company
+        </button>
+      )}
+
+      {loading && !locked && (
+        <p className="mt-3 flex items-center gap-1.5 text-sm text-text-muted">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading questions for {company}…
+        </p>
       )}
 
       {error && <p className="mt-3 text-xs text-error">{error}</p>}
@@ -141,7 +218,7 @@ export function QuestionBankPanel({
         <p className="mt-3 text-sm text-text-muted">No questions generated yet.</p>
       )}
 
-      {!bank && !loading && !locked && !hasSearched && (
+      {!bank && !loading && !locked && !hasSearched && quickStartJobs.length === 0 && (
         <p className="mt-3 text-sm text-text-muted">
           Search any company and role to see likely interview questions — before or after you apply.
         </p>
@@ -149,18 +226,14 @@ export function QuestionBankPanel({
 
       {bank && (
         <div className="mt-4 flex flex-col gap-3">
-          <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-            <p className="mb-1 flex items-center gap-1.5 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-              <Sparkles className="h-3 w-3" />
-              AI-predicted, not real leaked questions
-            </p>
-            <p className="text-xs text-agent-dark">
+          <AiReadsCard label="AI-predicted, not real leaked questions">
+            <p className="text-xs leading-5 text-text-secondary">
               Based on {bank.company}&apos;s known industry, tech stack, and typical expectations for a{" "}
               {bank.roleFamily} role{bank.seniority !== "unspecified" ? ` at ${bank.seniority} level` : ""}.
               No source claims to have leaked or sourced these from a real interview. Click any question
               for a full guided study card.
             </p>
-          </div>
+          </AiReadsCard>
 
           {presentCategories.length > 1 && (
             <div className="flex flex-wrap gap-1.5">
@@ -169,7 +242,7 @@ export function QuestionBankPanel({
                 onClick={() => setActiveCategory("all")}
                 className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                   activeCategory === "all"
-                    ? "bg-accent-light text-accent"
+                    ? "bg-accent/15 text-accent"
                     : "border border-border text-text-secondary hover:text-text-primary"
                 }`}
               >
@@ -182,7 +255,7 @@ export function QuestionBankPanel({
                   onClick={() => setActiveCategory(cat)}
                   className={`rounded-full px-3 py-1 text-xs font-medium transition-colors ${
                     activeCategory === cat
-                      ? "bg-accent-light text-accent"
+                      ? "bg-accent/15 text-accent"
                       : "border border-border text-text-secondary hover:text-text-primary"
                   }`}
                 >
@@ -193,19 +266,33 @@ export function QuestionBankPanel({
           )}
 
           <div className="flex flex-col gap-2">
-            {visibleQuestions.map((q) => {
+            {visibleQuestions.map((q, i) => {
               const index = bank.questions.indexOf(q);
               return (
                 <button
                   key={index}
                   type="button"
                   onClick={() => setStudyIndex(index)}
-                  className="rounded-xl border border-border bg-surface-secondary p-4 text-left transition-colors hover:border-accent"
+                  className="dim-card-in rounded-xl border border-border bg-surface-secondary p-4 text-left transition-colors hover:border-accent"
+                  style={{ animationDelay: `${Math.min(i, 8) * 30}ms` }}
                 >
                   <div className="mb-1.5 flex items-center justify-between gap-2">
-                    <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
-                      {CATEGORY_LABELS[q.category]}
-                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="rounded-full bg-surface px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                        {CATEGORY_LABELS[q.category]}
+                      </span>
+                      {/* Immediate exposure of the live code editor, right on
+                         the list row (agy research, 2026-08-26: real
+                         platforms make the coding sandbox obvious before a
+                         user ever opens a question, not something they
+                         discover by accident deep in a detail view). */}
+                      {q.category === "technical" && (
+                        <span className="inline-flex items-center gap-1 rounded-full bg-agent-light px-2 py-0.5 text-[10px] font-medium text-agent-dark">
+                          <Code2 className="h-3 w-3" />
+                          Code editor
+                        </span>
+                      )}
+                    </div>
                     {q.details !== undefined && (
                       <span className="text-[10px] font-medium text-accent">Study card ready</span>
                     )}
@@ -353,6 +440,45 @@ function StudyView({
           <div className="mt-6 flex flex-col gap-4">
             {details.type === "technical" && (
               <>
+                {/* Practice comes FIRST, hints/reference solution after
+                   (2026-08-26, direct user report + agy research on real
+                   interview-prep products: the editor should be immediately
+                   adjacent to the question, not the last thing after
+                   scrolling past a worked solution that spoils the
+                   exercise). Still a real click to open, not auto-fired on
+                   mount — getPracticeKit is a real AI call, and every other
+                   opt-in AI action on this app (Strategic Moat Briefing,
+                   Trap Door Predictor, etc.) stays a deliberate click for
+                   exactly that reason; the fix here is visual position
+                   (first, not buried), not removing the click itself. */}
+                {!practiceOpen && !practiceKit && (
+                  <button
+                    type="button"
+                    onClick={handleOpenPractice}
+                    disabled={practiceLoading}
+                    className="btn-signal inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-3 text-sm font-semibold text-accent-foreground disabled:opacity-60"
+                  >
+                    {practiceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
+                    {practiceLoading ? "Building your exercise…" : "Open code editor"}
+                  </button>
+                )}
+                {practiceError && <p className="text-xs text-error">{practiceError}</p>}
+                {practiceOpen && practiceKit && (
+                  <PracticeSandbox
+                    practiceKit={practiceKit}
+                    storageKey={`${bankId}:${questionIndex}`}
+                    onClose={() => setPracticeOpen(false)}
+                  />
+                )}
+
+                <div className="flex items-center gap-2 pt-1">
+                  <span className="h-px flex-1 bg-border-light" />
+                  <span className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                    Hints &amp; reference solution
+                  </span>
+                  <span className="h-px flex-1 bg-border-light" />
+                </div>
+
                 <InsiderTipsBlock
                   items={[
                     ["What they're really testing", details.insiderTips.whatTheyTest],
@@ -382,26 +508,6 @@ function StudyView({
                     Time: {details.solution.timeComplexity} · Space: {details.solution.spaceComplexity}
                   </p>
                 </div>
-
-                {!practiceOpen && (
-                  <button
-                    type="button"
-                    onClick={handleOpenPractice}
-                    disabled={practiceLoading}
-                    className="inline-flex w-fit items-center gap-2 rounded-lg border border-accent px-4 py-2 text-sm font-medium text-accent transition-colors hover:bg-accent-muted disabled:opacity-60"
-                  >
-                    {practiceLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Code2 className="h-4 w-4" />}
-                    {practiceLoading ? "Building exercise…" : "Practice this question"}
-                  </button>
-                )}
-                {practiceError && <p className="text-xs text-error">{practiceError}</p>}
-                {practiceOpen && practiceKit && (
-                  <PracticeSandbox
-                    practiceKit={practiceKit}
-                    storageKey={`${bankId}:${questionIndex}`}
-                    onClose={() => setPracticeOpen(false)}
-                  />
-                )}
               </>
             )}
 
@@ -484,26 +590,23 @@ function InsiderTipsBlock({
   bullets?: { label: string; items: string[] };
 }) {
   return (
-    <div className="rounded-r-lg border-l-2 border-agent bg-agent-light px-4 py-3">
-      <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-        Insider tips
-      </p>
+    <AiReadsCard variant="compact" label="Insider tips">
       {items.map(([label, value]) => (
-        <p key={label} className="mt-1.5 text-sm text-agent-dark">
+        <p key={label} className="text-sm leading-6 text-text-primary">
           <span className="font-medium">{label}:</span> {value}
         </p>
       ))}
       {bullets && (
         <div className="mt-2">
-          <p className="text-xs font-medium text-agent-dark">{bullets.label}:</p>
-          <ul className="mt-1 flex flex-col gap-1 text-xs text-agent-dark">
+          <p className="text-xs font-medium text-text-primary">{bullets.label}:</p>
+          <ul className="mt-1 flex flex-col gap-1 text-xs text-text-secondary">
             {bullets.items.map((b, i) => (
               <li key={i}>• {b}</li>
             ))}
           </ul>
         </div>
       )}
-    </div>
+    </AiReadsCard>
   );
 }
 
