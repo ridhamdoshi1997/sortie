@@ -30,7 +30,7 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
   const isSoldOut = plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats;
 
   return (
-    <div className="rounded-2xl border border-border bg-surface p-8 shadow-card">
+    <div className="fade-in-up card-interactive-glow rounded-2xl border border-border bg-surface p-8 shadow-card" style={{ animationDelay: "60ms" }}>
       <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">{plan.displayName}</p>
       <p className="mt-2 text-3xl font-bold text-text-primary">
         ${(plan.priceCents / 100).toFixed(0)}
@@ -43,10 +43,13 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
       </p>
       {plan.maxSeats !== null && (
         <div className="mt-4">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-tertiary">
+          {/* transform-based fill, not `width` — same real layout-thrash
+             fix already applied to the dashboard funnel and Settings' own
+             seat meter (this instance was missed in that earlier pass). */}
+          <div className="signal-meter-track w-full">
             <div
-              className="h-full rounded-full bg-accent transition-[width]"
-              style={{ width: `${Math.min(100, Math.round((plan.seatsClaimed / Math.max(1, plan.maxSeats)) * 100))}%` }}
+              className="signal-meter-fill signal-fill-in"
+              style={{ "--fill": Math.min(1, plan.seatsClaimed / Math.max(1, plan.maxSeats)) } as React.CSSProperties}
             />
           </div>
           <p className="mt-1.5 text-[11px] font-medium text-text-muted">
@@ -100,7 +103,7 @@ export async function CTASection() {
         </div>
 
         <div className={`grid grid-cols-1 gap-4 sm:grid-cols-2 ${paidPlans.length > 1 ? "lg:grid-cols-3" : ""}`}>
-          <div className="rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
+          <div className="fade-in-up card-interactive-glow rounded-2xl border-2 border-accent bg-surface p-8 shadow-card">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-accent">Free</p>
             <p className="mt-2 text-3xl font-bold text-text-primary">$0</p>
             <p className="mt-1 text-sm text-text-secondary">Everything you need to run a real search today.</p>

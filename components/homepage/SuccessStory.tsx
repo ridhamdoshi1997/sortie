@@ -15,8 +15,13 @@ export function SuccessStory() {
   return (
     <section className="px-4 py-14 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-[1200px] flex-col items-center gap-6 rounded-2xl border border-border bg-surface px-6 py-10 text-center sm:flex-row sm:justify-between sm:gap-4 sm:text-left">
-        {TRUST_FACTS.map((fact) => (
-          <p key={fact} className="text-sm font-medium text-text-secondary">
+        {TRUST_FACTS.map((fact, i) => (
+          <p
+            key={fact}
+            className="fade-in-up flex items-center gap-2 text-sm font-medium text-text-secondary"
+            style={{ animationDelay: `${i * 80}ms` }}
+          >
+            <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent" />
             {fact}
           </p>
         ))}

@@ -19,7 +19,10 @@ export function BentoFeatures() {
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div id="feature-evaluator" className="scroll-mt-24 rounded-2xl border border-border bg-surface p-8 shadow-card md:col-span-2 md:row-span-2">
+          <div
+            id="feature-evaluator"
+            className="fade-in-up card-interactive-glow scroll-mt-24 rounded-2xl border border-border bg-surface p-8 shadow-card md:col-span-2 md:row-span-2"
+          >
             <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-agent-light">
               <Gauge className="h-5 w-5 text-agent-dark" />
             </div>
@@ -38,7 +41,11 @@ export function BentoFeatures() {
             </div>
           </div>
 
-          <div id="feature-tailoring" className="scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card">
+          <div
+            id="feature-tailoring"
+            className="fade-in-up card-interactive-glow scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card"
+            style={{ animationDelay: "60ms" }}
+          >
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-accent-light">
               <FileCheck2 className="h-4.5 w-4.5 text-accent" />
             </div>
@@ -49,7 +56,11 @@ export function BentoFeatures() {
             </p>
           </div>
 
-          <div id="feature-connections" className="scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card">
+          <div
+            id="feature-connections"
+            className="fade-in-up card-interactive-glow scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card"
+            style={{ animationDelay: "120ms" }}
+          >
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-accent-light">
               <Network className="h-4.5 w-4.5 text-accent" />
             </div>
@@ -60,7 +71,11 @@ export function BentoFeatures() {
             </p>
           </div>
 
-          <div id="feature-extension" className="scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card">
+          <div
+            id="feature-extension"
+            className="fade-in-up card-interactive-glow scroll-mt-24 rounded-2xl border border-border bg-surface p-6 shadow-card"
+            style={{ animationDelay: "180ms" }}
+          >
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-agent-light">
               <Puzzle className="h-4.5 w-4.5 text-agent-dark" />
             </div>
@@ -71,7 +86,7 @@ export function BentoFeatures() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
+          <div className="fade-in-up card-interactive-glow rounded-2xl border border-border bg-surface p-6 shadow-card" style={{ animationDelay: "240ms" }}>
             <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-lg bg-surface-secondary">
               <Workflow className="h-4.5 w-4.5 text-text-secondary" />
             </div>

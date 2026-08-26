@@ -8,7 +8,7 @@ import { ArrowRight, ShieldCheck } from "lucide-react";
 export function AntiAutoApply() {
   return (
     <section className="px-4 py-16 sm:px-6 sm:py-20 lg:px-8">
-      <div className="mx-auto max-w-3xl rounded-2xl border border-border bg-surface-tertiary p-8 text-center sm:p-12">
+      <div className="fade-in-up mx-auto max-w-3xl rounded-2xl border border-border bg-surface-tertiary p-8 text-center sm:p-12">
         <p className="mb-4 inline-flex items-center gap-1.5 rounded-full bg-surface px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-widest text-text-secondary">
           <ShieldCheck className="h-3.5 w-3.5 text-accent" /> Our position
         </p>
