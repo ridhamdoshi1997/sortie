@@ -203,7 +203,7 @@ export function JobResultCard({
             {selected && <Check className="h-3.5 w-3.5" />}
           </button>
         )}
-        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} />
+        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} />
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-[14.5px] font-semibold leading-tight text-text-primary">{job.title}</p>

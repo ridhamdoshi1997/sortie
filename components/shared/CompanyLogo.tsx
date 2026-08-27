@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { Building2 } from "lucide-react";
 
+import { extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
+
 // Best-effort domain guess from the company name (strip legal suffixes,
 // lowercase, drop punctuation/spaces) — a client-side safety net for jobs
 // whose row doesn't have a resolved company_logo_url yet (see the comment
@@ -27,22 +29,32 @@ const sizeClasses = {
 type Props = {
   company: string | null;
   logoUrl: string | null;
+  applyUrl?: string | null;
   size?: keyof typeof sizeClasses;
 };
 
-export function CompanyLogo({ company, logoUrl, size = "md" }: Props) {
-  const domainGuess = company ? guessCompanyDomain(company) : null;
-  // Two real sources, in order of trust:
+export function CompanyLogo({ company, logoUrl, applyUrl, size = "md" }: Props) {
+  // Real domain from the job's own trust-classified apply link (see
+  // extractLikelyLogoDomain's comment) beats a guess from the company NAME
+  // string — the actual root cause of most missing/wrong logos, confirmed
+  // live 2026-08-27: "Royal Bank of Canada" naively guesses
+  // royalbankofcanada.com (wrong; real domain is rbc.com), but that job's
+  // own apply link already resolved to the real jobs.rbc.com.
+  const applyUrlDomain = extractLikelyLogoDomain(applyUrl, company);
+  const domainGuess = applyUrlDomain ?? (company ? guessCompanyDomain(company) : null);
+  // Three real sources, in order of trust:
   // 1. logoUrl — either a real SerpApi thumbnail, or (for jobs evaluated
   //    from 2026-07-28 onward) a logo URL built from a domain Gemini
   //    actually resolved from its own knowledge of the company (see
   //    companyDomain's comment in lib/evaluator.ts) — fixes cases a naive
   //    guess gets wrong, e.g. Bank of Montreal -> bmo.com not
   //    bankofmontreal.com.
-  // 2. A client-side naive domain guess — covers every job evaluated
-  //    BEFORE that server-side resolution existed (i.e. most of the
-  //    existing catalog right now; it isn't retroactively backfilled) and
-  //    any job whose evaluator run didn't confidently resolve a domain.
+  // 2. The job's own apply-link domain (extractLikelyLogoDomain) — real,
+  //    verified, not a guess at all, but only available when a caller
+  //    passes applyUrl and this job's link classified as "employer".
+  // 3. A client-side naive domain guess from the company name — covers
+  //    every job evaluated BEFORE server-side resolution existed and any
+  //    job whose evaluator run didn't confidently resolve a domain.
   //    Removing this tier entirely was tried (2026-07-28) and reverted the
   //    same day — confirmed live it regressed real, previously-working
   //    logos (Scotiabank, Moneris, and others) back to the icon fallback,

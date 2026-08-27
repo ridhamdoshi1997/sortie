@@ -1,0 +1,181 @@
+import { searchJobs } from "@/lib/jobScraper";
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
+import { fetchAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
+import type { createInsforgeServer } from "@/lib/insforge-server";
+
+type InsforgeClient = Awaited<ReturnType<typeof createInsforgeServer>>;
+
+// Lazy, on-demand fix for jobs already scraped before lib/applyLinkTrust.ts
+// existed, whose stored apply link classifies as a confirmed low-quality
+// mirror. Direct exact-listing re-lookup (SerpApi's google_jobs_listing,
+// keyed by the job's own external_id) turned out to be a dead end — live-
+// tested against two real jobs scraped only ~1 day earlier and both came
+// back "job may have expired." Google Jobs' own listing tokens are
+// session-scoped, not durable (matches a warning already in
+// lib/actions/scraper.actions.ts's own upsert comment) — no tool that
+// re-queries by that ID will do better. So this runs a genuinely fresh
+// google_jobs search instead (title + location, same engine used for the
+// original scrape) and matches the right result back by company name.
+//
+// Fires from a real page view via next/server's after() (see
+// app/find-jobs/[id]/page.tsx — same fire-and-forget pattern already used
+// there for last_viewed_at), never blocking the response. Bounded by
+// apply_link_resolved_at: attempted exactly once per job, success or not —
+// a listing that's genuinely gone won't resolve better on a second try, so
+// retrying on every subsequent view would just burn real SerpApi quota for
+// nothing (this app currently runs on 3 free-tier accounts shared with
+// live search).
+function normalizeCompanyName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|corp|co|company|group|holdings|canada|ulc)\b\.?/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function companiesMatch(a: string, b: string): boolean {
+  const na = normalizeCompanyName(a);
+  const nb = normalizeCompanyName(b);
+  if (na.length < 2 || nb.length < 2) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+function normalizeTitle(title: string): string {
+  return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function titlesMatch(a: string, b: string): boolean {
+  const na = normalizeTitle(a);
+  const nb = normalizeTitle(b);
+  if (na.length < 3 || nb.length < 3) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
+
+const ATS_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby"];
+
+// Free, zero-quota first attempt before falling back to a paid SerpApi
+// search below — tries each of the 3 known ATS platforms directly against
+// a guessed board slug for this job's company (lib/atsProviders.ts,
+// guessCompanySlugs). When it hits, the result is a guaranteed-direct link
+// by construction (see atsProviders.ts's own comment), not a candidate to
+// run through the classifier. Most guesses will 404 (most companies aren't
+// on one of these 3 boards, or use a slug this can't guess) — that's
+// expected and falls through to the search-based fallback, not an error.
+async function tryAtsGuess(job: ResolvableJob): Promise<{ applyUrl: string } | null> {
+  const slugs = guessCompanySlugs(job.company as string);
+  if (slugs.length === 0) return null;
+
+  const attempts = ATS_PLATFORMS.flatMap((platform) => slugs.map((slug) => ({ platform, slug })));
+  const results = await Promise.all(
+    attempts.map(({ platform, slug }) => fetchAtsJobs(platform, slug, job.company as string))
+  );
+
+  for (const jobs of results) {
+    const match = jobs.find((j) => titlesMatch(j.title, job.title as string));
+    if (match?.applyUrl) return { applyUrl: match.applyUrl };
+  }
+  return null;
+}
+
+// Final fallback tier, after the free ATS guess and the paid SerpApi
+// search both come up empty — a real Google web search via the
+// apify-job-search edge function (functions/apify-job-search.ts, Apify's
+// free apify/rag-web-browser Actor). Unlike Google Jobs' own apply_options
+// (guaranteed to be FOR this exact posting), a general web search only
+// guarantees text relevance, not job relevance — live-tested against a
+// real hard case and confirmed it can return true false positives
+// (unrelated companies' career pages that just matched the search terms).
+// So this tier is deliberately stricter than the others: only "ats" or
+// "employer" classifications are accepted, never "aggregator" — a random
+// aggregator hit here isn't a safe generic fallback the way it is when it
+// comes from Google Jobs' own candidate list, it's an unverified guess.
+const APIFY_JOB_SEARCH_URL = "https://umhshbx9.function2.insforge.app/apify-job-search";
+
+async function tryApifySearch(job: ResolvableJob): Promise<{ applyUrl: string } | null> {
+  try {
+    const res = await fetch(APIFY_JOB_SEARCH_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ company: job.company, title: job.title }),
+    });
+    if (!res.ok) return null;
+
+    const { urls } = (await res.json()) as { urls?: string[] };
+    if (!urls) return null;
+
+    const match = urls.find((url) => {
+      const trust = classifyApplyHost(url, job.company);
+      return trust === "ats" || trust === "employer";
+    });
+    return match ? { applyUrl: match } : null;
+  } catch (error) {
+    console.error("[reresolveApplyLink] apify search failed", job.id, error);
+    return null;
+  }
+}
+
+type ResolvableJob = {
+  id: string;
+  title: string | null;
+  company: string | null;
+  location: string | null;
+};
+
+export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: ResolvableJob): Promise<void> {
+  if (!job.title || !job.company) return;
+
+  try {
+    const atsMatch = await tryAtsGuess(job);
+    if (atsMatch) {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: atsMatch.applyUrl,
+          apply_link_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (ats match)", job.id, error);
+      return;
+    }
+
+    const results = await searchJobs(job.title, job.location ?? "", "ca");
+    const match = results.find((r) => companiesMatch(r.company, job.company as string));
+
+    if (match?.applyUrl && classifyApplyHost(match.applyUrl, job.company) !== "low_quality") {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: match.applyUrl,
+          raw_apply_options: match.rawApplyOptions ?? null,
+          apply_link_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (resolved)", job.id, error);
+      return;
+    }
+
+    const apifyMatch = await tryApifySearch(job);
+    if (apifyMatch) {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: apifyMatch.applyUrl,
+          apply_link_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (apify match)", job.id, error);
+      return;
+    }
+
+    // No better link found — record the attempt so this job isn't retried
+    // on every future view. Leaves the existing (worse) link in place
+    // rather than clearing it: a low-quality link is still better than no
+    // Apply button at all.
+    const { error } = await insforge.database
+      .from("jobs")
+      .update({ apply_link_resolved_at: new Date().toISOString() })
+      .eq("id", job.id);
+    if (error) console.error("[reresolveApplyLink] update (no match)", job.id, error);
+  } catch (error) {
+    console.error("[reresolveApplyLink] search failed", job.id, error);
+  }
+}

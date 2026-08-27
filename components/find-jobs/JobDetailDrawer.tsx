@@ -43,7 +43,7 @@ export function JobDetailDrawer({ job, onClose }: { job: Job | null; onClose: ()
       >
         <div className="flex items-start justify-between gap-3 border-b border-border p-5">
           <div className="flex gap-3">
-            <CompanyLogo company={job.company} logoUrl={job.company_logo_url} />
+            <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} />
             <div>
               <p className="text-base font-semibold leading-tight text-text-primary">{job.title}</p>
               <p className="mt-1 flex items-center gap-1.5 text-sm text-text-secondary">

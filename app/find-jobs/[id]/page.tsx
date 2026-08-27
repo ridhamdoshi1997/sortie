@@ -52,6 +52,8 @@ import { getCompanyHiringSignal } from "@/lib/hiringSignal";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
 import { computeApplyVerdict } from "@/lib/applyVerdict";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
+import { reresolveApplyLinkForJob } from "@/lib/reresolveApplyLink";
 import type { Profile } from "@/types";
 
 type Props = {
@@ -89,6 +91,22 @@ export default async function JobDetailsPage({ params }: Props) {
       .eq("user_id", user.id);
     if (viewError) console.error("[find-jobs/[id]] last_viewed_at update", viewError);
   });
+
+  // Real trust gap found live (2026-08-26 user report): jobs scraped before
+  // lib/applyLinkTrust.ts existed can have a stored apply link that
+  // classifies as a confirmed low-quality mirror. Fires at most once per
+  // job (apply_link_resolved_at gates it) — see lib/reresolveApplyLink.ts
+  // for why a direct exact-listing re-lookup doesn't work and a fresh
+  // search is used instead. Same fire-and-forget after() pattern as
+  // last_viewed_at above — never blocks this page's response, self-heals
+  // by the next view.
+  if (
+    !job.apply_link_resolved_at &&
+    job.external_apply_url &&
+    classifyApplyHost(job.external_apply_url, job.company) === "low_quality"
+  ) {
+    after(() => reresolveApplyLinkForJob(insforge, job));
+  }
 
   const company = job.company ?? "this company";
   // external_apply_url/source_url are the originally-designed columns but

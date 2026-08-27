@@ -200,7 +200,7 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
                   </td>
                   <td className="px-2 py-2.5">
                     <Link href={`/find-jobs/${job.id}`} className="flex min-w-0 items-center gap-2.5">
-                      <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="sm" />
+                      <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
                       <div className="min-w-0">
                         <p className="truncate text-sm font-medium text-text-primary">{job.title ?? "Untitled role"}</p>
                         <p className="truncate text-xs text-text-muted">

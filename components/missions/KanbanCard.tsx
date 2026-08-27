@@ -23,6 +23,7 @@ export type KanbanJob = Pick<
   | "title"
   | "company"
   | "company_logo_url"
+  | "external_apply_url"
   | "location"
   | "salary"
   | "job_type"
@@ -133,7 +134,7 @@ export function KanbanCard({
         >
           <GripVertical className="h-4 w-4" />
         </button>
-        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="sm" />
+        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
         <div className="min-w-0 flex-1">
           <Link
             href={`/find-jobs/${job.id}`}

@@ -4,6 +4,7 @@ import { ExternalLink } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { AnimatedScoreValue } from "@/components/job-details/AnimatedScoreValue";
+import { ApplyLinkTrustNote } from "@/components/job-details/ApplyLinkTrustNote";
 import type { Job } from "@/types";
 
 // Job-detail redesign (2026-08-25, direct user request to redesign this page
@@ -60,7 +61,7 @@ export function JobIdentityRail({ job }: { job: Job }) {
   return (
     <div className="flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-card">
       <div className="flex items-start gap-3">
-        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="lg" />
+        <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="lg" />
         <div className="min-w-0 flex-1">
           <h1 className="font-display text-[19px] font-semibold leading-[1.2] text-text-primary">
             {job.title ?? "Untitled role"}
@@ -132,6 +133,10 @@ export function JobIdentityRail({ job }: { job: Job }) {
         >
           No application link
         </div>
+      )}
+
+      {applyUrl && (
+        <ApplyLinkTrustNote applyUrl={applyUrl} company={job.company} jobId={job.id} jobTitle={job.title} />
       )}
     </div>
   );

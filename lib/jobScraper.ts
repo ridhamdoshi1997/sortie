@@ -1,3 +1,5 @@
+import { pickBestApplyLink } from "@/lib/applyLinkTrust";
+
 // Shape of a single entry in SerpApi's Google Jobs `jobs_results` array.
 // Only the fields this file actually reads — SerpApi returns many more.
 type SerpApiJobResult = {
@@ -26,6 +28,12 @@ export type NormalizedJob = {
     description: string;
     url: string;
     applyUrl?: string;
+    // The full candidate list pickApplyUrl chose from — persisted so a
+    // future classifier improvement (lib/applyLinkTrust.ts) can be
+    // reapplied via a backfill against data already on hand, with zero new
+    // API cost. Never discard this again (see the add-raw-apply-options
+    // migration's own comment for the real gap this closes).
+    rawApplyOptions?: Array<{ link?: string }>;
     salary?: string;
     type?: string;
     postedAt?: string;
@@ -36,25 +44,16 @@ export type NormalizedJob = {
 // Google Jobs listings via SerpApi carry a `share_link` (a google.com/search
 // deep link back into the Google Jobs UI, not a real application page) plus
 // an `apply_options` array of real destinations — the employer's own ATS
-// posting when one exists, plus third-party boards (LinkedIn, Indeed, etc).
-// Prefer the employer's own portal over a generic aggregator when both are
-// present, since that's what "apply link" actually means to a candidate.
-const AGGREGATOR_HOSTS = ["linkedin.com", "indeed.com", "glassdoor.com", "ziprecruiter.com", "google.com"];
-
-function pickApplyUrl(applyOptions: Array<{ link?: string }> | undefined): string | undefined {
+// posting when one exists, plus third-party boards and, frequently, low-
+// quality job-board mirrors or SEO-farm scrapers. Selection logic lives in
+// lib/applyLinkTrust.ts (see its own comment for the full rationale — a
+// naive "not on a 5-host blocklist" pick previously let sites like
+// workopolis.com and bebee.com through as if they were the employer's own
+// page, confirmed live against ~23% of this app's real scraped dataset).
+function pickApplyUrl(applyOptions: Array<{ link?: string }> | undefined, company: string | undefined): string | undefined {
     if (!applyOptions || applyOptions.length === 0) return undefined;
-
-    const isAggregator = (link: string) => {
-        try {
-            const host = new URL(link).hostname.replace(/^www\./, "");
-            return AGGREGATOR_HOSTS.some((aggregator) => host.endsWith(aggregator));
-        } catch {
-            return false;
-        }
-    };
-
-    const direct = applyOptions.find((option) => option.link && !isAggregator(option.link));
-    return direct?.link ?? applyOptions[0]?.link;
+    const links = applyOptions.map((option) => option.link).filter((link): link is string => Boolean(link));
+    return pickBestApplyLink(links, company);
 }
 
 export interface JobScraperProvider {
@@ -176,7 +175,22 @@ async function fetchSerpApiPages(
         const data = await response.json();
 
         if (data.error) {
-            throw new Error(`${data.error}${!response.ok ? ` (HTTP ${response.status})` : ""}`);
+            // A real bug found live testing lib/reresolveApplyLink.ts against
+            // a narrow, specific-title query (few total matching results):
+            // Google/SerpApi can return a `data.error` on PAGE 2+ meaning
+            // simply "no more results to paginate" (e.g. the same
+            // "hasn't returned any results" text isNoResultsError already
+            // treats as a legitimate empty search on page 1) — not a real
+            // failure. Throwing unconditionally here discarded the
+            // perfectly good page-1 results already collected in `allJobs`
+            // for the WHOLE multi-page fetch. Only the first page's error
+            // (or a quota-exhaustion error on any page, which must still
+            // propagate so the caller can fail over to the next key) is a
+            // genuine failure; a later page erroring just means pagination
+            // is done.
+            const err = new Error(`${data.error}${!response.ok ? ` (HTTP ${response.status})` : ""}`);
+            if (page === 0 || isQuotaExhaustedError(err)) throw err;
+            break;
         }
 
         const jobs = data.jobs_results || [];
@@ -190,7 +204,8 @@ async function fetchSerpApiPages(
                 location: job.location,
                 description: job.description,
                 url: job.share_link,
-                applyUrl: pickApplyUrl(job.apply_options),
+                applyUrl: pickApplyUrl(job.apply_options, job.company_name),
+                rawApplyOptions: job.apply_options,
                 salary: job.detected_extensions?.salary,
                 type: job.detected_extensions?.schedule_type,
                 postedAt: job.detected_extensions?.posted_at,

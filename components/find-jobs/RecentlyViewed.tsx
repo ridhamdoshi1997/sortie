@@ -6,7 +6,7 @@ import type { Job } from "@/types";
 
 type RecentlyViewedJob = Pick<
   Job,
-  "id" | "title" | "company" | "company_logo_url" | "match_score" | "last_viewed_at"
+  "id" | "title" | "company" | "company_logo_url" | "external_apply_url" | "match_score" | "last_viewed_at"
 >;
 
 // Server component, not client — formatTimeAgo runs once at render time on
@@ -28,7 +28,7 @@ export function RecentlyViewed({ jobs }: { jobs: RecentlyViewedJob[] }) {
             href={`/find-jobs/${job.id}`}
             className="flex w-64 flex-shrink-0 items-center gap-3 rounded-xl border border-border bg-surface p-3 shadow-card transition-colors hover:bg-surface-secondary"
           >
-            <CompanyLogo company={job.company} logoUrl={job.company_logo_url} size="sm" />
+            <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-text-primary">{job.title}</p>
               <p className="truncate text-xs text-text-secondary">{job.company}</p>
