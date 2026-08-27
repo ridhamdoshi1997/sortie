@@ -7,11 +7,19 @@ import { SuccessStory } from "@/components/homepage/SuccessStory";
 import { TheLifecycle } from "@/components/homepage/TheLifecycle";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
+import { getCurrentUser } from "@/lib/auth";
 
-export default function HomePage() {
+export default async function HomePage() {
+  // Was rendering <Navbar /> with no isAuthenticated prop at all, so it
+  // defaulted to the logged-out marketing nav unconditionally — a signed-in
+  // user clicking the logo (which links here) saw "Log in"/"Start for free"
+  // even though their session was still very much alive underneath. Mirrors
+  // the same check app/pricing/page.tsx already does correctly.
+  const user = await getCurrentUser();
+
   return (
     <>
-      <Navbar />
+      <Navbar isAuthenticated={Boolean(user)} />
       <main className="pb-0">
         <Hero />
         <SuccessStory />
