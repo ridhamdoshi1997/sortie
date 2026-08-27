@@ -38,6 +38,16 @@ export function getSourceBadge(source: string | null | undefined): SourceBadge |
       return { label: "via LinkedIn", badgeClassName: "bg-linkedin-light text-linkedin" };
     case "indeed":
       return { label: "via Indeed", badgeClassName: "bg-indeed-light text-indeed" };
+    // Portal Scanner (build-plan.md Phase 8) — direct ATS board results.
+    // Neutral badge style, same reasoning as the 8 platforms below: a real
+    // per-platform brand treatment wasn't part of that pass, easy fast-
+    // follow if any of these turn out to be heavily used.
+    case "greenhouse":
+      return { label: "via Greenhouse", badgeClassName: "bg-surface-secondary text-text-secondary" };
+    case "lever":
+      return { label: "via Lever", badgeClassName: "bg-surface-secondary text-text-secondary" };
+    case "ashby":
+      return { label: "via Ashby", badgeClassName: "bg-surface-secondary text-text-secondary" };
     case "url":
       return { label: "Pasted", badgeClassName: "bg-surface-secondary text-text-secondary" };
     default: {
@@ -54,6 +64,9 @@ export function getSourceBadge(source: string | null | undefined): SourceBadge |
 export const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "linkedin", label: "LinkedIn" },
   { value: "indeed", label: "Indeed" },
+  { value: "greenhouse", label: "Greenhouse" },
+  { value: "lever", label: "Lever" },
+  { value: "ashby", label: "Ashby" },
   ...Object.entries(NEUTRAL_PLATFORM_LABELS).map(([value, label]) => ({ value, label })),
   { value: "url", label: "Pasted" },
   { value: "SerpApi", label: "Scraped" },

@@ -1,3 +1,6 @@
+import Link from "next/link";
+import { Building2 } from "lucide-react";
+
 import { requireUser } from "@/lib/auth"; // Ensure this import path is correct for your project
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
@@ -10,16 +13,29 @@ export default async function FindJobsPage() {
     // 1. Fetch the user server-side
     const user = await requireUser();
 
-    // 2. Load the user's last completed search so returning to this page
-    // (e.g. "Back to Jobs" from a job's detail page) shows exactly that
-    // search — not a fresh blank form on top of the user's entire saved
-    // job history, which read as "resetting" every time you navigated back.
+    // 2. Load the user's last search so returning to this page (e.g. "Back
+    // to Jobs" from a job's detail page) shows exactly that search — not a
+    // fresh blank form on top of the user's entire saved job history, which
+    // read as "resetting" every time you navigated back.
+    //
+    // Real bug found live (2026-08-27): this used to exclude status=
+    // 'running' runs, on the theory that "completed" meant "real, finished
+    // search." That's backwards — scrapeAndEvaluateJobs() upserts every job
+    // row SYNCHRONOUSLY before AI evaluation is even triggered; 'running'
+    // only means scoring hasn't finished yet, not that the jobs aren't real
+    // or saved. Evaluation (Inngest, async) commonly still hasn't finished
+    // by the time a user opens a job's detail page and presses Back —
+    // exactly the moment this query needs to return THAT search — so the
+    // exclusion was hiding the just-run search and silently falling back to
+    // an older completed one instead, the precise "goes back to default"
+    // regression this feature exists to prevent. Unscored jobs already
+    // render correctly (FindJobsForm's own polling shows "Scoring…"), so
+    // there's no real reason to filter by status here at all.
     const insforge = await createInsforgeServer();
     const { data: lastRuns } = await insforge.database
         .from("agent_runs")
         .select("id,job_title_searched,location_searched,updated_at")
         .eq("user_id", user.id)
-        .neq("status", "running")
         .order("updated_at", { ascending: false })
         .limit(1);
     const lastRun = lastRuns?.[0] ?? null;
@@ -91,7 +107,7 @@ export default async function FindJobsPage() {
     // scoped to one search run; this spans the user's whole history).
     const { data: recentlyViewedJobs } = await insforge.database
         .from("jobs")
-        .select("id,title,company,company_logo_url,match_score,last_viewed_at")
+        .select("id,title,company,company_logo_url,external_apply_url,match_score,last_viewed_at")
         .eq("user_id", user.id)
         .not("last_viewed_at", "is", null)
         .order("last_viewed_at", { ascending: false })
@@ -119,6 +135,13 @@ export default async function FindJobsPage() {
                     <p className="fade-in-up font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
                         Jobs · Search &amp; Evaluate
                     </p>
+                    <Link
+                        href="/find-jobs/companies"
+                        className="inline-flex items-center gap-1.5 text-xs font-medium text-text-secondary transition-colors hover:text-accent"
+                    >
+                        <Building2 className="h-3.5 w-3.5" />
+                        Company Watchlist
+                    </Link>
                 </div>
 
                 <FindJobsForm
