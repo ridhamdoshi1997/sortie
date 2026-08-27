@@ -855,7 +855,7 @@ Grounded in your actual enabled career-ops plugins, not speculation. Each of the
 
 - **Notion export/search** — mirrors the job tracker into a Notion database; can also read Notion records back in as new leads.
 - **Obsidian export** — mirrors the tracker into a local Obsidian vault as Markdown files with frontmatter, queryable via Dataview/Bases.
-- **DOCX export** — exports a resume/CV to a clean ATS-friendly `.docx`, correctly handling complex sub-roles (fractional/interim engagements).
+- **DOCX export** — ✅ already shipped, stale marker corrected 2026-08-27 (Phase 28): `lib/resumeDocx.ts` + `app/api/documents/download-docx/route.ts`, wired to a real "DOCX" button on `DocumentGenerator.tsx` (resume-only, not cover letters).
 - **Markdown export** — exports a resume/CV as fully markdownlint-compliant Markdown.
 
 ### Ingest plugins (higher risk — OAuth into external inboxes/calendars)
