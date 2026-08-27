@@ -288,22 +288,31 @@ export function MissionsView({
             >
               Group by company
             </button>
-            <button
-              type="button"
-              onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-                selectMode
-                  ? "bg-accent text-accent-foreground"
-                  : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
-              }`}
-            >
-              {selectMode ? "Cancel select" : "Select"}
-            </button>
           </div>
+        )}
+
+        {/* Bulk select (build-plan.md §H) — available on both List and Board,
+            not List-only like Group-by-company above (that's a List-specific
+            display concept; multi-select archive/tag makes just as much
+            sense picking cards off the Kanban board). Kanban's own drag
+            interaction is disabled per-card while this is on (KanbanCard.tsx)
+            so a click never has to disambiguate "drag" from "select". */}
+        {(viewMode === "list" || viewMode === "kanban") && (
+          <button
+            type="button"
+            onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+            className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              selectMode
+                ? "bg-accent text-accent-foreground"
+                : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
+            }`}
+          >
+            {selectMode ? "Cancel select" : "Select"}
+          </button>
         )}
       </div>
 
-      {viewMode === "list" && selectMode && (
+      {(viewMode === "list" || viewMode === "kanban") && selectMode && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-accent/30 bg-accent-muted px-4 py-3">
           <span className="text-sm font-medium text-accent">
             {selectedIds.size} selected
@@ -358,6 +367,9 @@ export function MissionsView({
           key={`${search}|${location}|${remoteOnly}|${minMatchScore}|${needsAttentionOnly}|${sortBy}|${sourceFilter}`}
           jobs={visibleJobs}
           appliedAtByJobId={appliedAtByJobId}
+          selectMode={selectMode}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelect}
         />
       ) : (
         <div className="flex flex-col gap-4">

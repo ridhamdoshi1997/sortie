@@ -5,8 +5,11 @@ import { useMemo, useState, useTransition } from "react";
 import { Archive, Bookmark, Check, CheckCircle2, Search } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
+import { PlatformLogo } from "@/components/shared/PlatformLogo";
 import { bulkAddTag, bulkHideJobs, bulkShortlistJobs } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
+import { getSourceBadge } from "@/lib/jobSource";
 import { formatDate } from "@/lib/utils";
 import type { Job } from "@/types";
 
@@ -188,6 +191,7 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
       <div className="signal-rail">
         {visibleJobs.map((job) => {
           const signal = getListingSignal(job);
+          const sourceBadge = getSourceBadge(job.source);
           const selected = selectedIds.has(job.id);
           return (
             <Link key={job.id} href={`/find-jobs/${job.id}`} className={`signal-track ${signal ? "signal-track-warm" : ""}`}>
@@ -211,9 +215,18 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
               <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold text-text-primary">{job.title ?? "Untitled role"}</p>
-                <p className="truncate text-xs text-text-muted">
-                  {job.company ?? "Unknown company"}
-                  {signal && <span className="ml-2 text-warning">{signal.label}</span>}
+                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 truncate text-xs text-text-muted">
+                  <span className="truncate">{job.company ?? "Unknown company"}</span>
+                  {sourceBadge && (
+                    <span
+                      className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${sourceBadge.badgeClassName}`}
+                    >
+                      {job.source === "linkedin" && <LinkedInGlyph className="h-2.5 w-2.5" />}
+                      {job.source === "indeed" && <PlatformLogo source="indeed" className="h-2.5 w-2.5 rounded-[1.5px]" />}
+                      {sourceBadge.label}
+                    </span>
+                  )}
+                  {signal && <span className="text-warning">{signal.label}</span>}
                 </p>
               </div>
               <div className="flex shrink-0 items-center gap-4">

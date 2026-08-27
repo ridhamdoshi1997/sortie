@@ -45,12 +45,18 @@ function KanbanColumn({
   status,
   jobs,
   appliedAtByJobId,
+  selectMode = false,
+  selectedIds,
+  onToggleSelect,
 }: {
   status: ApplicationStatus;
   jobs: KanbanJob[];
   appliedAtByJobId?: Record<string, string>;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (jobId: string) => void;
 }) {
-  const { setNodeRef, isOver } = useDroppable({ id: status });
+  const { setNodeRef, isOver } = useDroppable({ id: status, disabled: selectMode });
 
   return (
     <div className="flex w-72 shrink-0 flex-col gap-3">
@@ -71,7 +77,15 @@ function KanbanColumn({
             <p className="px-2 py-6 text-center text-xs text-text-muted">{EMPTY_MESSAGES[status]}</p>
           ) : (
             jobs.map((job, i) => (
-              <KanbanCard key={job.id} job={job} appliedAt={appliedAtByJobId?.[job.id]} index={i} />
+              <KanbanCard
+                key={job.id}
+                job={job}
+                appliedAt={appliedAtByJobId?.[job.id]}
+                index={i}
+                selectable={selectMode}
+                selected={selectedIds?.has(job.id) ?? false}
+                onToggleSelect={() => onToggleSelect?.(job.id)}
+              />
             ))
           )}
         </SortableContext>
@@ -80,7 +94,19 @@ function KanbanColumn({
   );
 }
 
-export function KanbanBoard({ jobs, appliedAtByJobId }: { jobs: KanbanJob[]; appliedAtByJobId?: Record<string, string> }) {
+export function KanbanBoard({
+  jobs,
+  appliedAtByJobId,
+  selectMode = false,
+  selectedIds,
+  onToggleSelect,
+}: {
+  jobs: KanbanJob[];
+  appliedAtByJobId?: Record<string, string>;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (jobId: string) => void;
+}) {
   const [columns, setColumns] = useState<ColumnsState>(() => groupByStatus(jobs));
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
 
@@ -132,7 +158,15 @@ export function KanbanBoard({ jobs, appliedAtByJobId }: { jobs: KanbanJob[]; app
     <DndContext id="pipeline-kanban" sensors={sensors} collisionDetection={closestCorners} onDragEnd={handleDragEnd}>
       <div className="flex gap-4 overflow-x-auto pb-4">
         {STAGE_ORDER.map((status) => (
-          <KanbanColumn key={status} status={status} jobs={columns[status]} appliedAtByJobId={appliedAtByJobId} />
+          <KanbanColumn
+            key={status}
+            status={status}
+            jobs={columns[status]}
+            appliedAtByJobId={appliedAtByJobId}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={onToggleSelect}
+          />
         ))}
       </div>
     </DndContext>

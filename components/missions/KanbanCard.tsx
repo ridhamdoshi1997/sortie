@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { AlertTriangle, DollarSign, ExternalLink, GripVertical, Home, Loader2, MapPin, Sparkles, Star } from "lucide-react";
+import { AlertTriangle, Check, DollarSign, ExternalLink, GripVertical, Home, Loader2, MapPin, Sparkles, Star } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
@@ -43,12 +43,30 @@ export function KanbanCard({
   job,
   appliedAt,
   index = 0,
+  selectable = false,
+  selected = false,
+  onToggleSelect,
 }: {
   job: KanbanJob;
   appliedAt?: string | null;
   index?: number;
+  // Bulk actions on the Kanban board (build-plan.md §H, extending the
+  // multi-select pattern already shipped on MissionsListRow/InboxTable/
+  // UsersTable) — optional, same idiom as those, so drag-only call sites
+  // are unaffected. Select mode and drag are mutually exclusive per card:
+  // `listeners`/`attributes` are only spread onto the grip handle when
+  // NOT selectable, since dragging and multi-select-clicking the same
+  // card would be a genuinely ambiguous interaction, not just visual
+  // clutter — the checkbox physically replaces the grip handle instead of
+  // sitting alongside it.
+  selectable?: boolean;
+  selected?: boolean;
+  onToggleSelect?: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: job.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: job.id,
+    disabled: selectable,
+  });
   const signal = job.application_status === "shortlisted" ? getListingSignal(job) : null;
   const [diagnosis, setDiagnosis] = useState(job.rejection_diagnosis);
   const [diagnosisError, setDiagnosisError] = useState<string | null>(null);
@@ -125,15 +143,34 @@ export function KanbanCard({
       className="dim-card-in card-interactive-glow flex flex-col gap-2 rounded-xl border border-border bg-surface p-3 shadow-card"
     >
       <div className="flex items-start gap-2">
-        <button
-          type="button"
-          {...attributes}
-          {...listeners}
-          aria-label="Drag to move"
-          className="mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-text-muted hover:text-text-secondary active:cursor-grabbing"
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        {selectable ? (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={selected ? "Deselect job" : "Select job"}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggleSelect?.();
+            }}
+            className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition-colors ${
+              selected ? "border-accent bg-accent text-accent-foreground" : "border-border bg-surface hover:border-accent"
+            }`}
+          >
+            {selected && <Check className="h-3 w-3" />}
+          </button>
+        ) : (
+          <button
+            type="button"
+            {...attributes}
+            {...listeners}
+            aria-label="Drag to move"
+            className="mt-0.5 shrink-0 cursor-grab touch-none rounded p-0.5 text-text-muted hover:text-text-secondary active:cursor-grabbing"
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        )}
         <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
         <div className="min-w-0 flex-1">
           <Link

@@ -20,9 +20,12 @@ const KanbanBoard = dynamic(
 type Props = {
   jobs: KanbanJob[];
   appliedAtByJobId?: Record<string, string>;
+  selectMode?: boolean;
+  selectedIds?: Set<string>;
+  onToggleSelect?: (jobId: string) => void;
 };
 
-export function KanbanBoardLoader({ jobs, appliedAtByJobId }: Props) {
+export function KanbanBoardLoader({ jobs, appliedAtByJobId, selectMode, selectedIds, onToggleSelect }: Props) {
   // min-w-0 is load-bearing, not decorative — MissionsView's root is a flex
   // column, and a flex-column child defaults to min-width: auto (a classic
   // flexbox gotcha), which lets this board's own internal overflow-x-auto
@@ -31,7 +34,13 @@ export function KanbanBoardLoader({ jobs, appliedAtByJobId }: Props) {
   // scrolled horizontally by over 1000px instead of just the board.
   return (
     <div className="min-w-0">
-      <KanbanBoard jobs={jobs} appliedAtByJobId={appliedAtByJobId} />
+      <KanbanBoard
+        jobs={jobs}
+        appliedAtByJobId={appliedAtByJobId}
+        selectMode={selectMode}
+        selectedIds={selectedIds}
+        onToggleSelect={onToggleSelect}
+      />
     </div>
   );
 }
