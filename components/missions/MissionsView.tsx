@@ -7,7 +7,7 @@ import { Archive, Inbox as InboxIcon, LayoutGrid, List, Tag, X } from "lucide-re
 import { KanbanBoardLoader } from "@/components/missions/KanbanBoardLoader";
 import { InboxTable } from "@/components/missions/InboxTable";
 import { MissionsFilterBar, type SortValue } from "@/components/missions/MissionsFilterBar";
-import { JobResultCard } from "@/components/shared/JobResultCard";
+import { MissionsListRow } from "@/components/missions/MissionsListRow";
 import { bulkAddTag, bulkHideJobs } from "@/actions/jobs";
 import { STAGE_ORDER, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSignal";
@@ -364,18 +364,16 @@ export function MissionsView({
           {filteredJobs.length === 0 ? (
             <p className="text-sm text-text-muted">No jobs match these filters.</p>
           ) : groupByCompany ? (
-            (() => {
-              let cardIndex = 0;
-              return Object.entries(groupJobsByCompany(filteredJobs)).map(([company, companyJobs]) => (
-                <div key={company} className="flex flex-col gap-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
-                    {company} ({companyJobs.length})
-                  </h3>
+            Object.entries(groupJobsByCompany(filteredJobs)).map(([company, companyJobs]) => (
+              <div key={company} className="flex flex-col gap-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-text-muted">
+                  {company} ({companyJobs.length})
+                </h3>
+                <div className="signal-rail">
                   {companyJobs.map((job) => (
-                    <JobResultCard
+                    <MissionsListRow
                       key={job.id}
                       job={job}
-                      index={cardIndex++}
                       reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
                       selectable={selectMode}
                       selected={selectedIds.has(job.id)}
@@ -383,20 +381,21 @@ export function MissionsView({
                     />
                   ))}
                 </div>
-              ));
-            })()
-          ) : (
-            filteredJobs.map((job, index) => (
-              <JobResultCard
-                key={job.id}
-                job={job}
-                index={index}
-                reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
-                selectable={selectMode}
-                selected={selectedIds.has(job.id)}
-                onToggleSelect={() => toggleSelect(job.id)}
-              />
+              </div>
             ))
+          ) : (
+            <div className="signal-rail">
+              {filteredJobs.map((job) => (
+                <MissionsListRow
+                  key={job.id}
+                  job={job}
+                  reappearanceSignal={getReappearanceSignal(job, reappearanceCounts)}
+                  selectable={selectMode}
+                  selected={selectedIds.has(job.id)}
+                  onToggleSelect={() => toggleSelect(job.id)}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}

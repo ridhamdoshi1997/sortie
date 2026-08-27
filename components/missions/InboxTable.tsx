@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useMemo, useState, useTransition } from "react";
-import { Archive, Bookmark, CheckCircle2, Search } from "lucide-react";
+import { Archive, Bookmark, Check, CheckCircle2, Search } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { bulkAddTag, bulkHideJobs, bulkShortlistJobs } from "@/actions/jobs";
@@ -12,13 +12,20 @@ import type { Job } from "@/types";
 
 // Inbox/Pipeline split (build-plan.md, `agy`-researched, direct user
 // request) — every newly-found job now lands in "inbox" (see the
-// add-inbox-shortlisted-stages migration), reviewed here as a dense,
-// bulk-actionable table rather than full JobResultCard-per-row (which is
-// what List view already does) or a Kanban column (the whole point of this
-// split is keeping untriaged jobs OUT of the Kanban). Deliberately lighter
-// weight than MissionsView's List/Board filter bar — this is a triage
-// queue, not a place to slice-and-dice a large tracked pipeline, so it
-// keeps its own small local search instead of sharing that state.
+// add-inbox-shortlisted-stages migration), reviewed here as a triage queue
+// rather than a place to slice-and-dice a large tracked pipeline, so it
+// keeps its own small local search instead of sharing MissionsView's state.
+//
+// Restyled onto the Signal mockup's own `.rail`/`.track` primitive
+// (page-missions' Inbox view), the same one List view now uses
+// (MissionsListRow.tsx) — a dense `<table>` never appeared anywhere in the
+// approved mockup, this and List were the two Missions views flagged as
+// having been built before the mockup's Missions section was fully read.
+// The mockup's own Inbox track is simpler (no checkboxes, no per-row
+// actions) but that's a static preview, not a design decision to drop
+// them — the bulk multi-select and per-row Shortlist/Archive here are real,
+// directly-requested functionality (Phase 22), kept and re-skinned onto the
+// rail rather than removed to match a mockup that never had to demo them.
 function scoreTierClass(score: number) {
   if (score >= 80) return "text-agent-dark";
   if (score >= 60) return "text-text-primary";
@@ -102,11 +109,22 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
             className="h-9 w-full rounded-full border border-border bg-surface pl-8 pr-3 text-sm text-text-primary placeholder:text-text-muted focus:border-accent focus:outline-none"
           />
         </div>
-        <p className="text-xs font-medium text-text-muted">
-          {visibleJobs.length} job{visibleJobs.length === 1 ? "" : "s"} in your Inbox
-          {/* Same 14-day framing as the auto-archive cron (lib/inngest/functions.ts) — a soft heads-up, not a countdown per job. */}
-          {" · "}untouched ones auto-archive after 14 days
-        </p>
+        <div className="flex items-center gap-3">
+          <p className="text-xs font-medium text-text-muted">
+            {visibleJobs.length} job{visibleJobs.length === 1 ? "" : "s"} in your Inbox
+            {/* Same 14-day framing as the auto-archive cron (lib/inngest/functions.ts) — a soft heads-up, not a countdown per job. */}
+            {" · "}untouched ones auto-archive after 14 days
+          </p>
+          {visibleJobs.length > 0 && (
+            <button
+              type="button"
+              onClick={toggleSelectAll}
+              className="text-xs font-medium text-text-secondary transition-colors hover:text-text-primary"
+            >
+              {selectedIds.size === visibleJobs.length ? "Deselect all" : "Select all"}
+            </button>
+          )}
+        </div>
       </div>
 
       {selectedIds.size > 0 && (
@@ -167,87 +185,81 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-card">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-[11px] font-semibold uppercase tracking-wide text-text-muted">
-              <th className="w-10 px-4 py-2.5">
-                <input
-                  type="checkbox"
-                  checked={visibleJobs.length > 0 && selectedIds.size === visibleJobs.length}
-                  onChange={toggleSelectAll}
-                  className="h-4 w-4 rounded border-border accent-[var(--color-accent)]"
-                />
-              </th>
-              <th className="px-2 py-2.5">Company / Role</th>
-              <th className="px-2 py-2.5">Match</th>
-              <th className="px-2 py-2.5">Found</th>
-              <th className="px-4 py-2.5 text-right">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {visibleJobs.map((job) => {
-              const signal = getListingSignal(job);
-              return (
-                <tr key={job.id} className="border-b border-border/60 last:border-0 hover:bg-surface-secondary">
-                  <td className="px-4 py-2.5">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(job.id)}
-                      onChange={() => toggleSelect(job.id)}
-                      className="h-4 w-4 rounded border-border accent-[var(--color-accent)]"
-                    />
-                  </td>
-                  <td className="px-2 py-2.5">
-                    <Link href={`/find-jobs/${job.id}`} className="flex min-w-0 items-center gap-2.5">
-                      <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-medium text-text-primary">{job.title ?? "Untitled role"}</p>
-                        <p className="truncate text-xs text-text-muted">
-                          {job.company ?? "Unknown company"}
-                          {signal && <span className="ml-2 text-warning">{signal.label}</span>}
-                        </p>
-                      </div>
-                    </Link>
-                  </td>
-                  <td className="px-2 py-2.5">
-                    {job.match_score !== null && job.match_score !== undefined ? (
-                      <span className={`font-mono text-sm font-semibold tabular-nums ${scoreTierClass(job.match_score)}`}>
-                        {job.match_score}%
-                      </span>
-                    ) : (
-                      <span className="text-xs text-text-muted">—</span>
-                    )}
-                  </td>
-                  <td className="whitespace-nowrap px-2 py-2.5 text-xs text-text-muted">{formatDate(job.found_at)}</td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center justify-end gap-1.5">
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleShortlist([job.id])}
-                        title="Shortlist — move into your pipeline"
-                        className="inline-flex h-7 items-center gap-1 rounded-full bg-accent-muted px-2.5 text-xs font-medium text-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <CheckCircle2 className="h-3.5 w-3.5" />
-                        Shortlist
-                      </button>
-                      <button
-                        type="button"
-                        disabled={isPending}
-                        onClick={() => handleArchive([job.id])}
-                        title="Archive — not interested"
-                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <Archive className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="signal-rail">
+        {visibleJobs.map((job) => {
+          const signal = getListingSignal(job);
+          const selected = selectedIds.has(job.id);
+          return (
+            <Link key={job.id} href={`/find-jobs/${job.id}`} className={`signal-track ${signal ? "signal-track-warm" : ""}`}>
+              <button
+                type="button"
+                role="checkbox"
+                aria-checked={selected}
+                aria-label={selected ? "Deselect job" : "Select job"}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  toggleSelect(job.id);
+                }}
+                className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                  selected ? "border-accent bg-accent text-accent-foreground" : "border-border bg-surface hover:border-accent"
+                }`}
+              >
+                {selected && <Check className="h-3.5 w-3.5" />}
+              </button>
+              <span className="signal-dot" />
+              <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} size="sm" />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-text-primary">{job.title ?? "Untitled role"}</p>
+                <p className="truncate text-xs text-text-muted">
+                  {job.company ?? "Unknown company"}
+                  {signal && <span className="ml-2 text-warning">{signal.label}</span>}
+                </p>
+              </div>
+              <div className="flex shrink-0 items-center gap-4">
+                {job.match_score !== null && job.match_score !== undefined ? (
+                  <span className={`font-mono text-sm font-semibold tabular-nums ${scoreTierClass(job.match_score)}`}>
+                    {job.match_score}%
+                  </span>
+                ) : (
+                  <span className="text-xs text-text-muted">—</span>
+                )}
+                <span className="hidden font-mono text-[10px] uppercase tracking-wide text-text-muted sm:inline">
+                  {formatDate(job.found_at)}
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleShortlist([job.id]);
+                    }}
+                    title="Shortlist — move into your pipeline"
+                    className="inline-flex h-7 items-center gap-1 rounded-full bg-accent-muted px-2.5 text-xs font-medium text-accent transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    <span className="hidden sm:inline">Shortlist</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isPending}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      handleArchive([job.id]);
+                    }}
+                    title="Archive — not interested"
+                    className="inline-flex h-7 w-7 items-center justify-center rounded-full text-text-muted transition-colors hover:bg-surface-tertiary hover:text-text-secondary disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </div>
   );
