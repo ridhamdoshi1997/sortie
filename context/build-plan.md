@@ -928,7 +928,7 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | Feature | Status | Source |
 | --- | --- | --- |
 | SerpApi job discovery | ✅ | Phase 6 |
-| ATS provider adapters (Ashby, Greenhouse, Lever) | 📋 | Phase 8 |
+| ATS provider adapters (Ashby, Greenhouse, Lever) | ✅ shipped 2026-08-27 (Phase 27) | `lib/atsProviders.ts` — user-curated watchlist (`target_companies` table, `/find-jobs/companies`) plus reuse in `lib/reresolveApplyLink.ts`'s lazy fix-up path for the general search pipeline. See `progress-tracker.md`'s Phase 27 entry |
 | Structured job APIs (Adzuna, Arbeitnow, TheirStack, Apify, Serper) | 📋 | Phase 8 |
 | Custom board queries | 📋 | Phase 8 |
 | Posting liveness / freshness checks | 📋 | Phase 10 |
@@ -1015,8 +1015,8 @@ Captured from the recorded walkthrough (2026-07-21). Notable for how little ther
 | --- | --- | --- |
 | Google OAuth | ✅ | Already working |
 | GitHub OAuth | ✅ | Already working |
-| **Google One Tap** (inline account chooser, not a redirect) | 🆕 | Their flow shows name + email in a popup with a "Continue as {name}" button and the standard consent line about sharing name, email and profile picture. Far lower friction than a redirect round-trip |
-| **No separate signup form** — OAuth lands straight in onboarding | 🆕 | There is no account-creation screen, no password, no email-verification step. Auth completes → immediately into the role picker. Matches our `/preview/onboarding` flow |
+| **Google One Tap** (inline account chooser, not a redirect) | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: confirmed already shipped — `components/auth/GoogleOneTap.tsx` + `app/api/auth/google-one-tap/route.ts`, real `signInWithIdToken` call (see Phase 20's progress-tracker entry) |
+| **No separate signup form** — OAuth lands straight in onboarding | ✅ | Real 3-step `/onboarding` wizard (§H's Onboarding flow row) is the universal post-auth landing for a new user, OAuth or email/password alike — no separate account-creation screen exists |
 | Logout available *during* onboarding | 🆕 | An escape hatch on every onboarding step, so a half-finished setup isn't a trap |
 | LinkedIn OAuth | 🆕 | Highest-value addition for a career product — doubles as profile prefill. Note: LinkedIn's API only returns name/email/photo, **not** work history, so résumé upload stays the real import path |
 | Email / magic-link sign-in | 🆕 | For people who won't use social login |
@@ -1082,10 +1082,10 @@ Serves the 70% of the workforce who aren't actively job-hunting — the retentio
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| Negotiation scripts | 📋 | Phase 12 |
-| Offer evaluation & total-comp analysis | 🆕 | Career OS — see Equity & Cap Table Decoder, §M |
+| Negotiation scripts | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: confirmed already shipped — `components/job-details/NegotiationScript.tsx`, `jobs.negotiation_script` (migration `20260819222243`) |
+| Offer evaluation & total-comp analysis | ✅ | Career OS — see Equity & Cap Table Decoder, §M (`jobs.offer_details`, `lib/equityDecoder.ts`) |
 | Multi-offer comparison | 🆕 | Career OS |
-| First-90-days success plan | 🆕 | Career OS |
+| First-90-days success plan | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: confirmed already shipped — `components/job-details/NinetyDayPlan.tsx`, `jobs.ninety_day_plan` (migration `20260820010929`) |
 | Hiring contact discovery + outreach drafts | 📋 | Phase 13 |
 
 **Interview section fully rescoped 2026-08-12 (2 agy research passes) — see §N below for the full "Engagement War Room" plan.** Replaces the old "Interview story bank" / "Per-job interview prep" / "Live mock-interview simulator" / "Interview question bank by company" rows above with a concrete, buildable architecture.
@@ -1320,7 +1320,7 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 
 | Feature | Status | Source |
 | --- | --- | --- |
-| **Chrome extension — capture-first** ("save → grade → track", never auto-apply) | 🆕 | Competitive Map |
+| **Chrome extension — capture-first** ("save → grade → track", never auto-apply) | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: duplicate/contradicted §Q5 below, which already correctly shows this fully shipped 2026-08-17/18 (`extension/`, 10 platforms). This row was just never updated to match |
 | Gmail ingest (job leads) | ⛔ deferred 2026-08-20 | Direct user decision — `gmail.readonly` is a Google Restricted scope, needs an annual paid CASA security audit to leave test mode. Parked alongside the voice interview simulator (§N), not pursued now. |
 | Gmail — application status detection (powers rejection intelligence) | ⛔ deferred 2026-08-20 | Same Gmail CASA blocker as the row above — rides along whenever that decision changes. |
 | **Network signals** (former colleagues / school alumni at this company) | 🎨 | Free — deep-links to LinkedIn people search, no paid people API, no scraping. `NetworkSignals.tsx` built |
@@ -1343,16 +1343,14 @@ Not vanity metrics — the specific signal each feature is supposed to produce:
 | Feature | Status | Source |
 | --- | --- | --- |
 | Command palette (Cmd+K) | ✅ shipped 2026-08-18 (Phase 15) | `components/ui/CommandPalette.tsx` — navigation + a couple of common actions (Settings, theme toggle), typeahead filter, full keyboard nav (↑↓/Enter/Esc), global `Cmd/Ctrl+K` shortcut plus a discoverable trigger button in `Navbar.tsx`. Shipped combined with the "Keyboard shortcuts" row below — a palette's core value already IS its keyboard interaction |
-| Detail drawer / split view (fast job browsing) | 🆕 | Brainstorm |
-| Global search | 🆕 | Brainstorm |
+| Detail drawer / split view (fast job browsing) | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: confirmed already shipped — `components/find-jobs/JobDetailDrawer.tsx`, wired into `FindJobsForm.tsx` |
+| Global search | 🆕 | Brainstorm — Cmd+K (below) covers navigation/actions, not full-text job search |
 | Rich filtering & sorting on Find Jobs | 📋 | v1 F11 (partial) |
 | Job card quick-actions (save/hide/generate inline) | ✅ save/hide pre-existed; "Generate Résumé" added 2026-08-18 | `JobResultCard.tsx`'s menu, deep-links into the existing `?generate=resume` trigger. Not click-verified (browser-automation ref friction), pattern-matched to proven sibling code |
 | Tags & personal notes on jobs | ✅ shipped 2026-08-18 | `jobs.tags`/`jobs.personal_notes`, `JobTagsAndNotes.tsx` on the job detail page, chips also on `JobResultCard` |
-| Recently viewed / pinned jobs | 🟡 pinned already covered by `jobs.is_priority`; "recently viewed" started 2026-08-18 | `jobs.last_viewed_at` column live, no app code uses it yet — see RESUME.md |
-| Job comparison view (side-by-side, 10 dimensions) | 🆕 | Brainstorm |
-| Bulk actions (multi-select archive/tag) | 🆕 | Brainstorm |
-| Tags & personal notes on jobs | 🆕 | Brainstorm |
-| Recently viewed / pinned jobs | 🆕 | Brainstorm |
+| Recently viewed / pinned jobs | ✅ | Pinned via `jobs.is_priority`; "recently viewed" (`jobs.last_viewed_at`) now has real app code reading it — `components/find-jobs/RecentlyViewed.tsx`, the strip on `/find-jobs`. **Marker corrected 2026-08-27**: was 🟡 pending app-code use, now real |
+| Job comparison view (side-by-side, 10 dimensions) | ✅ | **Marker corrected 2026-08-27 (Phase 27)**: confirmed already shipped — `app/compare/page.tsx`, `components/job-details/AddToCompareButton.tsx` |
+| Bulk actions (multi-select archive/tag) | 🟡 partial | `InboxTable.tsx` has bulk Shortlist/Archive (Phase 22); no general multi-select tag/archive across saved/Kanban jobs yet |
 | Profile completeness meter | 🆕 | Brainstorm |
 | **Onboarding flow** (role picker → work auth → resume upload → seniority confirm) | ✅ shipped 2026-08-20 | Real 3-step wizard at `/onboarding` (`components/onboarding/OnboardingWizard.tsx`, `actions/onboarding.ts`), replacing the static `/preview/onboarding` mockup — the mockup's exact copy/categories/role groups/seniority-adjacent constants were ported in, wired to real actions instead of local-only state. New gate: `profiles.onboarding_completed_at` (backfilled to the account's creation time for all 8 pre-existing users, so only brand-new signups see it), checked in both `lib/auth.ts`'s `getPostLoginRedirectPath` and `app/(auth)/callback/route.ts`'s local copy, ahead of the existing `is_complete` check — a new user with neither set lands on `/onboarding` first, not `/profile`. Résumé upload/extraction reuses `actions/profile.ts`'s existing `uploadResume`/`extractProfile` directly (not the newer multi-slot `ResumeManager`, confirmed unused by the real profile page's simpler single-résumé need); the wizard's own explicit picks (target roles, work auth, seniority) always win over whatever the AI extractor separately guessed for overlapping fields. Seniority chips use the real `experience_level` enum values other features already read (`Junior`/`Mid-Level`/`Senior`/`Lead`/`Manager`/`Director`/`Executive`), not the mockup's own looser 4-band labels. **Live-verified end to end on the real test account**: nulled its `onboarding_completed_at` to force the gate, confirmed a real login redirected to `/onboarding` (not `/profile`), clicked through all 3 real steps (skipped the résumé upload deliberately, to avoid mutating the test account's stored data further), confirmed the DB row after submit had the exact real picks (`job_titles_seeking: ["Backend Engineer"]`, `work_authorization: "Work permit"`, `experience_level: "Senior"`, `acquisition_channel: "Friend or colleague"`), confirmed the post-submit redirect correctly went to `/profile` (not `/dashboard`, since the profile is still genuinely incomplete with no résumé data), and confirmed a second direct visit to `/onboarding` correctly bounces away instead of re-showing the wizard. Real side effect worth flagging: this overwrote the test account's own `job_titles_seeking`/`work_authorization`/`experience_level`/`acquisition_channel` with the test picks above — their prior values weren't snapshotted first, so they can't be restored exactly, though none of this is destructive to anything beyond that one test account's onboarding-preference fields. |
 | **"How did you find us?"** attribution step | ✅ shipped 2026-08-20 | Folded into the onboarding wizard's step 3 (same screen the original mockup put it on) rather than built as a separate standalone step — new `profiles.acquisition_channel` column, optional, saved by `completeOnboarding()`. Deliberately distinct from `referral_code`/`referred_by_code` (peer-to-peer invite tracking, a different existing feature) — this is organic marketing-channel attribution, not "who invited you." |
@@ -1440,7 +1438,7 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Premium done-for-you tier ($49–99/mo) | 🆕 | Revenue Map — distinct from Vanguard above (this one is a human-service tier, not a self-serve lifetime deal) |
 | Problem-framed help entry points ("I'm applying but hearing nothing") | 🎨 | The premium tier's front door, framed as the user's problem rather than a feature list |
 | Credit packs / à la carte top-ups | 🆕 | Revenue Map |
-| Affiliate / referral integrations | 🆕 | Revenue Map |
+| Affiliate / referral integrations | ✅ peer-to-peer referrals; 🆕 true affiliate program | **Marker corrected 2026-08-27 (Phase 27)**: peer referral tracking (`referral_code`/`referred_by_code`, Settings → Referrals tab) confirmed already shipped, migration `20260819175006`. A formal outbound affiliate program (revenue-share partners) is still unbuilt — different feature, same row |
 
 ## K. Trust, safety, legal & ops
 
@@ -1457,9 +1455,11 @@ Captured from a complete walkthrough of the competitor's job detail page (2026-0
 | Multi-tenancy isolation test | ✅ done 2026-08-17 | Ground-truth `pg_class.relrowsecurity` + `pg_policies` audit — all 13 tables RLS-enabled, no cross-user gaps found |
 | Error monitoring (Sentry) | ✅ live 2026-08-20 | User created a real Sentry project (org `sortie-g1`, project `javascript-nextjs`) and supplied the DSN. `SENTRY_DSN`/`NEXT_PUBLIC_SENTRY_DSN`/`SENTRY_ORG`/`SENTRY_PROJECT` set in `.env` and Vercel production env vars, deployed. `SENTRY_AUTH_TOKEN` (source-map upload, nicer stack traces) still not set — optional, skip-with-warning today. |
 
-## R. Internal Admin Panel (researched 2026-08-17, not yet built)
+## R. Internal Admin Panel — ✅ v1 shipped, real UI + multiple redesign passes since (researched 2026-08-17)
 
-**Deliberately sequenced last** — user decision 2026-08-17: log the design now, build it only after the rest of the remaining feature/bug backlog is worked through. Two independent research passes (Perplexity, then a live agy cross-check) produced genuinely different architectures, not just a scope trim — read both takeaways before building.
+**Marker corrected 2026-08-27 (Phase 27): this whole section header was stale** — said "not yet built" but the admin panel has been real and actively extended across several later phases: `admin_users`/`admin_audit_log` tables, `/admin` route group, a real user table + per-user page (suspend, delete user with the same danger-zone pattern as self-service account deletion, subscription/override controls), `/admin/billing` (`PlansManager.tsx`, full plan CRUD), `/admin/support` (ticket triage, category filters, image attachments, agent-status pipeline), plus two full visual redesign passes (density/table polish, bulk-action bar on `UsersTable.tsx`). See `progress-tracker.md`'s Phase 21-26 entries for the real build history — the architecture notes below (from the original 2026-08-17 research) are still accurate to what was actually built, just no longer describe unbuilt work.
+
+**Original framing, kept for context — no longer current ("deliberately sequenced last... build only after the rest of the backlog"):** Two independent research passes (Perplexity, then a live agy cross-check) produced genuinely different architectures, not just a scope trim — read both takeaways before building.
 
 **Perplexity's pass** (generic SaaS-admin-panel best practices): global user search + account header, usage/cap controls, `is_admin`-on-`profiles` + RLS-based admin auth, full audit-log table, read-only user impersonation with a banner/timeout, a support-ticket system, a knowledge base, `/admin` route group with RBAC + MFA. Solid instincts, but sized for a team with a support function, not this project's current stage.
 

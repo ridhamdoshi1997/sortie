@@ -18,6 +18,18 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Company Watchlist manager (Portal Scanner, Phase 8)
+
+Files: `components/find-jobs/TargetCompaniesManager.tsx`, `app/find-jobs/companies/page.tsx`
+Route: `/find-jobs/companies`, linked from `/find-jobs` via a small `Building2` icon link next to the page eyebrow.
+Last updated: 2026-08-27 (Phase 27). No existing CRUD-list precedent in this app to mirror — deliberately minimal v1, reuses existing primitives rather than inventing new ones.
+- Card shell: `rounded-2xl border border-border bg-surface p-6 shadow-card` (matches other dashboard/settings cards).
+- Add-row: `rounded-xl border border-border bg-surface-secondary p-4`, inputs `rounded-lg border border-border bg-surface px-3 py-2 text-sm`.
+- Primary actions ("Add", "Scan now") use `.btn-signal` per this app's exhaustive-CTA convention.
+- List rows: plain `divide-y divide-border` list, no card-per-row — this is metadata management, not a content feed, so the denser `JobResultCard` treatment doesn't apply.
+- Delete uses the shared `<ConfirmDialog tone="danger">` (`components/ui/ConfirmDialog.tsx`) — same pattern as every other destructive action in this app, not a bespoke confirm.
+- Empty state: dashed border + centered icon + one line, same shape as other empty states in this codebase (e.g. `OnboardingWizard`'s upload step).
+
 ### Job-detail mobile primitives — sticky Apply bar, scroll-aware tab overflow
 
 Files: `components/job-details/JobIdentityRail.tsx` (`MobileApplyBar`), `components/ui/Tabs.tsx`, `components/agent/NavigatorLauncher.tsx`
