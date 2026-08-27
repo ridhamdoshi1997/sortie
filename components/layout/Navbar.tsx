@@ -273,7 +273,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
               Log in
             </Link>
             <Link
-              href="/login"
+              href="/login?mode=signup"
               onClick={() => trackPostHogClientEvent("marketing_cta_clicked", { location: "nav_desktop" })}
               className="btn-signal hidden min-h-10 items-center rounded-md px-4 text-sm font-medium text-accent-foreground md:inline-flex"
             >
@@ -319,7 +319,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
                 Log in
               </Link>
               <Link
-                href="/login"
+                href="/login?mode=signup"
                 onClick={() => trackPostHogClientEvent("marketing_cta_clicked", { location: "nav_mobile" })}
                 className="block rounded-lg px-3 py-2 text-sm font-medium text-accent hover:bg-overlay-foreground/5"
               >

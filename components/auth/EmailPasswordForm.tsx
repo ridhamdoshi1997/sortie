@@ -23,9 +23,9 @@ async function postJson<T>(url: string, body: unknown): Promise<T> {
   return res.json();
 }
 
-export function EmailPasswordForm() {
+export function EmailPasswordForm({ initialMode = "signin" }: { initialMode?: "signin" | "signup" }) {
   const router = useRouter();
-  const [mode, setMode] = useState<Mode>("signin");
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

@@ -188,7 +188,7 @@ export function AtsCheckerForm() {
               Sortie scores your resume against every real job you look at — 10 dimensions, not just one number.
             </p>
             <Link
-              href="/login"
+              href="/login?mode=signup"
               className="btn-signal inline-flex min-h-9 items-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground"
             >
               Try it free

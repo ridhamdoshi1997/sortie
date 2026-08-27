@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { getPlansForPricing } from "@/actions/billing";
+import { getCurrentUser } from "@/lib/auth";
 import type { PlanConfig } from "@/lib/subscription";
 
 // Rebuilt for build-plan.md §S, then wired to real live plan data for §J
@@ -25,7 +26,7 @@ const FREE_INCLUDES = [
 // /admin/billing now just shows up here without touching this component
 // again. Vanguard-style scarcity-capped plans get a progress bar and lock
 // into a real "Sold out" state instead of a checkout button once claimed.
-function PaidPlanCard({ plan }: { plan: PlanConfig }) {
+function PaidPlanCard({ plan, isAuthenticated }: { plan: PlanConfig; isAuthenticated: boolean }) {
   const isLifetime = plan.billingPeriod === "lifetime";
   const isSoldOut = plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats;
 
@@ -85,12 +86,27 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
           Sold out — all {plan.maxSeats} seats claimed
         </div>
       ) : plan.stripePriceId ? (
-        <UpgradeButton
-          tier={plan.tier}
-          className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground disabled:opacity-60"
-        >
-          {isLifetime ? `Buy ${plan.displayName} — one-time` : `Upgrade to ${plan.displayName}`}
-        </UpgradeButton>
+        isAuthenticated ? (
+          <UpgradeButton
+            tier={plan.tier}
+            className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground disabled:opacity-60"
+          >
+            {isLifetime ? `Buy ${plan.displayName} — one-time` : `Upgrade to ${plan.displayName}`}
+          </UpgradeButton>
+        ) : (
+          // Logged-out visitor — straight to account creation instead of
+          // firing the checkout server action, which just bounces off
+          // requireUser()'s redirect into the sign-in (not sign-up) mode.
+          // A real account must exist before any checkout, paid or free.
+          <TrackedCtaLink
+            href="/login?mode=signup"
+            eventName="marketing_cta_clicked"
+            eventProperties={{ location: "pricing", tier: plan.tier }}
+            className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground"
+          >
+            {isLifetime ? `Buy ${plan.displayName} — one-time` : `Upgrade to ${plan.displayName}`}
+          </TrackedCtaLink>
+        )
       ) : (
         <button
           type="button"
@@ -105,8 +121,9 @@ function PaidPlanCard({ plan }: { plan: PlanConfig }) {
 }
 
 export async function CTASection() {
-  const plans = await getPlansForPricing();
+  const [plans, user] = await Promise.all([getPlansForPricing(), getCurrentUser()]);
   const paidPlans = plans.filter((p) => p.priceCents > 0);
+  const isAuthenticated = Boolean(user);
 
   return (
     <section id="pricing" className="px-4 pb-16 sm:px-6 sm:pb-20 lg:px-8">
@@ -133,17 +150,17 @@ export async function CTASection() {
               </ul>
             </div>
             <TrackedCtaLink
-              href="/login"
+              href={isAuthenticated ? "/dashboard" : "/login?mode=signup"}
               eventName="marketing_cta_clicked"
               eventProperties={{ location: "pricing" }}
               className="btn-signal mt-8 inline-flex min-h-11 w-full items-center justify-center rounded-md px-6 text-sm font-semibold text-accent-foreground"
             >
-              Start for free
+              {isAuthenticated ? "Go to dashboard" : "Start for free"}
             </TrackedCtaLink>
           </div>
 
           {paidPlans.length > 0 ? (
-            paidPlans.map((plan) => <PaidPlanCard key={plan.tier} plan={plan} />)
+            paidPlans.map((plan) => <PaidPlanCard key={plan.tier} plan={plan} isAuthenticated={isAuthenticated} />)
           ) : (
             <div className="flex h-full flex-col rounded-2xl border border-border bg-surface-tertiary p-8 opacity-70">
               <div className="flex-1">

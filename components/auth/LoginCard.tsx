@@ -12,6 +12,7 @@ const errorMessages: Record<string, string> = {
 
 type Props = {
   error?: string;
+  defaultMode?: "signin" | "signup";
 };
 
 // Redesigned 2026-08-20 per agy research on modern dev-tool auth cards
@@ -25,8 +26,9 @@ type Props = {
 // hybrid pattern for apps supporting more than 2-3 providers — with the
 // other four as a secondary icon row, rather than 5 stacked full-width
 // buttons or 5 equal-weight icons.
-export function LoginCard({ error }: Props) {
+export function LoginCard({ error, defaultMode = "signin" }: Props) {
   const message = error ? errorMessages[error] : null;
+  const isSignUp = defaultMode === "signup";
 
   return (
     <section className="mx-auto flex min-h-[calc(100vh-5rem)] max-w-[1440px] items-center justify-center px-4 py-12 sm:px-6 lg:px-8">
@@ -37,7 +39,9 @@ export function LoginCard({ error }: Props) {
             <ShieldCheck aria-hidden className="h-4 w-4 text-accent" />
             OAuth secured by InsForge
           </div>
-          <h1 className="mt-5 text-2xl font-semibold leading-8 text-text-primary">Sign in to Sortie</h1>
+          <h1 className="mt-5 text-2xl font-semibold leading-8 text-text-primary">
+            {isSignUp ? "Create your Sortie account" : "Sign in to Sortie"}
+          </h1>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
             Let the agent prep your next application.
           </p>
@@ -50,7 +54,7 @@ export function LoginCard({ error }: Props) {
         ) : null}
 
         <div className="mt-6">
-          <EmailPasswordForm />
+          <EmailPasswordForm initialMode={defaultMode} />
         </div>
 
         <div className="mt-6 flex items-center gap-3">

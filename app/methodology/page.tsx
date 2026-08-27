@@ -98,7 +98,7 @@ export default function MethodologyPage() {
             See your own match score across all 10 dimensions on a real job in under a minute.
           </p>
           <Link
-            href="/login"
+            href="/login?mode=signup"
             className="mt-4 inline-flex min-h-10 items-center rounded-md bg-accent px-5 text-sm font-medium text-accent-foreground transition-opacity hover:opacity-90"
           >
             Start for free

@@ -56,7 +56,7 @@ export function Hero() {
               style={{ animationDelay: "180ms" }}
             >
               <TrackedCtaLink
-                href="/login"
+                href="/login?mode=signup"
                 eventName="marketing_cta_clicked"
                 eventProperties={{ location: "hero" }}
                 className="btn-signal inline-flex min-h-12 items-center rounded-md px-8 text-base font-semibold text-accent-foreground transition-transform hover:-translate-y-0.5"
