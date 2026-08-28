@@ -5,7 +5,17 @@ import { Plus, Save, Trash2 } from "lucide-react";
 
 import { createPlan, deletePlan, updatePlan, type PlanInput } from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { ACTION_LABELS, DAILY_LIMITS, type UsageAction } from "@/lib/usage";
 import type { PlanConfig } from "@/lib/subscription";
+
+// One text field per lib/usage.ts action (direct user request, 2026-08-28,
+// "full ability to control all the features and limits" from the admin
+// panel) — blank = no override (falls back to DAILY_LIMITS), the literal
+// word "unlimited" = null override, otherwise parsed as a number. Kept as
+// free text rather than a number input + separate "unlimited" checkbox per
+// row — 29 rows of two controls each would roughly double this section's
+// height for a distinction a single keyword already expresses clearly.
+const ACTION_KEYS = Object.keys(DAILY_LIMITS) as UsageAction[];
 
 type DraftPlan = {
   tier: string;
@@ -14,7 +24,9 @@ type DraftPlan = {
   billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
+  emailLookupMonthlyLimit: number;
   jobEvaluationsDailyLimitInput: string; // "" means unlimited (null)
+  dailyActionLimitsInput: Record<string, string>; // "" = default, "unlimited" = null, else a number
   llmUnlocked: boolean;
   featureBulletsText: string; // one bullet per line
   stripePriceId: string;
@@ -30,13 +42,35 @@ function toDraft(plan: PlanConfig): DraftPlan {
     billingPeriod: plan.billingPeriod,
     insiderConnectionsMonthlyLimit: plan.insiderConnectionsMonthlyLimit,
     companyResearchMonthlyLimit: plan.companyResearchMonthlyLimit,
+    emailLookupMonthlyLimit: plan.emailLookupMonthlyLimit,
     jobEvaluationsDailyLimitInput: plan.jobEvaluationsDailyLimit === null ? "" : String(plan.jobEvaluationsDailyLimit),
+    dailyActionLimitsInput: Object.fromEntries(
+      ACTION_KEYS.map((action) => {
+        const override = plan.dailyActionLimits[action];
+        return [action, override === undefined ? "" : override === null ? "unlimited" : String(override)];
+      }),
+    ),
     llmUnlocked: plan.llmUnlocked,
     featureBulletsText: plan.featureBullets.join("\n"),
     stripePriceId: plan.stripePriceId ?? "",
     maxSeatsInput: plan.maxSeats === null ? "" : String(plan.maxSeats),
     seatsClaimed: plan.seatsClaimed,
   };
+}
+
+function parseDailyActionLimits(input: Record<string, string>): Record<string, number | null> {
+  const result: Record<string, number | null> = {};
+  for (const [action, raw] of Object.entries(input)) {
+    const trimmed = raw.trim();
+    if (trimmed === "") continue; // no override — falls back to DAILY_LIMITS
+    if (trimmed.toLowerCase() === "unlimited") {
+      result[action] = null;
+      continue;
+    }
+    const parsed = Number(trimmed);
+    if (Number.isFinite(parsed)) result[action] = Math.max(0, Math.round(parsed));
+  }
+  return result;
 }
 
 function draftToInput(draft: DraftPlan): Omit<PlanInput, "tier"> {
@@ -46,7 +80,9 @@ function draftToInput(draft: DraftPlan): Omit<PlanInput, "tier"> {
     billingPeriod: draft.billingPeriod,
     insiderConnectionsMonthlyLimit: draft.insiderConnectionsMonthlyLimit,
     companyResearchMonthlyLimit: draft.companyResearchMonthlyLimit,
+    emailLookupMonthlyLimit: draft.emailLookupMonthlyLimit,
     jobEvaluationsDailyLimit: draft.jobEvaluationsDailyLimitInput.trim() === "" ? null : Number(draft.jobEvaluationsDailyLimitInput),
+    dailyActionLimits: parseDailyActionLimits(draft.dailyActionLimitsInput),
     llmUnlocked: draft.llmUnlocked,
     featureBullets: draft.featureBulletsText.split("\n").map((b) => b.trim()).filter(Boolean),
     stripePriceId: draft.stripePriceId.trim() || null,
@@ -61,13 +97,59 @@ const EMPTY_DRAFT: DraftPlan = {
   billingPeriod: "month",
   insiderConnectionsMonthlyLimit: 0,
   companyResearchMonthlyLimit: 0,
+  emailLookupMonthlyLimit: 10,
   jobEvaluationsDailyLimitInput: "3",
+  dailyActionLimitsInput: Object.fromEntries(ACTION_KEYS.map((action) => [action, ""])),
   llmUnlocked: false,
   featureBulletsText: "",
   stripePriceId: "",
   maxSeatsInput: "",
   seatsClaimed: 0,
 };
+
+function DailyActionLimitsEditor({
+  values,
+  onChange,
+}: {
+  values: Record<string, string>;
+  onChange: (values: Record<string, string>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const overrideCount = Object.values(values).filter((v) => v.trim() !== "").length;
+
+  return (
+    <div className="sm:col-span-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary"
+      >
+        Per-action daily limits {overrideCount > 0 && `(${overrideCount} overridden)`} {open ? "▾" : "▸"}
+      </button>
+      {open && (
+        <div className="grid gap-2 rounded-lg border border-border bg-surface-secondary p-3 sm:grid-cols-2">
+          {ACTION_KEYS.map((action) => (
+            <div key={action} className="flex items-center gap-2">
+              <label className="min-w-0 flex-1 truncate text-[11px] text-text-secondary" title={ACTION_LABELS[action]}>
+                {ACTION_LABELS[action]}
+                <span className="text-text-muted"> (default {DAILY_LIMITS[action]}/day)</span>
+              </label>
+              <input
+                value={values[action] ?? ""}
+                onChange={(e) => onChange({ ...values, [action]: e.target.value })}
+                placeholder="default"
+                className="h-7 w-24 shrink-0 rounded-md border border-border bg-surface px-2 text-[11px] text-text-primary outline-none focus-visible:border-accent"
+              />
+            </div>
+          ))}
+          <p className="sm:col-span-2 text-[10px] text-text-muted">
+            Blank = plan uses the app-wide default shown above. Type a number to override, or &quot;unlimited&quot; for no cap.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function PlanForm({
   draft,
@@ -168,6 +250,16 @@ function PlanForm({
           />
         </div>
         <div>
+          <label className="mb-1 block text-[11px] font-medium text-text-muted">Email lookups / month</label>
+          <input
+            type="number"
+            min="0"
+            value={draft.emailLookupMonthlyLimit}
+            onChange={(e) => onChange({ ...draft, emailLookupMonthlyLimit: Math.max(0, Number(e.target.value)) })}
+            className="h-9 w-full rounded-md border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent"
+          />
+        </div>
+        <div>
           <label className="mb-1 block text-[11px] font-medium text-text-muted">Job evaluations / day (blank = unlimited)</label>
           <input
             type="number"
@@ -206,6 +298,10 @@ function PlanForm({
             className="w-full rounded-md border border-border bg-surface-secondary px-3 py-2 text-sm text-text-primary outline-none focus-visible:border-accent"
           />
         </div>
+        <DailyActionLimitsEditor
+          values={draft.dailyActionLimitsInput}
+          onChange={(values) => onChange({ ...draft, dailyActionLimitsInput: values })}
+        />
       </div>
 
       <div className="mt-4 flex items-center justify-between border-t border-border pt-4">
@@ -243,6 +339,12 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
   );
   const [newDraft, setNewDraft] = useState<DraftPlan | null>(null);
   const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
+  // Confirm-before-save (direct user request, 2026-08-28) — this form
+  // controls real per-user pricing/quota behavior live for every current
+  // and future subscriber the instant "Save" lands, with no undo. A typo
+  // here (e.g. an accidental extra zero on a daily limit) previously took
+  // effect immediately; this makes the change explicit before it commits.
+  const [confirmingSave, setConfirmingSave] = useState<{ tier: string; isNew: boolean } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
@@ -290,6 +392,13 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
     });
   }
 
+  function handleConfirmedSave(): void {
+    if (!confirmingSave) return;
+    if (confirmingSave.isNew) saveNew();
+    else saveExisting(confirmingSave.tier);
+    setConfirmingSave(null);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       {error && <p className="text-xs text-error">{error}</p>}
@@ -300,7 +409,7 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
           draft={drafts[plan.tier] ?? toDraft(plan)}
           isNew={false}
           onChange={(d) => setDrafts((prev) => ({ ...prev, [plan.tier]: d }))}
-          onSave={() => saveExisting(plan.tier)}
+          onSave={() => setConfirmingSave({ tier: plan.tier, isNew: false })}
           onDelete={() => setConfirmingDelete(plan.tier)}
           pending={isPending}
         />
@@ -311,7 +420,7 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
           draft={newDraft}
           isNew
           onChange={setNewDraft}
-          onSave={saveNew}
+          onSave={() => setConfirmingSave({ tier: newDraft.tier, isNew: true })}
           pending={isPending}
         />
       ) : (
@@ -333,6 +442,16 @@ export function PlansManager({ initialPlans }: { initialPlans: PlanConfig[] }) {
         pending={isPending}
         onConfirm={() => confirmingDelete && removePlan(confirmingDelete)}
         onCancel={() => setConfirmingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={confirmingSave !== null}
+        title={confirmingSave?.isNew ? "Create this plan?" : "Save these changes?"}
+        description="This takes effect immediately for every current and future subscriber on this plan — pricing, quotas, and marketing copy shown on /pricing all update live."
+        confirmLabel={confirmingSave?.isNew ? "Create plan" : "Save changes"}
+        pending={isPending}
+        onConfirm={handleConfirmedSave}
+        onCancel={() => setConfirmingSave(null)}
       />
     </div>
   );

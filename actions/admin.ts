@@ -611,7 +611,13 @@ export type PlanInput = {
   billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
+  emailLookupMonthlyLimit: number;
   jobEvaluationsDailyLimit: number | null;
+  // Per-action daily overrides (lib/usage.ts's UsageAction ids) — absent
+  // key = falls back to lib/usage.ts's own flat DAILY_LIMITS constant,
+  // explicit null = unlimited on this plan. See the
+  // add-ace-tier-and-daily-action-limits migration for the full reasoning.
+  dailyActionLimits: Record<string, number | null>;
   llmUnlocked: boolean;
   featureBullets: string[];
   stripePriceId: string | null;
@@ -651,8 +657,10 @@ export async function createPlan(input: PlanInput): Promise<ActionResult> {
         billing_period: input.billingPeriod,
         insider_connections_monthly_limit: Math.max(0, Math.round(input.insiderConnectionsMonthlyLimit)),
         company_research_monthly_limit: Math.max(0, Math.round(input.companyResearchMonthlyLimit)),
+        email_lookup_monthly_limit: Math.max(0, Math.round(input.emailLookupMonthlyLimit)),
         job_evaluations_daily_limit:
           input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
+        daily_action_limits: input.dailyActionLimits,
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,
@@ -694,8 +702,10 @@ export async function updatePlan(tier: string, input: Omit<PlanInput, "tier">): 
         billing_period: input.billingPeriod,
         insider_connections_monthly_limit: Math.max(0, Math.round(input.insiderConnectionsMonthlyLimit)),
         company_research_monthly_limit: Math.max(0, Math.round(input.companyResearchMonthlyLimit)),
+        email_lookup_monthly_limit: Math.max(0, Math.round(input.emailLookupMonthlyLimit)),
         job_evaluations_daily_limit:
           input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
+        daily_action_limits: input.dailyActionLimits,
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,

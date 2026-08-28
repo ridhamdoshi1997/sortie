@@ -19,11 +19,41 @@ import { TrendChart } from "@/components/admin/TrendChart";
 import type { AdminNoteRow, UserDetail } from "@/lib/admin/queries";
 import type { PlanConfig } from "@/lib/subscription";
 
-const OVERRIDE_TOGGLES: { key: FeatureOverrideKey; label: string }[] = [
-  { key: "insider_connections_override", label: "Insider connections" },
-  { key: "company_research_override", label: "Company research" },
-  { key: "job_evaluation_override", label: "Unlimited evaluations" },
-  { key: "llm_unlocked_override", label: "GPT-4o/Claude" },
+// describeDefault (direct user request, 2026-08-28) — these toggles grant an
+// ADDITIONAL override on top of whatever the user's actual plan already
+// includes, but previously showed no indication of what that already is.
+// A support admin looking at a Vanguard user (who already gets real
+// insider-connections/company-research/unlimited-evaluations/unlocked-LLM
+// access from the plan itself) would see every toggle read "Off" and could
+// mistakenly conclude the user has none of that — this makes the plan's own
+// baseline visible right on the toggle instead of admins having to
+// cross-reference /admin/billing separately.
+const OVERRIDE_TOGGLES: {
+  key: FeatureOverrideKey;
+  label: string;
+  describeDefault: (plan: PlanConfig | undefined) => string;
+}[] = [
+  {
+    key: "insider_connections_override",
+    label: "Insider connections",
+    describeDefault: (plan) => `plan default: ${plan ? `${plan.insiderConnectionsMonthlyLimit}/mo` : "—"}`,
+  },
+  {
+    key: "company_research_override",
+    label: "Company research",
+    describeDefault: (plan) => `plan default: ${plan ? `${plan.companyResearchMonthlyLimit}/mo` : "—"}`,
+  },
+  {
+    key: "job_evaluation_override",
+    label: "Unlimited evaluations",
+    describeDefault: (plan) =>
+      !plan ? "plan default: —" : plan.jobEvaluationsDailyLimit === null ? "plan default: already unlimited" : `plan default: ${plan.jobEvaluationsDailyLimit}/day`,
+  },
+  {
+    key: "llm_unlocked_override",
+    label: "GPT-4o/Claude",
+    describeDefault: (plan) => `plan default: ${plan?.llmUnlocked ? "already unlocked" : "locked"}`,
+  },
 ];
 
 // Real hydration-mismatch bug caught live: `toLocaleString(undefined, ...)`
@@ -273,21 +303,28 @@ export function UserDetailView({
             Per-user overrides — grant one feature regardless of plan (comp access, beta test, support goodwill)
           </p>
           <div className="flex flex-wrap gap-2">
-            {OVERRIDE_TOGGLES.map(({ key, label }) => {
+            {OVERRIDE_TOGGLES.map(({ key, label, describeDefault }) => {
               const active = detail.featureFlags[key] === true;
+              const currentPlan = plans.find((p) => p.tier === detail.subscriptionTier);
               return (
                 <button
                   key={key}
                   type="button"
                   disabled={isPending}
                   onClick={() => toggleOverride(key, !active)}
-                  className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
+                  title={describeDefault(currentPlan)}
+                  className={`flex flex-col items-start rounded-lg px-3 py-1.5 text-left text-xs font-medium transition-colors disabled:opacity-60 ${
                     active
                       ? "bg-agent-light text-agent-dark"
                       : "border border-border bg-surface text-text-secondary hover:bg-surface-secondary"
                   }`}
                 >
-                  {label}: {active ? "On" : "Off"}
+                  <span>
+                    {label}: {active ? "On (override)" : "Off"}
+                  </span>
+                  <span className={`text-[10px] font-normal ${active ? "text-agent-dark/70" : "text-text-muted"}`}>
+                    {describeDefault(currentPlan)}
+                  </span>
                 </button>
               );
             })}

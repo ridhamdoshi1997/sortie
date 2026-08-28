@@ -1,5 +1,6 @@
 import type { createInsforgeServer } from "@/lib/insforge-server";
 import { isAdminUser } from "@/lib/access";
+import { getUserSubscription, listPlans } from "@/lib/subscription";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -13,7 +14,6 @@ export type UsageAction =
   | "resume_extract"
   | "resume_analysis"
   | "resume_quality_analysis"
-  | "email_lookup"
   | "bullet_rewrite"
   | "rejection_intelligence"
   | "strategic_moat"
@@ -55,13 +55,6 @@ export const DAILY_LIMITS: Record<UsageAction, number> = {
   // observed pattern for the equivalent feature is 1-2/day free — matched
   // here rather than guessed.
   resume_quality_analysis: 3,
-  // Originally planned at ~$0.01/call via dev_fusion, but that actor is
-  // blocked on Apify's free plan for API calls — reworked to use
-  // HarvestAPI's own search actor instead (same vendor as everything else),
-  // which is closer to its ~$0.10/search-page rate per lookup. Capped down
-  // from the original 10/day to match the real cost, not the cheaper one
-  // originally planned.
-  email_lookup: 4,
   // Free-tier Gemini, no real $ cost — but still shares the same rate-limited
   // key as evaluation/extraction, and a single work-experience edit can
   // plausibly trigger several of these in a row (rewrite each bullet, then
@@ -191,7 +184,6 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   resume_extract: "resume imports",
   resume_analysis: "resume fit checks",
   resume_quality_analysis: "resume quality analyses",
-  email_lookup: "email lookups",
   bullet_rewrite: "AI bullet rewrites/generations",
   rejection_intelligence: "rejection diagnoses",
   strategic_moat: "strategic moat briefings",
@@ -218,7 +210,42 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   pipeline_strategy_read: "pipeline strategy reads",
 };
 
-type UsageResult = { allowed: true } | { allowed: false; error: string };
+// reason/resetsAt/canUpgrade added 2026-08-28 so the polished
+// LimitReachedModal (components/shared/LimitReachedModal.tsx) can render an
+// honest daily-cap message with a real reset time and only offer an
+// "Upgrade" CTA when a higher tier would actually raise THIS action's
+// limit — previously this just returned a plain error string.
+export type UsageResult =
+  | { allowed: true }
+  | {
+      allowed: false;
+      error: string;
+      // Only populated for the real daily-cap-reached path below — the
+      // kill-switch/suspension early-returns stay plain {allowed,error},
+      // since those aren't a "come back tomorrow" case the polished modal
+      // applies to.
+      reason?: "daily_cap_reached";
+      limit?: number;
+      planDisplayName?: string;
+      resetsAt?: string;
+      canUpgrade?: boolean;
+    };
+
+// True if any OTHER plan grants a strictly better effective daily limit for
+// this action than the one the user just hit — unlimited beats any number,
+// a higher number beats a lower one. Only called on the rare "just got
+// blocked" path, so the extra listPlans() query here doesn't add cost to
+// the common allowed case.
+async function higherTierExistsFor(insforge: Insforge, currentTier: string, action: UsageAction, currentLimit: number): Promise<boolean> {
+  const plans = await listPlans(insforge);
+  return plans.some((p) => {
+    if (p.tier === currentTier) return false;
+    const override = p.dailyActionLimits[action];
+    if (override === null) return true; // unlimited on that plan
+    const effective = override !== undefined ? override : DAILY_LIMITS[action];
+    return effective > currentLimit;
+  });
+}
 
 // Read-then-write, not an atomic upsert — an acceptable race window at this
 // scale (worst case a user squeezes in one extra call past a small daily
@@ -271,11 +298,24 @@ export async function checkAndConsumeUsage(
     return { allowed: true };
   }
 
+  // Per-plan override (2026-08-28) — falls back to the flat DAILY_LIMITS
+  // constant when this plan has no entry for this action (Recon/free never
+  // does; it IS the flat numbers). An explicit `null` override means
+  // unlimited on this plan, skipping the count read/write entirely — same
+  // "true unlimited" shape checkJobEvaluationLimit already uses for
+  // jobEvaluationsDailyLimit === null.
+  const { plan } = await getUserSubscription(insforge, userId, email);
+  const override = plan.dailyActionLimits[action];
+  if (override === null) {
+    return { allowed: true };
+  }
+
   // Rounds down, floor of 1 — a multiplier is meant to scale a cap up or
   // down, never to silently zero someone out (suspend already covers that
   // case explicitly and with a clear error message).
   const multiplier = profile?.custom_usage_multiplier ?? 1;
-  const limit = Math.max(1, Math.floor(DAILY_LIMITS[action] * multiplier));
+  const baseLimit = override !== undefined ? override : DAILY_LIMITS[action];
+  const limit = Math.max(1, Math.floor(baseLimit * multiplier));
   const today = new Date().toISOString().slice(0, 10);
 
   const { data: existing } = await insforge.database
@@ -288,9 +328,18 @@ export async function checkAndConsumeUsage(
 
   const currentCount = existing?.count ?? 0;
   if (currentCount >= limit) {
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
+    const canUpgrade = await higherTierExistsFor(insforge, plan.tier, action, limit);
     return {
       allowed: false,
-      error: `Daily limit reached for ${ACTION_LABELS[action]} (${limit}/day on the free plan) — try again tomorrow.`,
+      error: `Daily limit reached for ${ACTION_LABELS[action]} (${limit}/day on ${plan.displayName}) — resets tomorrow.`,
+      reason: "daily_cap_reached",
+      limit,
+      planDisplayName: plan.displayName,
+      resetsAt: tomorrow.toISOString(),
+      canUpgrade,
     };
   }
 

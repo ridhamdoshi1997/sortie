@@ -10,12 +10,25 @@ type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 // seeded defaults, not hardcoded elsewhere in this module.
 export type SubscriptionTier = string;
 
-export type PremiumFeature = "insider_connections" | "company_research";
+export type PremiumFeature = "insider_connections" | "company_research" | "email_lookup";
 
 export const PREMIUM_FEATURE_LABELS: Record<PremiumFeature, string> = {
   insider_connections: "insider connection lookups",
   company_research: "company research runs",
+  // Moved here from lib/usage.ts's flat DAILY_LIMITS (2026-08-28) — its real
+  // per-call cost (~$0.10) and low natural usage frequency fit a monthly
+  // cap far better than a daily-reset one, same reasoning insider_connections/
+  // company_research already established for this mechanism.
+  email_lookup: "email lookups",
 };
+
+// The ~30 lib/usage.ts UsageAction ids this plan overrides the daily cap
+// for — deliberately just Partial<Record<string, number | null>> rather than
+// importing UsageAction here (lib/usage.ts already imports FROM this module
+// for checkJobEvaluationLimit, so importing back would be circular). null =
+// unlimited for that action on this plan; an action absent from the map
+// falls back to lib/usage.ts's own DAILY_LIMITS constant.
+export type DailyActionLimits = Partial<Record<string, number | null>>;
 
 export type PlanConfig = {
   tier: string;
@@ -24,8 +37,10 @@ export type PlanConfig = {
   billingPeriod: "month" | "year" | "lifetime";
   insiderConnectionsMonthlyLimit: number;
   companyResearchMonthlyLimit: number;
+  emailLookupMonthlyLimit: number;
   // null = unlimited
   jobEvaluationsDailyLimit: number | null;
+  dailyActionLimits: DailyActionLimits;
   llmUnlocked: boolean;
   featureBullets: string[];
   // The Stripe Price that sells this plan (see the add-stripe-billing
@@ -47,7 +62,9 @@ type PlanRow = {
   billing_period: "month" | "year" | "lifetime";
   insider_connections_monthly_limit: number;
   company_research_monthly_limit: number;
+  email_lookup_monthly_limit: number;
   job_evaluations_daily_limit: number | null;
+  daily_action_limits: DailyActionLimits | null;
   llm_unlocked: boolean;
   feature_bullets: string[];
   stripe_price_id: string | null;
@@ -63,7 +80,9 @@ function mapPlanRow(row: PlanRow): PlanConfig {
     billingPeriod: row.billing_period,
     insiderConnectionsMonthlyLimit: row.insider_connections_monthly_limit,
     companyResearchMonthlyLimit: row.company_research_monthly_limit,
+    emailLookupMonthlyLimit: row.email_lookup_monthly_limit,
     jobEvaluationsDailyLimit: row.job_evaluations_daily_limit,
+    dailyActionLimits: row.daily_action_limits ?? {},
     llmUnlocked: row.llm_unlocked,
     featureBullets: row.feature_bullets ?? [],
     stripePriceId: row.stripe_price_id ?? null,
@@ -85,7 +104,9 @@ const SAFE_FALLBACK_PLAN: PlanConfig = {
   billingPeriod: "month",
   insiderConnectionsMonthlyLimit: 0,
   companyResearchMonthlyLimit: 0,
+  emailLookupMonthlyLimit: 10,
   jobEvaluationsDailyLimit: 3,
+  dailyActionLimits: {},
   llmUnlocked: false,
   featureBullets: [],
   stripePriceId: null,
@@ -103,7 +124,9 @@ const ADMIN_PLAN: PlanConfig = {
   billingPeriod: "month",
   insiderConnectionsMonthlyLimit: Number.POSITIVE_INFINITY,
   companyResearchMonthlyLimit: Number.POSITIVE_INFINITY,
+  emailLookupMonthlyLimit: Number.POSITIVE_INFINITY,
   jobEvaluationsDailyLimit: null,
+  dailyActionLimits: {},
   llmUnlocked: true,
   featureBullets: [],
   stripePriceId: null,
@@ -267,10 +290,27 @@ async function notifyUsageLimitReached(
 type CircuitBreakerResult =
   | { allowed: true }
   | { allowed: false; reason: "upgrade_required"; error: string }
-  | { allowed: false; reason: "monthly_cap_reached"; error: string; resetsAt: string };
+  // canUpgrade added 2026-08-28 — now that a plan ABOVE the mid tier
+  // (Ace) exists, a paid user hitting their monthly cap on a plan-scaled
+  // feature is no longer necessarily already on the best available tier
+  // for it (e.g. Command's 7 insider-connections/mo vs Ace's 15), so the
+  // modal needs a real per-case answer instead of assuming "monthly cap
+  // reached" always means "nothing higher to offer."
+  | { allowed: false; reason: "monthly_cap_reached"; error: string; resetsAt: string; canUpgrade: boolean };
 
 function planLimitFor(plan: PlanConfig, feature: PremiumFeature): number {
-  return feature === "insider_connections" ? plan.insiderConnectionsMonthlyLimit : plan.companyResearchMonthlyLimit;
+  if (feature === "insider_connections") return plan.insiderConnectionsMonthlyLimit;
+  if (feature === "email_lookup") return plan.emailLookupMonthlyLimit;
+  return plan.companyResearchMonthlyLimit;
+}
+
+// True if any OTHER plan grants a strictly higher limit for this premium
+// feature than the one the user just hit. Mirrors lib/usage.ts's own
+// higherTierExistsFor for the daily-action-limit system — same reasoning,
+// different data shape (a flat per-plan number here, not a per-action map).
+async function premiumFeatureHasHigherTier(insforge: Insforge, currentTier: string, feature: PremiumFeature, currentLimit: number): Promise<boolean> {
+  const plans = await listPlans(insforge);
+  return plans.some((p) => p.tier !== currentTier && planLimitFor(p, feature) > currentLimit);
 }
 
 // The circuit breaker for Apify/Browserbase — call this BEFORE the
@@ -318,11 +358,13 @@ export async function checkUsageLimit(
   const currentCount = existing?.count ?? 0;
   if (currentCount >= limit) {
     await notifyUsageLimitReached(insforge, userId, feature, periodStart, periodEnd.toISOString());
+    const canUpgrade = await premiumFeatureHasHigherTier(insforge, plan.tier, feature, limit);
     return {
       allowed: false,
       reason: "monthly_cap_reached",
       error: `Monthly limit reached for ${PREMIUM_FEATURE_LABELS[feature]} (${limit}/month on ${plan.displayName}) — resets ${periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric" })}.`,
       resetsAt: periodEnd.toISOString(),
+      canUpgrade,
     };
   }
 
@@ -373,7 +415,9 @@ export async function getPremiumFeatureStatus(
   return { tier, limit, used: data?.count ?? 0, resetsAt: periodEnd.toISOString() };
 }
 
-type JobEvaluationResult = { allowed: true } | { allowed: false; error: string };
+type JobEvaluationResult =
+  | { allowed: true }
+  | { allowed: false; error: string; reason?: "daily_cap_reached"; resetsAt?: string; canUpgrade?: boolean };
 
 // The circuit breaker for job evaluations — call this once per job about
 // to be sent through the AI evaluator (lib/actions/scraper.actions.ts's
@@ -433,9 +477,23 @@ export async function checkJobEvaluationLimit(
 
   const currentCount = existing?.count ?? 0;
   if (currentCount >= limit) {
+    const tomorrow = new Date();
+    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+    tomorrow.setUTCHours(0, 0, 0, 0);
+    // Every non-Recon plan today has jobEvaluationsDailyLimit === null
+    // (unlimited) — so hitting a real numeric cap here means a strictly
+    // better tier exists almost by definition. Checked properly anyway
+    // (not hardcoded true) so this stays correct if that ever changes.
+    const plans = await listPlans(insforge);
+    const canUpgrade = plans.some(
+      (p) => p.tier !== plan.tier && (p.jobEvaluationsDailyLimit === null || p.jobEvaluationsDailyLimit > limit),
+    );
     return {
       allowed: false,
-      error: `Daily limit reached for job evaluations (${limit}/day on ${plan.displayName}) — try again tomorrow.`,
+      error: `Daily limit reached for job evaluations (${limit}/day on ${plan.displayName}) — resets tomorrow.`,
+      reason: "daily_cap_reached",
+      resetsAt: tomorrow.toISOString(),
+      canUpgrade,
     };
   }
 
