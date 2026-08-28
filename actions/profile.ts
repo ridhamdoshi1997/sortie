@@ -124,6 +124,20 @@ type ProfileFormData = {
   salaryExpectation: string;
   preferredLocations: string[];
   coverLetterTone: string;
+  // Split contact fields (build-plan.md's "Profile field granularity" gap)
+  // — additive, optional, alongside fullName/phone/location above (those
+  // stay the primary fields, unchanged). A prerequisite for future
+  // ATS-autofill, not a replacement for the coarse fields every existing
+  // consumer (résumé PDF/DOCX, cover letters) already reads.
+  firstName: string;
+  middleName: string;
+  lastName: string;
+  phoneType: string;
+  phoneCountryCode: string;
+  addressLine: string;
+  addressCity: string;
+  addressStateProvince: string;
+  addressCountryRegion: string;
 };
 
 export async function saveProfile(
@@ -197,6 +211,15 @@ export async function saveProfile(
       preferred_locations: data.preferredLocations,
       cover_letter_tone: data.coverLetterTone || null,
       is_complete: isComplete,
+      first_name: data.firstName || null,
+      middle_name: data.middleName || null,
+      last_name: data.lastName || null,
+      phone_type: data.phoneType || null,
+      phone_country_code: data.phoneCountryCode || null,
+      address_line: data.addressLine || null,
+      address_city: data.addressCity || null,
+      address_state_province: data.addressStateProvince || null,
+      address_country_region: data.addressCountryRegion || null,
     };
 
     const { data: updated, error } = await insforge.database
@@ -239,6 +262,90 @@ export async function saveProfile(
   } catch (error) {
     console.error("[actions/profile] saveProfile", error);
     return { success: false, error: "Failed to save profile" };
+  }
+}
+
+export type EeocFormData = {
+  raceEthnicity: string;
+  gender: string;
+  veteranStatus: string;
+  disabilityStatus: string;
+};
+
+// Equal Employment Opportunity / voluntary self-identification — genuinely
+// sensitive data, kept as its own action deliberately separate from
+// saveProfile above so it can never be written as a side effect of an
+// unrelated "save my profile" click. `consent` must be explicitly true
+// (a real checkbox the user ticks, not a default) or nothing is written —
+// eeoc_consented_at is the durable record that consent was actually given,
+// not just implied by the fields being non-null.
+export async function saveEeocInfo(
+  data: EeocFormData,
+  consent: boolean,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  if (!consent) {
+    return { success: false, error: "Consent is required to save this information" };
+  }
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("profiles")
+      .update({
+        eeoc_race_ethnicity: data.raceEthnicity || null,
+        eeoc_gender: data.gender || null,
+        eeoc_veteran_status: data.veteranStatus || null,
+        eeoc_disability_status: data.disabilityStatus || null,
+        eeoc_consented_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("[actions/profile] saveEeocInfo", error);
+      return { success: false, error: "Failed to save this information" };
+    }
+
+    revalidatePath("/profile");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/profile] saveEeocInfo", error);
+    return { success: false, error: "Failed to save this information" };
+  }
+}
+
+// Withdraws EEOC consent and clears every field — a real "changed my mind"
+// path, not just a UI toggle. Clearing eeoc_consented_at means the profile
+// UI's consent gate re-engages: the fields go back to hidden-until-consent.
+export async function clearEeocInfo(): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { error } = await insforge.database
+      .from("profiles")
+      .update({
+        eeoc_race_ethnicity: null,
+        eeoc_gender: null,
+        eeoc_veteran_status: null,
+        eeoc_disability_status: null,
+        eeoc_consented_at: null,
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("[actions/profile] clearEeocInfo", error);
+      return { success: false, error: "Failed to clear this information" };
+    }
+
+    revalidatePath("/profile");
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/profile] clearEeocInfo", error);
+    return { success: false, error: "Failed to clear this information" };
   }
 }
 

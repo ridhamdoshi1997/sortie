@@ -20,6 +20,7 @@ import {
   MapPin,
   Phone,
   Plus,
+  Shield,
   Split,
   RefreshCw,
   Sparkles,
@@ -27,7 +28,7 @@ import {
   Trash2,
 } from "lucide-react";
 
-import { generateBullets, rewriteBullet, saveProfile, splitBullet } from "@/actions/profile";
+import { clearEeocInfo, generateBullets, rewriteBullet, saveEeocInfo, saveProfile, splitBullet } from "@/actions/profile";
 import type { ExtractedProfile } from "@/actions/profile";
 import type { ResumeRow } from "@/actions/resumes";
 import { toHref } from "@/lib/utils";
@@ -90,8 +91,35 @@ const EXPERIENCE_LEVELS = ["Junior", "Mid-Level", "Senior", "Lead", "Manager", "
 const WORK_AUTH_OPTIONS = ["Citizen", "Permanent Resident", "Work Visa (H1B)", "Work Visa (Other)", "Student Visa (OPT/CPT)", "Requires Sponsorship"];
 const REMOTE_OPTIONS = ["Any", "Remote Only", "Hybrid", "On-site"];
 const TONE_OPTIONS = ["Professional", "Conversational", "Enthusiastic", "Concise"];
+const PHONE_TYPE_OPTIONS = ["Mobile", "Home", "Work"];
 
-type SectionId = "personal" | "professional" | "education" | "certifications" | "work" | "preferences";
+// Standard US EEOC voluntary self-ID options (build-plan.md Teardown row) —
+// same shape most ATS applications (Workday/Greenhouse/Lever) use for this.
+// "Prefer not to answer" is always present and is the safe default; nothing
+// here is ever required.
+const RACE_ETHNICITY_OPTIONS = [
+  "Asian",
+  "Black or African American",
+  "Hispanic or Latino",
+  "Native American or Alaska Native",
+  "Native Hawaiian or Pacific Islander",
+  "White",
+  "Two or More Races",
+  "Prefer not to answer",
+];
+const GENDER_OPTIONS = ["Male", "Female", "Non-binary", "Prefer not to answer"];
+const VETERAN_STATUS_OPTIONS = [
+  "I am not a protected veteran",
+  "I identify as one or more of the classifications of a protected veteran",
+  "I don't wish to answer",
+];
+const DISABILITY_STATUS_OPTIONS = [
+  "Yes, I have a disability (or previously had one)",
+  "No, I don't have a disability",
+  "I don't wish to answer",
+];
+
+type SectionId = "personal" | "professional" | "education" | "certifications" | "work" | "preferences" | "eeoc";
 
 // Animated popover date picker — replaces two plain native <select>s with a
 // single trigger + a month-grid/year-stepper panel, matching the app's own
@@ -302,6 +330,30 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
   const [portfolioUrl, setPortfolioUrl] = useState(profile?.portfolio_url ?? "");
   const [workAuth, setWorkAuth] = useState(profile?.work_authorization ?? "");
 
+  // Split contact fields (build-plan.md's "Profile field granularity" gap)
+  // — optional, additive alongside fullName/phone/location above.
+  const [firstName, setFirstName] = useState(profile?.first_name ?? "");
+  const [middleName, setMiddleName] = useState(profile?.middle_name ?? "");
+  const [lastName, setLastName] = useState(profile?.last_name ?? "");
+  const [phoneType, setPhoneType] = useState(profile?.phone_type ?? "");
+  const [phoneCountryCode, setPhoneCountryCode] = useState(profile?.phone_country_code ?? "");
+  const [addressLine, setAddressLine] = useState(profile?.address_line ?? "");
+  const [addressCity, setAddressCity] = useState(profile?.address_city ?? "");
+  const [addressStateProvince, setAddressStateProvince] = useState(profile?.address_state_province ?? "");
+  const [addressCountryRegion, setAddressCountryRegion] = useState(profile?.address_country_region ?? "");
+
+  // Equal Employment Opportunity — deliberately its own local state and its
+  // own save path (handleSaveEeoc below), never folded into saveAll/
+  // saveProfile. eeocConsented mirrors the real DB gate (eeoc_consented_at)
+  // so the fields stay hidden-until-consent even before any save.
+  const [eeocConsented, setEeocConsented] = useState(Boolean(profile?.eeoc_consented_at));
+  const [raceEthnicity, setRaceEthnicity] = useState(profile?.eeoc_race_ethnicity ?? "");
+  const [gender, setGender] = useState(profile?.eeoc_gender ?? "");
+  const [veteranStatus, setVeteranStatus] = useState(profile?.eeoc_veteran_status ?? "");
+  const [disabilityStatus, setDisabilityStatus] = useState(profile?.eeoc_disability_status ?? "");
+  const [eeocSaving, setEeocSaving] = useState(false);
+  const [eeocError, setEeocError] = useState<string | null>(null);
+
   // Professional Info
   const [currentTitle, setCurrentTitle] = useState(profile?.current_title ?? "");
   const [experienceLevel, setExperienceLevel] = useState(profile?.experience_level ?? "");
@@ -455,6 +507,15 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
         salaryExpectation,
         preferredLocations,
         coverLetterTone,
+        firstName,
+        middleName,
+        lastName,
+        phoneType,
+        phoneCountryCode,
+        addressLine,
+        addressCity,
+        addressStateProvince,
+        addressCountryRegion,
       });
 
       if (result.success) {
@@ -468,10 +529,53 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
   function closeModal() {
     setEditingSection(null);
     setSaveError(null);
+    setEeocError(null);
   }
 
   function handleSectionSave() {
     saveAll(() => setEditingSection(null));
+  }
+
+  // Deliberately not routed through saveAll/saveProfile — a separate action
+  // (saveEeocInfo) so this sensitive data is never written as a side effect
+  // of some other section's save, and so consent is checked server-side too,
+  // not just gated by this button being disabled.
+  async function handleSaveEeoc() {
+    setEeocError(null);
+    setEeocSaving(true);
+    try {
+      const result = await saveEeocInfo(
+        { raceEthnicity, gender, veteranStatus, disabilityStatus },
+        eeocConsented,
+      );
+      if (result.success) {
+        setEditingSection(null);
+      } else {
+        setEeocError(result.error ?? "Failed to save");
+      }
+    } finally {
+      setEeocSaving(false);
+    }
+  }
+
+  async function handleClearEeoc() {
+    setEeocError(null);
+    setEeocSaving(true);
+    try {
+      const result = await clearEeocInfo();
+      if (result.success) {
+        setEeocConsented(false);
+        setRaceEthnicity("");
+        setGender("");
+        setVeteranStatus("");
+        setDisabilityStatus("");
+        setEditingSection(null);
+      } else {
+        setEeocError(result.error ?? "Failed to clear");
+      }
+    } finally {
+      setEeocSaving(false);
+    }
   }
 
   return (
@@ -568,6 +672,18 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
                         </span>
                       ))}
                     </div>
+                  )}
+                </SummaryCard>
+
+                <SummaryCard
+                  icon={Shield}
+                  title="Equal Employment (Voluntary)"
+                  onEdit={() => setEditingSection("eeoc")}
+                >
+                  {eeocConsented && (raceEthnicity || gender || veteranStatus || disabilityStatus) ? (
+                    <p className="text-sm text-text-secondary">Provided — visible only to you, never used to score or match jobs.</p>
+                  ) : (
+                    <EmptyHint>Optional and never required. Standard EEOC self-ID fields some employers request.</EmptyHint>
                   )}
                 </SummaryCard>
               </div>
@@ -738,6 +854,55 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
               <FormLabel>Work Authorization</FormLabel>
               <div className="max-w-xs">
                 <FormSelect options={WORK_AUTH_OPTIONS} value={workAuth} onChange={setWorkAuth} placeholder="Select..." />
+              </div>
+            </div>
+          </div>
+
+          {/* Split contact fields, optional — a prerequisite for future
+              application autofill (Workday/Greenhouse/Lever forms ask for
+              these separately), not a replacement for Full Name/Phone/
+              Location above, which stay what every résumé/cover-letter
+              export actually reads. */}
+          <div className="mt-6 border-t border-border pt-5">
+            <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+              Name &amp; address breakdown <span className="normal-case text-text-muted/70">(optional — powers future application autofill)</span>
+            </p>
+            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <div>
+                <FormLabel>First Name</FormLabel>
+                <FormInput placeholder="Jane" value={firstName} onChange={setFirstName} />
+              </div>
+              <div>
+                <FormLabel>Middle Name</FormLabel>
+                <FormInput placeholder="Optional" value={middleName} onChange={setMiddleName} />
+              </div>
+              <div>
+                <FormLabel>Last Name</FormLabel>
+                <FormInput placeholder="Smith" value={lastName} onChange={setLastName} />
+              </div>
+              <div>
+                <FormLabel>Phone Type</FormLabel>
+                <FormSelect options={PHONE_TYPE_OPTIONS} value={phoneType} onChange={setPhoneType} placeholder="Select..." />
+              </div>
+              <div>
+                <FormLabel>Phone Country Code</FormLabel>
+                <FormInput placeholder="+1" value={phoneCountryCode} onChange={setPhoneCountryCode} />
+              </div>
+              <div className="sm:col-span-3">
+                <FormLabel>Address Line</FormLabel>
+                <FormInput placeholder="123 Main St, Apt 4B" value={addressLine} onChange={setAddressLine} />
+              </div>
+              <div>
+                <FormLabel>City</FormLabel>
+                <FormInput placeholder="New York" value={addressCity} onChange={setAddressCity} />
+              </div>
+              <div>
+                <FormLabel>State / Province</FormLabel>
+                <FormInput placeholder="NY" value={addressStateProvince} onChange={setAddressStateProvince} />
+              </div>
+              <div>
+                <FormLabel>Country / Region</FormLabel>
+                <FormInput placeholder="United States" value={addressCountryRegion} onChange={setAddressCountryRegion} />
               </div>
             </div>
           </div>
@@ -1000,6 +1165,67 @@ export function ProfileForm({ profile, formRef, initialResumes = [] }: Props) {
             </button>
           </div>
           {saveError && <p className="mt-4 text-sm text-error">{saveError}</p>}
+        </SectionModal>
+      )}
+
+      {editingSection === "eeoc" && (
+        <SectionModal
+          title="Equal Employment Opportunity (Voluntary)"
+          onClose={closeModal}
+          onSave={handleSaveEeoc}
+          saving={eeocSaving}
+        >
+          <div className="rounded-xl border border-border bg-surface-secondary/50 p-4 text-sm text-text-secondary">
+            <p>
+              This is entirely voluntary. Some employers request this standard self-identification data on their
+              own application forms — Sortie never uses it to score, match, or rank jobs for you, and never shares
+              it with anyone. You can withdraw and clear this data at any time.
+            </p>
+            <label className="mt-3 flex cursor-pointer items-start gap-2.5">
+              <input
+                type="checkbox"
+                checked={eeocConsented}
+                onChange={(e) => setEeocConsented(e.target.checked)}
+                className="mt-0.5 accent-accent"
+              />
+              <span className="text-sm font-medium text-text-primary">
+                I voluntarily choose to provide this information.
+              </span>
+            </label>
+          </div>
+
+          <div className={`mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 ${eeocConsented ? "" : "pointer-events-none opacity-40"}`}>
+            <div>
+              <FormLabel>Race / Ethnicity</FormLabel>
+              <FormSelect options={RACE_ETHNICITY_OPTIONS} value={raceEthnicity} onChange={setRaceEthnicity} placeholder="Prefer not to answer" />
+            </div>
+            <div>
+              <FormLabel>Gender</FormLabel>
+              <FormSelect options={GENDER_OPTIONS} value={gender} onChange={setGender} placeholder="Prefer not to answer" />
+            </div>
+            <div>
+              <FormLabel>Veteran Status</FormLabel>
+              <FormSelect options={VETERAN_STATUS_OPTIONS} value={veteranStatus} onChange={setVeteranStatus} placeholder="I don't wish to answer" />
+            </div>
+            <div>
+              <FormLabel>Disability Status</FormLabel>
+              <FormSelect options={DISABILITY_STATUS_OPTIONS} value={disabilityStatus} onChange={setDisabilityStatus} placeholder="I don't wish to answer" />
+            </div>
+          </div>
+
+          {Boolean(profile?.eeoc_consented_at) && (
+            <button
+              type="button"
+              onClick={handleClearEeoc}
+              disabled={eeocSaving}
+              className="mt-4 inline-flex items-center gap-1.5 text-xs font-medium text-error transition-opacity hover:opacity-75 disabled:opacity-50"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Withdraw consent and clear this data
+            </button>
+          )}
+
+          {eeocError && <p className="mt-4 text-sm text-error">{eeocError}</p>}
         </SectionModal>
       )}
 

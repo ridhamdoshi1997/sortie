@@ -64,6 +64,30 @@ export interface Profile {
   google_calendar_connected_at: string | null;
   outlook_refresh_token: string | null;
   outlook_connected_at: string | null;
+  // Split contact fields (build-plan.md's "Profile field granularity" gap)
+  // — additive, optional. full_name/phone/location above stay the primary
+  // fields every existing consumer (résumé PDF/DOCX, cover letters,
+  // onboarding) reads unchanged; these exist so a future ATS-autofill
+  // feature has the finer-grained data Workday/Greenhouse/Lever forms
+  // actually ask for, without a breaking schema rewrite.
+  first_name: string | null;
+  middle_name: string | null;
+  last_name: string | null;
+  phone_type: string | null;
+  phone_country_code: string | null;
+  address_line: string | null;
+  address_city: string | null;
+  address_state_province: string | null;
+  address_country_region: string | null;
+  // Equal Employment Opportunity / voluntary self-identification — genuinely
+  // sensitive, never read by any AI prompt or export. eeoc_consented_at is
+  // the real gate: the UI only allows editing these after an explicit,
+  // separate consent action, never bundled into the general profile save.
+  eeoc_race_ethnicity: string | null;
+  eeoc_gender: string | null;
+  eeoc_veteran_status: string | null;
+  eeoc_disability_status: string | null;
+  eeoc_consented_at: string | null;
 }
 
 export interface WorkExperience {
