@@ -2,9 +2,9 @@ import { Check } from "lucide-react";
 
 import { TrackedCtaLink } from "@/components/homepage/TrackedCtaLink";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
-import { getPlansForPricing } from "@/actions/billing";
+import { getPlansForPricing, type PricedPlan } from "@/actions/billing";
 import { getCurrentUser } from "@/lib/auth";
-import type { PlanConfig } from "@/lib/subscription";
+import { formatPriceCents } from "@/lib/regionalPricing";
 
 // Rebuilt for build-plan.md §S, then wired to real live plan data for §J
 // (2026-08-21) — the paid tier's price/limits/bullets come from
@@ -26,7 +26,7 @@ const FREE_INCLUDES = [
 // /admin/billing now just shows up here without touching this component
 // again. Vanguard-style scarcity-capped plans get a progress bar and lock
 // into a real "Sold out" state instead of a checkout button once claimed.
-function PaidPlanCard({ plan, isAuthenticated }: { plan: PlanConfig; isAuthenticated: boolean }) {
+function PaidPlanCard({ plan, isAuthenticated }: { plan: PricedPlan; isAuthenticated: boolean }) {
   const isLifetime = plan.billingPeriod === "lifetime";
   const isSoldOut = plan.maxSeats !== null && plan.seatsClaimed >= plan.maxSeats;
 
@@ -48,7 +48,7 @@ function PaidPlanCard({ plan, isAuthenticated }: { plan: PlanConfig; isAuthentic
       <div className="flex-1">
         <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-agent">{plan.displayName}</p>
         <p className="mt-2 text-3xl font-bold text-text-primary">
-          ${(plan.priceCents / 100).toFixed(0)}
+          {formatPriceCents(plan.displayPriceCents, plan.displayCurrency)}
           <span className="text-base font-medium text-text-secondary">{isLifetime ? " once" : `/${plan.billingPeriod}`}</span>
         </p>
         <p className="mt-1 text-sm text-text-secondary">

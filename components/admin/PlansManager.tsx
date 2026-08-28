@@ -6,7 +6,15 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { createPlan, deletePlan, updatePlan, type PlanInput } from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ACTION_LABELS, DAILY_LIMITS, type UsageAction } from "@/lib/usage";
+import { REGION_LABELS, type RegionKey } from "@/lib/regionalPricing";
 import type { PlanConfig } from "@/lib/subscription";
+
+// Country/region-aware pricing (direct user request, 2026-08-28) — the
+// known region-key set the admin editor renders rows for. Fixed (not
+// derived from the plan's own regional_prices, which starts empty on every
+// plan) so every plan's form shows the same rows, same reasoning ACTION_KEYS
+// already established for DailyActionLimitsEditor.
+const REGION_KEYS = Object.keys(REGION_LABELS) as RegionKey[];
 
 // One text field per lib/usage.ts action (direct user request, 2026-08-28,
 // "full ability to control all the features and limits" from the admin
@@ -27,6 +35,11 @@ type DraftPlan = {
   emailLookupMonthlyLimit: number;
   jobEvaluationsDailyLimitInput: string; // "" means unlimited (null)
   dailyActionLimitsInput: Record<string, string>; // "" = default, "unlimited" = null, else a number
+  // Country/region-aware pricing (direct user request, 2026-08-28) — blank
+  // priceInput = no override for that region, falls back to the plan's
+  // base price/Stripe Price ID above. Same string-sentinel convention
+  // dailyActionLimitsInput already established.
+  regionalPricesInput: Record<RegionKey, { priceInput: string; currency: string; stripePriceIdInput: string }>;
   llmUnlocked: boolean;
   featureBulletsText: string; // one bullet per line
   stripePriceId: string;
@@ -50,6 +63,19 @@ function toDraft(plan: PlanConfig): DraftPlan {
         return [action, override === undefined ? "" : override === null ? "unlimited" : String(override)];
       }),
     ),
+    regionalPricesInput: Object.fromEntries(
+      REGION_KEYS.map((region) => {
+        const override = plan.regionalPrices[region];
+        return [
+          region,
+          {
+            priceInput: override ? (override.priceCents / 100).toFixed(2) : "",
+            currency: override?.currency ?? (region === "in" ? "inr" : "usd"),
+            stripePriceIdInput: override?.stripePriceId ?? "",
+          },
+        ];
+      }),
+    ) as DraftPlan["regionalPricesInput"],
     llmUnlocked: plan.llmUnlocked,
     featureBulletsText: plan.featureBullets.join("\n"),
     stripePriceId: plan.stripePriceId ?? "",
@@ -73,6 +99,20 @@ function parseDailyActionLimits(input: Record<string, string>): Record<string, n
   return result;
 }
 
+function parseRegionalPrices(
+  input: Record<RegionKey, { priceInput: string; currency: string; stripePriceIdInput: string }>,
+): Record<string, { priceCents: number; currency: string; stripePriceId: string | null }> {
+  const result: Record<string, { priceCents: number; currency: string; stripePriceId: string | null }> = {};
+  for (const [region, { priceInput, currency, stripePriceIdInput }] of Object.entries(input)) {
+    const trimmed = priceInput.trim();
+    if (trimmed === "") continue; // no override — falls back to the plan's base price
+    const priceCents = Math.max(0, Math.round(Number(trimmed) * 100));
+    if (!Number.isFinite(priceCents)) continue;
+    result[region] = { priceCents, currency: currency.trim().toLowerCase() || "usd", stripePriceId: stripePriceIdInput.trim() || null };
+  }
+  return result;
+}
+
 function draftToInput(draft: DraftPlan): Omit<PlanInput, "tier"> {
   return {
     displayName: draft.displayName,
@@ -83,6 +123,7 @@ function draftToInput(draft: DraftPlan): Omit<PlanInput, "tier"> {
     emailLookupMonthlyLimit: draft.emailLookupMonthlyLimit,
     jobEvaluationsDailyLimit: draft.jobEvaluationsDailyLimitInput.trim() === "" ? null : Number(draft.jobEvaluationsDailyLimitInput),
     dailyActionLimits: parseDailyActionLimits(draft.dailyActionLimitsInput),
+    regionalPrices: parseRegionalPrices(draft.regionalPricesInput),
     llmUnlocked: draft.llmUnlocked,
     featureBullets: draft.featureBulletsText.split("\n").map((b) => b.trim()).filter(Boolean),
     stripePriceId: draft.stripePriceId.trim() || null,
@@ -100,6 +141,9 @@ const EMPTY_DRAFT: DraftPlan = {
   emailLookupMonthlyLimit: 10,
   jobEvaluationsDailyLimitInput: "3",
   dailyActionLimitsInput: Object.fromEntries(ACTION_KEYS.map((action) => [action, ""])),
+  regionalPricesInput: Object.fromEntries(
+    REGION_KEYS.map((region) => [region, { priceInput: "", currency: region === "in" ? "inr" : "usd", stripePriceIdInput: "" }]),
+  ) as DraftPlan["regionalPricesInput"],
   llmUnlocked: false,
   featureBulletsText: "",
   stripePriceId: "",
@@ -144,6 +188,66 @@ function DailyActionLimitsEditor({
           ))}
           <p className="sm:col-span-2 text-[10px] text-text-muted">
             Blank = plan uses the app-wide default shown above. Type a number to override, or &quot;unlimited&quot; for no cap.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RegionalPricingEditor({
+  values,
+  onChange,
+}: {
+  values: Record<RegionKey, { priceInput: string; currency: string; stripePriceIdInput: string }>;
+  onChange: (values: Record<RegionKey, { priceInput: string; currency: string; stripePriceIdInput: string }>) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const configuredCount = Object.values(values).filter((v) => v.priceInput.trim() !== "").length;
+
+  return (
+    <div className="sm:col-span-2">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-text-muted hover:text-text-secondary"
+      >
+        Regional pricing {configuredCount > 0 && `(${configuredCount} configured)`} {open ? "▾" : "▸"}
+      </button>
+      {open && (
+        <div className="flex flex-col gap-3 rounded-lg border border-border bg-surface-secondary p-3">
+          {REGION_KEYS.map((region) => {
+            const row = values[region] ?? { priceInput: "", currency: "usd", stripePriceIdInput: "" };
+            return (
+              <div key={region} className="grid grid-cols-[1fr_auto_auto] items-center gap-2">
+                <label className="min-w-0 truncate text-[11px] text-text-secondary" title={REGION_LABELS[region]}>
+                  {REGION_LABELS[region]}
+                </label>
+                <input
+                  value={row.priceInput}
+                  onChange={(e) => onChange({ ...values, [region]: { ...row, priceInput: e.target.value } })}
+                  placeholder="base price"
+                  className="h-7 w-20 shrink-0 rounded-md border border-border bg-surface px-2 text-[11px] text-text-primary outline-none focus-visible:border-accent"
+                />
+                <input
+                  value={row.currency}
+                  onChange={(e) => onChange({ ...values, [region]: { ...row, currency: e.target.value } })}
+                  placeholder="usd"
+                  className="h-7 w-14 shrink-0 rounded-md border border-border bg-surface px-2 text-[11px] uppercase text-text-primary outline-none focus-visible:border-accent"
+                />
+                <input
+                  value={row.stripePriceIdInput}
+                  onChange={(e) => onChange({ ...values, [region]: { ...row, stripePriceIdInput: e.target.value } })}
+                  placeholder="price_... (Stripe Price for this region)"
+                  className="col-span-3 h-7 w-full rounded-md border border-border bg-surface px-2 font-mono text-[11px] text-text-primary outline-none focus-visible:border-accent"
+                />
+              </div>
+            );
+          })}
+          <p className="text-[10px] text-text-muted">
+            Blank price = this region falls back to the plan&apos;s base USD price above. A price with no Stripe Price ID
+            shows on /pricing but isn&apos;t checkout-able yet — create the real Price in Stripe first (test mode while
+            building), then paste its ID here.
           </p>
         </div>
       )}
@@ -301,6 +405,10 @@ function PlanForm({
         <DailyActionLimitsEditor
           values={draft.dailyActionLimitsInput}
           onChange={(values) => onChange({ ...draft, dailyActionLimitsInput: values })}
+        />
+        <RegionalPricingEditor
+          values={draft.regionalPricesInput}
+          onChange={(values) => onChange({ ...draft, regionalPricesInput: values })}
         />
       </div>
 

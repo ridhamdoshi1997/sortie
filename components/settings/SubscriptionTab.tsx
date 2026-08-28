@@ -3,10 +3,10 @@
 import { useEffect, useState, useTransition } from "react";
 import { ArrowDownCircle, Check, CreditCard, Loader2, PartyPopper } from "lucide-react";
 
-import { createBillingPortalSessionAction, getBillingSummary, getPlansForPricing, type BillingSummary } from "@/actions/billing";
+import { createBillingPortalSessionAction, getBillingSummary, getPlansForPricing, type BillingSummary, type PricedPlan } from "@/actions/billing";
 import { UpgradeButton } from "@/components/billing/UpgradeButton";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
-import type { PlanConfig } from "@/lib/subscription";
+import { formatPriceCents } from "@/lib/regionalPricing";
 
 type PlanAction = "current" | "upgrade" | "downgrade" | "unavailable" | "buy_once" | "sold_out";
 
@@ -16,7 +16,13 @@ type PlanAction = "current" | "upgrade" | "downgrade" | "unavailable" | "buy_onc
 // ($149 once vs. $15/month aren't the same axis), and there's no Stripe
 // subscription behind a one-time payment for the portal's downgrade flow
 // to act on. Always routed through checkout directly instead.
-function actionFor(plan: PlanConfig, currentPriceCents: number, isCurrent: boolean): PlanAction {
+//
+// Deliberately compares the base priceCents, never displayPriceCents — a
+// regional discount must never flip upgrade/downgrade classification (a
+// India-priced Command should still read as an upgrade from free Recon,
+// not accidentally look like a downgrade because its displayed number is
+// lower than some other plan's base USD price).
+function actionFor(plan: PricedPlan, currentPriceCents: number, isCurrent: boolean): PlanAction {
   if (isCurrent) return "current";
   if (plan.billingPeriod === "lifetime") {
     if (!plan.stripePriceId) return "unavailable";
@@ -33,10 +39,10 @@ function PlanCard({
   action,
   onDowngradeClick,
 }: {
-  plan: PlanConfig;
+  plan: PricedPlan;
   isCurrent: boolean;
   action: PlanAction;
-  onDowngradeClick: (plan: PlanConfig) => void;
+  onDowngradeClick: (plan: PricedPlan) => void;
 }) {
   return (
     <div
@@ -65,7 +71,7 @@ function PlanCard({
         {plan.displayName}
       </p>
       <p className={`mt-2 text-2xl font-bold ${isCurrent ? "text-text-primary" : "text-text-secondary"}`}>
-        {plan.priceCents === 0 ? "$0" : `$${(plan.priceCents / 100).toFixed(0)}`}
+        {plan.priceCents === 0 ? "$0" : formatPriceCents(plan.displayPriceCents, plan.displayCurrency)}
         {plan.priceCents > 0 && plan.billingPeriod !== "lifetime" && (
           <span className="text-sm font-medium text-text-secondary">/{plan.billingPeriod}</span>
         )}
@@ -127,7 +133,7 @@ function PlanCard({
             tier={plan.tier}
             className="btn-signal w-full rounded-md px-3 py-2 text-xs font-semibold text-accent-foreground disabled:opacity-60"
           >
-            Buy {plan.displayName} — ${(plan.priceCents / 100).toFixed(0)} once
+            Buy {plan.displayName} — {formatPriceCents(plan.displayPriceCents, plan.displayCurrency)} once
           </UpgradeButton>
         )}
         {action === "sold_out" && (
@@ -158,13 +164,13 @@ function PlanCard({
 // second, riskier implementation of something Stripe already gets right.
 export function SubscriptionTab() {
   const [summary, setSummary] = useState<BillingSummary | null>(null);
-  const [plans, setPlans] = useState<PlanConfig[] | null>(null);
+  const [plans, setPlans] = useState<PricedPlan[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [portalError, setPortalError] = useState<string | null>(null);
   const [showUpgradedBanner] = useState(
     () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("upgraded") === "1",
   );
-  const [downgradeTarget, setDowngradeTarget] = useState<PlanConfig | null>(null);
+  const [downgradeTarget, setDowngradeTarget] = useState<PricedPlan | null>(null);
   const [isPending, startTransition] = useTransition();
 
   useEffect(() => {

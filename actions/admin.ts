@@ -618,6 +618,11 @@ export type PlanInput = {
   // explicit null = unlimited on this plan. See the
   // add-ace-tier-and-daily-action-limits migration for the full reasoning.
   dailyActionLimits: Record<string, number | null>;
+  // Country/region-aware pricing (direct user request, 2026-08-28) — a
+  // per-plan override map keyed by an arbitrary region code (see
+  // lib/regionalPricing.ts's COUNTRY_REGION_KEY). Absent key = that region
+  // falls back to this plan's own base priceCents/stripePriceId above.
+  regionalPrices: Record<string, { priceCents: number; currency: string; stripePriceId: string | null }>;
   llmUnlocked: boolean;
   featureBullets: string[];
   stripePriceId: string | null;
@@ -661,6 +666,7 @@ export async function createPlan(input: PlanInput): Promise<ActionResult> {
         job_evaluations_daily_limit:
           input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
         daily_action_limits: input.dailyActionLimits,
+        regional_prices: input.regionalPrices,
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,
@@ -706,6 +712,7 @@ export async function updatePlan(tier: string, input: Omit<PlanInput, "tier">): 
         job_evaluations_daily_limit:
           input.jobEvaluationsDailyLimit === null ? null : Math.max(0, Math.round(input.jobEvaluationsDailyLimit)),
         daily_action_limits: input.dailyActionLimits,
+        regional_prices: input.regionalPrices,
         llm_unlocked: input.llmUnlocked,
         feature_bullets: input.featureBullets.filter((b) => b.trim().length > 0),
         stripe_price_id: input.stripePriceId?.trim() || null,

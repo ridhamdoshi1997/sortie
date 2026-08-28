@@ -31,6 +31,17 @@ export const PREMIUM_FEATURE_LABELS: Record<PremiumFeature, string> = {
 // falls back to lib/usage.ts's own DAILY_LIMITS constant.
 export type DailyActionLimits = Partial<Record<string, number | null>>;
 
+// Country/region-aware pricing (direct user request, 2026-08-28) — a flat
+// per-plan override map keyed by an arbitrary region code (see
+// lib/regionalPricing.ts's COUNTRY_REGION_KEY for the code→region mapping),
+// same "admin overwrites the whole thing on save" convention
+// dailyActionLimits already established. An absent region key means that
+// region falls back to this plan's own base priceCents/stripePriceId —
+// additive, never retroactively repricing anyone.
+export type RegionalPrices = Partial<
+  Record<string, { priceCents: number; currency: string; stripePriceId: string | null }>
+>;
+
 export type PlanConfig = {
   tier: string;
   displayName: string;
@@ -42,6 +53,7 @@ export type PlanConfig = {
   // null = unlimited
   jobEvaluationsDailyLimit: number | null;
   dailyActionLimits: DailyActionLimits;
+  regionalPrices: RegionalPrices;
   llmUnlocked: boolean;
   featureBullets: string[];
   // The Stripe Price that sells this plan (see the add-stripe-billing
@@ -66,6 +78,7 @@ type PlanRow = {
   email_lookup_monthly_limit: number;
   job_evaluations_daily_limit: number | null;
   daily_action_limits: DailyActionLimits | null;
+  regional_prices: RegionalPrices | null;
   llm_unlocked: boolean;
   feature_bullets: string[];
   stripe_price_id: string | null;
@@ -84,6 +97,7 @@ function mapPlanRow(row: PlanRow): PlanConfig {
     emailLookupMonthlyLimit: row.email_lookup_monthly_limit,
     jobEvaluationsDailyLimit: row.job_evaluations_daily_limit,
     dailyActionLimits: row.daily_action_limits ?? {},
+    regionalPrices: row.regional_prices ?? {},
     llmUnlocked: row.llm_unlocked,
     featureBullets: row.feature_bullets ?? [],
     stripePriceId: row.stripe_price_id ?? null,
@@ -108,6 +122,7 @@ const SAFE_FALLBACK_PLAN: PlanConfig = {
   emailLookupMonthlyLimit: 10,
   jobEvaluationsDailyLimit: 3,
   dailyActionLimits: {},
+  regionalPrices: {},
   llmUnlocked: false,
   featureBullets: [],
   stripePriceId: null,
@@ -128,6 +143,7 @@ const ADMIN_PLAN: PlanConfig = {
   emailLookupMonthlyLimit: Number.POSITIVE_INFINITY,
   jobEvaluationsDailyLimit: null,
   dailyActionLimits: {},
+  regionalPrices: {},
   llmUnlocked: true,
   featureBullets: [],
   stripePriceId: null,

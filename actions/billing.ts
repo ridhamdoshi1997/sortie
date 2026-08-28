@@ -5,6 +5,8 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { getPlan, getPremiumFeatureStatus, getUserSubscription, listPlans, type PlanConfig } from "@/lib/subscription";
 import { getSiteUrl } from "@/lib/siteUrl";
 import { toUserMessage } from "@/lib/errors";
+import { getRequestCountry } from "@/lib/geo";
+import { regionKeyForCountry, resolveDisplayPrice, resolveStripePriceId } from "@/lib/regionalPricing";
 
 type ActionResult = { success: true; url: string } | { success: false; error: string };
 
@@ -56,13 +58,26 @@ export async function getBillingSummary(): Promise<{ success: true; data: Billin
   }
 }
 
+// Country/region-aware pricing (direct user request, 2026-08-28) — every
+// plan gains a resolved display price/currency for the VISITOR'S detected
+// region, alongside the untouched base priceCents/currency=usd fields.
+// Deliberately additive rather than replacing priceCents: SubscriptionTab.tsx's
+// upgrade-vs-downgrade tier comparison must keep comparing base USD prices,
+// never the resolved regional one, so a discount never flips that logic.
+export type PricedPlan = PlanConfig & { displayPriceCents: number; displayCurrency: string };
+
 // Public plan list for /pricing — no admin gate, this is marketing content.
 // Wraps lib/subscription.ts's listPlans() with the user's own cookie-scoped
 // client (subscription_plans has an "anyone can view" RLS policy, so this
 // works for logged-out visitors too).
-export async function getPlansForPricing(): Promise<PlanConfig[]> {
+export async function getPlansForPricing(): Promise<PricedPlan[]> {
   const insforge = await createInsforgeServer();
-  return listPlans(insforge);
+  const [plans, country] = await Promise.all([listPlans(insforge), getRequestCountry()]);
+  const regionKey = regionKeyForCountry(country);
+  return plans.map((plan) => {
+    const { priceCents, currency } = resolveDisplayPrice(plan, regionKey);
+    return { ...plan, displayPriceCents: priceCents, displayCurrency: currency };
+  });
 }
 
 // requireUser() redirects an unauthenticated caller to /login itself
@@ -78,7 +93,16 @@ export async function createCheckoutSessionAction(tier: string): Promise<ActionR
     const insforge = await createInsforgeServer();
 
     const plan = await getPlan(insforge, tier);
-    if (!plan.stripePriceId) {
+
+    // Region derived server-side from THIS request's own IP-country header,
+    // independently, at charge time — the client only ever sends `tier`.
+    // There is no client input to manipulate into claiming a cheaper
+    // region; resolveStripePriceId falls back to the base US Price whenever
+    // the visitor's region has no override configured.
+    const country = await getRequestCountry();
+    const regionKey = regionKeyForCountry(country);
+    const effectivePriceId = resolveStripePriceId(plan, regionKey);
+    if (!effectivePriceId) {
       return { success: false, error: "This plan isn't available for checkout yet." };
     }
 
@@ -96,7 +120,7 @@ export async function createCheckoutSessionAction(tier: string): Promise<ActionR
     const isOneTime = plan.billingPeriod === "lifetime";
     const { data, error } = await insforge.payments.stripe.createCheckoutSession("test", {
       mode: isOneTime ? "payment" : "subscription",
-      lineItems: [{ priceId: plan.stripePriceId, quantity: 1 }],
+      lineItems: [{ priceId: effectivePriceId, quantity: 1 }],
       successUrl: `${siteUrl}/settings?upgraded=1`,
       cancelUrl: `${siteUrl}/pricing`,
       subject: { type: "user", id: user.id },
@@ -106,7 +130,11 @@ export async function createCheckoutSessionAction(tier: string): Promise<ActionR
       // webhook payload carries no line-item/price array to reverse-map
       // the way an invoice does (see the migration's own comment). Harmless
       // to also send on a subscription checkout, just unused there.
-      metadata: { plan_tier: tier },
+      // region_key is traceable in the Stripe dashboard/support, not read
+      // by any fulfillment logic — fulfillment resolves the tier from the
+      // Price ID itself (see fulfill_stripe_subscription_event's
+      // regional_prices lookup, fixed 2026-08-28).
+      metadata: { plan_tier: tier, region_key: regionKey ?? "base" },
       idempotencyKey: `user:${user.id}:${tier}:${Date.now()}`,
     });
 
