@@ -10,6 +10,7 @@ import { formatTimeAgo } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import { JobDetailDrawer } from "@/components/find-jobs/JobDetailDrawer";
+import { LimitReachedModal, type LimitReachedReason } from "@/components/shared/LimitReachedModal";
 import { FilterBar } from "@/components/find-jobs/FilterBar";
 import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from "@/lib/jobFilters";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
@@ -41,6 +42,7 @@ export function FindJobsForm({
     // in a tracking context, not a rapid-browsing one).
     const [drawerJob, setDrawerJob] = useState<Job | null>(null);
     const [searchError, setSearchError] = useState<string | null>(null);
+    const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean } | null>(null);
     // Distinguishes "haven't run a search this session yet" from "ran one,
     // got zero matches" — the latter needs its own empty state, not silence.
     const [hasSearched, setHasSearched] = useState(false);
@@ -144,11 +146,23 @@ export function FindJobsForm({
         if (searchFilters.datePosted !== "any") evaluatorFilters.date_posted = searchFilters.datePosted;
 
         try {
-            const savedJobs = await scrapeAndEvaluateJobs(title, location, evaluatorFilters, userId);
-            setJobs(savedJobs ?? []);
-            setJobIds((savedJobs ?? []).map((job) => job.id));
-            setHasSearched(true);
-            setLastSearchedDatePosted(searchFilters.datePosted);
+            const result = await scrapeAndEvaluateJobs(title, location, evaluatorFilters, userId);
+            if (Array.isArray(result)) {
+                setJobs(result);
+                setJobIds(result.map((job) => job.id));
+                setHasSearched(true);
+                setLastSearchedDatePosted(searchFilters.datePosted);
+            } else {
+                // reason is only ever populated for the real daily-cap-reached
+                // case — a kill-switch/suspension block has no reason and
+                // isn't an "upgrade" story, so it stays the plain inline
+                // error text below instead of the polished modal.
+                if (result.reason) {
+                    setLimitModal({ reason: result.reason, message: result.error, resetsAt: result.resetsAt, canUpgrade: result.canUpgrade });
+                } else {
+                    setSearchError(result.error);
+                }
+            }
         } catch (error) {
             console.error("Pipeline failed:", error);
             setSearchError(toUserMessage(error, "Search failed. Please try again."));
@@ -265,6 +279,16 @@ export function FindJobsForm({
                     </Button>
                 </form>
                 {searchError && <p className="mt-3 text-sm text-error">{searchError}</p>}
+                {limitModal && (
+                    <LimitReachedModal
+                        reason={limitModal.reason}
+                        featureLabel="job searches"
+                        message={limitModal.message}
+                        resetsAt={limitModal.resetsAt}
+                        canUpgrade={limitModal.canUpgrade}
+                        onClose={() => setLimitModal(null)}
+                    />
+                )}
 
                 <div className="mt-5">
                     <FilterBar filters={searchFilters} onChange={setSearchFilters} />

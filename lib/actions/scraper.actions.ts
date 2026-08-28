@@ -159,7 +159,27 @@ async function evaluateWithinQuota(
     return evaluableJobIds;
 }
 
-export async function scrapeAndEvaluateJobs(title: string, location: string, filters: Record<string, string>, userId: string) {
+export type ScrapeBlockedResult = {
+    success: false;
+    error: string;
+    reason?: "daily_cap_reached";
+    resetsAt?: string;
+    canUpgrade?: boolean;
+};
+
+// Quota/rate-limit failures return a structured result instead of throwing
+// (2026-08-28) — Next.js Server Actions can mask a thrown Error down to a
+// generic message + digest in production, discarding any custom properties
+// (reason/resetsAt/canUpgrade) the polished LimitReachedModal needs. Every
+// OTHER failure mode below still throws as before (genuinely unexpected —
+// network/DB errors — where the existing generic catch-and-toUserMessage
+// handling in FindJobsForm.tsx is the right behavior).
+export async function scrapeAndEvaluateJobs(
+    title: string,
+    location: string,
+    filters: Record<string, string>,
+    userId: string,
+): Promise<Awaited<ReturnType<typeof upsertScrapedJobs>> | ScrapeBlockedResult> {
     if (!isFeatureEnabled("search")) {
         throw new Error(featureDisabledMessage("search"));
     }
@@ -177,7 +197,13 @@ export async function scrapeAndEvaluateJobs(title: string, location: string, fil
 
     const usage = await checkAndConsumeUsage(insforge, userId, user?.email, "search");
     if (!usage.allowed) {
-        throw new Error(usage.error);
+        return {
+            success: false,
+            error: usage.error,
+            reason: usage.reason,
+            resetsAt: usage.resetsAt,
+            canUpgrade: usage.canUpgrade,
+        };
     }
 
     const { data: run, error: runError } = await insforge.database

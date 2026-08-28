@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { findEmailForPerson } from "@/agent/research";
 import { getCurrentUser } from "@/lib/auth";
-import { checkAndConsumeUsage } from "@/lib/usage";
+import { checkUsageLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { createInsforgeServer } from "@/lib/insforge-server";
@@ -70,9 +70,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: false, error: rateLimit.error }, { status: 429 });
     }
 
-    const usage = await checkAndConsumeUsage(insforge, userId, user.email, "email_lookup");
+    const usage = await checkUsageLimit(insforge, userId, user.email, "email_lookup");
     if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+      return NextResponse.json(
+        {
+          success: false,
+          error: usage.error,
+          reason: usage.reason,
+          ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+          ...("canUpgrade" in usage ? { canUpgrade: usage.canUpgrade } : {}),
+        },
+        { status: 429 },
+      );
     }
 
     const result = await findEmailForPerson(firstName, lastName, companyLinkedinUrl);

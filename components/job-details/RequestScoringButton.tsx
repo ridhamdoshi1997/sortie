@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 
 import { requestJobEvaluation } from "@/actions/jobs";
+import { LimitReachedModal, type LimitReachedReason } from "@/components/shared/LimitReachedModal";
 
 // Manual "score this job" trigger (direct user request, 2026-08-28) — see
 // requestJobEvaluation's own comment in actions/jobs.ts for why this exists:
@@ -20,6 +21,7 @@ export function RequestScoringButton({ jobId }: { jobId: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
+  const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleClick(): void {
@@ -32,6 +34,8 @@ export function RequestScoringButton({ jobId }: { jobId: string }) {
         // seconds later is enough to pick up the result for a single job
         // (chunked batches of many jobs are the slow case, not this).
         setTimeout(() => router.refresh(), 4000);
+      } else if (result.reason) {
+        setLimitModal({ reason: result.reason, message: result.error, resetsAt: result.resetsAt, canUpgrade: result.canUpgrade });
       } else {
         setError(result.error ?? "Failed to start scoring");
       }
@@ -59,6 +63,16 @@ export function RequestScoringButton({ jobId }: { jobId: string }) {
         Score this job
       </button>
       {error && <p className="text-[11px] text-error">{error}</p>}
+      {limitModal && (
+        <LimitReachedModal
+          reason={limitModal.reason}
+          featureLabel="job evaluations"
+          message={limitModal.message}
+          resetsAt={limitModal.resetsAt}
+          canUpgrade={limitModal.canUpgrade}
+          onClose={() => setLimitModal(null)}
+        />
+      )}
     </div>
   );
 }

@@ -3,6 +3,8 @@
 import { useState, useTransition } from "react";
 import { Mail } from "lucide-react";
 
+import { LimitReachedModal, type LimitReachedReason } from "@/components/shared/LimitReachedModal";
+
 type Props = {
   firstName: string;
   lastName: string;
@@ -16,6 +18,7 @@ export function EmailLookupButton({ firstName, lastName, companyLinkedinUrl }: P
   const [email, setEmail] = useState<string | null>(null);
   const [notFound, setNotFound] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleClick(): void {
@@ -33,10 +36,17 @@ export function EmailLookupButton({ firstName, lastName, companyLinkedinUrl }: P
           success: boolean;
           data?: { email: string | null };
           error?: string;
+          reason?: LimitReachedReason;
+          resetsAt?: string;
+          canUpgrade?: boolean;
         };
 
         if (!res.ok || !json.success) {
-          setError(json.error ?? "Could not find an email for this profile.");
+          if (json.reason) {
+            setLimitModal({ reason: json.reason, message: json.error ?? "Monthly limit reached.", resetsAt: json.resetsAt, canUpgrade: json.canUpgrade });
+          } else {
+            setError(json.error ?? "Could not find an email for this profile.");
+          }
           return;
         }
 
@@ -84,6 +94,16 @@ export function EmailLookupButton({ firstName, lastName, companyLinkedinUrl }: P
         <p className="absolute right-0 top-8 z-10 w-40 text-right text-xs text-error">
           {error}
         </p>
+      )}
+      {limitModal && (
+        <LimitReachedModal
+          reason={limitModal.reason}
+          featureLabel="email lookups"
+          message={limitModal.message}
+          resetsAt={limitModal.resetsAt}
+          canUpgrade={limitModal.canUpgrade}
+          onClose={() => setLimitModal(null)}
+        />
       )}
     </div>
   );

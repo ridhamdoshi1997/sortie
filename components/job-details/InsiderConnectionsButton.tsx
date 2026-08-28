@@ -16,12 +16,12 @@ type Props = {
   allowed: boolean;
 };
 
-type BlockedResponse = { success: false; error: string; reason?: LimitReachedReason; resetsAt?: string };
+type BlockedResponse = { success: false; error: string; reason?: LimitReachedReason; resetsAt?: string; canUpgrade?: boolean };
 
 export function InsiderConnectionsButton({ jobId, allowed }: Props) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
-  const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string } | null>(null);
+  const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
 
   function handleClick(): void {
@@ -50,7 +50,7 @@ export function InsiderConnectionsButton({ jobId, allowed }: Props) {
         if (!res.ok || !json.success) {
           const blocked = json as BlockedResponse;
           if (blocked.reason) {
-            setLimitModal({ reason: blocked.reason, message: blocked.error, resetsAt: blocked.resetsAt });
+            setLimitModal({ reason: blocked.reason, message: blocked.error, resetsAt: blocked.resetsAt, canUpgrade: blocked.canUpgrade });
           } else {
             setError(blocked.error ?? "Connections lookup failed. Please try again.");
           }
@@ -82,6 +82,7 @@ export function InsiderConnectionsButton({ jobId, allowed }: Props) {
           featureLabel="insider connection lookups"
           message={limitModal.message}
           resetsAt={limitModal.resetsAt}
+          canUpgrade={limitModal.canUpgrade}
           onClose={() => setLimitModal(null)}
         />
       )}

@@ -8,24 +8,37 @@ import { Lock, TrendingUp, X } from "lucide-react";
 // app's other modal can't express (an upgrade CTA and a dismiss, not a
 // Cancel/Save pair), so it's its own component rather than a fork.
 //
-// Two distinct blocked states, per lib/subscription.ts's CircuitBreakerResult:
+// Three distinct blocked states now (extended 2026-08-28 to cover
+// lib/usage.ts's own daily-limit system, not just lib/subscription.ts's
+// monthly one — same modal, not a second component, since the three states
+// only ever differ in period wording and whether an upgrade CTA applies):
 // - "upgrade_required": a free-plan user hit a feature with a zero
-//   allowance — the CTA is "upgrade."
-// - "monthly_cap_reached": a paid-plan user used up this billing period's
-//   allowance — the CTA is just "got it," with a concrete reset date, no
-//   further upsell (they're already paying for this feature).
-export type LimitReachedReason = "upgrade_required" | "monthly_cap_reached";
+//   allowance — always shows the upgrade CTA.
+// - "monthly_cap_reached" / "daily_cap_reached": a paid-plan user used up
+//   this period's allowance. Used to always mean "nothing higher to offer"
+//   (paying users already at the top), but that stopped being true once a
+//   tier above Command (Ace) existed — a Command user CAN still benefit
+//   from upgrading on some features. `canUpgrade` (computed server-side by
+//   comparing every real plan's limit for this specific action/feature,
+//   not assumed) decides whether the CTA shows for these two states.
+export type LimitReachedReason = "upgrade_required" | "monthly_cap_reached" | "daily_cap_reached";
 
 type Props = {
   reason: LimitReachedReason;
   featureLabel: string;
   message: string;
   resetsAt?: string;
+  // Only meaningful for monthly_cap_reached/daily_cap_reached —
+  // upgrade_required always shows the CTA regardless of this prop.
+  canUpgrade?: boolean;
   onClose: () => void;
 };
 
-export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onClose }: Props) {
-  const isUpgrade = reason === "upgrade_required";
+export function LimitReachedModal({ reason, featureLabel, message, resetsAt, canUpgrade = false, onClose }: Props) {
+  const isUpgradeRequired = reason === "upgrade_required";
+  const isDaily = reason === "daily_cap_reached";
+  const showUpgradeCta = isUpgradeRequired || canUpgrade;
+  const heading = isUpgradeRequired ? "Upgrade to unlock this" : isDaily ? "Daily limit reached" : "Monthly limit reached";
 
   return (
     <div
@@ -38,20 +51,18 @@ export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onC
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label={isUpgrade ? `Upgrade to unlock ${featureLabel}` : `Monthly limit reached for ${featureLabel}`}
+        aria-label={isUpgradeRequired ? `Upgrade to unlock ${featureLabel}` : `${heading} for ${featureLabel}`}
       >
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <div className="flex items-center gap-3">
             <span
               className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full ${
-                isUpgrade ? "bg-accent/15 text-accent" : "bg-surface-secondary text-text-secondary"
+                showUpgradeCta ? "bg-accent/15 text-accent" : "bg-surface-secondary text-text-secondary"
               }`}
             >
-              {isUpgrade ? <TrendingUp className="h-4.5 w-4.5" /> : <Lock className="h-4.5 w-4.5" />}
+              {showUpgradeCta ? <TrendingUp className="h-4.5 w-4.5" /> : <Lock className="h-4.5 w-4.5" />}
             </span>
-            <h2 className="text-base font-bold text-text-primary">
-              {isUpgrade ? "Upgrade to Command" : "Monthly limit reached"}
-            </h2>
+            <h2 className="text-base font-bold text-text-primary">{heading}</h2>
           </div>
           <button
             type="button"
@@ -65,10 +76,9 @@ export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onC
 
         <div className="flex flex-col gap-3 p-6">
           <p className="text-sm leading-6 text-text-primary">{message}</p>
-          {!isUpgrade && resetsAt && (
+          {!isUpgradeRequired && resetsAt && (
             <p className="text-xs font-medium text-text-muted">
-              Resets{" "}
-              {new Date(resetsAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })}.
+              Resets {isDaily ? "tomorrow" : new Date(resetsAt).toLocaleDateString("en-US", { month: "long", day: "numeric" })}.
             </p>
           )}
         </div>
@@ -79,14 +89,14 @@ export function LimitReachedModal({ reason, featureLabel, message, resetsAt, onC
             onClick={onClose}
             className="rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-secondary"
           >
-            {isUpgrade ? "Maybe later" : "Got it"}
+            {showUpgradeCta ? "Maybe later" : "Got it"}
           </button>
-          {isUpgrade && (
+          {showUpgradeCta && (
             <Link
               href="/pricing"
               className="btn-signal rounded-lg px-4 py-2 text-sm font-medium text-accent-foreground"
             >
-              See Command plan
+              See plans
             </Link>
           )}
         </div>

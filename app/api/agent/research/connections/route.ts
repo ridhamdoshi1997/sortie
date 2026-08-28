@@ -166,6 +166,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
           error: usage.error,
           reason: usage.reason,
           ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+          ...("canUpgrade" in usage ? { canUpgrade: usage.canUpgrade } : {}),
         },
         { status: 429 },
       );

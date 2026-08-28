@@ -1507,7 +1507,11 @@ export async function generateNinetyDayPlanAction(jobId: string): Promise<Action
 // `filters`/`runId: null` since this isn't tied to any search run (same
 // idiom scanTargetCompanies() already uses for its own non-search-originated
 // evaluation trigger).
-export async function requestJobEvaluation(jobId: string): Promise<ActionResult> {
+export type RequestJobEvaluationResult =
+  | { success: true }
+  | { success: false; error: string; reason?: "daily_cap_reached"; resetsAt?: string; canUpgrade?: boolean };
+
+export async function requestJobEvaluation(jobId: string): Promise<RequestJobEvaluationResult> {
   const user = await requireUser();
 
   try {
@@ -1529,7 +1533,7 @@ export async function requestJobEvaluation(jobId: string): Promise<ActionResult>
 
     const evalCheck = await checkJobEvaluationLimit(insforge, user.id, user.email);
     if (!evalCheck.allowed) {
-      return { success: false, error: evalCheck.error };
+      return { success: false, error: evalCheck.error, reason: evalCheck.reason, resetsAt: evalCheck.resetsAt, canUpgrade: evalCheck.canUpgrade };
     }
 
     await inngest.send({
