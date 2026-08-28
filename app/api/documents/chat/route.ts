@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { reviseCoverLetter, reviseTailoredResume, type ChatMessage } from "@/agent/documents";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const dossier = job.company_research;
-    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const provider = await resolveProviderForUser(insforge, user.id, profile.email, profile.preferred_model);
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;

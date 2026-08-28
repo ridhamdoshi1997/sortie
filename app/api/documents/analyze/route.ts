@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { analyzeResumeGap } from "@/agent/resumeGap";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { checkAndConsumeUsage } from "@/lib/usage";
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const provider = resolveProvider(profile.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model);
     const analysis = await analyzeResumeGap(job, profile, provider);
 
     const { error: saveError } = await insforge.database

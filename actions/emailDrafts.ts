@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { generateEmailDraft, type EmailDraft, type EmailDraftType } from "@/lib/emailDrafts";
 import type { Profile } from "@/types";
@@ -54,7 +54,7 @@ export async function generateEmailDraftAction(jobId: string, type: EmailDraftTy
       ? Math.round((Date.now() - new Date(job.application_status_updated_at).getTime()) / (1000 * 60 * 60 * 24))
       : null;
 
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
     const draft = await generateEmailDraft(
       {
         type,

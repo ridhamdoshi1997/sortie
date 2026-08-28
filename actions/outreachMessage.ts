@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { generateOutreachMessage } from "@/lib/outreachMessage";
 import type { Profile } from "@/types";
@@ -42,7 +42,7 @@ export async function generateOutreachMessageAction(
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
     const message = await generateOutreachMessage(
       { personName, personTitle, connectionReason, company: job.company ?? "this company", jobTitle: job.title },
       provider,

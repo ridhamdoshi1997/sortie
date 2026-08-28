@@ -8,7 +8,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { createExternalJob } from "@/lib/externalJob";
 import { fetchViaJinaReader, researchCompany } from "@/agent/research";
 import { trackPostHogEvent } from "@/lib/posthog-server";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit, checkUsageLimit } from "@/lib/subscription";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
@@ -881,7 +881,7 @@ export async function diagnoseRejection(
       return { success: false, error: "Job not found" };
     }
 
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
     const diagnosis = await diagnoseRejectionForJob(job, provider);
 
     const { error: updateError } = await insforge.database
@@ -1050,7 +1050,7 @@ export async function getTrapDoorPredictions(
           missing_skills: job.missing_skills ?? [],
         },
         profile,
-        provider: resolveProvider(profile.preferred_model, profile.email),
+        provider: await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model),
       });
 
       if (!researchResult.success) {
@@ -1321,7 +1321,7 @@ export async function synthesizeLeverage(
 
     const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
 
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
     const synthesis = await synthesizeLeverageForJob(
       {
         ...job,
@@ -1400,7 +1400,7 @@ export async function generateNegotiationScript(
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
 
     let leverage = job.leverage_synthesis;
     if (!leverage) {
@@ -1470,7 +1470,7 @@ export async function decodeJobDescription(jobId: string): Promise<ActionResult 
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
 
     const result = await decodeJobRequirements(job.title, job.requirements, provider);
 
@@ -1524,7 +1524,7 @@ export async function generateNinetyDayPlanAction(jobId: string): Promise<Action
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = resolveProvider(profile?.preferred_model, user.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
 
     const plan = await generateNinetyDayPlanForJob(
       {

@@ -9,7 +9,8 @@ const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
   buf: Buffer,
 ) => Promise<{ text: string }>;
 
-import { isAdminUser, resolveProvider } from "@/lib/access";
+import { isAdminUser } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { complete, getModel, type ModelProvider } from "@/lib/models";
@@ -431,6 +432,8 @@ export type ExtractedProfile = {
 export async function extractProfileFromBuffer(
   buffer: Buffer,
   preferredModel: Profile["preferred_model"],
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>,
+  userId: string,
   userEmail: string,
 ): Promise<{ success: boolean; data?: ExtractedProfile; error?: string }> {
   const pdfData = await pdfParse(buffer);
@@ -443,7 +446,7 @@ export async function extractProfileFromBuffer(
     };
   }
 
-  const raw = await complete(getModel(resolveProvider(preferredModel, userEmail), "smart"), {
+  const raw = await complete(getModel(await resolveProviderForUser(insforge, userId, userEmail, preferredModel), "smart"), {
     systemPrompt:
       "You are a resume parser, not a resume writer. Extract structured profile data from the resume text and return only valid JSON matching the exact schema provided. Use null for missing fields. Arrays must always be arrays (never null). Include every degree found, not just the highest one. experience_level must be one of: Junior, Mid-Level, Senior, Lead, Manager, Director, Executive — pick the closest match or null. CRITICAL — every field must come only from text that actually appears in the résumé, preserved as faithfully as possible, never invented, paraphrased, merged, or summarized: (1) If a role has no description text under it at all (just a title and dates), return an empty string for that role's responsibilities — never write generic filler like 'Software development and product design.' just to avoid an empty field. (2) The source PDF hard-wraps lines purely for page width — a line break mid-sentence is NOT a new bullet or paragraph, it's just where the page ran out of room; reflow wrapped lines belonging to the same bullet/sentence back into one continuous line. (3) If a role's description lists separate bullet points (marked with •, ●, - or similar, or a new sentence clearly starting a new distinct responsibility), preserve each one VERBATIM as its own single-line array item, one real bullet per \\n — strip only the marker character, do not reword or condense the wording itself. (4) If a role's description is one plain paragraph with no bullet markers, keep it as ONE reflowed paragraph (its own internal wraps rejoined, no \\n inserted) — do not invent bullet structure that isn't there.",
     userPrompt: `Extract profile data from this resume and return JSON with this exact shape:
@@ -532,7 +535,7 @@ export async function extractProfile(): Promise<{
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
-    return await extractProfileFromBuffer(buffer, existingProfile?.preferred_model ?? null, user.email);
+    return await extractProfileFromBuffer(buffer, existingProfile?.preferred_model ?? null, insforge, user.id, user.email);
   } catch (error) {
     console.error("[actions/profile] extractProfile", error);
 
@@ -589,7 +592,7 @@ export async function rewriteBullet(
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
     const raw = await complete(
-      getModel(resolveProvider(profile?.preferred_model, user.email), "fast"),
+      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
       {
         systemPrompt:
           "You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome that is not already stated or clearly implied in the original — only reframe and tighten what's already there. Return only valid JSON.",
@@ -658,7 +661,7 @@ export async function splitBullet(
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
     const raw = await complete(
-      getModel(resolveProvider(profile?.preferred_model, user.email), "fast"),
+      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
       {
         systemPrompt:
           "You are an expert resume writer. The candidate has one dense resume bullet that actually bundles multiple distinct responsibilities or achievements together (often comma- or 'and'-separated). Split it into 2-5 separate, achievement-focused bullets, one per distinct idea, each starting with a strong action verb, one line each. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated — only reorganize and lightly tighten what's already there. If the bullet genuinely only describes ONE idea, return it unchanged as a single-item array. Return only valid JSON.",
@@ -724,7 +727,7 @@ export async function generateBullets(
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
     const raw = await complete(
-      getModel(resolveProvider(profile?.preferred_model, user.email), "fast"),
+      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
       {
         systemPrompt:
           "You are an expert resume writer. Given a candidate's brief, informal note about something they did in a role, turn it into 3-4 DIFFERENT polished, achievement-focused resume bullet point options for the SAME achievement — vary the angle (e.g. one concise, one leadership-forward, one impact-forward) so the candidate can pick their favorite. Each option is one line, roughly 15-25 words, starting with a strong action verb. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome the candidate did not mention — only rephrase what they actually said. Return only valid JSON.",

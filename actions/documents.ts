@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { archiveCurrentDocument } from "@/lib/documentPersistence";
 import { createInsforgeServer } from "@/lib/insforge-server";
@@ -49,7 +49,7 @@ export async function saveResumeSections(
       return { success: false, error: "Failed to save your changes" };
     }
 
-    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model);
     const scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, sections, provider);
 
     revalidatePath(`/resume/tailored/${jobId}`);
@@ -101,7 +101,7 @@ export async function analyzeResumeFit(
       return { success: false, error: "Profile not found" };
     }
 
-    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model);
     const scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, sections, provider);
 
     revalidatePath(`/resume/tailored/${jobId}`);
@@ -158,7 +158,7 @@ export async function analyzeTailoredResumeQuality(
 
     const targetRole = job?.title || profile.current_title || "the role this résumé targets";
     const résuméText = buildQualityAnalysisText(profile, sections, targetRole);
-    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model);
     const result = await runResumeQualityAnalysis(provider, résuméText);
 
     if (!result.success || !result.analysis) {
@@ -235,7 +235,7 @@ export async function rewriteResumeBullet(
       ? `Target job: ${job.title ?? "—"} at ${job.company ?? "—"}\nSkills this job wants that the résumé is currently missing: ${(job.missing_skills ?? []).join(", ") || "none recorded"}`
       : "";
 
-    const raw = await complete(getModel(resolveProvider(profile?.preferred_model, user.email), "fast"), {
+    const raw = await complete(getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"), {
       systemPrompt:
         `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
       userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,

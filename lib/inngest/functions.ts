@@ -1,5 +1,5 @@
 import { inngest } from "./client";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
@@ -100,7 +100,7 @@ export const evaluateJobsAsync = inngest.createFunction(
             .select("role_family,skill,correction_type")
             .eq("user_id", userId);
 
-        const provider = resolveProvider(profile.preferred_model, profile.email);
+        const provider = await resolveProviderForUser(admin, userId, profile.email, profile.preferred_model);
         // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
         // the richer 2-3 sentence per-dimension notes cause the model to
         // silently under-deliver a 10-job batch (only ~2 of 10 jobs actually
@@ -181,16 +181,37 @@ export const evaluateJobsAsync = inngest.createFunction(
             throw err; // Ensure Inngest catches this so the run fails visibly
         }
 
+        // Real bug found live (2026-08-28): this write used to be plain code
+        // after the loop, not its own step — dozens of real agent_runs rows
+        // were confirmed stuck at status='running' forever even with 100% of
+        // their jobs genuinely scored (e.g. 20/20), meaning every job-level
+        // write inside the step.run() calls above succeeded but this final
+        // write never landed. Wrapping it in its own step.run() makes it a
+        // durable, independently-retried checkpoint instead of one-shot code
+        // that silently loses if the underlying invocation ends right after
+        // the last step.sleep resolves but before this line executes — the
+        // same class of risk step.run() exists to close for the per-chunk
+        // writes above. Caught separately (not re-thrown) so a failure here
+        // never turns an otherwise-fully-scored batch into a false "failed"
+        // run — see reconcileStuckAgentRunsAsync below for the backstop that
+        // catches anything that still slips through.
         if (runId) {
-            await admin.database
-                .from("agent_runs")
-                .update({
-                    status: "completed",
-                    is_successful: true,
-                    total_time_ms: Date.now() - startedAtMs,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("id", runId);
+            try {
+                await step.run("mark-run-completed", async () => {
+                    const { error } = await admin.database
+                        .from("agent_runs")
+                        .update({
+                            status: "completed",
+                            is_successful: true,
+                            total_time_ms: Date.now() - startedAtMs,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq("id", runId);
+                    if (error) throw new Error(`Failed to mark run ${runId} completed: ${error.message}`);
+                });
+            } catch (err) {
+                console.error("[inngest] evaluateJobsAsync: failed to mark run completed", err);
+            }
         }
 
         return { message: `Successfully evaluated ${rawJobs.length} jobs.` };
@@ -261,7 +282,7 @@ export const generateResumeSuggestionAsync = inngest.createFunction(
         }
 
         const role = currentOrMostRecentRole(profile?.work_experience);
-        const provider = resolveProvider(profile?.preferred_model, profile?.email);
+        const provider = await resolveProviderForUser(admin, userId, profile?.email, profile?.preferred_model);
 
         const bullet = await step.run("generate-suggestion", () =>
             generateResumeUpdateSuggestion(accomplishment.title, accomplishment.description, role, provider),
@@ -626,7 +647,7 @@ export const generateWeeklyBriefingsAsync = inngest.createFunction(
                     })),
                 };
 
-                const provider = resolveProvider(profile?.preferred_model, profile?.email ?? undefined);
+                const provider = await resolveProviderForUser(admin, userId, profile?.email ?? undefined, profile?.preferred_model);
                 const result = await generateWeeklyBriefing(snapshot, provider);
 
                 await admin.database
@@ -739,6 +760,79 @@ export const archiveStaleInboxJobsAsync = inngest.createFunction(
         });
 
         return { message: `Archived ${archivedCount} untouched Inbox job${archivedCount === 1 ? "" : "s"}.` };
+    },
+);
+
+// Self-healing backstop for the "agent_runs.status never flips to
+// completed" bug found live (2026-08-28) — confirmed dozens of real runs
+// stuck at status='running' indefinitely (some for weeks) despite 100% of
+// their jobs having a real match_score, because evaluateJobsAsync's final
+// status write used to be plain code, not a durable step (now fixed
+// above). This cron catches anything that still slips through that fix —
+// a genuinely dead Inngest function, a retry-exhausted write, a future
+// regression of the same class — by recomputing "is this run actually
+// done" from the real source of truth (the jobs table itself) rather than
+// trusting the write ever happened. Runs every 15 minutes: cheap (no AI
+// calls, no jobs beyond what a normal search already creates), and this is
+// the kind of staleness a user notices quickly (a stuck "Scoring…" pill),
+// so a daily cadence like the crons above would leave it wrong for too long.
+export const reconcileStuckAgentRunsAsync = inngest.createFunction(
+    { id: "reconcile-stuck-agent-runs", name: "Reconcile Stuck Agent Runs", triggers: [{ cron: "*/15 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const fixedCount = await step.run("fix-fully-scored-stuck-runs", async () => {
+            const { data: runningRuns, error: runsError } = await admin.database
+                .from("agent_runs")
+                .select("id")
+                .eq("status", "running")
+                .returns<{ id: string }[]>();
+
+            if (runsError || !runningRuns || runningRuns.length === 0) return 0;
+
+            const runningIds = runningRuns.map((r) => r.id);
+            const { data: runJobs, error: jobsError } = await admin.database
+                .from("jobs")
+                .select("run_id, match_score")
+                .in("run_id", runningIds)
+                .returns<{ run_id: string; match_score: number | null }[]>();
+
+            if (jobsError || !runJobs) return 0;
+
+            // A run only qualifies once it has at least one job AND none of
+            // them are still unscored — a run with zero jobs tied to it is a
+            // different, unrelated failure mode (never got jobs at all),
+            // deliberately left alone here rather than guessed at.
+            const jobCountByRun = new Map<string, number>();
+            const unscoredByRun = new Set<string>();
+            for (const job of runJobs) {
+                jobCountByRun.set(job.run_id, (jobCountByRun.get(job.run_id) ?? 0) + 1);
+                if (job.match_score === null) unscoredByRun.add(job.run_id);
+            }
+
+            const fullyScoredRunIds = runningIds.filter(
+                (id) => (jobCountByRun.get(id) ?? 0) > 0 && !unscoredByRun.has(id),
+            );
+
+            if (fullyScoredRunIds.length === 0) return 0;
+
+            const { error: updateError } = await admin.database
+                .from("agent_runs")
+                .update({ status: "completed", is_successful: true, updated_at: new Date().toISOString() })
+                .in("id", fullyScoredRunIds);
+
+            if (updateError) {
+                console.error("[inngest] reconcileStuckAgentRunsAsync", updateError);
+                return 0;
+            }
+
+            return fullyScoredRunIds.length;
+        });
+
+        return { message: `Reconciled ${fixedCount} stuck agent run${fixedCount === 1 ? "" : "s"}.` };
     },
 );
 

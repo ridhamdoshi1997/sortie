@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { checkAndConsumeUsage } from "@/lib/usage";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { addAccomplishment } from "@/actions/accomplishments";
 import {
   getAgentReply,
@@ -140,7 +140,7 @@ export async function sendAgentMessage(
     const reply = await getAgentReply(
       snapshot,
       conversationHistory,
-      resolveProvider(profile?.preferred_model, user.email),
+      await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model),
     );
 
     const { error: insertAssistantError } = await insforge.database.from("agent_messages").insert([

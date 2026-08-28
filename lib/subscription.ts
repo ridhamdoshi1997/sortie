@@ -1,5 +1,6 @@
 import type { createInsforgeServer } from "@/lib/insforge-server";
-import { isAdminUser } from "@/lib/access";
+import { isAdminUser, resolveProvider } from "@/lib/access";
+import type { ModelProvider } from "@/lib/models";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -247,6 +248,31 @@ export async function getUserTier(
 ): Promise<string> {
   const { tier } = await getUserSubscription(insforge, userId, email);
   return tier;
+}
+
+// Real bug found live (2026-08-28): lib/access.ts's resolveProvider() takes
+// an optional 3rd `llmUnlocked` param that, when omitted, silently forces
+// free-tier Gemini for every non-admin user — and EVERY call site in the
+// codebase (33 of them, across actions/, app/api/, lib/inngest/) was
+// calling the 2-arg form, meaning every paying Command/Ace/Vanguard
+// subscriber was being downgraded to Gemini everywhere despite their plan's
+// real llmUnlocked: true. This one helper centralizes the fix — it fetches
+// the user's real plan and calls resolveProvider() correctly — so every
+// call site changes from the bare `resolveProvider(model, email)` to
+// `await resolveProviderForUser(insforge, userId, email, model)` instead of
+// each of the 33 sites separately duplicating a getUserSubscription() call
+// (more error-prone, easy for a future call site to reintroduce the same
+// 2-arg mistake). resolveProvider() itself in lib/access.ts is untouched —
+// still a pure sync function, safe to call directly wherever llmUnlocked is
+// already known some other way.
+export async function resolveProviderForUser(
+  insforge: Insforge,
+  userId: string,
+  email: string | null | undefined,
+  preferredModel: ModelProvider | null | undefined,
+): Promise<ModelProvider> {
+  const { plan } = await getUserSubscription(insforge, userId, email);
+  return resolveProvider(preferredModel, email, plan.llmUnlocked);
 }
 
 // Best-effort — a failed notification write must never fail the circuit

@@ -26,7 +26,15 @@ type AgentRunRow = {
   id: string;
   job_title_searched: string | null;
   jobs_found: number | null;
-  completed_at: string | null;
+  // Real bug found live (2026-08-28): this used to select/order/filter on
+  // a `completed_at` column that doesn't exist on agent_runs at all (only
+  // created_at/updated_at/started_at do) — PostgREST rejects a select on a
+  // nonexistent column, so this whole query silently came back empty,
+  // meaning Recent Activity's "Found N jobs for X" entries have likely
+  // never shown up. updated_at is already set at the exact moment a run's
+  // status flips to completed/failed (see lib/inngest/functions.ts), so
+  // it's the real equivalent value, not a new column to add.
+  updated_at: string | null;
 };
 
 type ResearchedJobRow = {
@@ -70,10 +78,10 @@ export default async function DashboardPage() {
         .returns<Job[]>(),
       insforge.database
         .from("agent_runs")
-        .select("id, job_title_searched, jobs_found, completed_at")
+        .select("id, job_title_searched, jobs_found, updated_at")
         .eq("user_id", user.id)
         .eq("status", "completed")
-        .order("completed_at", { ascending: false })
+        .order("updated_at", { ascending: false })
         .limit(10)
         .returns<AgentRunRow[]>(),
       insforge.database
@@ -98,13 +106,13 @@ export default async function DashboardPage() {
   };
 
   const runItems: ActivityItem[] = (agentRuns ?? [])
-    .filter((r) => r.completed_at)
+    .filter((r) => r.updated_at)
     .map((r) => ({
       id: `run-${r.id}`,
       text: `Found ${r.jobs_found ?? 0} jobs for ${r.job_title_searched ?? "your search"}`,
-      time: formatDate(r.completed_at!),
+      time: formatDate(r.updated_at!),
       type: "job_found" as const,
-      sortKey: new Date(r.completed_at!).getTime(),
+      sortKey: new Date(r.updated_at!).getTime(),
     }));
 
   const researchItems: ActivityItem[] = (researchedJobs ?? []).map((j) => ({

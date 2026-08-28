@@ -5,7 +5,7 @@ import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { researchCompany } from "@/agent/research";
 import { generateCoverLetter, generateTailoredResume } from "@/agent/documents";
-import { resolveProvider } from "@/lib/access";
+import { resolveProviderForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const provider = resolveProvider(profile.preferred_model, profile.email);
+    const provider = await resolveProviderForUser(insforge, user.id, profile.email, profile.preferred_model);
 
     const usage = await checkAndConsumeUsage(insforge, user.id, profile.email, "document_generation");
     if (!usage.allowed) {
