@@ -5,6 +5,7 @@ import { formatDate } from "@/lib/utils";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { AnimatedScoreValue } from "@/components/job-details/AnimatedScoreValue";
 import { ApplyLinkTrustNote } from "@/components/job-details/ApplyLinkTrustNote";
+import { RequestScoringButton } from "@/components/job-details/RequestScoringButton";
 import type { Job } from "@/types";
 
 // Job-detail redesign (2026-08-25, direct user request to redesign this page
@@ -21,15 +22,20 @@ import type { Job } from "@/types";
 // leaves the viewport, and the four oversized meta cards collapse into a
 // compact definition list. The old meta cards also coloured their icons
 // success-green / info-blue / accent-amber — three hues for four
-// non-semantic facts; they're uniformly muted here, because "Location" is
-// not a status.
-function MetaRow({ label, value }: { label: string; value: string }) {
+// non-semantic facts; they're uniformly muted here, because none of Salary/
+// Type/Found is a status. Location is the one exception (direct user
+// request, 2026-08-28, applied consistently everywhere a job's location
+// shows across the app): Sortie's amber accent, not because it's a status
+// either, but because the user wants location specifically to read as the
+// theme color throughout — same `text-accent` used on JobResultCard.tsx/
+// KanbanCard.tsx/JobDetailDrawer.tsx's own location text.
+function MetaRow({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
   return (
     <div className="flex items-baseline justify-between gap-3 py-2">
       <dt className="shrink-0 font-mono text-[10px] uppercase tracking-wider text-text-muted">
         {label}
       </dt>
-      <dd className="min-w-0 truncate text-right text-[13px] font-medium text-text-primary">
+      <dd className={`min-w-0 truncate text-right text-[13px] font-medium ${accent ? "text-accent" : "text-text-primary"}`}>
         {value}
       </dd>
     </div>
@@ -94,15 +100,18 @@ export function JobIdentityRail({ job }: { job: Job }) {
             </div>
           </>
         ) : (
-          <p className="text-[12px] leading-5 text-text-muted">
-            Not scored yet — still being evaluated.
-          </p>
+          <div className="flex flex-col gap-2">
+            <p className="text-[12px] leading-5 text-text-muted">
+              Not scored yet — still being evaluated.
+            </p>
+            <RequestScoringButton jobId={job.id} />
+          </div>
         )}
       </div>
 
       <dl className="divide-y divide-border-light border-y border-border-light">
         <MetaRow label="Salary" value={job.salary || "Not disclosed"} />
-        <MetaRow label="Location" value={job.location ?? "—"} />
+        <MetaRow label="Location" value={job.location ?? "—"} accent />
         <MetaRow label="Type" value={formatJobType(job.job_type)} />
         <MetaRow label="Found" value={formatDate(job.found_at)} />
       </dl>

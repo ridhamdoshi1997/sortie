@@ -181,7 +181,7 @@ export function KanbanCard({
           </Link>
           <p className="truncate text-xs text-text-muted">{job.company ?? "Unknown company"}</p>
           {job.location && (
-            <p className="mt-0.5 flex items-center gap-1 truncate text-[10px] text-text-muted">
+            <p className="mt-0.5 flex items-center gap-1 truncate text-[10px] text-accent">
               <MapPin className="h-2.5 w-2.5 shrink-0" />
               {job.location}
             </p>

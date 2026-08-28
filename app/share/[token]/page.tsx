@@ -76,7 +76,7 @@ export default async function SharedEvaluationPage({ params }: { params: Promise
         <div className="mt-1 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
           <span className="font-medium text-text-primary">{job.company ?? "Unknown company"}</span>
           {job.location && (
-            <span className="inline-flex items-center gap-1">
+            <span className="inline-flex items-center gap-1 text-accent">
               <MapPin className="h-3.5 w-3.5" />
               {job.location}
             </span>

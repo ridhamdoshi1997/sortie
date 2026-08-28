@@ -10,7 +10,7 @@ import { fetchViaJinaReader, researchCompany } from "@/agent/research";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { resolveProvider } from "@/lib/access";
 import { checkAndConsumeUsage } from "@/lib/usage";
-import { checkUsageLimit } from "@/lib/subscription";
+import { checkJobEvaluationLimit, checkUsageLimit } from "@/lib/subscription";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
 import { researchStrategicMoat, type StrategicMoatBriefing } from "@/agent/research";
 import { synthesizeLeverageForJob, type LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
@@ -1490,5 +1490,56 @@ export async function generateNinetyDayPlanAction(jobId: string): Promise<Action
   } catch (error) {
     console.error("[actions/jobs] generateNinetyDayPlanAction", error);
     return { success: false, error: "Failed to generate a 90-day plan" };
+  }
+}
+
+// Manual "score this job" trigger (direct user request, 2026-08-28) — a
+// consequence of raising lib/jobScraper.ts's SerpApi page cap from 3 to 10:
+// a search can now return up to 100 raw jobs, but AI evaluation stays gated
+// by the SAME daily quota it always was (evaluateWithinQuota in
+// lib/actions/scraper.actions.ts, checkJobEvaluationLimit in
+// lib/subscription.ts — free plan is 3/day) — every job beyond that quota
+// saves but never gets sent to the evaluator, sitting on "Not scored yet"
+// with no way to fix it before this. This lets a user spend one evaluation
+// (from the same daily quota, not a separate allowance) on a specific job
+// they actually care about, directly from its detail page — same event
+// (`jobs/evaluate`) and Inngest function real searches already use, empty
+// `filters`/`runId: null` since this isn't tied to any search run (same
+// idiom scanTargetCompanies() already uses for its own non-search-originated
+// evaluation trigger).
+export async function requestJobEvaluation(jobId: string): Promise<ActionResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("id,match_score")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{ id: string; match_score: number | null }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+    if (job.match_score !== null) {
+      return { success: false, error: "This job is already scored" };
+    }
+
+    const evalCheck = await checkJobEvaluationLimit(insforge, user.id, user.email);
+    if (!evalCheck.allowed) {
+      return { success: false, error: evalCheck.error };
+    }
+
+    await inngest.send({
+      name: "jobs/evaluate",
+      data: { jobIds: [jobId], filters: {}, userId: user.id, runId: null },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] requestJobEvaluation", error);
+    return { success: false, error: "Failed to start scoring" };
   }
 }

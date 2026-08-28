@@ -131,7 +131,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
                 <tr className="border-b border-border">
                   <td className="px-4 py-3 font-medium text-text-secondary">Location</td>
                   {jobs.map((job) => (
-                    <td key={job.id} className="px-4 py-3 text-text-primary">
+                    <td key={job.id} className="px-4 py-3 text-accent">
                       {job.location || "—"}
                     </td>
                   ))}

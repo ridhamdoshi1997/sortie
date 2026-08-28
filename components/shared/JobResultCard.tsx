@@ -210,8 +210,8 @@ export function JobResultCard({
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-text-secondary">
             <span className="truncate">{job.company}</span>
             {job.location && (
-              <span className="flex items-center gap-1 truncate text-text-muted">
-                <span aria-hidden="true">·</span>
+              <span className="flex items-center gap-1 truncate text-accent">
+                <span aria-hidden="true" className="text-text-muted">·</span>
                 {job.location}
               </span>
             )}
