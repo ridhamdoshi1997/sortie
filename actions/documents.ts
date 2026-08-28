@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 
 import { resolveProvider } from "@/lib/access";
 import { requireUser } from "@/lib/auth";
+import { archiveCurrentDocument } from "@/lib/documentPersistence";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { complete, getModel } from "@/lib/models";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -384,5 +385,142 @@ export async function deleteTailoredCoverLetter(jobId: string): Promise<{ succes
   } catch (error) {
     console.error("[actions/documents] deleteTailoredCoverLetter", error);
     return { success: false, error: "Failed to delete this cover letter" };
+  }
+}
+
+export type DocumentVersionRow = {
+  id: string;
+  kind: "resume" | "cover_letter";
+  storage_path: string;
+  model_used: string | null;
+  created_at: string;
+};
+
+// Version manager (direct user report — regenerating a résumé/cover letter
+// for a job used to silently overwrite the only copy, no way back). Each
+// row here is a real archived version, created automatically right before
+// a regenerate or restore overwrites what was live (lib/documentPersistence.ts's
+// archiveCurrentDocument) — newest first, since that's what a "history"
+// panel actually wants to show.
+export async function listDocumentVersions(
+  jobId: string,
+  kind: "resume" | "cover_letter",
+): Promise<DocumentVersionRow[]> {
+  const user = await requireUser();
+
+  const insforge = await createInsforgeServer();
+  const { data, error } = await insforge.database
+    .from("document_versions")
+    .select("id,kind,storage_path,model_used,created_at")
+    .eq("user_id", user.id)
+    .eq("job_id", jobId)
+    .eq("kind", kind)
+    .order("created_at", { ascending: false })
+    .returns<DocumentVersionRow[]>();
+
+  if (error) {
+    console.error("[actions/documents] listDocumentVersions", error);
+    return [];
+  }
+  return data ?? [];
+}
+
+// Restores an archived version as the new current document. Archives
+// whatever's CURRENTLY live first (same archiveCurrentDocument step a fresh
+// generate uses) — restoring an old version doesn't destroy the one it's
+// replacing, it just becomes the next entry in the same history.
+export async function restoreDocumentVersion(
+  versionId: string,
+): Promise<{ success: boolean; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: version } = await insforge.database
+      .from("document_versions")
+      .select("id,job_id,kind,storage_path,content_text,resume_sections,resume_style,model_used")
+      .eq("id", versionId)
+      .eq("user_id", user.id)
+      .maybeSingle<{
+        id: string;
+        job_id: string;
+        kind: "resume" | "cover_letter";
+        storage_path: string;
+        content_text: string | null;
+        resume_sections: ResumeSection[] | null;
+        resume_style: ResumeStyle | null;
+        model_used: string | null;
+      }>();
+
+    if (!version) {
+      return { success: false, error: "Version not found" };
+    }
+
+    const { data: existingApplication } = await insforge.database
+      .from("applications")
+      .select(
+        "id,generated_resume,generated_cover_letter,resume_pdf_url,cover_letter_pdf_url,resume_sections,resume_style,ai_model_used",
+      )
+      .eq("user_id", user.id)
+      .eq("job_id", version.job_id)
+      .maybeSingle<{
+        id: string;
+        generated_resume: string | null;
+        generated_cover_letter: string | null;
+        resume_pdf_url: string | null;
+        cover_letter_pdf_url: string | null;
+        resume_sections: ResumeSection[] | null;
+        resume_style: ResumeStyle | null;
+        ai_model_used: string | null;
+      }>();
+
+    await archiveCurrentDocument(insforge, existingApplication ?? null, version.kind, user.id, version.job_id);
+
+    const { data: versionBlob, error: downloadError } = await insforge.storage
+      .from("resumes")
+      .download(version.storage_path);
+    if (downloadError || !versionBlob) {
+      console.error("[actions/documents] restoreDocumentVersion download", downloadError);
+      return { success: false, error: "Failed to load this version's file" };
+    }
+
+    const liveStoragePath = `${user.id}/${version.job_id}/${version.kind === "resume" ? "resume" : "cover-letter"}.pdf`;
+    await insforge.storage.from("resumes").remove(liveStoragePath);
+    const { error: uploadError } = await insforge.storage.from("resumes").upload(liveStoragePath, versionBlob);
+    if (uploadError) {
+      console.error("[actions/documents] restoreDocumentVersion upload", uploadError);
+      return { success: false, error: "Failed to restore this version" };
+    }
+
+    const documentColumn = version.kind === "resume" ? "generated_resume" : "generated_cover_letter";
+    const urlColumn = version.kind === "resume" ? "resume_pdf_url" : "cover_letter_pdf_url";
+    const restorePatch: Record<string, unknown> = {
+      [documentColumn]: version.content_text,
+      [urlColumn]: liveStoragePath,
+      ai_model_used: version.model_used,
+      status: "generated",
+    };
+    if (version.kind === "resume") {
+      restorePatch.resume_sections = version.resume_sections;
+      restorePatch.resume_style = version.resume_style;
+    }
+
+    const { error: patchError } = existingApplication
+      ? await insforge.database.from("applications").update(restorePatch).eq("id", existingApplication.id)
+      : await insforge.database.from("applications").insert([{ user_id: user.id, job_id: version.job_id, ...restorePatch }]);
+
+    if (patchError) {
+      console.error("[actions/documents] restoreDocumentVersion patch", patchError);
+      return { success: false, error: "Failed to restore this version" };
+    }
+
+    revalidatePath(`/find-jobs/${version.job_id}`);
+    revalidatePath(`/resume/tailored/${version.job_id}`);
+    revalidatePath(`/cover-letter/tailored/${version.job_id}`);
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/documents] restoreDocumentVersion", error);
+    return { success: false, error: "Failed to restore this version" };
   }
 }

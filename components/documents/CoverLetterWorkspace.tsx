@@ -7,6 +7,7 @@ import { Download } from "lucide-react";
 import { saveCoverLetterContent, saveResumeStyle } from "@/actions/documents";
 import { CoverLetterATSAuditCard } from "@/components/documents/CoverLetterATSAuditCard";
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
+import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
 import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { RefinementChips, type ChipPreset } from "@/components/documents/RefinementChips";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -237,6 +238,7 @@ export function CoverLetterWorkspace({
           <Download className="h-4 w-4" />
           Download PDF
         </a>
+        <DocumentVersionHistory jobId={jobId} kind="cover_letter" label="Cover letter" />
       </div>
     </div>
   );

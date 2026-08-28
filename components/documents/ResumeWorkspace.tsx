@@ -12,6 +12,7 @@ import {
   saveResumeStyle,
 } from "@/actions/documents";
 import { AIRewriteTab } from "@/components/documents/AIRewriteTab";
+import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
 import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -314,6 +315,7 @@ export function ResumeWorkspace({
           {regenerating ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4 text-accent" />}
           Regenerate
         </button>
+        <DocumentVersionHistory jobId={jobId} kind="resume" label="Résumé" />
       </div>
     </div>
   );

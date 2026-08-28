@@ -7,6 +7,7 @@ import type { ComponentType } from "react";
 import { AlertTriangle, Download, Eye, FileText, Mail, SquarePen, Sparkles, X } from "lucide-react";
 
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
+import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
 import { GenerationProgress } from "@/components/ui/GenerationProgress";
 import { getListingSignal } from "@/lib/jobStatus";
 import { ThemeSelector } from "@/components/shared/ThemeSelector";
@@ -170,6 +171,7 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
                 DOCX
               </a>
             )}
+            <DocumentVersionHistory jobId={jobId} kind={kind} label={label} />
           </>
         )}
       </div>

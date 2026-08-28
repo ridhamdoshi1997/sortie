@@ -971,6 +971,7 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | 3 ATS-safe resume themes | ✅ | Custom (2026-07-19) |
 | Application email drafts | 📋 | Phase 11 / F31 |
 | Resume version manager (slots, primary flag, per-résumé status) | 🎨 | Brainstorm + teardown — `/preview/resume` |
+| **Per-job AI-generation version history** (regenerating a résumé/cover letter for the same job used to silently destroy the previous draft) | 🟡 built, blocked on a pre-existing storage-download bug | 2026-08-28 (Phase 28) — `document_versions` table + `DocumentVersionHistory.tsx`, direct user report. List/RLS/UI verified; the actual file-restore round trip is blocked by a real, separately-discovered `.download()`/CloudFront fetch bug that also breaks the pre-existing "View" button — see progress-tracker.md's newest entry |
 | Follow-up & thank-you generator + timing nudges | 🆕 | Brainstorm |
 | DOCX / Markdown export | 📋 | Phase 16 |
 | **Resume fit / gap analysis** (score 0–10, per-check gaps, keyword coverage) | 🎨 | Competitor teardown — **design preview built** |
