@@ -929,7 +929,7 @@ Everything else is a facet of these three. Sequence matters: each one makes the 
 | --- | --- | --- |
 | SerpApi job discovery | ✅ | Phase 6 |
 | ATS provider adapters (Ashby, Greenhouse, Lever) | ✅ shipped 2026-08-27 (Phase 27) | `lib/atsProviders.ts` — user-curated watchlist (`target_companies` table, `/find-jobs/companies`) plus reuse in `lib/reresolveApplyLink.ts`'s lazy fix-up path for the general search pipeline. See `progress-tracker.md`'s Phase 27 entry |
-| Structured job APIs (Adzuna, Arbeitnow, TheirStack, Apify, Serper) | 📋 | Phase 8 |
+| Structured job APIs (Adzuna, Arbeitnow, TheirStack, Apify, Serper) | 🟡 partial | 2026-08-28 (Phase 28): TheirStack built as an overflow-only fallback after SerpApi's 3-key chain is exhausted (`lib/jobScraper.ts`'s `theirstackProvider`) — not yet live-tested against a real account. **Serper dropped entirely** — confirmed via its own docs it has no job-search capability (search/news/places/images/videos/shopping/scholar/patents only, no "jobs" type). Adzuna/Arbeitnow/Apify still unbuilt |
 | Custom board queries | 📋 | Phase 8 |
 | Posting liveness / freshness checks | 📋 | Phase 10 |
 | Dedup & status normalization | 📋 | Phase 14 |

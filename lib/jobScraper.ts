@@ -157,7 +157,19 @@ async function fetchSerpApiPages(
     const allJobs = [];
     let nextPageToken: string | undefined;
 
-    for (let page = 0; page < 3; page++) {
+    // Direct user report (2026-08-28): a broad "software developer"/Canada
+    // search returned only ~30 results — traced to this loop being capped
+    // at 3 pages, and Google Jobs returns exactly 10 results/page. Raised
+    // to 10 (researched via agy): Google Jobs itself has a hard ceiling
+    // around 100-200 total results per query regardless of page count (it's
+    // a consumer aggregator, not a comprehensive job database — real
+    // portals like LinkedIn/Indeed get their volume from their own indexed
+    // DB + direct ATS feeds, a fundamentally different architecture than
+    // this app's), so 10 pages (100 results) is close to that real ceiling
+    // without paying for pages beyond it. Real cost: up to 10 SerpApi
+    // credits per broad search instead of 3 — narrower searches still break
+    // out of this loop early via the `if (!nextPageToken) break` below.
+    for (let page = 0; page < 10; page++) {
         const params = new URLSearchParams({
             engine: "google_jobs",
             q: jobTitle,
@@ -312,6 +324,109 @@ const serpApiProvider: JobScraperProvider = {
     }
 };
 
+// TheirStack Job Search API — https://theirstack.com, real structured job
+// data across 100+ countries (not scraped Google Jobs results). Used ONLY
+// as an overflow fallback: SerpApi's own 3-key chain (getSerpApiKeyChain
+// above) is the primary path and already absorbs normal monthly-quota
+// exhaustion on any single account; TheirStack only gets called — and only
+// then spends real credits (1 per job returned) — when EVERY configured
+// SerpApi key is exhausted at once. Direct user decision (2026-08-28):
+// Serper.dev was considered too but dropped entirely — confirmed via its
+// own docs it has no "jobs" search type at all (search/news/places/images/
+// videos/shopping/scholar/patents only), so it can't serve this role.
+type TheirStackJobResult = {
+    id: number | string;
+    job_title?: string;
+    company?: string;
+    description?: string;
+    url?: string;
+    source_url?: string;
+    final_url?: string;
+    date_posted?: string;
+    location?: string;
+    short_location?: string;
+    cities?: string[];
+    remote?: boolean;
+    employment_statuses?: string[];
+    salary_string?: string;
+    company_object?: { logo?: string };
+};
+
+// TheirStack's date filter is "days old, inclusive of today" (posted_at_max_age_days:
+// 0 = today only, 1 = today+yesterday) — same underlying concept as SerpApi's
+// DATE_POSTED_CHIPS above, just a different shape, so reuse that mapping
+// rather than inventing a second one.
+const THEIRSTACK_MAX_AGE_DAYS: Record<string, number> = {
+    today: 0,
+    "3days": 2,
+    week: 6,
+    month: 29,
+};
+
+function getTheirStackApiKey(): string | null {
+    return process.env.THEIRSTACK_API_KEY || null;
+}
+
+const theirstackProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode, datePosted) {
+        const apiKey = getTheirStackApiKey();
+        if (!apiKey) throw new Error("Missing THEIRSTACK_API_KEY");
+
+        const maxAgeDays = (datePosted && THEIRSTACK_MAX_AGE_DAYS[datePosted]) ?? 30;
+
+        const response = await fetch("https://api.theirstack.com/v1/jobs/search", {
+            method: "POST",
+            headers: {
+                Authorization: `Bearer ${apiKey}`,
+                "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+                job_title_or: [jobTitle],
+                job_country_code_or: [countryCode.toUpperCase()],
+                posted_at_max_age_days: maxAgeDays,
+                limit: 25,
+            }),
+        });
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`TheirStack API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const json = await response.json();
+        const jobs: TheirStackJobResult[] = Array.isArray(json) ? json : (json.data ?? []);
+
+        // Same "keep only what actually matches the searched city, or is
+        // explicitly unbound/remote" filter SerpApi's own provider applies
+        // at the end of searchWithSerpApiKey — TheirStack's location fields
+        // differ in shape (short_location/cities/remote vs a single
+        // location string) but the filtering intent is identical.
+        const searchCity = location.split(",")[0].trim().toLowerCase();
+        const filtered = jobs.filter((job) => {
+            if (job.remote) return true;
+            const candidates = [job.short_location, job.location, ...(job.cities ?? [])]
+                .filter((v): v is string => Boolean(v))
+                .map((v) => v.toLowerCase());
+            return candidates.some((c) => c.includes(searchCity));
+        });
+
+        return filtered.map((job) => ({
+            id: String(job.id),
+            title: job.job_title ?? "",
+            company: job.company ?? "",
+            location: job.short_location || job.location || (job.remote ? "Remote" : ""),
+            description: job.description ?? "",
+            url: job.source_url || job.url || job.final_url || "",
+            applyUrl: job.final_url || job.url,
+            salary: job.salary_string,
+            type: job.employment_statuses?.[0],
+            postedAt: job.date_posted,
+            source: "TheirStack",
+            logoUrl: job.company_object?.logo,
+        }));
+    },
+};
+
 export async function searchJobs(
     jobTitle: string,
     location: string,
@@ -321,7 +436,18 @@ export async function searchJobs(
 ): Promise<NormalizedJob[]> {
 
     if (provider === "serpapi") {
-        return serpApiProvider.search(jobTitle, location, countryCode, datePosted);
+        try {
+            return await serpApiProvider.search(jobTitle, location, countryCode, datePosted);
+        } catch (err) {
+            // Only a genuine "every SerpApi key is exhausted" failure should
+            // spend a real TheirStack credit — any other error (bad
+            // location, network, malformed query) surfaces immediately,
+            // same reasoning getSerpApiKeyChain's own comment gives for not
+            // burning multiple SerpApi keys on a doomed request either.
+            if (!isQuotaExhaustedError(err) || !getTheirStackApiKey()) throw err;
+            console.warn("All SerpApi keys exhausted — falling back to TheirStack.");
+            return theirstackProvider.search(jobTitle, location, countryCode, datePosted);
+        }
     }
 
     throw new Error("Invalid scraper provider selected.");
