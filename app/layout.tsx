@@ -48,6 +48,18 @@ export const metadata: Metadata = {
     ],
     apple: "/icons/icon-192.png",
   },
+  // iOS ignores the web manifest for "Add to Home Screen" — Safari only
+  // reads these apple-specific meta tags, which Next's metadata API doesn't
+  // emit unless explicitly asked (found missing while auditing this
+  // session's PWA work; the manifest/icons/theme-color above only ever
+  // covered Chrome/Android). statusBarStyle "black-translucent" lets the
+  // app's own dark chrome show through the iOS status bar instead of a
+  // separate opaque bar, matching the standalone/dark theme_color above.
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "Sortie",
+  },
 };
 
 export const viewport: Viewport = {

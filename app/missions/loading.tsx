@@ -11,7 +11,7 @@ export default function MissionsLoading() {
       <main className="mx-auto flex w-full min-w-0 min-h-[calc(100vh-5rem)] max-w-360 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-2">
           <div className="h-9 w-48 animate-pulse rounded-md bg-surface-secondary" />
-          <div className="h-5 w-96 animate-pulse rounded-md bg-surface-secondary" />
+          <div className="h-5 w-96 max-w-full animate-pulse rounded-md bg-surface-secondary" />
         </div>
 
         <div className="flex flex-wrap items-center gap-2">

@@ -13,7 +13,7 @@ export default function CareerLoading() {
       <main className="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex flex-col gap-2">
           <div className="h-9 w-56 animate-pulse rounded-md bg-surface-secondary" />
-          <div className="h-5 w-80 animate-pulse rounded-md bg-surface-secondary" />
+          <div className="h-5 w-80 max-w-full animate-pulse rounded-md bg-surface-secondary" />
         </div>
         {[0, 1, 2, 3].map((i) => (
           <div key={i} className="h-32 animate-pulse rounded-2xl border border-border bg-surface p-6" />
