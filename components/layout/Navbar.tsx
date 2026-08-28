@@ -18,6 +18,7 @@ import {
 import { Logo } from "@/components/layout/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
+import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
 import { getUnreadNotificationCount } from "@/actions/notifications";
 import { trackPostHogClientEvent } from "@/lib/posthog-client";
 
@@ -333,6 +334,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
   }
 
   return (
+    <>
     <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
       <div className="glass-panel-overlay mx-auto grid h-16 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-2xl px-4 sm:px-6 lg:px-8">
         <div className="flex items-center">
@@ -517,5 +519,15 @@ export function Navbar({ isAuthenticated = false }: Props) {
         </div>
       )}
     </header>
+
+    {/* Persistent site-wide search bar (direct user request, 2026-08-28) —
+        deliberately a SIBLING of <header>, not a child of it, so it does
+        NOT inherit the header's `sticky` positioning. Direct user
+        correction, confirmed live: a sticky search bar followed the Navbar
+        down the page and overlapped list content below it — this stays at
+        its normal in-flow position and scrolls away like any other page
+        content once you scroll past it. */}
+    <GlobalSearchBar />
+    </>
   );
 }

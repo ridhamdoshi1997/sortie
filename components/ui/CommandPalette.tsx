@@ -143,6 +143,24 @@ export function CommandPalette() {
     run: () => router.push(`/find-jobs/${job.id}`),
   }));
 
+  // Cross-link into the real full-text search page (/search — description/
+  // notes/tags, not just title/company) whenever there's an active query,
+  // so a query too broad or too specific for this dropdown's 6-result quick
+  // jump has somewhere real to go. Always last in the Jobs group.
+  const trimmedQuery = query.trim();
+  const searchAllCommand: CommandItem[] =
+    trimmedQuery.length >= 2
+      ? [
+          {
+            id: "search-all-jobs",
+            label: `Search all jobs for "${trimmedQuery}"`,
+            group: "Jobs",
+            icon: Search,
+            run: () => router.push(`/search?q=${encodeURIComponent(trimmedQuery)}`),
+          },
+        ]
+      : [];
+
   const filtered = [
     ...commands.filter((c) => {
       const q = query.trim().toLowerCase();
@@ -150,6 +168,7 @@ export function CommandPalette() {
       return c.label.toLowerCase().includes(q) || (c.keywords ?? "").includes(q);
     }),
     ...jobCommands,
+    ...searchAllCommand,
   ];
 
   function close() {

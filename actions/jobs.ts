@@ -400,14 +400,15 @@ export async function bulkAddTag(jobIds: string[], tag: string): Promise<ActionR
 
 export type QuickSearchJob = { id: string; title: string; company: string | null };
 
-// Global search (build-plan.md §H) — powers the Cmd+K command palette's
-// real-data results. Deliberately scoped to jobs only, not a multi-entity
-// search across résumés/interview banks/etc. — jobs are the single
-// highest-value, highest-volume searchable entity in this app, and this
-// app's own data is small enough per user that a broader fuzzy index isn't
-// justified yet. Same title/company ilike shape as lib/admin/queries.ts's
-// listUsers search, capped small since this powers an inline dropdown, not
-// a results page.
+// Powers the Cmd+K command palette's inline "Jobs" results — a fast
+// title/company jump-to, not the real full-text search (build-plan.md §H's
+// "Global search" row explicitly calls this distinction out: "Cmd+K covers
+// navigation/actions, not full-text job search"). See searchJobsFullText()
+// below for the real thing (description/requirements/notes/tags, ranked,
+// snippet-highlighted, its own /search page) — this one stays a plain
+// ilike title/company match, capped small, since it powers an inline
+// dropdown, not a results page. Same shape as lib/admin/queries.ts's
+// listUsers search.
 export async function quickSearchJobs(query: string): Promise<QuickSearchJob[]> {
   const user = await requireUser();
   const trimmed = query.trim();
@@ -428,6 +429,63 @@ export async function quickSearchJobs(query: string): Promise<QuickSearchJob[]> 
     return data ?? [];
   } catch (error) {
     console.error("[actions/jobs] quickSearchJobs", error);
+    return [];
+  }
+}
+
+export type JobSearchResult = {
+  id: string;
+  title: string;
+  company: string | null;
+  location: string | null;
+  application_status: string | null;
+  match_score: number | null;
+  found_at: string;
+  company_logo_url: string | null;
+  external_apply_url: string | null;
+  snippet: string | null;
+  rank: number;
+};
+
+// The real "Global search" (build-plan.md §H) — full-text across title,
+// company, location, job type, tags, personal notes, and the AI-cleaned
+// role summary/description/requirements/responsibilities/nice-to-have/
+// benefits/private reflection fields, weighted so a title/company match
+// ranks above one buried in the description. Backed by the search_jobs()
+// Postgres function (migration 20260828180000_add-full-text-job-search),
+// called via the SDK's .rpc() — the query-builder's chainable .textSearch()
+// can filter but can't ORDER BY a computed rank or return a ts_headline
+// snippet, so this needed a real function rather than staying on the
+// PostgrestQueryBuilder shape quickSearchJobs() above uses. SECURITY
+// INVOKER — the function itself still enforces jobs_select_own RLS, this
+// isn't a service-role bypass.
+export async function searchJobsFullText(query: string, limit = 30, offset = 0): Promise<JobSearchResult[]> {
+  await requireUser();
+  const trimmed = query.trim();
+  if (trimmed.length < 2) return [];
+
+  try {
+    const insforge = await createInsforgeServer();
+    // Cast rather than .returns()/.overrideTypes() — the untyped client (no
+    // Database generic anywhere in this codebase) infers .rpc()'s Result as
+    // a single-row shape, and postgrest-js's CheckMatchingArrayTypes hard-
+    // errors overriding that to an array type even though search_jobs()
+    // genuinely returns a table/array (confirmed live via direct SQL). Same
+    // trust level as the rest of this file's `any`-typed database calls.
+    const { data, error } = (await insforge.database.rpc("search_jobs", {
+      p_query: trimmed,
+      p_limit: limit,
+      p_offset: offset,
+    })) as { data: JobSearchResult[] | null; error: { message: string } | null };
+
+    if (error) {
+      console.error("[actions/jobs] searchJobsFullText", error);
+      return [];
+    }
+
+    return data ?? [];
+  } catch (error) {
+    console.error("[actions/jobs] searchJobsFullText", error);
     return [];
   }
 }
