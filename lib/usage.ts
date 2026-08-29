@@ -316,18 +316,25 @@ export async function checkAndConsumeUsage(
   const multiplier = profile?.custom_usage_multiplier ?? 1;
   const baseLimit = override !== undefined ? override : DAILY_LIMITS[action];
   const limit = Math.max(1, Math.floor(baseLimit * multiplier));
-  const today = new Date().toISOString().slice(0, 10);
 
-  const { data: existing } = await insforge.database
-    .from("usage_daily")
-    .select("id,count")
-    .eq("user_id", userId)
-    .eq("day", today)
-    .eq("action", action)
-    .maybeSingle<{ id: string; count: number }>();
+  // Atomic, server-authoritative check-and-increment via a SECURITY DEFINER
+  // RPC (migration 20260829120000) — usage_daily no longer accepts a direct
+  // client UPDATE/INSERT at all, closing a real bypass where a signed-in
+  // user could PATCH their own row's count back to 0 via the REST API and
+  // reset their daily quota. This also closes the old read-then-write race
+  // between concurrent requests that the two-step version had.
+  const { data, error } = (await insforge.database.rpc("increment_usage_daily", {
+    p_action: action,
+    p_limit: limit,
+  })) as { data: { new_count: number; allowed: boolean }[] | null; error: { message: string } | null };
 
-  const currentCount = existing?.count ?? 0;
-  if (currentCount >= limit) {
+  if (error) {
+    console.error("[lib/usage] increment_usage_daily failed:", error);
+    return { allowed: false, error: "Something went wrong checking your usage limit. Please try again." };
+  }
+
+  const result = data?.[0];
+  if (!result?.allowed) {
     const tomorrow = new Date();
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     tomorrow.setUTCHours(0, 0, 0, 0);
@@ -341,17 +348,6 @@ export async function checkAndConsumeUsage(
       resetsAt: tomorrow.toISOString(),
       canUpgrade,
     };
-  }
-
-  if (existing) {
-    await insforge.database
-      .from("usage_daily")
-      .update({ count: currentCount + 1 })
-      .eq("id", existing.id);
-  } else {
-    await insforge.database
-      .from("usage_daily")
-      .insert([{ user_id: userId, day: today, action, count: 1 }]);
   }
 
   return { allowed: true };
