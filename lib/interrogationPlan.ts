@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { InterviewerBackground } from "@/agent/research";
 
 // Pure synthesis over two already-shipped, already-stored sources — no new
@@ -90,10 +90,11 @@ Return ONLY valid JSON matching this exact shape:
 export async function synthesizeInterrogationPlan(
   input: InterrogationPlanInput,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<InterrogationPlanResult> {
   const userPrompt = buildInputText(input);
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: INTERROGATION_PLAN_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

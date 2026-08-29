@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { Profile } from "@/types";
 
 // Extension inline match-score badge — a deliberately cheap, fast cousin of
@@ -52,6 +52,7 @@ export async function generateScorePreview(
   profile: Profile,
   job: { title: string; company: string; description: string },
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "fast",
 ): Promise<ScorePreviewResult> {
   const userPrompt = `CANDIDATE:
 ${buildCandidateSummary(profile)}
@@ -61,7 +62,7 @@ Title: ${job.title}
 Company: ${job.company}
 Description: ${job.description.slice(0, 4000)}`;
 
-  const raw = await complete(getModel(provider, "fast"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.2,

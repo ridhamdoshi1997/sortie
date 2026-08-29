@@ -880,3 +880,72 @@ export async function setFeatureOverride(targetUserId: string, key: FeatureOverr
     return { success: false, error: toUserMessage(error, "Not authorized.") };
   }
 }
+
+// Admin-editable AI model config (direct user request, 2026-08-29: "can we
+// give the owner a permission from admin side to change the models or
+// update them anytime?") — lib/models.ts's getModel() reads ai_model_config
+// live on every call, falling back to a hardcoded MODEL_IDS object only if
+// the table read fails, so a save here takes effect on the very next AI
+// call, no redeploy. Same requireRole(["owner"]) bar as updatePlan() — this
+// affects live cost/quality for every user, not a lower-stakes admin
+// setting.
+export type ModelConfigRow = { provider: string; tier: string; modelId: string };
+
+export async function getModelConfigForAdmin(): Promise<ModelConfigRow[]> {
+  const admin = await requireAdmin();
+  requireRole(admin, ["owner", "admin"]);
+  const client = createAdminDbClient();
+
+  const { data } = await client.database
+    .from("ai_model_config")
+    .select("provider,tier,model_id")
+    .order("provider")
+    .order("tier")
+    .returns<{ provider: string; tier: string; model_id: string }[]>();
+
+  return (data ?? []).map((row) => ({ provider: row.provider, tier: row.tier, modelId: row.model_id }));
+}
+
+export async function updateModelConfig(rows: ModelConfigRow[]): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const { data: before } = await client.database.from("ai_model_config").select("provider,tier,model_id");
+
+    for (const row of rows) {
+      const modelId = row.modelId.trim();
+      if (!modelId) {
+        return { success: false, error: `${row.provider}/${row.tier} needs a model id — it can't be blank.` };
+      }
+      const { error } = await client.database
+        .from("ai_model_config")
+        .update({ model_id: modelId, updated_at: new Date().toISOString(), updated_by: admin.email })
+        .eq("provider", row.provider)
+        .eq("tier", row.tier);
+      if (error) {
+        return { success: false, error: toUserMessage(error, `Failed to save ${row.provider}/${row.tier}.`) };
+      }
+    }
+
+    // No targetId — admin_audit_log.target_id is a uuid column and this
+    // action touches multiple (provider, tier) rows at once, none of which
+    // has a uuid primary key of its own (ai_model_config's PK is the
+    // (provider, tier) pair). Confirmed live: passing a non-uuid sentinel
+    // like "all" here fails with 22P02 and silently drops the audit entry
+    // (logAdminAction is fire-and-forget by design), so this must stay
+    // omitted rather than filled with a fake value.
+    await logAdminAction(admin, {
+      action: "update_model_config",
+      targetTable: "ai_model_config",
+      before: { rows: before ?? [] },
+      after: { rows },
+    });
+
+    revalidatePath("/admin/ai-models");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}

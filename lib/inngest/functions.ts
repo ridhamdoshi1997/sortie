@@ -1,5 +1,5 @@
 import { inngest } from "./client";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
@@ -100,7 +100,7 @@ export const evaluateJobsAsync = inngest.createFunction(
             .select("role_family,skill,correction_type")
             .eq("user_id", userId);
 
-        const provider = await resolveProviderForUser(admin, userId, profile.email, profile.preferred_model);
+        const { provider, tier } = await resolveModelForUser(admin, userId, profile.email, profile.preferred_model);
         // Chunk size dropped from 10 to 5 (2026-07-20) — verified live that
         // the richer 2-3 sentence per-dimension notes cause the model to
         // silently under-deliver a 10-job batch (only ~2 of 10 jobs actually
@@ -119,6 +119,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                         profile,
                         provider,
                         (corrections ?? []) as SkillCorrection[],
+                        tier,
                     );
 
                     for (const job of chunk) {
@@ -282,10 +283,10 @@ export const generateResumeSuggestionAsync = inngest.createFunction(
         }
 
         const role = currentOrMostRecentRole(profile?.work_experience);
-        const provider = await resolveProviderForUser(admin, userId, profile?.email, profile?.preferred_model);
+        const { provider, tier } = await resolveModelForUser(admin, userId, profile?.email, profile?.preferred_model);
 
         const bullet = await step.run("generate-suggestion", () =>
-            generateResumeUpdateSuggestion(accomplishment.title, accomplishment.description, role, provider),
+            generateResumeUpdateSuggestion(accomplishment.title, accomplishment.description, role, provider, tier),
         );
 
         if (!bullet) {
@@ -647,8 +648,8 @@ export const generateWeeklyBriefingsAsync = inngest.createFunction(
                     })),
                 };
 
-                const provider = await resolveProviderForUser(admin, userId, profile?.email ?? undefined, profile?.preferred_model);
-                const result = await generateWeeklyBriefing(snapshot, provider);
+                const { provider, tier } = await resolveModelForUser(admin, userId, profile?.email ?? undefined, profile?.preferred_model);
+                const result = await generateWeeklyBriefing(snapshot, provider, tier);
 
                 await admin.database
                     .from("profiles")

@@ -1,4 +1,4 @@
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // Per-contact outreach message drafts (build-plan.md §F's "Hiring contact
 // discovery + outreach drafts" — discovery already shipped via Insider
@@ -23,13 +23,13 @@ type OutreachMessageInput = {
   jobTitle: string | null;
 };
 
-export async function generateOutreachMessage(input: OutreachMessageInput, provider: ModelProvider = "gemini"): Promise<string> {
+export async function generateOutreachMessage(input: OutreachMessageInput, provider: ModelProvider = "gemini", tier: ModelTier = "fast"): Promise<string> {
   const firstName = input.personName.split(" ")[0] || input.personName;
   const userPrompt = `Recipient: ${firstName}, ${input.personTitle ?? "role unknown"} at ${input.company}
 Real connection reason: ${input.connectionReason ?? "no specific shared history — just a professional at the target company"}
 Candidate is interested in: ${input.jobTitle ?? "a role"} at ${input.company}`;
 
-  const raw = await complete(getModel(provider, "fast"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.6,

@@ -5,7 +5,7 @@ import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { researchCompany } from "@/agent/research";
 import { generateCoverLetter, generateTailoredResume } from "@/agent/documents";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
@@ -133,7 +133,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const provider = await resolveProviderForUser(insforge, user.id, profile.email, profile.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, profile.email, profile.preferred_model);
 
     const usage = await checkAndConsumeUsage(insforge, user.id, profile.email, "document_generation");
     if (!usage.allowed) {
@@ -144,7 +144,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     // if it hasn't been researched yet, same logic as /api/agent/research.
     let dossier: CompanyResearchDossier | null = job.company_research;
     if (!dossier) {
-      const researchResult = await researchCompany({ job, profile, provider });
+      const researchResult = await researchCompany({ job, profile, provider, tier });
       if (!researchResult.success) {
         return NextResponse.json(
           { success: false, error: "Company research failed, needed before generating" },
@@ -187,7 +187,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         .eq("job_id", jobId)
         .maybeSingle<{ resume_sections: ResumeSection[] | null; resume_style: ResumeStyle | null }>();
 
-      const generated = await generateTailoredResume({ job, profile, dossier, provider });
+      const generated = await generateTailoredResume({ job, profile, dossier, provider, tier });
       generatedContentText = JSON.stringify(generated);
       resumeSections = mergeGeneratedContent(existingApp?.resume_sections ?? null, generated, profile);
       resumeStyle = existingApp?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
@@ -212,7 +212,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         .maybeSingle<{ resume_style: ResumeStyle | null; cover_letter_salutation: string | null }>();
       const coverLetterStyle = existingStyleRow?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
 
-      const letterBody = await generateCoverLetter({ job, profile, dossier, provider });
+      const letterBody = await generateCoverLetter({ job, profile, dossier, provider, tier });
       generatedContentText = letterBody;
       pdfBuffer = await renderToBuffer(
         React.createElement(CoverLetterPDF, {
@@ -232,7 +232,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       kind,
       pdfBuffer,
       contentText: generatedContentText,
-      modelUsed: getModel(provider, "smart").model,
+      modelUsed: (await getModel(provider, tier)).model,
     });
 
     if (!persistResult.success) {
@@ -252,7 +252,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (sectionsError) {
         console.error("[api/documents/generate] save resume_sections/resume_style", sectionsError);
       }
-      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider);
+      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider, tier);
     }
 
     revalidatePath(`/find-jobs/${jobId}`);

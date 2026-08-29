@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // "Market Readiness" — the free pivot of build-plan.md §E's "Passive
 // market-watch," per agy's own suggested rescope: real ongoing job
@@ -48,6 +48,7 @@ export async function generateMarketReadinessNarrative(
   accomplishments: AccomplishmentLite[],
   targetTitles: string[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<MarketReadinessResult> {
   const userPrompt = `THE CANDIDATE'S OWN LOGGED ACCOMPLISHMENTS (most recent first):
 ${buildAccomplishmentsText(accomplishments) || "None logged yet."}
@@ -55,7 +56,7 @@ ${buildAccomplishmentsText(accomplishments) || "None logged yet."}
 THE CANDIDATE'S OWN STATED TARGET JOB TITLES:
 ${targetTitles.length > 0 ? targetTitles.join(", ") : "None specified."}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

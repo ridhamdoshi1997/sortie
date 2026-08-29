@@ -2,7 +2,7 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { researchCompany } from "@/agent/research";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { checkUsageLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
@@ -184,11 +184,15 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       level: "info",
     });
 
+    const { provider: researchProvider, tier: researchTier } = await resolveModelForUser(
+      insforge, userId, profile.email, profile.preferred_model,
+    );
     const result = await researchCompany({
       job,
       profile,
       log: logAgentMessage,
-      provider: await resolveProviderForUser(insforge, userId, profile.email, profile.preferred_model),
+      provider: researchProvider,
+      tier: researchTier,
     });
 
     if (!result.success) {

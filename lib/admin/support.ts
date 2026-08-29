@@ -246,7 +246,7 @@ export async function generateTicketReplyDraft(subject: string, messages: { auth
 
   const userPrompt = `Ticket subject: ${subject}\n\nFull thread so far:\n${threadText}`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: TICKET_REPLY_DRAFT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.4,

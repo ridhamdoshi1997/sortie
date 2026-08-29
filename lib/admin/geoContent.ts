@@ -101,7 +101,7 @@ Job postings observed: ${topic.jobCount}
 Average candidate fit score across these postings: ${topic.avgMatchScore !== null ? `${topic.avgMatchScore}%` : "not enough scored postings yet"}
 Most frequently required skills (by observed frequency): ${topic.topSkills.length > 0 ? topic.topSkills.join(", ") : "no consistent pattern observed yet"}`;
 
-  const bodyMarkdown = await complete(getModel("gemini", "smart"), {
+  const bodyMarkdown = await complete(await getModel("gemini", "smart"), {
     systemPrompt: GEO_SYSTEM_PROMPT,
     userPrompt: dataSummary,
     temperature: 0.5,

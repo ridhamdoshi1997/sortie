@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // Job-description decoder (build-plan.md §B) — classifies a job's own
 // already-extracted Required requirements into genuine must-haves vs likely
@@ -61,6 +61,7 @@ export async function decodeJobRequirements(
   jobTitle: string | null,
   requirements: string[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<JobDecoderResult> {
   if (requirements.length === 0) {
     return { requirements: [] };
@@ -70,7 +71,7 @@ export async function decodeJobRequirements(
 Required qualifications listed on this posting:
 ${requirements.map((r, i) => `${i + 1}. ${r}`).join("\n")}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

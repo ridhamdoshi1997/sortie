@@ -32,6 +32,11 @@ export interface Profile {
   portfolio_url: string | null;
   work_authorization: string | null;
   preferred_model: "gemini" | "openai" | "anthropic" | null;
+  // Full-access users only (admin/owner/tester/llmUnlocked) — an explicit
+  // tier override for testing what a lower tier looks like. Ignored for
+  // anyone without full access; see lib/subscription.ts's
+  // resolveModelForUser, which always forces "fast" for them regardless.
+  preferred_tier: "fast" | "smart" | null;
   preferred_resume_theme: "classic" | "modern" | "minimal" | null;
   resume_pdf_url: string | null;
   linkedin_context_id: string | null;

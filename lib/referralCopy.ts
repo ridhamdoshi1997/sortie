@@ -1,4 +1,4 @@
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // AI-personalized referral copy (Phase 18 item 4, context/RESUME.md) — the
 // dependent half of the referral system (item 3). Same "real data in,
@@ -28,11 +28,12 @@ export async function generateReferralCopy(
   channel: ReferralChannel,
   currentTitle: string | null,
   provider: ModelProvider,
+  tier: ModelTier = "fast",
 ): Promise<string> {
   const userPrompt = `Channel: ${CHANNEL_BRIEF[channel]}
 This user's current title (use only if it fits naturally, otherwise skip it): ${currentTitle?.trim() || "not provided"}`;
 
-  const raw = await complete(getModel(provider, "fast"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.7,

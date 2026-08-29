@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { complete, getModel } from "@/lib/models";
@@ -83,7 +83,10 @@ export async function POST(): Promise<NextResponse> {
 
     let raw: string;
     try {
-      raw = await complete(getModel(await resolveProviderForUser(insforge, user.id, profile.email, profile.preferred_model), "smart"), {
+      const { provider: genProvider, tier: genTier } = await resolveModelForUser(
+        insforge, user.id, profile.email, profile.preferred_model,
+      );
+      raw = await complete(await getModel(genProvider, genTier), {
         systemPrompt:
           "You are an expert resume writer producing a polished, ATS-optimized resume. Given a candidate's profile data, produce a professional summary and rewrite each work experience entry's responsibilities as achievement-focused bullet points.\n\nRules:\n- Summary: 2-3 sentences, specific to this candidate. Never open with generic resume clichés like 'results-oriented', 'proven track record', 'dynamic professional', or similar boilerplate — state concretely what the candidate does and their strongest strength.\n- Bullets: 3-5 per role, each a single tight line (roughly 15-22 words), starting with a strong action verb. Never repeat the same opening verb across bullets in the resume. Quantify impact (scale, time saved, performance gain, team size) whenever the candidate's real experience supports a number — never invent a metric that isn't grounded in their profile.\n- Use only standard characters and punctuation (no special symbols, emoji, or unusual unicode) so the text extracts cleanly in ATS parsers.\n- Keep total content tight enough to fit cleanly on one page for a typical candidate — favor the most relevant, highest-impact bullets over exhaustive coverage of every responsibility.\n- Never claim a skill or a piece of experience the candidate does not actually have.\n\nReturn only valid JSON.",
         userPrompt: `Generate polished resume content for this candidate and return JSON matching this exact shape:

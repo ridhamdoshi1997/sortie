@@ -74,7 +74,7 @@ async function draftSuccessStory(input: SuccessStoryInput): Promise<{ headline: 
 Role family: ${input.roleFamily}
 Days tracked in Sortie before this offer: ${input.daysSinceFirstTracked !== null ? input.daysSinceFirstTracked : "not available — don't mention a specific duration"}`;
 
-  const threadMarkdown = await complete(getModel("gemini", "smart"), {
+  const threadMarkdown = await complete(await getModel("gemini", "smart"), {
     systemPrompt: SUCCESS_STORY_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.6,

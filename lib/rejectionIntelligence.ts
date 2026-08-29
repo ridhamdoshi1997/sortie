@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { EvaluationDimensionResult } from "@/lib/evaluator";
 
 // A candidate can never actually know why a specific employer went silent —
@@ -126,10 +126,11 @@ Return ONLY valid JSON matching this exact shape:
 export async function diagnoseRejectionForJob(
   job: RejectionIntelligenceJob,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<RejectionDiagnosisResult> {
   const userPrompt = `JOB TO DIAGNOSE:\n${buildJobText(job)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

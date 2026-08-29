@@ -1,4 +1,4 @@
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { isRateLimitError, rateLimitMessage } from "@/lib/errors";
 import type { Profile, ResumeAnalysis, ResumeIssueSeverity } from "@/types";
 import type { ResumeSection } from "@/types/resumeEditor";
@@ -51,10 +51,11 @@ const SYSTEM_PROMPT =
 
 export async function runResumeQualityAnalysis(
   provider: ModelProvider,
+  tier: ModelTier = "smart",
   résuméText: string,
 ): Promise<{ success: boolean; analysis?: ResumeAnalysis; error?: string }> {
   try {
-    const raw = await complete(getModel(provider, "smart"), {
+    const raw = await complete(await getModel(provider, tier), {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt: `Résumé to analyze:\n\n${résuméText}\n\nReturn JSON with this exact shape:
 {

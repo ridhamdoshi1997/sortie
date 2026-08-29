@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { EvaluationDimensionResult } from "@/lib/evaluator";
 
 // Post-Offer Leverage Synthesizer — same honesty-scoped shape as
@@ -127,10 +127,11 @@ Return ONLY valid JSON matching this exact shape:
 export async function synthesizeLeverageForJob(
   job: LeverageSynthesizerJob,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<LeverageSynthesisResult> {
   const userPrompt = `JOB TO ANALYZE:\n${buildJobText(job)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

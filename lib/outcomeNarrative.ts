@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { CATEGORY_LABELS } from "@/lib/rejectionIntelligence";
 import type { GradeStat, MatchScoreBandStat, RejectionCategoryStat } from "@/lib/outcomeInsights";
 
@@ -67,10 +67,11 @@ export async function generateOutcomeNarrative(
   byGrade: GradeStat[],
   rejectionReasons: RejectionCategoryStat[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<OutcomeNarrativeResult> {
   const userPrompt = `THE CANDIDATE'S OWN APPLICATION-OUTCOME STATS:\n${buildStatsText(byMatchBand, byGrade, rejectionReasons)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

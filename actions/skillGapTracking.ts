@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { aggregateSkillGaps, generateSkillGapPathing, MIN_JOBS_FOR_PATTERN, type SkillGap, type SkillGapPathingResult } from "@/lib/skillGapTracking";
 import type { Profile } from "@/types";
@@ -85,9 +85,9 @@ export async function generateSkillGapPathingAction(): Promise<PathingActionResu
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
 
-    const result = await generateSkillGapPathing(gapsResult.gaps, provider);
+    const result = await generateSkillGapPathing(gapsResult.gaps, provider, tier);
     return { success: true, result };
   } catch (error) {
     console.error("[actions/skillGapTracking] generateSkillGapPathingAction", error);

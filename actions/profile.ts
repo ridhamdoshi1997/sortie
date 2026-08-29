@@ -9,11 +9,10 @@ const pdfParse = require("pdf-parse/lib/pdf-parse.js") as (
   buf: Buffer,
 ) => Promise<{ text: string }>;
 
-import { isAdminUser } from "@/lib/access";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { hasFullModelAccess, resolveModelForUser } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -23,29 +22,40 @@ import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
 import type { Education, Profile, WorkExperience } from "@/types";
 
+// tier is optional and full-access-only (direct follow-up request,
+// 2026-08-29: "admin, testers and owners can also see the fast tier models
+// as well in the picking list") — lets a full-access user deliberately
+// test what a free/Recon user's actual "fast" tier looks like on a given
+// provider, without affecting what any regular user gets (see
+// lib/subscription.ts's resolveModelForUser, which hard-forces "fast" for
+// anyone without full access regardless of this column).
 export async function setPreferredModel(
   provider: ModelProvider,
+  tier?: ModelTier,
 ): Promise<{ success: boolean; error?: string }> {
   const user = await requireUser();
-
-  // Cost-control policy for the public launch (no paid tier exists yet):
-  // GPT/Claude cost real money per call — only allowlisted accounts may
-  // select them. Enforced here, the one place preferred_model is ever
-  // written, not just hidden in the UI (a direct action call would
-  // otherwise bypass a client-side-only restriction).
-  if (provider !== "gemini" && !isAdminUser(user.email)) {
-    return {
-      success: false,
-      error: "Only Gemini is available right now — GPT and Claude are coming to a paid plan soon.",
-    };
-  }
 
   try {
     const insforge = await createInsforgeServer();
 
+    // GPT/Claude cost real money per call — gated to admin/owner, testers,
+    // and llmUnlocked paid plans (lib/subscription.ts's hasFullModelAccess,
+    // shared with resolveModelForUser so the "who's allowed" and "what
+    // actually runs" checks can never drift apart). Enforced here, the one
+    // place preferred_model/preferred_tier is ever written, not just
+    // hidden in the UI (a direct action call would otherwise bypass a
+    // client-side-only restriction).
+    const fullAccess = await hasFullModelAccess(insforge, user.id, user.email);
+    if ((provider !== "gemini" || tier !== undefined) && !fullAccess) {
+      return {
+        success: false,
+        error: "GPT and Claude are available on paid plans and to testers — upgrade or ask to be added as a tester.",
+      };
+    }
+
     const { error } = await insforge.database
       .from("profiles")
-      .update({ preferred_model: provider })
+      .update({ preferred_model: provider, preferred_tier: fullAccess ? (tier ?? null) : null })
       .eq("id", user.id);
 
     if (error) {
@@ -60,6 +70,36 @@ export async function setPreferredModel(
     console.error("[actions/profile] setPreferredModel", error);
     return { success: false, error: "Failed to save model preference" };
   }
+}
+
+// Backs the site-wide model selector (components/shared/SiteModelSelector.tsx,
+// mounted in Navbar.tsx) — direct user request 2026-08-29: "admin, owners
+// and some testers can get full model things and they also get the model
+// selector option site wide". A self-fetching client component calls this
+// on mount rather than threading eligibility through Navbar's props (same
+// pattern GlobalSearchBar already established for a site-wide component).
+export async function getModelSelectorState(): Promise<{
+  eligible: boolean;
+  current: ModelProvider;
+  currentTier: ModelTier | null;
+}> {
+  const user = await requireUser();
+  const insforge = await createInsforgeServer();
+
+  const [eligible, { data: profileRow }] = await Promise.all([
+    hasFullModelAccess(insforge, user.id, user.email),
+    insforge.database
+      .from("profiles")
+      .select("preferred_model,preferred_tier")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model" | "preferred_tier">>(),
+  ]);
+
+  return {
+    eligible,
+    current: profileRow?.preferred_model ?? "gemini",
+    currentTier: profileRow?.preferred_tier ?? "smart",
+  };
 }
 
 export async function setPreferredResumeTheme(
@@ -446,7 +486,8 @@ export async function extractProfileFromBuffer(
     };
   }
 
-  const raw = await complete(getModel(await resolveProviderForUser(insforge, userId, userEmail, preferredModel), "smart"), {
+  const { provider: extractProvider, tier: extractTier } = await resolveModelForUser(insforge, userId, userEmail, preferredModel);
+  const raw = await complete(await getModel(extractProvider, extractTier), {
     systemPrompt:
       "You are a resume parser, not a resume writer. Extract structured profile data from the resume text and return only valid JSON matching the exact schema provided. Use null for missing fields. Arrays must always be arrays (never null). Include every degree found, not just the highest one. experience_level must be one of: Junior, Mid-Level, Senior, Lead, Manager, Director, Executive — pick the closest match or null. CRITICAL — every field must come only from text that actually appears in the résumé, preserved as faithfully as possible, never invented, paraphrased, merged, or summarized: (1) If a role has no description text under it at all (just a title and dates), return an empty string for that role's responsibilities — never write generic filler like 'Software development and product design.' just to avoid an empty field. (2) The source PDF hard-wraps lines purely for page width — a line break mid-sentence is NOT a new bullet or paragraph, it's just where the page ran out of room; reflow wrapped lines belonging to the same bullet/sentence back into one continuous line. (3) If a role's description lists separate bullet points (marked with •, ●, - or similar, or a new sentence clearly starting a new distinct responsibility), preserve each one VERBATIM as its own single-line array item, one real bullet per \\n — strip only the marker character, do not reword or condense the wording itself. (4) If a role's description is one plain paragraph with no bullet markers, keep it as ONE reflowed paragraph (its own internal wraps rejoined, no \\n inserted) — do not invent bullet structure that isn't there.",
     userPrompt: `Extract profile data from this resume and return JSON with this exact shape:
@@ -591,8 +632,11 @@ export async function rewriteBullet(
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
+    const { provider: rewriteProvider, tier: rewriteTier } = await resolveModelForUser(
+      insforge, user.id, user.email, profile?.preferred_model,
+    );
     const raw = await complete(
-      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
+      await getModel(rewriteProvider, rewriteTier),
       {
         systemPrompt:
           "You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome that is not already stated or clearly implied in the original — only reframe and tighten what's already there. Return only valid JSON.",
@@ -660,8 +704,11 @@ export async function splitBullet(
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
+    const { provider: rewriteProvider, tier: rewriteTier } = await resolveModelForUser(
+      insforge, user.id, user.email, profile?.preferred_model,
+    );
     const raw = await complete(
-      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
+      await getModel(rewriteProvider, rewriteTier),
       {
         systemPrompt:
           "You are an expert resume writer. The candidate has one dense resume bullet that actually bundles multiple distinct responsibilities or achievements together (often comma- or 'and'-separated). Split it into 2-5 separate, achievement-focused bullets, one per distinct idea, each starting with a strong action verb, one line each. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated — only reorganize and lightly tighten what's already there. If the bullet genuinely only describes ONE idea, return it unchanged as a single-item array. Return only valid JSON.",
@@ -726,8 +773,11 @@ export async function generateBullets(
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
+    const { provider: rewriteProvider, tier: rewriteTier } = await resolveModelForUser(
+      insforge, user.id, user.email, profile?.preferred_model,
+    );
     const raw = await complete(
-      getModel(await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model), "fast"),
+      await getModel(rewriteProvider, rewriteTier),
       {
         systemPrompt:
           "You are an expert resume writer. Given a candidate's brief, informal note about something they did in a role, turn it into 3-4 DIFFERENT polished, achievement-focused resume bullet point options for the SAME achievement — vary the angle (e.g. one concise, one leadership-forward, one impact-forward) so the candidate can pick their favorite. Each option is one line, roughly 15-25 words, starting with a strong action verb. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome the candidate did not mention — only rephrase what they actually said. Return only valid JSON.",

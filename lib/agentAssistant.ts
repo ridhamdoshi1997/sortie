@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { EvaluationDimensionResult } from "@/lib/evaluator";
 
 // Navigator (build-plan.md §O) — same "real data assembled server-side, one
@@ -125,6 +125,7 @@ export async function getAgentReply(
   snapshot: AgentSnapshot,
   history: AgentChatMessage[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<AgentReply> {
   const conversationText = history.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n");
 
@@ -133,7 +134,7 @@ export async function getAgentReply(
 CONVERSATION SO FAR:
 ${conversationText}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: AGENT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.4,

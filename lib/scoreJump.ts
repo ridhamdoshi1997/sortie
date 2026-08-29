@@ -1,6 +1,6 @@
 import { analyzeResumeGap } from "@/agent/resumeGap";
 import type { createInsforgeServer } from "@/lib/insforge-server";
-import type { ModelProvider } from "@/lib/models";
+import type { ModelProvider, ModelTier } from "@/lib/models";
 import type { Job, Profile, ResumeGapAnalysisResult } from "@/types";
 import type { ResumeSection } from "@/types/resumeEditor";
 
@@ -55,6 +55,7 @@ export async function rescoreAgainstTailoredResume(
   profile: Profile,
   sections: ResumeSection[],
   provider: ModelProvider,
+  tier: ModelTier,
 ): Promise<ScoreJumpResult> {
   const { data: jobRow } = await insforge.database
     .from("jobs")
@@ -70,7 +71,7 @@ export async function rescoreAgainstTailoredResume(
   }
 
   const gapProfile = buildGapProfileFromSections(profile, sections);
-  const result = await analyzeResumeGap(jobRow, gapProfile, provider);
+  const result = await analyzeResumeGap(jobRow, gapProfile, provider, tier);
 
   await insforge.database.from("jobs").update({ resume_analysis: result }).eq("id", jobId).eq("user_id", userId);
 

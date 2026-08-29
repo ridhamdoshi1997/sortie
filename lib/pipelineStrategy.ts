@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { STAGE_ORDER, STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 import { getListingSignal } from "@/lib/jobStatus";
 
@@ -107,13 +107,14 @@ Return ONLY valid JSON: { "observations": ["string"] }`;
 export async function generatePipelineStrategyRead(
   snapshot: PipelineSnapshot,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<PipelineStrategyResult> {
   const userPrompt = `Current pipeline snapshot, ${snapshot.totalActive} active (non-hidden, already-triaged) jobs total:
 ${snapshot.stages.map((s) => `- ${s.label}: ${s.count} job${s.count === 1 ? "" : "s"}${s.avgMatchScore !== null ? `, average match score ${s.avgMatchScore}` : ""}`).join("\n")}
 
 Strong-match (80+) jobs still sitting in Shortlisted, untouched: ${snapshot.highMatchShortlistedCount}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

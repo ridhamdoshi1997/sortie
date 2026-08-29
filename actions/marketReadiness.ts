@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { generateMarketReadinessNarrative, type AccomplishmentLite, type MarketReadinessResult } from "@/lib/marketReadiness";
 import type { Profile } from "@/types";
@@ -53,8 +53,8 @@ export async function generateMarketReadinessAction(): Promise<MarketReadinessAc
       };
     }
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
-    const result = await generateMarketReadinessNarrative(accomplishmentRows, profile?.job_titles_seeking ?? [], provider);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const result = await generateMarketReadinessNarrative(accomplishmentRows, profile?.job_titles_seeking ?? [], provider, tier);
 
     return { success: true, result };
   } catch (error) {

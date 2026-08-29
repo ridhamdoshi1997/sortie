@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import type { Profile } from "@/types";
 
@@ -311,6 +311,7 @@ export async function evaluateJobCompatibility(
   profile: Profile,
   provider: ModelProvider = "gemini",
   corrections: SkillCorrection[] = [],
+  tier: ModelTier = "smart",
 ): Promise<JobEvaluationResult[]> {
   const userPrompt = `CANDIDATE PROFILE:
 ${buildCandidateContext(profile)}
@@ -321,7 +322,7 @@ ${buildConstraintsText(constraints)}
 JOBS TO EVALUATE:
 ${jobs.map((job) => buildJobText(job, corrections)).join("\n\n---\n\n")}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

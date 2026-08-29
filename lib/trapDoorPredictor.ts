@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { CompanyResearchDossier } from "@/types";
 
 // Distinct from CompanyResearchDossier.interviewPrep (generic prep talking
@@ -118,10 +118,11 @@ Return ONLY valid JSON matching this exact shape:
 export async function predictTrapDoorQuestions(
   job: TrapDoorJob,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<TrapDoorPredictionResult> {
   const userPrompt = `JOB TO PREPARE FOR:\n${buildJobText(job)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: TRAP_DOOR_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

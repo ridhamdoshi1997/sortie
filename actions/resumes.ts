@@ -3,7 +3,7 @@
 import { randomUUID } from "crypto";
 import { revalidatePath } from "next/cache";
 
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { checkRateLimit } from "@/lib/rateLimit";
@@ -769,8 +769,8 @@ ${extracted.education.map((e) => `- ${e.degree ?? "—"} in ${e.field ?? "—"},
 Certifications: ${extracted.certifications?.join(", ") || "—"}
 `.trim();
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profileRow?.preferred_model);
-    const result = await runResumeQualityAnalysis(provider, résuméText);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profileRow?.preferred_model);
+    const result = await runResumeQualityAnalysis(provider, tier, résuméText);
     if (!result.success || !result.analysis) {
       return { success: false, error: result.error };
     }
@@ -975,7 +975,10 @@ export async function rewriteResumeSlotBullet(
 
     const jobContext = resume?.target_job_title ? `Target role: ${resume.target_job_title}` : "";
 
-    const raw = await complete(getModel(await resolveProviderForUser(insforge, user.id, user.email, profileRow?.preferred_model), "fast"), {
+    const { provider: rewriteProvider, tier: rewriteTier } = await resolveModelForUser(
+      insforge, user.id, user.email, profileRow?.preferred_model,
+    );
+    const raw = await complete(await getModel(rewriteProvider, rewriteTier), {
       systemPrompt:
         `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
       userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,

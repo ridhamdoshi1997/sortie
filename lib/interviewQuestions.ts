@@ -198,7 +198,7 @@ export async function generateQuestionBank(
   roleFamily: string,
   seniority: string,
 ): Promise<InterviewQuestion[]> {
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: `You are helping a job candidate prepare for an interview by predicting likely interview questions. You have no access to real leaked or sourced interview questions from this specific company — you are generating REALISTIC, PLAUSIBLE questions based on the company's known industry, business model, tech stack reputation, and typical expectations for this role and seniority level. Never imply these are real questions someone was actually asked. Generate 10-15 questions across a mix of categories: behavioral, technical, system_design (only if the role is technical and seniority warrants it), and culture_fit. Each question needs a one-sentence rationale explaining why a company like this, for a role like this, would likely ask it.
 
 ${HUMANIZED_WRITING_RULES}
@@ -268,7 +268,7 @@ export async function generateQuestionDetails(
   }
 }`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: `You are an interview coach producing deep study material for ONE specific predicted interview question. You have no access to a real leaked answer key — everything you produce is a synthesized reference based on common industry patterns for this role, and must read that way, never as a claim of "verified" or "the real answer."
 
 ${
@@ -314,7 +314,7 @@ export async function generatePracticeKit(
   company: string,
   roleFamily: string,
 ): Promise<PracticeKit> {
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: `You are building a runnable coding-practice exercise for ONE specific technical interview question. This will execute in a real, isolated client-side sandbox — the code must actually run correctly, not just look plausible.
 
 Pick the single best-fitting language from: javascript, typescript, python, ruby, sql. Default to javascript if several would fit equally well. Only pick sql if the question is genuinely about data/database/query design (schema design, joins, aggregation, query optimization) — never force an unrelated algorithm question into SQL just for variety.

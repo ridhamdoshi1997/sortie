@@ -99,7 +99,7 @@ export async function getAdminAgentReply(snapshot: AdminAgentSnapshot, history: 
 
   const userPrompt = `${buildSnapshotText(snapshot)}\n\nCONVERSATION SO FAR:\n${conversationText}`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: ADMIN_AGENT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.4,

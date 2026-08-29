@@ -120,7 +120,7 @@ Output ONLY the page body in Markdown (headings, paragraphs, lists as needed). D
 export async function generatePageDraft(title: string, brief: string): Promise<string> {
   const userPrompt = `Page title: ${title}\n\nWhat this page should cover: ${brief.trim() || "(no additional brief given — use the title alone to infer intent)"}`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: DRAFT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.5,

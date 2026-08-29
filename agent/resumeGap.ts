@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type {
   GapCheckResult,
   GapStatus,
@@ -87,6 +87,7 @@ export async function analyzeResumeGap(
   job: GapJob,
   profile: GapProfile,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<ResumeGapAnalysisResult> {
   const userPrompt = `CANDIDATE PROFILE:
 ${buildProfileContext(profile)}
@@ -95,7 +96,7 @@ TARGET JOB POSTING:
 ${buildJobContext(job)}`;
 
   try {
-    const raw = await complete(getModel(provider, "smart"), {
+    const raw = await complete(await getModel(provider, tier), {
       systemPrompt: SYSTEM_PROMPT,
       userPrompt,
       temperature: 0.3,

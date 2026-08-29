@@ -1,4 +1,4 @@
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { HUMANIZED_WRITING_RULES, BULLET_QUALITY_RULES } from "@/lib/writingStyle";
 
 // §Q4c Always-warm résumé — the one genuinely new piece of the Q4 batch.
@@ -29,8 +29,9 @@ export async function generateResumeUpdateSuggestion(
   accomplishmentDescription: string | null,
   role: ResumeSuggestionRoleContext,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "fast",
 ): Promise<string | null> {
-  const raw = await complete(getModel(provider, "fast"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: suggestionSystemPrompt,
     userPrompt: `Role: ${role.title} at ${role.company}\nAccomplishment: "${accomplishmentTitle}"${accomplishmentDescription ? ` — ${accomplishmentDescription}` : ""}\n\nReturn JSON with this exact shape: { "bullet": string }`,
     temperature: 0.4,

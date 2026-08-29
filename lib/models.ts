@@ -5,6 +5,7 @@
 // Anthropic specifically must use its own SDK, never an OpenAI-compatible shim.
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
+import { createAdminDbClient } from "@/lib/admin/client";
 
 export type ModelProvider = "gemini" | "openai" | "anthropic";
 export type ModelTier = "fast" | "smart";
@@ -23,14 +24,52 @@ type AnthropicHandle = {
 
 export type ModelHandle = OpenAICompatHandle | AnthropicHandle;
 
-// Gemini has only one model proven working against this project's key so far —
-// fast and smart intentionally resolve to the same model until a second tier
-// is verified live, rather than guessing an untested model string.
+// Hardcoded safety-net defaults — as of 2026-08-29 the real source of truth
+// is the `ai_model_config` table (admin-editable from /admin/ai-models, no
+// redeploy needed), read fresh on every getModel() call below. This object
+// only fires when that read fails (missing row, DB blip) — it must never be
+// deleted, per the "always keep a hardcoded fallback" gotcha `agy` research
+// flagged for exactly this DB-config pattern.
+//
+// gemini.smart is gemini-3.1-pro-preview, NOT a flash-lite duplicate —
+// live-verified 2026-08-29 as a real, addressable model id on this key, but
+// the free-tier Gemini key has ZERO Pro-model quota (`limit: 0` on
+// generate_content_free_tier_requests, confirmed via a real request, not a
+// guess — needs a Google Cloud Billing account linked to unlock real
+// quota). Safe to ship anyway: complete()'s GEMINI_FALLBACK_MODELS retry
+// chain below already catches the resulting 429 on ANY Gemini call
+// (smart tier included) and falls through to a real flash-lite response —
+// so this silently degrades to today's exact behavior until billing is
+// linked, then starts succeeding with zero further code changes.
 export const MODEL_IDS: Record<ModelProvider, Record<ModelTier, string>> = {
-  gemini: { fast: "gemini-3.1-flash-lite", smart: "gemini-3.1-flash-lite" },
+  gemini: { fast: "gemini-3.1-flash-lite", smart: "gemini-3.1-pro-preview" },
   openai: { fast: "gpt-4o-mini", smart: "gpt-4o" },
   anthropic: { fast: "claude-haiku-4-5", smart: "claude-sonnet-5" },
 };
+
+// ai_model_config has zero client-facing RLS policies (admin-only table,
+// same "RLS enabled, no policies = default-deny to anon/authenticated"
+// pattern confirmed safe for admin_users/ai_cost_rates during the
+// 2026-08-29 security audit) — reading it needs the service-role client,
+// not whatever insforge instance (often user-session-scoped) a getModel()
+// caller happens to have. getModel() itself takes no insforge param at
+// all today, so this constructs its own admin client rather than changing
+// every one of its ~40 call sites to also thread one through.
+async function resolveModelId(provider: ModelProvider, tier: ModelTier): Promise<string> {
+  try {
+    const admin = createAdminDbClient();
+    const { data } = await admin.database
+      .from("ai_model_config")
+      .select("model_id")
+      .eq("provider", provider)
+      .eq("tier", tier)
+      .maybeSingle<{ model_id: string }>();
+    if (data?.model_id) return data.model_id;
+  } catch (error) {
+    console.error(`[lib/models] ai_model_config read failed for ${provider}/${tier}, using hardcoded fallback`, error);
+  }
+  return MODEL_IDS[provider][tier];
+}
 
 // 2026-07-27: the primary key hit BOTH its per-minute AND per-day free-tier
 // caps for gemini-3.1-flash-lite (confirmed live against the real Google AI
@@ -54,11 +93,11 @@ export const MODEL_IDS: Record<ModelProvider, Record<ModelTier, string>> = {
 // models.list check) before adding anything else here.
 const GEMINI_FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
 
-export function getModel(
+export async function getModel(
   provider: ModelProvider,
   tier: ModelTier = "smart",
-): ModelHandle {
-  const model = MODEL_IDS[provider][tier];
+): Promise<ModelHandle> {
+  const model = await resolveModelId(provider, tier);
 
   if (provider === "anthropic") {
     return {

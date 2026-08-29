@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import { HUMANIZED_WRITING_RULES, BULLET_QUALITY_RULES } from "@/lib/writingStyle";
 
 // §Q4 Brag Doc generator (build-plan.md §Q4) — one Gemini call over a
@@ -109,10 +109,11 @@ export async function generateBragDoc(
   accomplishments: BragDocAccomplishment[],
   compensationEvents: BragDocCompensationEvent[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<BragDocResult> {
   const userPrompt = `CANDIDATE'S OWN LOGGED CAREER DATA:\n${buildPeriodText(accomplishments, compensationEvents)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.4,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { LeverageSynthesisResult } from "@/lib/leverageSynthesizer";
 
 // Negotiation scripts (build-plan.md §F, Phase 12). Deliberately does NOT
@@ -61,6 +61,7 @@ export async function generateNegotiationScript(
   company: string | null,
   leverage: LeverageSynthesisResult,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<NegotiationScript> {
   const factorLines = leverage.factors.map((f) => `- ${f.label}: ${f.explanation}`).join("\n");
   const talkingPointLines = leverage.talkingPoints.map((t) => `- ${t}`).join("\n");
@@ -73,7 +74,7 @@ Talking points already derived:
 ${talkingPointLines}
 Confidence note: ${leverage.confidenceNote}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.5,

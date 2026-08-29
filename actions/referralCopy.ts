@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { generateReferralCopy, type ReferralChannel } from "@/lib/referralCopy";
 import type { Profile } from "@/types";
@@ -29,8 +29,8 @@ export async function generateReferralMessage(channel: ReferralChannel, link: st
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "current_title" | "preferred_model">>();
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
-    const draft = await generateReferralCopy(channel, profile?.current_title ?? null, provider);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const draft = await generateReferralCopy(channel, profile?.current_title ?? null, provider, tier);
 
     return { success: true, message: `${draft}\n\n${link}` };
   } catch (error) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // Proactive weekly AI briefing (build-plan.md §H, "AI heavy dashboard" part
 // 2). Deliberately NOT a live-per-visit AI call — this is generated once a
@@ -57,6 +57,7 @@ Return ONLY valid JSON: { "summary": "string" }`;
 export async function generateWeeklyBriefing(
   snapshot: WeeklyActivitySnapshot,
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<WeeklyBriefingResult> {
   const deadlineLines =
     snapshot.upcomingDeadlines.length > 0
@@ -74,7 +75,7 @@ export async function generateWeeklyBriefing(
 Upcoming deadlines (next 7 days):
 ${deadlineLines}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

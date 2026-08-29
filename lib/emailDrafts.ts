@@ -1,4 +1,4 @@
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // Application email drafts (build-plan.md §C, Phase 11/F31 + the follow-up/
 // thank-you generator item). Ephemeral, not persisted — same "draft in
@@ -48,7 +48,7 @@ function stripJsonFences(raw: string): string {
   return fenced ? fenced[1] : trimmed;
 }
 
-export async function generateEmailDraft(input: EmailDraftInput, provider: ModelProvider = "gemini"): Promise<EmailDraft> {
+export async function generateEmailDraft(input: EmailDraftInput, provider: ModelProvider = "gemini", tier: ModelTier = "fast"): Promise<EmailDraft> {
   const userPrompt = `Email type: ${TYPE_BRIEF[input.type]}
 Job: ${input.jobTitle ?? "Unknown role"} at ${input.company ?? "Unknown company"}
 Candidate's current title: ${input.candidateTitle ?? "not provided"}
@@ -57,7 +57,7 @@ Skills this job's own evaluation matched to the candidate: ${input.matchedSkills
 ${input.type === "follow_up" ? `Days since applying: ${input.daysSinceApplied ?? "unknown"}` : ""}
 ${input.type === "thank_you" ? `Interviewer's name (address them by name if given): ${input.interviewerName ?? "not provided"}` : ""}`;
 
-  const raw = await complete(getModel(provider, "fast"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.6,

@@ -131,7 +131,7 @@ Output ONLY the email body as plain text (short paragraphs, a blank line between
 export async function generateBroadcastDraft(subject: string, brief: string): Promise<string> {
   const userPrompt = `Email subject: ${subject}\n\nWhat this email should cover: ${brief.trim() || "(no additional brief given — use the subject alone to infer intent)"}`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: BROADCAST_DRAFT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.5,

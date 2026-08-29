@@ -8,7 +8,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { createExternalJob } from "@/lib/externalJob";
 import { fetchViaJinaReader, researchCompany } from "@/agent/research";
 import { trackPostHogEvent } from "@/lib/posthog-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit, checkUsageLimit } from "@/lib/subscription";
 import { diagnoseRejectionForJob, type RejectionDiagnosisResult } from "@/lib/rejectionIntelligence";
@@ -881,8 +881,8 @@ export async function diagnoseRejection(
       return { success: false, error: "Job not found" };
     }
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
-    const diagnosis = await diagnoseRejectionForJob(job, provider);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const diagnosis = await diagnoseRejectionForJob(job, provider, tier);
 
     const { error: updateError } = await insforge.database
       .from("jobs")
@@ -1038,6 +1038,9 @@ export async function getTrapDoorPredictions(
         return { success: false, error: researchUsage.error };
       }
 
+      const { provider: researchProvider, tier: researchTier } = await resolveModelForUser(
+        insforge, user.id, user.email, profile.preferred_model,
+      );
       const researchResult = await researchCompany({
         job: {
           id: job.id,
@@ -1050,7 +1053,8 @@ export async function getTrapDoorPredictions(
           missing_skills: job.missing_skills ?? [],
         },
         profile,
-        provider: await resolveProviderForUser(insforge, user.id, user.email, profile.preferred_model),
+        provider: researchProvider,
+        tier: researchTier,
       });
 
       if (!researchResult.success) {
@@ -1321,7 +1325,7 @@ export async function synthesizeLeverage(
 
     const reappearanceSignal = getReappearanceSignal(job, computeReappearanceCounts(allJobsForSignal ?? []));
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
     const synthesis = await synthesizeLeverageForJob(
       {
         ...job,
@@ -1329,6 +1333,7 @@ export async function synthesizeLeverage(
         reappearanceLabel: reappearanceSignal?.label ?? null,
       },
       provider,
+      tier,
     );
 
     const { error: updateError } = await insforge.database
@@ -1400,7 +1405,7 @@ export async function generateNegotiationScript(
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
 
     let leverage = job.leverage_synthesis;
     if (!leverage) {
@@ -1409,6 +1414,7 @@ export async function generateNegotiationScript(
       leverage = await synthesizeLeverageForJob(
         { ...job, offerEntered: job.offer_details !== null, reappearanceLabel: reappearanceSignal?.label ?? null },
         provider,
+        tier,
       );
       await insforge.database
         .from("jobs")
@@ -1417,7 +1423,7 @@ export async function generateNegotiationScript(
         .eq("user_id", user.id);
     }
 
-    const script = await generateNegotiationScriptForJob(job.title, job.company, leverage, provider);
+    const script = await generateNegotiationScriptForJob(job.title, job.company, leverage, provider, tier);
 
     const { error: updateError } = await insforge.database
       .from("jobs")
@@ -1470,9 +1476,9 @@ export async function decodeJobDescription(jobId: string): Promise<ActionResult 
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
 
-    const result = await decodeJobRequirements(job.title, job.requirements, provider);
+    const result = await decodeJobRequirements(job.title, job.requirements, provider, tier);
 
     const { error: updateError } = await insforge.database.from("jobs").update({ jd_decoder: result }).eq("id", jobId).eq("user_id", user.id);
     if (updateError) {
@@ -1524,7 +1530,7 @@ export async function generateNinetyDayPlanAction(jobId: string): Promise<Action
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
 
     const plan = await generateNinetyDayPlanForJob(
       {
@@ -1535,6 +1541,7 @@ export async function generateNinetyDayPlanAction(jobId: string): Promise<Action
         missingSkills: job.missing_skills ?? [],
       },
       provider,
+      tier,
     );
 
     const { error: updateError } = await insforge.database.from("jobs").update({ ninety_day_plan: plan }).eq("id", jobId).eq("user_id", user.id);

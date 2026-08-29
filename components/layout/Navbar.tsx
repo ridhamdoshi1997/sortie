@@ -19,6 +19,7 @@ import { Logo } from "@/components/layout/Logo";
 import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
+import { SiteModelSelector } from "@/components/shared/SiteModelSelector";
 import { getUnreadNotificationCount } from "@/actions/notifications";
 import { trackPostHogClientEvent } from "@/lib/posthog-client";
 
@@ -420,6 +421,11 @@ export function Navbar({ isAuthenticated = false }: Props) {
               </span>
             )}
           </Link>
+          {/* Site-wide model selector, direct user request 2026-08-29 —
+              renders nothing for anyone without full model access
+              (admin/owner, tester, or an llmUnlocked paid plan), so this
+              is invisible to the vast majority of users. */}
+          <SiteModelSelector />
           <ThemeToggle />
 
           {/* This function returns early above for !isAuthenticated, so this

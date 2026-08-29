@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import {
   generateBragDoc,
@@ -59,8 +59,8 @@ export async function generateBragDocAction(
       return { success: false, error: "No accomplishments logged in this date range yet — add some on /career first." };
     }
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
-    const bragDoc = await generateBragDoc(accomplishments, compEvents ?? [], provider);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const bragDoc = await generateBragDoc(accomplishments, compEvents ?? [], provider, tier);
 
     return { success: true, bragDoc };
   } catch (error) {

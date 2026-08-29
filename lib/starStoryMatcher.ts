@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type { InterviewQuestion } from "@/lib/interviewQuestions";
 
 // Matches the candidate's own real STAR stories against a target company/
@@ -76,6 +76,7 @@ export async function matchStoriesToQuestions(
   stories: StarStoryForMatching[],
   questions: InterviewQuestion[],
   provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
 ): Promise<StarMatchResult> {
   const storiesText = stories
     .map((s) => `- id: ${s.id}\n  title: ${s.title}\n  situation: ${s.situation}\n  task: ${s.task}\n  action: ${s.action}\n  result: ${s.result}`)
@@ -84,7 +85,7 @@ export async function matchStoriesToQuestions(
 
   const userPrompt = `CANDIDATE'S STORIES:\n${storiesText}\n\nQUESTIONS TO MATCH:\n${questionsText}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: STAR_MATCH_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.2,

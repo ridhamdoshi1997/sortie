@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import {
   computePipelineSnapshot,
@@ -81,9 +81,9 @@ export async function generatePipelineStrategyReadAction(): Promise<ReadActionRe
       .select("preferred_model")
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
 
-    const result = await generatePipelineStrategyRead(snapshotResult.snapshot, provider);
+    const result = await generatePipelineStrategyRead(snapshotResult.snapshot, provider, tier);
     return { success: true, result };
   } catch (error) {
     console.error("[actions/pipelineStrategy] generatePipelineStrategyReadAction", error);

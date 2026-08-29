@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import {
   computeAppliedVsSkipped,
@@ -106,12 +106,13 @@ export async function generateOutcomeNarrativeAction(): Promise<{
       return { success: false, error: "Not enough tracked applications yet for a meaningful summary." };
     }
 
-    const provider = await resolveProviderForUser(insforge, user.id, user.email, profile?.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
     const narrative = await generateOutcomeNarrative(
       computeInterviewRateByMatchBand(outcomeJobs, outcomeEvents),
       computeInterviewRateByGrade(outcomeJobs, outcomeEvents),
       computeRejectionReasonDistribution(outcomeJobs),
       provider,
+      tier,
     );
 
     return { success: true, narrative };

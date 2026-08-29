@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 import type {
   CompanyLeader,
   CompanyResearchDossier,
@@ -46,6 +46,7 @@ type ResearchInput = {
   profile: ResearchProfile;
   log?: ResearchLogger;
   provider?: ModelProvider;
+  tier?: ModelTier;
 };
 
 type ResearchResult =
@@ -424,7 +425,7 @@ ${shapeDescription}
 If the page has none of the requested content, return the schema's empty/default values — never invent facts not present in the page content.`;
 
   try {
-    const raw = await complete(getModel("gemini", "fast"), {
+    const raw = await complete(await getModel("gemini", "fast"), {
       systemPrompt,
       userPrompt: markdown.slice(0, MAX_MARKDOWN_CHARS),
       temperature: 0.2,
@@ -650,6 +651,7 @@ async function synthesizeDossier(
   profile: ResearchProfile,
   browserResearch: BrowserResearch,
   provider: ModelProvider,
+  tier: ModelTier,
 ): Promise<CompanyResearchDossier> {
   const systemPrompt = `You are a sharp career strategist preparing a candidate to apply for a specific role. You are given (a) research collected from the company's own website, (b) the job posting, and (c) the candidate's profile. Produce a concise, concrete briefing that gives this specific candidate an edge for this specific role.
 
@@ -696,7 +698,7 @@ Experience: ${profile.years_experience ?? "Unknown"} years, level ${profile.expe
 Skills: ${(profile.skills ?? []).join(", ") || "None saved"}
 Work history: ${getWorkHistory(profile.work_experience)}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt,
     userPrompt,
     temperature: 0.4,
@@ -1395,6 +1397,7 @@ export async function researchCompany({
   profile,
   log: logger,
   provider = "gemini",
+  tier = "smart",
 }: ResearchInput): Promise<ResearchResult> {
   try {
     // Page-fetch + extraction always runs through Gemini regardless of the
@@ -1415,7 +1418,7 @@ export async function researchCompany({
     }
 
     const browserResearch = await collectBrowserResearch(job, logger);
-    const dossier = await synthesizeDossier(job, profile, browserResearch, provider);
+    const dossier = await synthesizeDossier(job, profile, browserResearch, provider, tier);
 
     await log(logger, "Company research dossier generated.", "success");
     return { success: true, dossier };

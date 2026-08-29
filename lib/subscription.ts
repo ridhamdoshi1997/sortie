@@ -1,6 +1,6 @@
 import type { createInsforgeServer } from "@/lib/insforge-server";
 import { isAdminUser, resolveProvider } from "@/lib/access";
-import type { ModelProvider } from "@/lib/models";
+import type { ModelProvider, ModelTier } from "@/lib/models";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -273,22 +273,62 @@ export async function getUserTier(
 // calling the 2-arg form, meaning every paying Command/Ace/Vanguard
 // subscriber was being downgraded to Gemini everywhere despite their plan's
 // real llmUnlocked: true. This one helper centralizes the fix — it fetches
-// the user's real plan and calls resolveProvider() correctly — so every
-// call site changes from the bare `resolveProvider(model, email)` to
-// `await resolveProviderForUser(insforge, userId, email, model)` instead of
-// each of the 33 sites separately duplicating a getUserSubscription() call
-// (more error-prone, easy for a future call site to reintroduce the same
-// 2-arg mistake). resolveProvider() itself in lib/access.ts is untouched —
-// still a pure sync function, safe to call directly wherever llmUnlocked is
-// already known some other way.
-export async function resolveProviderForUser(
+// the user's real plan and calls resolveProvider() correctly, and (as of
+// 2026-08-29) also resolves the model TIER the same way: free/Recon users
+// always get "fast", admins and any llmUnlocked plan always get "smart" —
+// replacing the old per-feature hardcoded "fast"/"smart" literal at every
+// getModel() call site. One combined helper (not two separate calls) so
+// this stays a single getUserSubscription() round-trip, not two.
+// resolveProvider() itself in lib/access.ts is untouched — still a pure
+// sync function, safe to call directly wherever llmUnlocked is already
+// known some other way.
+export type ResolvedModel = { provider: ModelProvider; tier: ModelTier };
+
+// Single source of truth for "does this user get full AI model access" —
+// admin/owner (isAdminUser, env-allowlisted), any plan.llmUnlocked tier
+// (Command/Ace/Vanguard's advertised GPT-4o/Claude access), or
+// profiles.is_tester (direct user request 2026-08-29: "admin, owners and
+// some testers can get full model things"). Used by both resolveModelForUser
+// (what actually runs) and setPreferredModel's write-gate (who's allowed to
+// choose) — kept as one function so the two can never drift apart, the same
+// class of bug the 2026-08-28 resolveProvider() 2-arg fix closed.
+export async function hasFullModelAccess(
+  insforge: Insforge,
+  userId: string,
+  email: string | null | undefined,
+): Promise<boolean> {
+  const [{ plan }, { data: profileRow }] = await Promise.all([
+    getUserSubscription(insforge, userId, email),
+    insforge.database.from("profiles").select("is_tester").eq("id", userId).maybeSingle<{ is_tester: boolean }>(),
+  ]);
+  return isAdminUser(email) || plan.llmUnlocked || profileRow?.is_tester === true;
+}
+
+// preferred_tier is looked up internally here (not threaded through as a
+// parameter) specifically so every one of this function's ~25 existing
+// call sites didn't need touching again for this — direct user follow-up,
+// 2026-08-29: "admin, testers and owners can also see the fast tier models
+// as well in the picking list". Only takes effect for a full-access user
+// who explicitly set one (SiteModelSelector.tsx); everyone else stays
+// hard-forced to "fast" regardless of whatever this column holds.
+export async function resolveModelForUser(
   insforge: Insforge,
   userId: string,
   email: string | null | undefined,
   preferredModel: ModelProvider | null | undefined,
-): Promise<ModelProvider> {
-  const { plan } = await getUserSubscription(insforge, userId, email);
-  return resolveProvider(preferredModel, email, plan.llmUnlocked);
+): Promise<ResolvedModel> {
+  const [{ plan }, { data: profileRow }] = await Promise.all([
+    getUserSubscription(insforge, userId, email),
+    insforge.database
+      .from("profiles")
+      .select("is_tester,preferred_tier")
+      .eq("id", userId)
+      .maybeSingle<{ is_tester: boolean; preferred_tier: ModelTier | null }>(),
+  ]);
+  const fullAccess = isAdminUser(email) || plan.llmUnlocked || profileRow?.is_tester === true;
+  const provider = resolveProvider(preferredModel, email, fullAccess);
+  const tier: ModelTier = fullAccess ? (profileRow?.preferred_tier ?? "smart") : "fast";
+  return { provider, tier };
 }
 
 // Best-effort — a failed notification write must never fail the circuit

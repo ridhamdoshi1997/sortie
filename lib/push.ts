@@ -71,7 +71,7 @@ export type PushDraft = { title: string; body: string };
 export async function generatePushDraft(brief: string): Promise<PushDraft> {
   const userPrompt = `What this notification should announce or say: ${brief.trim() || "(no brief given — draft something generic and useful)"}`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: PUSH_DRAFT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.5,

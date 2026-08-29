@@ -69,7 +69,7 @@ export async function checkPublicAtsScore(resumeText: string, jobDescriptionText
     jobDescriptionText ? `JOB DESCRIPTION TEXT:\n${jobDescriptionText.slice(0, 4000)}` : "No job description was provided — keywordCoverage must be null."
   }`;
 
-  const raw = await complete(getModel("gemini", "smart"), {
+  const raw = await complete(await getModel("gemini", "smart"), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

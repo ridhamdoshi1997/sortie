@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // First-90-days success plan (build-plan.md §F). Same "real data in,
 // honest AI synthesis out" discipline as every other offer-stage feature —
@@ -61,13 +61,13 @@ type PlanInput = {
   missingSkills: string[];
 };
 
-export async function generateNinetyDayPlan(input: PlanInput, provider: ModelProvider = "gemini"): Promise<NinetyDayPlan> {
+export async function generateNinetyDayPlan(input: PlanInput, provider: ModelProvider = "gemini", tier: ModelTier = "smart"): Promise<NinetyDayPlan> {
   const userPrompt = `Job: ${input.jobTitle ?? "Unknown"} at ${input.company ?? "Unknown"}
 Real responsibilities: ${input.responsibilities.join("; ") || "not recorded"}
 Real requirements: ${input.requirements.join("; ") || "not recorded"}
 Candidate's own missing skills for this role (per this job's evaluation): ${input.missingSkills.join(", ") || "none recorded"}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.4,

@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { reviseCoverLetter, reviseTailoredResume, type ChatMessage } from "@/agent/documents";
-import { resolveProviderForUser } from "@/lib/subscription";
+import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { persistGeneratedDocument } from "@/lib/documentPersistence";
@@ -185,7 +185,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     }
 
     const dossier = job.company_research;
-    const provider = await resolveProviderForUser(insforge, user.id, profile.email, profile.preferred_model);
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, profile.email, profile.preferred_model);
     let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;
@@ -196,18 +196,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     if (kind === "resume") {
       const currentContent = JSON.parse(currentContentText) as GeneratedContent;
+      const currentStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
       const revised = await reviseTailoredResume({
         job,
         profile,
         dossier,
         provider,
+        tier,
         messages,
         currentContent,
+        currentStyle,
       });
       reply = revised.reply;
       generatedContentText = JSON.stringify(revised.content);
       resumeSections = mergeGeneratedContent(application?.resume_sections ?? null, revised.content, profile);
-      resumeStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
+      // styleChanges is only non-null when the candidate's latest message
+      // was actually about template/theme/layout (agent/documents.ts's
+      // reviseTailoredResume) — merged onto the existing style rather than
+      // replacing it, so a content-only chat turn never resets style.
+      resumeStyle = revised.styleChanges ? { ...currentStyle, ...revised.styleChanges } : currentStyle;
       pdfBuffer = await renderToBuffer(
         React.createElement(ResumePDF, {
           profile,
@@ -216,19 +223,35 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         }) as unknown as React.ReactElement<DocumentProps>,
       );
     } else {
+      // Shares the résumé's exact style (see CoverLetterPDF.tsx's comment) —
+      // already fetched above as part of `application`, no second query.
+      const currentCoverLetterStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
       const revised = await reviseCoverLetter({
         job,
         profile,
         dossier,
         provider,
+        tier,
         messages,
         currentContent: currentContentText,
+        currentStyle: currentCoverLetterStyle,
       });
       reply = revised.reply;
       generatedContentText = revised.content;
-      // Shares the résumé's exact style (see CoverLetterPDF.tsx's comment) —
-      // already fetched above as part of `application`, no second query.
-      const coverLetterStyle = application?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
+      // styleChanges only non-null when the latest message was actually
+      // about template/theme/layout — merged onto the existing shared
+      // style, same rule reviseTailoredResume's own branch above follows.
+      // Saved into the outer `resumeStyle` (despite the résumé-flavored
+      // name) so the shared persist block below picks it up — it already
+      // guards on `resumeSections && resumeStyle`, and resumeSections stays
+      // null here, so this can't accidentally trigger the résumé-only
+      // rescore path, only the style column write it shares with it.
+      const coverLetterStyle = revised.styleChanges
+        ? { ...currentCoverLetterStyle, ...revised.styleChanges }
+        : currentCoverLetterStyle;
+      if (revised.styleChanges) {
+        resumeStyle = coverLetterStyle;
+      }
       pdfBuffer = await renderToBuffer(
         React.createElement(CoverLetterPDF, {
           profile,
@@ -247,7 +270,7 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       kind,
       pdfBuffer,
       contentText: generatedContentText,
-      modelUsed: getModel(provider, "smart").model,
+      modelUsed: (await getModel(provider, tier)).model,
     });
 
     if (!persistResult.success) {
@@ -267,7 +290,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (sectionsError) {
         console.error("[api/documents/chat] save resume_sections/resume_style", sectionsError);
       }
-      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider);
+      scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider, tier);
+    } else if (kind === "cover_letter" && resumeStyle) {
+      // Cover-letter-chat style change — no resumeSections/rescore involved
+      // (that's a résumé-only concept), just the shared style column.
+      const { error: styleError } = await insforge.database
+        .from("applications")
+        .update({ resume_style: resumeStyle, updated_at: new Date().toISOString() })
+        .eq("user_id", user.id)
+        .eq("job_id", jobId);
+      if (styleError) {
+        console.error("[api/documents/chat] save cover-letter resume_style", styleError);
+      }
     }
 
     revalidatePath(`/find-jobs/${jobId}`);

@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { complete, getModel, type ModelProvider } from "@/lib/models";
+import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
 
 // Skill-gap tracking & career pathing (build-plan.md §E, "not yet scoped").
 // Two parts: a plain, zero-AI aggregation of missing_skills already stored
@@ -50,11 +50,11 @@ Rules:
 
 Return ONLY valid JSON: { "observations": ["string"] }`;
 
-export async function generateSkillGapPathing(gaps: SkillGap[], provider: ModelProvider = "gemini"): Promise<SkillGapPathingResult> {
+export async function generateSkillGapPathing(gaps: SkillGap[], provider: ModelProvider = "gemini", tier: ModelTier = "smart"): Promise<SkillGapPathingResult> {
   const userPrompt = `Skills that recurred as "missing" across this candidate's own evaluated job postings, most frequent first:
 ${gaps.map((g) => `- ${g.skill}: appeared in ${g.count} postings`).join("\n")}`;
 
-  const raw = await complete(getModel(provider, "smart"), {
+  const raw = await complete(await getModel(provider, tier), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,
