@@ -50,6 +50,43 @@ function titlesMatch(a: string, b: string): boolean {
   return na === nb || na.includes(nb) || nb.includes(na);
 }
 
+// Real bug found live (2026-08-30, direct user report — two independent
+// confirmed cases: jobs.rbc.com/ca/en/personal-banking, and even worse,
+// td.com/us/en/about-us/working-at-td): classifyApplyHost only checks
+// DOMAIN trust (is this the real employer's own site?), never whether the
+// URL actually points at a specific posting. A company's own domain serves
+// both real job pages AND generic category/"working here" marketing pages,
+// and a fresh search can just as easily surface the latter — which then
+// classifies as "employer," the second-highest trust tier, and gets
+// accepted as an "upgrade" over the original (worse, but at least specific)
+// link. Real specific postings — across ATS platforms and most corporate
+// career sites alike — carry a real numeric requisition/posting ID
+// somewhere in the path or query string; a generic landing page never does.
+// Deliberately conservative: a real but non-numeric-slugged posting (rare
+// among re-resolution candidates specifically, since the whole point of
+// re-resolving is recovering from a bad original link) can be missed by
+// this check, but that's a missed upgrade, not an active downgrade to a
+// generic page while claiming to have fixed it — the correct tradeoff here.
+const JOB_ID_QUERY_PARAMS = /[?&](id|jobid|job_id|gh_jid|jk|req|requisition|requisitionid|postingid)=/i;
+
+function looksLikeSpecificJobPosting(rawUrl: string): boolean {
+  try {
+    const { pathname, search } = new URL(rawUrl);
+    if (/\d{4,}/.test(pathname + search)) return true;
+    if (JOB_ID_QUERY_PARAMS.test(search)) return true;
+    // Catches hex/alphanumeric ATS ids that mix letters and digits (real
+    // case: Workable's own job ids, e.g. "D98E6FECC2" — no run of 4+ pure
+    // digits, but clearly an opaque per-posting token, not a category
+    // name). A real category slug ("personal-banking", "working-at-td")
+    // never contains a digit at all, so this stays safe against both
+    // confirmed bad cases while covering this gap.
+    const segments = pathname.split("/").filter(Boolean);
+    return segments.some((s) => s.length >= 6 && /\d/.test(s));
+  } catch {
+    return false;
+  }
+}
+
 const ATS_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby"];
 
 // Free, zero-quota first attempt before falling back to a paid SerpApi
@@ -104,7 +141,7 @@ async function tryApifySearch(job: ResolvableJob): Promise<{ applyUrl: string } 
 
     const match = urls.find((url) => {
       const trust = classifyApplyHost(url, job.company);
-      return trust === "ats" || trust === "employer";
+      return (trust === "ats" || trust === "employer") && looksLikeSpecificJobPosting(url);
     });
     return match ? { applyUrl: match } : null;
   } catch (error) {
@@ -140,7 +177,11 @@ export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: Re
     const results = await searchJobs(job.title, job.location ?? "", "ca");
     const match = results.find((r) => companiesMatch(r.company, job.company as string));
 
-    if (match?.applyUrl && classifyApplyHost(match.applyUrl, job.company) !== "low_quality") {
+    if (
+      match?.applyUrl &&
+      classifyApplyHost(match.applyUrl, job.company) !== "low_quality" &&
+      looksLikeSpecificJobPosting(match.applyUrl)
+    ) {
       const { error } = await insforge.database
         .from("jobs")
         .update({
