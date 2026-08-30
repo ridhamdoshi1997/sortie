@@ -195,6 +195,16 @@ export function FindJobsForm({
     }, [searchFilters.datePosted]);
 
     const savedCount = jobs.filter((job) => job.is_saved).length;
+    // Aggregate scoring progress (direct user report: a big search showed a
+    // wall of individually-pulsing "Scoring…" cards with no sense of overall
+    // progress — reads as stuck even while genuinely working through a real,
+    // multi-minute AI evaluation queue). jobIds is the fixed watch-list set
+    // by runSearch for THIS search; counting how many of those specific ids
+    // already have a match_score gives real progress, not a guess.
+    const scoringWatchSet = useMemo(() => new Set(jobIds), [jobIds]);
+    const totalScoring = jobIds.length;
+    const stillScoringCount = jobs.filter((job) => scoringWatchSet.has(job.id) && job.match_score === null).length;
+    const scoredSoFar = totalScoring - stillScoringCount;
     const filteredJobs = useMemo(() => applyClientFilters(jobs, searchFilters), [jobs, searchFilters]);
     const visibleJobs = showSavedOnly ? filteredJobs.filter((job) => job.is_saved) : filteredJobs;
     // Gated on real jobs being on screen, not on hasSearched — jobs loaded
@@ -327,10 +337,18 @@ export function FindJobsForm({
             {jobs.length > 0 && (
                 <div className="border-t border-border pt-6">
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-                        <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                            Active targets — {visibleJobs.length}
-                            {visibleJobs.length !== jobs.length && ` of ${jobs.length}`}
-                        </p>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+                            <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
+                                Active targets — {visibleJobs.length}
+                                {visibleJobs.length !== jobs.length && ` of ${jobs.length}`}
+                            </p>
+                            {stillScoringCount > 0 && (
+                                <p className="flex items-center gap-1.5 font-mono text-[11px] font-medium text-text-secondary">
+                                    <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-agent" />
+                                    Scoring {scoredSoFar} of {totalScoring}…
+                                </p>
+                            )}
+                        </div>
                         {savedCount > 0 && (
                             <button
                                 type="button"
