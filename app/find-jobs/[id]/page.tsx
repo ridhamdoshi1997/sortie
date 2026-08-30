@@ -53,7 +53,7 @@ import { computeReappearanceCounts, getReappearanceSignal } from "@/lib/churnSig
 import { computeApplyVerdict } from "@/lib/applyVerdict";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
-import { reresolveApplyLinkForJob } from "@/lib/reresolveApplyLink";
+import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import type { Profile } from "@/types";
 
 type Props = {
@@ -100,11 +100,22 @@ export default async function JobDetailsPage({ params }: Props) {
   // search is used instead. Same fire-and-forget after() pattern as
   // last_viewed_at above — never blocks this page's response, self-heals
   // by the next view.
-  if (
-    !job.apply_link_resolved_at &&
-    job.external_apply_url &&
-    classifyApplyHost(job.external_apply_url, job.company) === "low_quality"
-  ) {
+  //
+  // Second real gap found live (2026-08-30, direct user report — two
+  // confirmed cases: RBC's link resolved to a job-category page,
+  // jobs.rbc.com/ca/en/personal-banking; TD's to a plain "working here"
+  // marketing page). Both classify as "employer" — a real, trusted domain
+  // — so this gate never re-fired for them even though neither is an
+  // actual specific posting. Trust alone isn't enough; also require the
+  // link to look like a specific listing (a real posting id in the path or
+  // query — see looksLikeSpecificJobPosting's own comment).
+  const applyLinkTrust = job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
+  const applyLinkNeedsResolution =
+    applyLinkTrust === "low_quality" ||
+    ((applyLinkTrust === "employer" || applyLinkTrust === "unverified") &&
+      !looksLikeSpecificJobPosting(job.external_apply_url!));
+
+  if (!job.apply_link_resolved_at && job.external_apply_url && applyLinkNeedsResolution) {
     after(() => reresolveApplyLinkForJob(insforge, job));
   }
 

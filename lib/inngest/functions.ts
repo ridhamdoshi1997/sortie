@@ -5,7 +5,7 @@ import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
-import { reresolveApplyLinkForJob } from "@/lib/reresolveApplyLink";
+import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import type { Profile, WorkExperience } from "@/types";
 
 // Real-money threshold, not arbitrary: reresolveApplyLinkForJob's search
@@ -195,10 +195,20 @@ export const evaluateJobsAsync = inngest.createFunction(
                         // Never blocks/fails the evaluation itself — a
                         // re-resolution failure here is a soft miss, not a
                         // reason to mark this whole batch as failed.
+                        // Same specificity gap fixed 2026-08-30 in
+                        // app/find-jobs/[id]/page.tsx's own gate applies
+                        // here too — a link on the employer's real domain
+                        // can still be a generic category/marketing page,
+                        // not the specific posting (real confirmed cases:
+                        // RBC, TD). Trust alone isn't enough.
                         const matchScore = evalResult?.matchScore ?? 0;
                         if (matchScore >= EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD && job.external_apply_url) {
                             const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
-                            if (currentTrust === "low_quality" || currentTrust === "unverified") {
+                            const needsResolution =
+                                currentTrust === "low_quality" ||
+                                ((currentTrust === "unverified" || currentTrust === "employer") &&
+                                    !looksLikeSpecificJobPosting(job.external_apply_url));
+                            if (needsResolution) {
                                 try {
                                     await reresolveApplyLinkForJob(admin, {
                                         id: job.id,

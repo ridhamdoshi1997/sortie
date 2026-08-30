@@ -69,7 +69,7 @@ function titlesMatch(a: string, b: string): boolean {
 // generic page while claiming to have fixed it — the correct tradeoff here.
 const JOB_ID_QUERY_PARAMS = /[?&](id|jobid|job_id|gh_jid|jk|req|requisition|requisitionid|postingid)=/i;
 
-function looksLikeSpecificJobPosting(rawUrl: string): boolean {
+export function looksLikeSpecificJobPosting(rawUrl: string): boolean {
   try {
     const { pathname, search } = new URL(rawUrl);
     if (/\d{4,}/.test(pathname + search)) return true;
