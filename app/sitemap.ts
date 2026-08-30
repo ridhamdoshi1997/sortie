@@ -23,6 +23,7 @@ const STATIC_ROUTES = [
   "/blog",
   "/interview-questions",
   "/salary-insights",
+  "/news",
   "/privacy",
   "/terms",
   "/waitlist",

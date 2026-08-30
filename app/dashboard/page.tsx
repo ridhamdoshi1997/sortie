@@ -5,6 +5,8 @@ import { ActivityHeatmap } from "@/components/dashboard/ActivityHeatmap";
 import { UpcomingInterviews } from "@/components/dashboard/UpcomingInterviews";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
+import { CareerRadar } from "@/components/dashboard/CareerRadar";
+import { listNewsForCompanies, listNewsByCategory } from "@/lib/newsIngestion";
 import { PipelineStrategyCard } from "@/components/dashboard/PipelineStrategyCard";
 import { WeeklyBriefingCard } from "@/components/dashboard/WeeklyBriefingCard";
 import { MatchDistributionChart } from "@/components/dashboard/AnalyticsCharts";
@@ -95,6 +97,22 @@ export default async function DashboardPage() {
     ]);
 
   const jobs = jobRows ?? [];
+
+  // Career Radar (build-plan.md, direct user request 2026-08-30) — real
+  // news filtered to this user's own saved companies. Exact-match on
+  // company_name (AI-extracted per article) against jobs.company; a fuzzier
+  // match isn't worth the complexity for v1 (agy's own research flagged
+  // this as an acceptable v1 tradeoff). Falls back to the latest
+  // cross-industry Hiring & Layoffs items so the widget is never empty.
+  const savedCompanyNames = Array.from(
+    new Set(
+      jobs
+        .filter((j): j is typeof j & { company: string } => j.is_saved && !!j.company)
+        .map((j) => j.company.trim()),
+    ),
+  );
+  const personalizedNews = await listNewsForCompanies(savedCompanyNames, 5);
+  const careerRadarItems = personalizedNews.length > 0 ? personalizedNews : await listNewsByCategory("hiring_layoffs", 5);
 
   // Recent activity — merge agent_runs + researched jobs, sort by time, take top 10
   type ActivityItem = {
@@ -227,6 +245,10 @@ export default async function DashboardPage() {
   const row3Items = [
     { key: "recentActivity" as const, node: <RecentActivity items={activityItems} /> },
     { key: "rejectionRadar" as const, node: <RejectionRadar jobs={rejectedJobs} /> },
+    {
+      key: "careerRadar" as const,
+      node: <CareerRadar items={careerRadarItems} isPersonalized={personalizedNews.length > 0} />,
+    },
   ].filter((item) => !hidden.has(item.key));
 
   return (
@@ -287,8 +309,14 @@ export default async function DashboardPage() {
           </div>
         )}
 
-        {/* Row 3 — recent activity + rejection intelligence, both real reuse of existing data */}
-        {row3Items.length === 2 ? (
+        {/* Row 3 — recent activity, rejection intelligence, and career news, all real reuse of existing/aggregated data */}
+        {row3Items.length === 3 ? (
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            {row3Items.map((item) => (
+              <div key={item.key}>{item.node}</div>
+            ))}
+          </div>
+        ) : row3Items.length === 2 ? (
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             {row3Items[0].node}
             {row3Items[1].node}

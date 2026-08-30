@@ -885,3 +885,23 @@ export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
         return { message: `Rolled ${resetCount} lifetime-plan usage period${resetCount === 1 ? "" : "s"} forward.` };
     },
 );
+
+// News section ingestion (build-plan.md, direct user request 2026-08-30).
+// Every 6 hours per agy's own velocity research — Hiring & Layoffs and AI &
+// Future of Work both run 10-20+ real stories/day, so a 6h cadence keeps
+// each tab fresh without over-polling Google News RSS. Each category is a
+// separate step so one category's failure (a feed hiccup, a Gemini rate
+// limit) doesn't block the other from ingesting.
+export const syncNewsItemsAsync = inngest.createFunction(
+    { id: "sync-news-items", name: "Sync News Items (Career Radar)", triggers: [{ cron: "0 */6 * * *" }] },
+    async ({ step }) => {
+        const { ingestNewsForCategory } = await import("@/lib/newsIngestion");
+
+        const hiringLayoffs = await step.run("ingest-hiring-layoffs", () => ingestNewsForCategory("hiring_layoffs"));
+        const aiFutureOfWork = await step.run("ingest-ai-future-of-work", () => ingestNewsForCategory("ai_future_of_work"));
+
+        return {
+            message: `Hiring & Layoffs: +${hiringLayoffs.inserted} (${hiringLayoffs.skipped} skipped). AI & Future of Work: +${aiFutureOfWork.inserted} (${aiFutureOfWork.skipped} skipped).`,
+        };
+    },
+);

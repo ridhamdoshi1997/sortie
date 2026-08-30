@@ -17,6 +17,7 @@ const WIDGET_LABELS: Record<DashboardWidgetKey, string> = {
   upcomingInterviews: "Upcoming Interviews",
   recentActivity: "Recent Activity",
   rejectionRadar: "Rejection Radar",
+  careerRadar: "Career Radar",
 };
 
 type Props = {

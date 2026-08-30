@@ -8,6 +8,7 @@ export const DASHBOARD_WIDGET_KEYS = [
   "upcomingInterviews",
   "recentActivity",
   "rejectionRadar",
+  "careerRadar",
 ] as const;
 
 export type DashboardWidgetKey = (typeof DASHBOARD_WIDGET_KEYS)[number];
