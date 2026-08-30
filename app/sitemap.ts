@@ -2,13 +2,31 @@ import type { MetadataRoute } from "next";
 
 import { getSiteUrl } from "@/lib/siteUrl";
 import { listPublishedPages } from "@/lib/admin/content";
+import { listQuestionBankEntries } from "@/lib/interviewSeo";
+import { listSalaryInsights } from "@/lib/salaryInsightsSeo";
 
 // build-plan.md §I — real, generated sitemap covering the genuinely public
 // marketing/content/tool surface, plus every real published blog post
 // (including ones the SEO/GEO content engine drafts and an admin
 // publishes). Next.js serves this at /sitemap.xml automatically from this
 // file's default export.
-const STATIC_ROUTES = ["", "/login", "/ats-checker", "/blog", "/privacy", "/terms", "/waitlist"];
+//
+// /interview-questions and /salary-insights have no on-site nav link — this
+// sitemap is their only discovery path for crawlers, so every entry must be
+// listed here, not just the hub route. (Missing this for
+// /interview-questions when it shipped 2026-08-29 was caught and fixed
+// 2026-08-30, alongside adding /salary-insights.)
+const STATIC_ROUTES = [
+  "",
+  "/login",
+  "/ats-checker",
+  "/blog",
+  "/interview-questions",
+  "/salary-insights",
+  "/privacy",
+  "/terms",
+  "/waitlist",
+];
 
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const siteUrl = getSiteUrl();
@@ -24,5 +42,17 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: new Date(p.updatedAt),
   }));
 
-  return [...staticEntries, ...pageEntries];
+  const questionBankEntries = await listQuestionBankEntries();
+  const interviewQuestionEntries: MetadataRoute.Sitemap = questionBankEntries.map((e) => ({
+    url: `${siteUrl}/interview-questions/${e.slug}`,
+    lastModified: new Date(),
+  }));
+
+  const salaryInsights = await listSalaryInsights();
+  const salaryInsightEntries: MetadataRoute.Sitemap = salaryInsights.map((e) => ({
+    url: `${siteUrl}/salary-insights/${e.slug}`,
+    lastModified: new Date(e.mostRecentPosting || Date.now()),
+  }));
+
+  return [...staticEntries, ...pageEntries, ...interviewQuestionEntries, ...salaryInsightEntries];
 }
