@@ -427,6 +427,143 @@ const theirstackProvider: JobScraperProvider = {
     },
 };
 
+// Adzuna's own structured job-board API — real, direct listings (not a
+// Google Jobs scrape), confirmed live 2026-08-30 against the exact
+// ADZUNA_APP_ID/ADZUNA_APP_KEY already in .env. Country codes differ from
+// SerpApi's own convention (lowercase 2-letter path segment, e.g. /ca/) —
+// mapped directly since this app's own countryCode param already matches
+// that shape.
+type AdzunaJobResult = {
+    id: string;
+    title?: string;
+    company?: { display_name?: string };
+    location?: { display_name?: string };
+    description?: string;
+    redirect_url?: string;
+    created?: string;
+    contract_time?: string;
+    salary_min?: number;
+    salary_max?: number;
+};
+
+function getAdzunaCredentials(): { appId: string; appKey: string } | null {
+    const appId = process.env.ADZUNA_APP_ID;
+    const appKey = process.env.ADZUNA_APP_KEY;
+    return appId && appKey ? { appId, appKey } : null;
+}
+
+const adzunaProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode) {
+        const creds = getAdzunaCredentials();
+        if (!creds) throw new Error("Missing ADZUNA_APP_ID/ADZUNA_APP_KEY");
+
+        const url = `https://api.adzuna.com/v1/api/jobs/${countryCode.toLowerCase()}/search/1?app_id=${creds.appId}&app_key=${creds.appKey}&what=${encodeURIComponent(jobTitle)}&where=${encodeURIComponent(location)}&results_per_page=25&content-type=application/json`;
+
+        const response = await fetch(url);
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`Adzuna API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const json = await response.json();
+        const jobs: AdzunaJobResult[] = json.results ?? [];
+
+        return jobs.map((job) => ({
+            id: `adzuna-${job.id}`,
+            title: job.title ?? "",
+            company: job.company?.display_name ?? "",
+            location: job.location?.display_name ?? "",
+            description: job.description ?? "",
+            url: job.redirect_url ?? "",
+            applyUrl: job.redirect_url,
+            salary: job.salary_min && job.salary_max ? `$${Math.round(job.salary_min)} - $${Math.round(job.salary_max)}` : undefined,
+            type: job.contract_time,
+            postedAt: job.created,
+            source: "Adzuna",
+        }));
+    },
+};
+
+// Arbeitnow was researched and its real API/field shape confirmed via
+// WebFetch (2026-08-30, keyless/public, title/company_name/location/url/
+// remote/job_types) — but a direct live fetch immediately afterward failed
+// with a real, persistent TLS certificate mismatch: www.arbeitnow.com's
+// current certificate is issued for a completely different domain
+// (preiswecker.com), reproduced 3/3 retries, not a transient blip. Per this
+// project's own established rule (SmartRecruiters/Workable were dropped
+// after failing live verification during the ATS-adapter work), a provider
+// that fails live verification does not ship — deliberately not wired in
+// here. Re-verify the same way (a real fetch, not just a docs read) before
+// ever adding this back; disabling TLS verification to work around a cert
+// mismatch is not an acceptable fix.
+
+// Apify (misceres/indeed-scraper) — last-resort tier, real per-result cost
+// ($0.005/result, confirmed live 2026-08-30 via the actor's own pricing
+// info), only reached once every free/already-paid-for tier above is
+// exhausted. Actor chosen after live-verifying it directly (2M+ real runs,
+// last run the same day as this check) rather than guessing an actor id —
+// same standard this project's ATS-adapter work already established
+// (SmartRecruiters/Workable were tried and dropped after failing that
+// same live-verification bar).
+type ApifyIndeedJobResult = {
+    id?: string;
+    positionName?: string;
+    company?: string;
+    location?: string;
+    description?: string;
+    url?: string;
+    externalApplyLink?: string;
+    jobType?: string[];
+    salary?: string;
+    postingDateParsed?: string;
+};
+
+function getApifyToken(): string | null {
+    return process.env.APIFY_API_TOKEN || null;
+}
+
+const apifyProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode) {
+        const token = getApifyToken();
+        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+
+        const response = await fetch(
+            `https://api.apify.com/v2/acts/misceres~indeed-scraper/run-sync-get-dataset-items?token=${token}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    position: jobTitle,
+                    location,
+                    country: countryCode.toUpperCase(),
+                    maxItemsPerSearch: 25,
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`Apify API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const jobs: ApifyIndeedJobResult[] = await response.json();
+
+        return jobs.map((job) => ({
+            id: `apify-indeed-${job.id}`,
+            title: job.positionName ?? "",
+            company: job.company ?? "",
+            location: job.location ?? "",
+            description: job.description ?? "",
+            url: job.url ?? "",
+            applyUrl: job.externalApplyLink || job.url,
+            salary: job.salary,
+            type: job.jobType?.[0],
+            postedAt: job.postingDateParsed,
+            source: "Indeed (via Apify)",
+        }));
+    },
+};
+
 export async function searchJobs(
     jobTitle: string,
     location: string,
@@ -436,17 +573,39 @@ export async function searchJobs(
 ): Promise<NormalizedJob[]> {
 
     if (provider === "serpapi") {
+        // Chain: SerpApi -> TheirStack -> Adzuna -> Apify, each only reached
+        // if every prior tier is genuinely exhausted (quota), never on a
+        // real per-request error (bad location, malformed query, network
+        // blip) — same rule the original SerpApi->TheirStack step already
+        // established, just extended further. Arbeitnow was researched and
+        // its code written, but deliberately NOT wired in here — see the
+        // comment above apifyProvider's definition for why (a real,
+        // persistent TLS cert mismatch on arbeitnow.com found during live
+        // verification).
+        const tiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
+            { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, countryCode, datePosted) },
+            { name: "Adzuna", hasCreds: () => Boolean(getAdzunaCredentials()), run: () => adzunaProvider.search(jobTitle, location, countryCode, datePosted) },
+            { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, countryCode, datePosted) },
+        ];
+
         try {
             return await serpApiProvider.search(jobTitle, location, countryCode, datePosted);
         } catch (err) {
-            // Only a genuine "every SerpApi key is exhausted" failure should
-            // spend a real TheirStack credit — any other error (bad
-            // location, network, malformed query) surfaces immediately,
-            // same reasoning getSerpApiKeyChain's own comment gives for not
-            // burning multiple SerpApi keys on a doomed request either.
-            if (!isQuotaExhaustedError(err) || !getTheirStackApiKey()) throw err;
-            console.warn("All SerpApi keys exhausted — falling back to TheirStack.");
-            return theirstackProvider.search(jobTitle, location, countryCode, datePosted);
+            if (!isQuotaExhaustedError(err)) throw err;
+
+            let lastErr: unknown = err;
+            for (const tier of tiers) {
+                if (!tier.hasCreds()) continue;
+                try {
+                    console.warn(`SerpApi exhausted — falling back to ${tier.name}.`);
+                    return await tier.run();
+                } catch (tierErr) {
+                    if (!isQuotaExhaustedError(tierErr)) throw tierErr;
+                    lastErr = tierErr;
+                    console.warn(`${tier.name} also exhausted — trying next fallback.`);
+                }
+            }
+            throw lastErr;
         }
     }
 
