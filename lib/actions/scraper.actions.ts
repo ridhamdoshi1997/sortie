@@ -231,15 +231,12 @@ export async function scrapeAndEvaluateJobs(
         rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
     } catch (err) {
         if (runId) {
-            await insforge.database
-                .from("agent_runs")
-                .update({
-                    status: "failed",
-                    is_successful: false,
-                    error_message: (err as Error).message,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("id", runId);
+            await insforge.database.rpc("update_agent_run", {
+                p_run_id: runId,
+                p_status: "failed",
+                p_is_successful: false,
+                p_error_message: (err as Error).message,
+            });
         }
         throw err;
     }
@@ -257,10 +254,12 @@ export async function scrapeAndEvaluateJobs(
     // in lib/jobScraper.ts.
     if (uniqueJobs.length === 0) {
         if (runId) {
-            await insforge.database
-                .from("agent_runs")
-                .update({ status: "completed", is_successful: true, jobs_found: 0, updated_at: new Date().toISOString() })
-                .eq("id", runId);
+            await insforge.database.rpc("update_agent_run", {
+                p_run_id: runId,
+                p_status: "completed",
+                p_is_successful: true,
+                p_jobs_found: 0,
+            });
         }
         return [];
     }
@@ -272,24 +271,21 @@ export async function scrapeAndEvaluateJobs(
 
     if (!savedJobs || savedJobs.length === 0) {
         if (runId) {
-            await insforge.database
-                .from("agent_runs")
-                .update({
-                    status: "failed",
-                    is_successful: false,
-                    error_message: "Insforge upsert did not return any saved jobs.",
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("id", runId);
+            await insforge.database.rpc("update_agent_run", {
+                p_run_id: runId,
+                p_status: "failed",
+                p_is_successful: false,
+                p_error_message: "Insforge upsert did not return any saved jobs.",
+            });
         }
         throw new Error("Insforge upsert did not return any saved jobs.");
     }
 
     if (runId) {
-        await insforge.database
-            .from("agent_runs")
-            .update({ jobs_found: savedJobs.length })
-            .eq("id", runId);
+        await insforge.database.rpc("update_agent_run", {
+            p_run_id: runId,
+            p_jobs_found: savedJobs.length,
+        });
         // Status stays "running" — evaluateJobsAsync marks it
         // completed/failed once the Inngest evaluation actually finishes.
     }
