@@ -4,6 +4,8 @@ import { useState } from "react";
 import Link from "next/link";
 import { ChevronDown, ChevronUp } from "lucide-react";
 
+import { formatJobDescription } from "@/lib/jobDescriptionFormatter";
+
 type Props = {
   /** AI-cleaned 2-4 sentence summary (lib/evaluator.ts) — strips job-board/
    * ATS boilerplate out of the raw posting. Null for jobs scraped before
@@ -14,6 +16,49 @@ type Props = {
   fullDescription: string | null;
   sourceUrl: string | null;
 };
+
+// Renders the real scraped text, structured — never AI content (the
+// formatter is pure string parsing, zero model calls), so this deliberately
+// does NOT get the app's agent-teal "AI-generated" treatment; that's
+// reserved for actual model output.
+function FormattedDescription({ text }: { text: string }) {
+  const blocks = formatJobDescription(text);
+
+  if (blocks.length === 0) {
+    return <p className="whitespace-pre-line">{text}</p>;
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {blocks.map((block, i) => {
+        if (block.type === "heading") {
+          return (
+            <h4 key={i} className="mt-2 text-xs font-semibold uppercase tracking-wide text-text-muted first:mt-0">
+              {block.text}
+            </h4>
+          );
+        }
+        if (block.type === "list") {
+          return (
+            <ul key={i} className="flex flex-col gap-1.5">
+              {block.items.map((item, j) => (
+                <li key={j} className="flex items-start gap-2">
+                  <span className="mt-2 h-1 w-1 flex-shrink-0 rounded-full bg-text-muted" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          );
+        }
+        return (
+          <p key={i} className="whitespace-pre-line">
+            {block.text}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 function isTruncatedPreview(description: string | null): boolean {
   if (!description) return false;
@@ -56,9 +101,13 @@ export function JobDescription({ aboutRole, fullDescription, sourceUrl }: Props)
 
   return (
     <div className="px-6 py-6">
-      <p className="whitespace-pre-line text-[15px] font-medium leading-7 text-text-primary">
-        {primaryText ?? "No job description is available for this role yet."}
-      </p>
+      {hasExpandableFull ? (
+        <p className="whitespace-pre-line text-[15px] font-medium leading-7 text-text-primary">{primaryText}</p>
+      ) : (
+        <div className="text-[15px] font-medium leading-7 text-text-primary">
+          <FormattedDescription text={primaryText ?? "No job description is available for this role yet."} />
+        </div>
+      )}
 
       {hasExpandableFull && (
         <>
@@ -71,9 +120,9 @@ export function JobDescription({ aboutRole, fullDescription, sourceUrl }: Props)
             {expanded ? "Hide full description" : "Show full description"}
             {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
           </button>
-          {expanded && (
-            <div className="animate-in fade-in-0 slide-in-from-top-1 mt-3 whitespace-pre-line rounded-lg border border-border-light bg-surface-secondary p-4 text-sm leading-6 text-text-secondary duration-200">
-              {fullDescription}
+          {expanded && fullDescription && (
+            <div className="animate-in fade-in-0 slide-in-from-top-1 mt-3 rounded-lg border border-border-light bg-surface-secondary p-4 text-sm leading-6 text-text-secondary duration-200">
+              <FormattedDescription text={fullDescription} />
             </div>
           )}
         </>
