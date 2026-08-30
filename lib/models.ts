@@ -115,11 +115,22 @@ export async function getModel(
     };
   }
 
+  // Two-key split, direct user request 2026-08-29 after linking Cloud
+  // Billing on GEMINI_API_KEY: billing tier is set per API key/project, not
+  // per request, so leaving fast-tier (flash-lite) traffic on the
+  // now-paid key would put every free/Recon user's volume on the paid
+  // meter too. GEMINI_API_KEY_FAST is a separate, still-free-tier key
+  // (confirmed live: zero Pro quota, same as GEMINI_API_KEY was before
+  // billing) used only for "fast" — falls back to the paid key if unset,
+  // so this degrades to today's single-key behavior rather than breaking
+  // if the split key is ever removed from the environment.
+  const geminiKey = tier === "fast" ? (process.env.GEMINI_API_KEY_FAST || process.env.GEMINI_API_KEY) : process.env.GEMINI_API_KEY;
+
   return {
     provider: "gemini",
     model,
     client: new OpenAI({
-      apiKey: process.env.GEMINI_API_KEY!,
+      apiKey: geminiKey!,
       baseURL: "https://generativelanguage.googleapis.com/v1beta/openai/",
     }),
   };
