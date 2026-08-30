@@ -4,10 +4,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Eye, FileText, Flag, Heart, Repeat, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { getListingSignal } from "@/lib/jobStatus";
 import { getSourceBadge } from "@/lib/jobSource";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
@@ -68,6 +69,13 @@ export function JobResultCard({
   const router = useRouter();
   const tags = jobTags(job);
   const sourceBadge = getSourceBadge(job.source);
+  // List-view surfacing of the same trust signal the job-detail page already
+  // shows (ApplyLinkTrustNote.tsx) — direct user report ("so many finance
+  // related jobs are showing third party portals like bebee"). Previously
+  // only visible after clicking into a job; this is the same classifier, no
+  // new logic, just a second, earlier surface for it.
+  const applyTrust = job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
+  const isLowQualitySource = applyTrust === "low_quality" || applyTrust === "unverified";
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
   const [hidden, setHidden] = useState(job.is_hidden);
@@ -254,8 +262,14 @@ export function JobResultCard({
             </div>
           )}
 
-          {(tags.length > 0 || (Array.isArray(job.tags) && job.tags.length > 0) || signal || reappearanceSignal) && (
+          {(tags.length > 0 || (Array.isArray(job.tags) && job.tags.length > 0) || signal || reappearanceSignal || isLowQualitySource) && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+              {isLowQualitySource && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10.5px] font-medium text-warning">
+                  <ShieldAlert className="h-3 w-3" />
+                  Third-party source
+                </span>
+              )}
               {tags.map((tag) => (
                 <span key={tag} className="rounded-full border border-border px-2 py-0.5 text-[10.5px] text-text-secondary">
                   {tag}

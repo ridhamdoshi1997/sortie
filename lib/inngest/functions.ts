@@ -4,7 +4,20 @@ import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator"
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
+import { reresolveApplyLinkForJob } from "@/lib/reresolveApplyLink";
 import type { Profile, WorkExperience } from "@/types";
+
+// Real-money threshold, not arbitrary: reresolveApplyLinkForJob's search
+// fallback calls real, metered SerpApi search (lib/jobScraper.ts's
+// searchJobs, ~2.5 cents/call per ai_cost_rates) — running it for every
+// scraped job regardless of quality would multiply spend across this app's
+// entire scrape volume. 70 is the same "genuinely worth the candidate's
+// attention" bar the rest of the app already treats as a real match (see
+// scoreTierClass in JobResultCard.tsx). Below it, the existing lazy,
+// per-view resolution (app/find-jobs/[id]/page.tsx) is the only path — free
+// in the common case where nobody ever opens that specific job.
+const EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD = 70;
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
     return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -170,6 +183,33 @@ export const evaluateJobsAsync = inngest.createFunction(
                         // Force a crash if the database rejects the save
                         if (updateError) {
                             throw new Error(`Database Update Failed for Job ${job.id}: ${updateError.message}`);
+                        }
+
+                        // Eager re-resolution for high-scoring jobs whose
+                        // stored apply link is a known low-quality mirror
+                        // (build-plan.md, direct user request 2026-08-30) —
+                        // front-loads the same fix the job-detail page's
+                        // lazy path already does, so a genuinely good match
+                        // often already has a real link by the time it shows
+                        // up in the list, not just after someone opens it.
+                        // Never blocks/fails the evaluation itself — a
+                        // re-resolution failure here is a soft miss, not a
+                        // reason to mark this whole batch as failed.
+                        const matchScore = evalResult?.matchScore ?? 0;
+                        if (matchScore >= EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD && job.external_apply_url) {
+                            const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
+                            if (currentTrust === "low_quality" || currentTrust === "unverified") {
+                                try {
+                                    await reresolveApplyLinkForJob(admin, {
+                                        id: job.id,
+                                        title: job.title,
+                                        company: job.company,
+                                        location: job.location,
+                                    });
+                                } catch (err) {
+                                    console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
+                                }
+                            }
                         }
                     }
                 });
