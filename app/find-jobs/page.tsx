@@ -31,12 +31,28 @@ export default async function FindJobsPage() {
     // regression this feature exists to prevent. Unscored jobs already
     // render correctly (FindJobsForm's own polling shows "Scoring…"), so
     // there's no real reason to filter by status here at all.
+    //
+    // Second real bug found live (2026-08-30), same symptom, different
+    // cause: this used to order by updated_at DESC. updated_at only changes
+    // when evaluateJobsAsync's Inngest run finally completes/fails — a
+    // real, timestamped write, but one that lands whenever that async batch
+    // happens to finish, NOT in the order the user actually performed the
+    // searches. Real repro: search "advisor" (7 jobs — evaluates fast),
+    // then search "developer" (47 jobs — evaluates slower), open a
+    // developer job, press Back. If advisor's batch (started earlier,
+    // smaller) finishes AFTER developer's batch was created but BEFORE the
+    // user presses Back, advisor's updated_at jumps ahead of developer's
+    // (still frozen at developer's own creation time, mid-evaluation) —
+    // this query then wrongly returns the OLDER "advisor" search. created_at
+    // is set once, at the moment the search was actually performed, and
+    // never touched again — the correct, stable ordering key for "what did
+    // the user search last."
     const insforge = await createInsforgeServer();
     const { data: lastRuns } = await insforge.database
         .from("agent_runs")
         .select("id,job_title_searched,location_searched,updated_at")
         .eq("user_id", user.id)
-        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(1);
     const lastRun = lastRuns?.[0] ?? null;
     const lastRunAt = lastRun?.updated_at ?? null;
