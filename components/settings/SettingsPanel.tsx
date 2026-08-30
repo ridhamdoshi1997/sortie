@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Bell, BellRing, Calendar as CalendarIcon, Check, Copy, CreditCard, Database, Gift, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
+import { Bell, BellRing, Calendar as CalendarIcon, Check, Copy, CreditCard, Database, Gift, Handshake, KeyRound, LifeBuoy, LogOut, Plug, Shield, Ticket, Trash2 } from "lucide-react";
 
 import { deleteAccount } from "@/actions/account";
 import { generateApiKey, listApiKeys, revokeApiKey, type ApiKeyRow } from "@/actions/apiKeys";
@@ -10,6 +10,7 @@ import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { SupportTab } from "@/components/settings/SupportTab";
 import { PushNotificationsTab } from "@/components/settings/PushNotificationsTab";
 import { ReferralsTab } from "@/components/settings/ReferralsTab";
+import { AffiliateTab } from "@/components/settings/AffiliateTab";
 import { CreditsUsageTab } from "@/components/settings/CreditsUsageTab";
 import { SubscriptionTab } from "@/components/settings/SubscriptionTab";
 import { NotionTab } from "@/components/settings/NotionTab";
@@ -21,7 +22,7 @@ type Props = {
   providers: string[];
 };
 
-type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "notion" | "googleCalendar" | "outlookCalendar" | "referrals" | "support";
+type TabKey = "security" | "subscription" | "credits" | "alerts" | "push" | "extension" | "notion" | "googleCalendar" | "outlookCalendar" | "referrals" | "affiliate" | "support";
 
 const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "security", icon: Shield, label: "Login & security" },
@@ -34,6 +35,7 @@ const NAV: Array<{ key: TabKey; icon: typeof Shield; label: string }> = [
   { key: "googleCalendar", icon: CalendarIcon, label: "Google Calendar" },
   { key: "outlookCalendar", icon: CalendarIcon, label: "Outlook Calendar" },
   { key: "referrals", icon: Gift, label: "Referrals" },
+  { key: "affiliate", icon: Handshake, label: "Affiliate program" },
   { key: "support", icon: LifeBuoy, label: "Contact support" },
 ];
 
@@ -462,6 +464,11 @@ export function SettingsPanel({ email, providers }: Props) {
         {visitedTabs.has("referrals") && (
           <div className={tab === "referrals" ? "" : "hidden"}>
             <ReferralsTab />
+          </div>
+        )}
+        {visitedTabs.has("affiliate") && (
+          <div className={tab === "affiliate" ? "" : "hidden"}>
+            <AffiliateTab />
           </div>
         )}
         {visitedTabs.has("support") && (

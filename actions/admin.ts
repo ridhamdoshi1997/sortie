@@ -25,6 +25,7 @@ import { getExpensesSummary, type ExpensesSummary, type ExpenseCadence } from "@
 import type { UsageAction } from "@/lib/usage";
 import { listPlans, type PlanConfig } from "@/lib/subscription";
 import { toUserMessage } from "@/lib/errors";
+import { sendPayout } from "@/lib/paypalPayouts";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -944,6 +945,176 @@ export async function updateModelConfig(rows: ModelConfigRow[]): Promise<ActionR
     });
 
     revalidatePath("/admin/ai-models");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Affiliate program admin actions (direct user request, 2026-08-30) — a
+// full-cash, manual-trigger-payout program via PayPal Payouts (lib/
+// paypalPayouts.ts), distinct from the existing peer-referral system.
+export type AffiliateRow = {
+  id: string;
+  userId: string;
+  email: string | null;
+  affiliateCode: string;
+  paypalEmail: string;
+  commissionRate: number;
+  status: string;
+  unpaidCents: number;
+  paidCents: number;
+  createdAt: string;
+};
+
+export async function getAffiliatesForAdmin(): Promise<AffiliateRow[]> {
+  const admin = await requireAdmin();
+  requireRole(admin, ["owner", "admin"]);
+  const client = createAdminDbClient();
+
+  const { data: affiliates } = await client.database
+    .from("affiliates")
+    .select("id,user_id,affiliate_code,paypal_email,commission_rate,status,created_at")
+    .order("created_at", { ascending: false })
+    .returns<
+      { id: string; user_id: string; affiliate_code: string; paypal_email: string; commission_rate: number; status: string; created_at: string }[]
+    >();
+
+  if (!affiliates || affiliates.length === 0) return [];
+
+  const [{ data: profiles }, { data: conversions }] = await Promise.all([
+    client.database
+      .from("profiles")
+      .select("id,email")
+      .in("id", affiliates.map((a) => a.user_id))
+      .returns<{ id: string; email: string | null }[]>(),
+    client.database
+      .from("affiliate_conversions")
+      .select("affiliate_id,commission_cents,paid_at")
+      .in("affiliate_id", affiliates.map((a) => a.id))
+      .returns<{ affiliate_id: string; commission_cents: number; paid_at: string | null }[]>(),
+  ]);
+
+  const emailById = new Map((profiles ?? []).map((p) => [p.id, p.email]));
+
+  return affiliates.map((a) => {
+    const rows = (conversions ?? []).filter((c) => c.affiliate_id === a.id);
+    return {
+      id: a.id,
+      userId: a.user_id,
+      email: emailById.get(a.user_id) ?? null,
+      affiliateCode: a.affiliate_code,
+      paypalEmail: a.paypal_email,
+      commissionRate: a.commission_rate,
+      status: a.status,
+      unpaidCents: rows.filter((r) => !r.paid_at).reduce((sum, r) => sum + r.commission_cents, 0),
+      paidCents: rows.filter((r) => r.paid_at).reduce((sum, r) => sum + r.commission_cents, 0),
+      createdAt: a.created_at,
+    };
+  });
+}
+
+export async function updateAffiliateApplication(
+  affiliateId: string,
+  status: "approved" | "rejected",
+  commissionRate?: number,
+): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const update: Record<string, unknown> = { status, updated_at: new Date().toISOString() };
+    if (commissionRate !== undefined) update.commission_rate = Math.max(0, Math.min(1, commissionRate));
+
+    const { error } = await client.database.from("affiliates").update(update).eq("id", affiliateId);
+    if (error) return { success: false, error: toUserMessage(error, "Failed to update this affiliate.") };
+
+    await logAdminAction(admin, {
+      action: "update_affiliate_application",
+      targetTable: "affiliates",
+      targetId: affiliateId,
+      after: update,
+    });
+
+    revalidatePath("/admin/affiliates");
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: toUserMessage(error, "Not authorized.") };
+  }
+}
+
+// Real money movement — gated entirely behind this explicit admin click,
+// never automatic (direct user decision: "I will pay manually... but we
+// need payment gateway to payout them"). Sums every unpaid conversion for
+// this affiliate into ONE PayPal payout, then marks exactly those rows
+// paid_at — never a blind "mark everything paid", so a payout that fails
+// partway (network error before the DB update) leaves the real unpaid
+// state intact to retry, rather than silently losing track of what was
+// actually sent.
+export async function payAffiliateNow(affiliateId: string): Promise<ActionResult> {
+  try {
+    const admin = await requireAdmin();
+    requireRole(admin, ["owner"]);
+    const client = createAdminDbClient();
+
+    const { data: affiliate } = await client.database
+      .from("affiliates")
+      .select("paypal_email,status")
+      .eq("id", affiliateId)
+      .maybeSingle<{ paypal_email: string; status: string }>();
+
+    if (!affiliate) return { success: false, error: "Affiliate not found." };
+    if (affiliate.status !== "approved") return { success: false, error: "Only approved affiliates can be paid." };
+
+    const { data: unpaid } = await client.database
+      .from("affiliate_conversions")
+      .select("id,commission_cents")
+      .eq("affiliate_id", affiliateId)
+      .is("paid_at", null)
+      .returns<{ id: string; commission_cents: number }[]>();
+
+    const rows = unpaid ?? [];
+    if (rows.length === 0) return { success: false, error: "Nothing unpaid for this affiliate." };
+
+    const totalCents = rows.reduce((sum, r) => sum + r.commission_cents, 0);
+
+    const payout = await sendPayout({
+      recipientEmail: affiliate.paypal_email,
+      amountCents: totalCents,
+      currency: "USD",
+      note: `Sortie affiliate commission (${rows.length} conversion${rows.length === 1 ? "" : "s"})`,
+      senderItemId: `affiliate-${affiliateId}-${Date.now()}`,
+    });
+
+    if (!payout.success) {
+      return { success: false, error: payout.error };
+    }
+
+    const paidAt = new Date().toISOString();
+    const { error: markError } = await client.database
+      .from("affiliate_conversions")
+      .update({ paid_at: paidAt })
+      .in("id", rows.map((r) => r.id));
+
+    if (markError) {
+      // The real money already sent — this is now a bookkeeping-only
+      // failure, surfaced clearly rather than silently retried (a retry
+      // here risks a second real payout for the same conversions).
+      return {
+        success: false,
+        error: `Payout sent (PayPal batch ${payout.batchId}) but failed to mark conversions paid — reconcile manually: ${toUserMessage(markError)}`,
+      };
+    }
+
+    await logAdminAction(admin, {
+      action: "pay_affiliate",
+      targetTable: "affiliate_conversions",
+      before: { unpaidCents: totalCents, count: rows.length },
+      after: { paypalBatchId: payout.batchId, paypalBatchStatus: payout.batchStatus, paidAt },
+    });
+
+    revalidatePath("/admin/affiliates");
     return { success: true };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };

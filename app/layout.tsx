@@ -9,6 +9,8 @@ import { SettingsModalLoader } from "@/components/settings/SettingsModalLoader";
 import { NavigatorLauncherLoader } from "@/components/agent/NavigatorLauncherLoader";
 import { ReferralCaptureLoader } from "@/components/referrals/ReferralCaptureLoader";
 import { ReferralClaimerLoader } from "@/components/referrals/ReferralClaimerLoader";
+import { AffiliateCaptureLoader } from "@/components/affiliates/AffiliateCaptureLoader";
+import { AffiliateClaimerLoader } from "@/components/affiliates/AffiliateClaimerLoader";
 import { ServiceWorkerRegisterLoader } from "@/components/pwa/ServiceWorkerRegisterLoader";
 import { ToastProvider } from "@/components/ui/ToastProvider";
 
@@ -100,6 +102,8 @@ export default function RootLayout({
             <CommandPaletteLoader />
             <ReferralCaptureLoader />
             <ReferralClaimerLoader />
+            <AffiliateCaptureLoader />
+            <AffiliateClaimerLoader />
             <ServiceWorkerRegisterLoader />
           </ToastProvider>
         </ThemeProvider>
