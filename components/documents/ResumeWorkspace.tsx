@@ -306,6 +306,13 @@ export function ResumeWorkspace({
           <Download className="h-4 w-4" />
           Download DOCX
         </a>
+        <a
+          href={`/api/documents/download-markdown?jobId=${jobId}`}
+          className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border px-5 text-sm font-medium text-text-secondary transition-colors hover:bg-surface"
+        >
+          <Download className="h-4 w-4" />
+          Download Markdown
+        </a>
         <button
           type="button"
           onClick={handleRegenerate}

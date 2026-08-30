@@ -171,6 +171,15 @@ function DocumentAction({ jobId, kind, label, hasDocument, icon: Icon, workspace
                 DOCX
               </a>
             )}
+            {kind === "resume" && (
+              <a
+                href={`/api/documents/download-markdown?jobId=${jobId}`}
+                className="inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface"
+              >
+                <Download className="h-4 w-4" />
+                Markdown
+              </a>
+            )}
             <DocumentVersionHistory jobId={jobId} kind={kind} label={label} />
           </>
         )}
