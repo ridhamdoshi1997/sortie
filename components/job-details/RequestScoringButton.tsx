@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 
 import { requestJobEvaluation } from "@/actions/jobs";
@@ -13,16 +13,47 @@ import { LimitReachedModal, type LimitReachedReason } from "@/components/shared/
 // jobs than a day's evaluation quota covers, so some jobs sit unscored with
 // no way to fix it. This spends one evaluation from that same daily quota
 // on this specific job. router.refresh() re-reads the job row server-side
-// once Inngest's real evaluation finishes — same polling idiom the rest of
-// this app already uses for "in progress" AI work, just triggered manually
-// here instead of on an interval, since a single job's evaluation is fast
-// enough that the user re-checking once is enough.
+// once Inngest's real evaluation finishes; once it has a real score, this
+// component's parent (JobIdentityRail) stops rendering it at all, in favor
+// of the real score UI — the natural "done" signal, no local done-state
+// needed here.
+//
+// Real bug found live (2026-08-30, direct user report): this used to fire
+// a SINGLE router.refresh() 4 seconds after requesting evaluation, on the
+// assumption a single job always evaluates that fast. It doesn't always —
+// real AI-call latency varies, and a one-shot refresh that lands too early
+// left the spinner showing forever with no further automatic refresh; only
+// a manual page reload (which re-fetches fresh server data on its own)
+// picked up the real score. Fixed to a genuine repeating poll, same idiom
+// FindJobsForm.tsx already uses for multi-job searches, bounded to 20
+// attempts (~60s) so a genuinely failed evaluation doesn't poll forever.
+const POLL_INTERVAL_MS = 3000;
+const MAX_POLL_ATTEMPTS = 20;
+
 export function RequestScoringButton({ jobId }: { jobId: string }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [requested, setRequested] = useState(false);
+  const [pollTimedOut, setPollTimedOut] = useState(false);
   const [limitModal, setLimitModal] = useState<{ reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean } | null>(null);
   const [isPending, startTransition] = useTransition();
+
+  useEffect(() => {
+    if (!requested) return;
+
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      if (attempts > MAX_POLL_ATTEMPTS) {
+        clearInterval(interval);
+        setPollTimedOut(true);
+        return;
+      }
+      router.refresh();
+    }, POLL_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [requested, router]);
 
   function handleClick(): void {
     setError(null);
@@ -30,10 +61,6 @@ export function RequestScoringButton({ jobId }: { jobId: string }) {
       const result = await requestJobEvaluation(jobId);
       if (result.success) {
         setRequested(true);
-        // Real evaluation runs async via Inngest — one refresh a few
-        // seconds later is enough to pick up the result for a single job
-        // (chunked batches of many jobs are the slow case, not this).
-        setTimeout(() => router.refresh(), 4000);
       } else if (result.reason) {
         setLimitModal({ reason: result.reason, message: result.error, resetsAt: result.resetsAt, canUpgrade: result.canUpgrade });
       } else {
@@ -45,8 +72,14 @@ export function RequestScoringButton({ jobId }: { jobId: string }) {
   if (requested) {
     return (
       <p className="flex items-center gap-1.5 text-[12px] text-text-muted">
-        <Loader2 className="h-3 w-3 animate-spin" />
-        Scoring — this usually takes a few seconds…
+        {pollTimedOut ? (
+          "Taking longer than usual — refresh the page in a moment to check."
+        ) : (
+          <>
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Scoring — this usually takes a few seconds…
+          </>
+        )}
       </p>
     );
   }
