@@ -215,6 +215,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                         title: job.title,
                                         company: job.company,
                                         location: job.location,
+                                        external_apply_url: job.external_apply_url,
                                     });
                                 } catch (err) {
                                     console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);

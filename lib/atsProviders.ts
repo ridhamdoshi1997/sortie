@@ -9,7 +9,7 @@ import type { NormalizedJob } from "@/lib/jobScraper";
 // greenhouse, Lever's own demo board, ramp/ashby) — see this session's
 // transcript / the approved plan for the raw responses.
 
-export type AtsPlatform = "greenhouse" | "lever" | "ashby";
+export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -120,6 +120,51 @@ export async function fetchAshbyJobs(orgName: string, companyName: string): Prom
   }
 }
 
+// Real, public, unauthenticated postings API — confirmed live 2026-08-30
+// (research via `agy`, then verified directly): the company identifier
+// isn't derivable from blind slug-guessing alone any more reliably than
+// Greenhouse/Lever/Ashby's (confirmed: guessCompanySlugs' own bare/stripped
+// forms happen to BE the real identifier for real customers checked live,
+// e.g. "smartrecruiters" itself) — reuses the same guess list as the other
+// three rather than inventing a separate one.
+type SmartRecruitersJob = {
+  id: string;
+  name: string;
+  refNumber?: string;
+  releasedDate?: string;
+  location?: { city?: string; region?: string; country?: string; remote?: boolean };
+};
+
+export async function fetchSmartRecruitersJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=50`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] SmartRecruiters company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: { content?: SmartRecruitersJob[] } = await res.json();
+    return (data.content ?? []).map((job) => {
+      const applyUrl = `https://jobs.smartrecruiters.com/${slug}/${job.id}`;
+      const loc = job.location;
+      return {
+        id: `smartrecruiters-${job.id}`,
+        title: job.name,
+        company: companyName,
+        location: [loc?.city, loc?.region, loc?.country].filter(Boolean).join(", "),
+        description: "",
+        url: applyUrl,
+        applyUrl,
+        postedAt: job.releasedDate,
+        source: "smartrecruiters",
+      };
+    });
+  } catch (error) {
+    console.warn(`[atsProviders] SmartRecruiters fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -128,7 +173,180 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchLeverJobs(slug, companyName);
     case "ashby":
       return fetchAshbyJobs(slug, companyName);
+    case "smartrecruiters":
+      return fetchSmartRecruitersJobs(slug, companyName);
   }
+}
+
+// --- Discovery-based adapters (Workday, iCIMS) -----------------------------
+//
+// Unlike Greenhouse/Lever/Ashby/SmartRecruiters, Workday and iCIMS tenant
+// identifiers are NOT derivable from the company name — confirmed live,
+// not assumed: blind-guessed 12 combinations of Workday instance/board-name
+// for a real company (RBC) and got 0 hits, while a real company's actual
+// careers page (td.com → careers.td.com) reliably embeds a plain-HTML link
+// to its real Workday/iCIMS tenant that a guess could never construct.
+// So these adapters DISCOVER the real tenant from a real company domain
+// instead of guessing a slug — the same "resolve, don't guess" principle
+// lib/applyLinkTrust.ts's extractLikelyLogoDomain already established for
+// logos. Real cost: 1-4 extra plain HTTP fetches per company (no browser
+// rendering needed — confirmed live both platforms serve the tenant link/
+// job listing in raw server HTML), only worth it because the payoff is a
+// guaranteed-direct, specific posting link when it hits.
+
+const WORKDAY_TENANT_PATTERN = /([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:([a-z]{2}-[A-Z]{2})\/)?([A-Za-z0-9_]+)/i;
+const ICIMS_TENANT_PATTERN = /([a-z0-9-]+)\.icims\.com/i;
+
+// A handful of URL conventions real companies actually use for their
+// careers page — tried in order, first plain-HTTP-fetchable one that
+// embeds a recognized ATS tenant link wins. Confirmed live for TD:
+// `jobs.{domain}` redirects to `careers.td.com`, whose raw HTML contains
+// the real Workday tenant link with zero JS execution required.
+function careersUrlCandidates(domain: string): string[] {
+  return [`https://jobs.${domain}`, `https://careers.${domain}`, `https://${domain}/careers`, `https://www.${domain}/careers`];
+}
+
+type DiscoveredAts =
+  | { platform: "workday"; tenant: string; wdInstance: string; locale: string; board: string }
+  | { platform: "icims"; tenant: string };
+
+async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | null> {
+  for (const url of careersUrlCandidates(domain)) {
+    let html: string;
+    try {
+      const res = await fetch(url, { redirect: "follow" });
+      if (!res.ok) continue;
+      html = await res.text();
+    } catch {
+      continue;
+    }
+
+    const workday = html.match(WORKDAY_TENANT_PATTERN);
+    if (workday) {
+      return { platform: "workday", tenant: workday[1], wdInstance: workday[2], locale: workday[3] ?? "en-US", board: workday[4] };
+    }
+
+    const icims = html.match(ICIMS_TENANT_PATTERN);
+    if (icims && icims[1] !== "www" && icims[1] !== "careers") {
+      return { platform: "icims", tenant: icims[1] };
+    }
+  }
+  return null;
+}
+
+type WorkdayJobPosting = {
+  title: string;
+  externalPath: string;
+  locationsText?: string;
+};
+
+async function fetchWorkdayJobs(
+  discovered: Extract<DiscoveredAts, { platform: "workday" }>,
+  companyName: string,
+  searchText: string
+): Promise<NormalizedJob[]> {
+  const { tenant, wdInstance, locale, board } = discovered;
+  try {
+    const res = await fetch(`https://${tenant}.${wdInstance}.myworkdayjobs.com/wday/cxs/${tenant}/${board}/jobs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText }),
+    });
+    if (!res.ok) {
+      console.warn(`[atsProviders] Workday board "${tenant}/${board}" returned ${res.status}`);
+      return [];
+    }
+    const data: { jobPostings?: WorkdayJobPosting[] } = await res.json();
+    return (data.jobPostings ?? []).map((job) => {
+      const applyUrl = `https://${tenant}.${wdInstance}.myworkdayjobs.com/${locale}/${board}${job.externalPath}`;
+      return {
+        id: `workday-${job.externalPath}`,
+        title: job.title,
+        company: companyName,
+        location: job.locationsText ?? "",
+        description: "",
+        url: applyUrl,
+        applyUrl,
+        postedAt: undefined,
+        source: "workday",
+      };
+    });
+  } catch (error) {
+    console.warn(`[atsProviders] Workday fetch failed for "${tenant}/${board}"`, error);
+    return [];
+  }
+}
+
+// iCIMS has no confirmed public JSON API (live-checked, not assumed) — but
+// real, specific-posting links ARE present in plain server-rendered HTML
+// (confirmed live: /jobs/search?ss=1&in_iframe=1 returns real
+// /jobs/{numericId}/{slug}/job links with zero JS execution). Parsed via a
+// simple href scan, same DOM-scraping tier the browser extension already
+// uses for platforms with no JSON API.
+const ICIMS_JOB_LINK_PATTERN = /href="(https:\/\/[a-z0-9-]+\.icims\.com\/jobs\/(\d+)\/([^"?]+)\/job[^"]*)"/gi;
+
+async function fetchIcimsJobs(
+  discovered: Extract<DiscoveredAts, { platform: "icims" }>,
+  companyName: string,
+  searchTitleWords: string[]
+): Promise<NormalizedJob[]> {
+  try {
+    const res = await fetch(`https://${discovered.tenant}.icims.com/jobs/search?ss=1&in_iframe=1`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] iCIMS tenant "${discovered.tenant}" returned ${res.status}`);
+      return [];
+    }
+    const html = await res.text();
+    const jobs: NormalizedJob[] = [];
+    for (const match of html.matchAll(ICIMS_JOB_LINK_PATTERN)) {
+      const [, applyUrl, id, slug] = match;
+      const title = decodeURIComponent(slug).replace(/-/g, " ");
+      // Filter to postings whose slug plausibly matches the title we're
+      // looking for — an iCIMS tenant's search page can list hundreds of
+      // unrelated jobs, and title-matching happens the same way the ATS
+      // guess path already does for the other platforms (titlesMatch, in
+      // lib/reresolveApplyLink.ts) — done here too since a company can have
+      // 500+ postings and there's no point returning all of them.
+      const lowerTitle = title.toLowerCase();
+      if (searchTitleWords.length > 0 && !searchTitleWords.every((w) => lowerTitle.includes(w))) continue;
+      jobs.push({
+        id: `icims-${id}`,
+        title,
+        company: companyName,
+        location: "",
+        description: "",
+        url: applyUrl,
+        applyUrl,
+        postedAt: undefined,
+        source: "icims",
+      });
+    }
+    return jobs;
+  } catch (error) {
+    console.warn(`[atsProviders] iCIMS fetch failed for "${discovered.tenant}"`, error);
+    return [];
+  }
+}
+
+// Entry point: given a real company domain (NOT a guessed slug — see
+// lib/applyLinkTrust.ts's extractLikelyLogoDomain, which resolves one from
+// a job's own already-employer-classified apply link), discover and query
+// whichever of Workday/iCIMS that company actually uses. Returns [] and
+// never throws if neither is detected — a normal, expected outcome for
+// most companies, not an error.
+export async function fetchDiscoveredAtsJobs(domain: string, companyName: string, searchTitle: string): Promise<NormalizedJob[]> {
+  const discovered = await discoverAtsFromDomain(domain);
+  if (!discovered) return [];
+
+  if (discovered.platform === "workday") {
+    return fetchWorkdayJobs(discovered, companyName, searchTitle);
+  }
+
+  const words = searchTitle
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2);
+  return fetchIcimsJobs(discovered, companyName, words);
 }
 
 // Best-effort slug guesses for a company name, tried across all three

@@ -347,7 +347,7 @@ export async function scrapeAndEvaluateJobs(
 export type TargetCompanyRow = {
     id: string;
     company_name: string;
-    ats_platform: "greenhouse" | "lever" | "ashby";
+    ats_platform: "greenhouse" | "lever" | "ashby" | "smartrecruiters";
     company_slug: string;
     last_scanned_at: string | null;
 };
@@ -412,7 +412,7 @@ export async function getTargetCompanies(userId: string) {
 export async function addTargetCompany(
     userId: string,
     companyName: string,
-    atsPlatform: "greenhouse" | "lever" | "ashby",
+    atsPlatform: "greenhouse" | "lever" | "ashby" | "smartrecruiters",
     companySlug: string
 ) {
     const insforge = await createInsforgeServer();

@@ -1,6 +1,6 @@
 import { searchJobs } from "@/lib/jobScraper";
-import { classifyApplyHost } from "@/lib/applyLinkTrust";
-import { fetchAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
+import { classifyApplyHost, extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
+import { fetchAtsJobs, fetchDiscoveredAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
 import type { createInsforgeServer } from "@/lib/insforge-server";
 
 type InsforgeClient = Awaited<ReturnType<typeof createInsforgeServer>>;
@@ -87,7 +87,7 @@ export function looksLikeSpecificJobPosting(rawUrl: string): boolean {
   }
 }
 
-const ATS_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby"];
+const ATS_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters"];
 
 // Free, zero-quota first attempt before falling back to a paid SerpApi
 // search below — tries each of the 3 known ATS platforms directly against
@@ -155,7 +155,33 @@ type ResolvableJob = {
   title: string | null;
   company: string | null;
   location: string | null;
+  // The job's CURRENT apply link — used to discover a real company domain
+  // for the Workday/iCIMS tier below (extractLikelyLogoDomain). Named to
+  // match the real jobs.external_apply_url column so callers that already
+  // have the raw DB row (app/find-jobs/[id]/page.tsx) can pass it straight
+  // through with no rename. Optional for backward compatibility with any
+  // caller that doesn't have it handy; that tier is simply skipped when
+  // absent, same as when it's null.
+  external_apply_url?: string | null;
 };
+
+// Real, direct-employer-domain discovery for enterprise ATS platforms that
+// have no guessable company slug (Workday, iCIMS — see atsProviders.ts's
+// own header comment for why this is a separate mechanism from
+// tryAtsGuess). Free (no paid API), tried before the paid SerpApi search
+// below for the same reason tryAtsGuess is. Direct fix for a real,
+// user-reported case: TD's own bad link (td.com/us/en/about-us/working-
+// at-td) already classifies as "employer" trust — extractLikelyLogoDomain
+// resolves that to the real domain (td.com), and this discovers TD's real
+// Workday tenant from it, confirmed live to return the exact posting.
+async function tryEmployerAtsDiscovery(job: ResolvableJob): Promise<{ applyUrl: string } | null> {
+  const domain = extractLikelyLogoDomain(job.external_apply_url, job.company);
+  if (!domain) return null;
+
+  const candidates = await fetchDiscoveredAtsJobs(domain, job.company as string, job.title as string);
+  const match = candidates.find((c) => titlesMatch(c.title, job.title as string));
+  return match?.applyUrl ? { applyUrl: match.applyUrl } : null;
+}
 
 export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: ResolvableJob): Promise<void> {
   if (!job.title || !job.company) return;
@@ -171,6 +197,19 @@ export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: Re
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (ats match)", job.id, error);
+      return;
+    }
+
+    const discoveredMatch = await tryEmployerAtsDiscovery(job);
+    if (discoveredMatch) {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: discoveredMatch.applyUrl,
+          apply_link_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (discovered ats match)", job.id, error);
       return;
     }
 

@@ -11,6 +11,7 @@ const ATS_OPTIONS: { value: TargetCompanyRow["ats_platform"]; label: string; hin
   { value: "greenhouse", label: "Greenhouse", hint: "e.g. stripe — from boards.greenhouse.io/stripe" },
   { value: "lever", label: "Lever", hint: "e.g. netflix — from jobs.lever.co/netflix" },
   { value: "ashby", label: "Ashby", hint: "e.g. ramp — from jobs.ashbyhq.com/ramp" },
+  { value: "smartrecruiters", label: "SmartRecruiters", hint: "e.g. smartrecruiters — from jobs.smartrecruiters.com/smartrecruiters" },
 ];
 
 // Phase 8 "Portal Scanner" (build-plan.md §24) — a user-curated watchlist of
