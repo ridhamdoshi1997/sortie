@@ -452,21 +452,43 @@ function getAdzunaCredentials(): { appId: string; appKey: string } | null {
     return appId && appKey ? { appId, appKey } : null;
 }
 
+// 3 pages x 50 = up to 150, roughly matching SerpApi's own ~100-result
+// practical ceiling so a search that falls back to (or is supplemented
+// by) Adzuna isn't artificially thinner than one that didn't. Was a
+// single 25-result page, which capped a real reported case at 23 total
+// results even though Adzuna's own response reported 4,454 matches
+// available for that query. Adzuna's credentials here are free-tier, so
+// the extra pages cost nothing; the loop still exits early the moment a
+// page comes back short, so narrow queries don't pay for empty pages.
+const ADZUNA_PAGES = 3;
+const ADZUNA_PER_PAGE = 50;
+
 const adzunaProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
         const creds = getAdzunaCredentials();
         if (!creds) throw new Error("Missing ADZUNA_APP_ID/ADZUNA_APP_KEY");
 
-        const url = `https://api.adzuna.com/v1/api/jobs/${countryCode.toLowerCase()}/search/1?app_id=${creds.appId}&app_key=${creds.appKey}&what=${encodeURIComponent(jobTitle)}&where=${encodeURIComponent(location)}&results_per_page=25&content-type=application/json`;
+        const jobs: AdzunaJobResult[] = [];
+        for (let page = 1; page <= ADZUNA_PAGES; page++) {
+            const url = `https://api.adzuna.com/v1/api/jobs/${countryCode.toLowerCase()}/search/${page}?app_id=${creds.appId}&app_key=${creds.appKey}&what=${encodeURIComponent(jobTitle)}&where=${encodeURIComponent(location)}&results_per_page=${ADZUNA_PER_PAGE}&content-type=application/json`;
 
-        const response = await fetch(url);
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`Adzuna API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+            const response = await fetch(url);
+            if (!response.ok) {
+                // A later page failing shouldn't discard pages already
+                // fetched — only a failure on the very first page is a
+                // real, reportable provider error.
+                if (page === 1) {
+                    const bodyText = await response.text().catch(() => "");
+                    throw new Error(`Adzuna API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+                }
+                break;
+            }
+
+            const json = await response.json();
+            const pageJobs: AdzunaJobResult[] = json.results ?? [];
+            jobs.push(...pageJobs);
+            if (pageJobs.length < ADZUNA_PER_PAGE) break;
         }
-
-        const json = await response.json();
-        const jobs: AdzunaJobResult[] = json.results ?? [];
 
         return jobs.map((job) => ({
             id: `adzuna-${job.id}`,
@@ -564,6 +586,63 @@ const apifyProvider: JobScraperProvider = {
     },
 };
 
+// Below this many results, SerpApi's answer is treated as thin coverage
+// rather than a complete picture, and Adzuna is queried to supplement it.
+// Grounded in a real, reported case (2026-08-30): "advisor" in Toronto
+// returned 7 jobs from SerpApi — not a bug, and not quota (pagination
+// correctly stopped because Google Jobs itself had no next page) — while
+// a direct Adzuna query for the same thing reported 4,454. Google Jobs is
+// a consumer aggregator with genuinely uneven per-query coverage, so
+// "SerpApi returned few results" and "few such jobs exist" are not the
+// same thing, and the old chain only ever consulted another provider on
+// hard quota exhaustion.
+const THIN_RESULT_THRESHOLD = 25;
+
+// Same title+company job legitimately appears in more than one provider's
+// index; keyed on both since neither URL nor id is comparable across
+// providers.
+function dedupeJobs(jobs: NormalizedJob[]): NormalizedJob[] {
+    const seen = new Set<string>();
+    const out: NormalizedJob[] = [];
+    for (const job of jobs) {
+        const key = `${(job.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(job.company ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "").trim()}`;
+        if (key === "|" || seen.has(key)) continue;
+        seen.add(key);
+        out.push(job);
+    }
+    return out;
+}
+
+// Deliberately Adzuna only, not the whole fallback chain: Adzuna's
+// credentials are free-tier with a large index, whereas TheirStack burns
+// per-search credits and Apify costs real money per run (~$0.015). Those
+// two stay reserved for genuine total-quota-exhaustion, where there's no
+// alternative — spending them speculatively on every thin-but-successful
+// search would be a real, recurring cost for a topping-up nicety.
+async function supplementThinResults(
+    primary: NormalizedJob[],
+    jobTitle: string,
+    location: string,
+    countryCode: string,
+    datePosted?: string
+): Promise<NormalizedJob[]> {
+    if (primary.length >= THIN_RESULT_THRESHOLD || !getAdzunaCredentials()) return primary;
+
+    try {
+        const extra = await adzunaProvider.search(jobTitle, location, countryCode, datePosted);
+        if (extra.length === 0) return primary;
+        const merged = dedupeJobs([...primary, ...extra]);
+        console.warn(
+            `SerpApi returned ${primary.length} result(s) for "${jobTitle}" — supplemented with Adzuna to ${merged.length}.`
+        );
+        return merged;
+    } catch {
+        // Supplementing is a best-effort improvement, never a reason to
+        // fail a search that already has real results.
+        return primary;
+    }
+}
+
 export async function searchJobs(
     jobTitle: string,
     location: string,
@@ -589,7 +668,8 @@ export async function searchJobs(
         ];
 
         try {
-            return await serpApiProvider.search(jobTitle, location, countryCode, datePosted);
+            const primary = await serpApiProvider.search(jobTitle, location, countryCode, datePosted);
+            return await supplementThinResults(primary, jobTitle, location, countryCode, datePosted);
         } catch (err) {
             if (!isQuotaExhaustedError(err)) throw err;
 
