@@ -328,25 +328,51 @@ async function fetchIcimsJobs(
   }
 }
 
+// Real, live, tenant-scoped search-results URL — confirmed live 2026-08-30
+// for both platforms (HTTP 200, genuine company-hosted page, not a 404/
+// redirect-to-home): `?q=`/`?searchKeyword=` pre-fills that tenant's own
+// search box. Used as a fallback when discovery finds a real ATS tenant
+// but no SPECIFIC posting title-matches (e.g. the original listing has
+// since been filled/removed) — direct user instruction ("solve this,
+// whatever it takes") after a real reported case (TD) where the original
+// posting was genuinely gone. Deliberately NOT treated as a "specific
+// posting" by looksLikeSpecificJobPosting (no posting id in the URL) — it
+// won't block a future re-resolution attempt from finding a real exact
+// match later, it's honestly a "here's this employer's real live search,
+// filtered to what you were looking for" link, not a claim to be the
+// exact original listing.
+function fallbackSearchUrl(discovered: DiscoveredAts, searchTitle: string): string {
+  if (discovered.platform === "workday") {
+    return `https://${discovered.tenant}.${discovered.wdInstance}.myworkdayjobs.com/${discovered.locale}/${discovered.board}?q=${encodeURIComponent(searchTitle)}`;
+  }
+  return `https://${discovered.tenant}.icims.com/jobs/search?ss=1&searchKeyword=${encodeURIComponent(searchTitle)}`;
+}
+
+export type DiscoveredAtsResult = { jobs: NormalizedJob[]; fallbackSearchUrl: string | null };
+
 // Entry point: given a real company domain (NOT a guessed slug — see
 // lib/applyLinkTrust.ts's extractLikelyLogoDomain, which resolves one from
 // a job's own already-employer-classified apply link), discover and query
-// whichever of Workday/iCIMS that company actually uses. Returns [] and
-// never throws if neither is detected — a normal, expected outcome for
-// most companies, not an error.
-export async function fetchDiscoveredAtsJobs(domain: string, companyName: string, searchTitle: string): Promise<NormalizedJob[]> {
+// whichever of Workday/iCIMS that company actually uses. Returns an empty
+// result and never throws if neither is detected — a normal, expected
+// outcome for most companies, not an error.
+export async function fetchDiscoveredAtsJobs(domain: string, companyName: string, searchTitle: string): Promise<DiscoveredAtsResult> {
   const discovered = await discoverAtsFromDomain(domain);
-  if (!discovered) return [];
+  if (!discovered) return { jobs: [], fallbackSearchUrl: null };
 
-  if (discovered.platform === "workday") {
-    return fetchWorkdayJobs(discovered, companyName, searchTitle);
-  }
+  const jobs =
+    discovered.platform === "workday"
+      ? await fetchWorkdayJobs(discovered, companyName, searchTitle)
+      : await fetchIcimsJobs(
+          discovered,
+          companyName,
+          searchTitle
+            .toLowerCase()
+            .split(/[^a-z0-9]+/)
+            .filter((w) => w.length > 2)
+        );
 
-  const words = searchTitle
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length > 2);
-  return fetchIcimsJobs(discovered, companyName, words);
+  return { jobs, fallbackSearchUrl: fallbackSearchUrl(discovered, searchTitle) };
 }
 
 // Best-effort slug guesses for a company name, tried across all three

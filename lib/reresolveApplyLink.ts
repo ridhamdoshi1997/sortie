@@ -178,9 +178,19 @@ async function tryEmployerAtsDiscovery(job: ResolvableJob): Promise<{ applyUrl: 
   const domain = extractLikelyLogoDomain(job.external_apply_url, job.company);
   if (!domain) return null;
 
-  const candidates = await fetchDiscoveredAtsJobs(domain, job.company as string, job.title as string);
-  const match = candidates.find((c) => titlesMatch(c.title, job.title as string));
-  return match?.applyUrl ? { applyUrl: match.applyUrl } : null;
+  const { jobs, fallbackSearchUrl } = await fetchDiscoveredAtsJobs(domain, job.company as string, job.title as string);
+  const match = jobs.find((c) => titlesMatch(c.title, job.title as string));
+  if (match?.applyUrl) return { applyUrl: match.applyUrl };
+
+  // No exact posting match, but a real ATS tenant WAS found — a live,
+  // employer-hosted search filtered to this job's title beats the current
+  // generic marketing page even though it's not the one exact original
+  // listing (which is genuinely gone, not something any search can
+  // recover). Real case this fixes: TD's "Private Wealth Client Services
+  // Associate" no longer exists on their live board — this now lands on
+  // TD's real, live, wealth/banking-filtered search instead of
+  // td.com/us/en/about-us/working-at-td.
+  return fallbackSearchUrl ? { applyUrl: fallbackSearchUrl } : null;
 }
 
 export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: ResolvableJob): Promise<void> {
