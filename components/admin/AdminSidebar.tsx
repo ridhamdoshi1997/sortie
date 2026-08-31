@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy, Megaphone, CreditCard, Cpu, Handshake } from "lucide-react";
+import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy, Megaphone, CreditCard, Cpu, Handshake, Link2 as LinkIcon } from "lucide-react";
 
 // Shopify-shaped nav (2026-08-19, direct user request): a flat icon+label
 // list, not the old header-only shell. Only links to pages that actually
@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { href: "/admin/expenses", label: "Expenses", icon: DollarSign, exact: false },
   { href: "/admin/billing", label: "Billing", icon: CreditCard, exact: false },
   { href: "/admin/ai-models", label: "AI Models", icon: Cpu, exact: false },
+  { href: "/admin/link-health", label: "Link Health", icon: LinkIcon, exact: false },
   { href: "/admin/affiliates", label: "Affiliates", icon: Handshake, exact: false },
   { href: "/admin/content", label: "Content", icon: FileText, exact: false },
   { href: "/admin/support", label: "Support", icon: LifeBuoy, exact: false },

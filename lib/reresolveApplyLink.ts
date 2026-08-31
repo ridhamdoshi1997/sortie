@@ -194,7 +194,16 @@ async function tryEmployerAtsDiscovery(job: ResolvableJob): Promise<{ applyUrl: 
   // Associate" no longer exists on their live board — this now lands on
   // TD's real, live, wealth/banking-filtered search instead of
   // td.com/us/en/about-us/working-at-td.
-  return fallbackSearchUrl ? { applyUrl: fallbackSearchUrl } : null;
+  //
+  // BUT only when the link we'd replace isn't already a specific posting.
+  // This tier now also runs for "aggregator" links (a real LinkedIn/Indeed
+  // posting for this exact job), and swapping one of those for a generic
+  // employer search page would be a clear downgrade — the whole point of
+  // the fallback is that it beats a GENERIC page, not a specific one.
+  if (!fallbackSearchUrl) return null;
+  const currentIsSpecific = job.external_apply_url ? looksLikeSpecificJobPosting(job.external_apply_url) : false;
+  if (currentIsSpecific) return null;
+  return { applyUrl: fallbackSearchUrl };
 }
 
 // Free, zero-API-call, tried FIRST: re-run the picker over the candidate

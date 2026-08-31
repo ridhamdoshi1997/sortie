@@ -26,6 +26,8 @@ import type { UsageAction } from "@/lib/usage";
 import { listPlans, type PlanConfig } from "@/lib/subscription";
 import { toUserMessage } from "@/lib/errors";
 import { sendPayout } from "@/lib/paypalPayouts";
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
+import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 
 type ActionResult = { success: true } | { success: false; error: string };
 
@@ -1119,4 +1121,62 @@ export async function payAffiliateNow(affiliateId: string): Promise<ActionResult
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Not authorized.") };
   }
+}
+
+// Apply-link health, for /admin/link-health. Read-only, no repair — the
+// hourly repairApplyLinksAsync cron does the fixing; this exists so link
+// quality is VISIBLE without anyone running a script by hand, which is
+// how the original 29%-on-mirror-sites problem went unnoticed until a
+// user reported a single bad link (direct user request while planning for
+// launch: catching this class of problem before real users hit it).
+export type LinkHealthBucket = "direct" | "board" | "generic" | "mirror" | "unknown";
+
+export type LinkHealthReport = {
+  total: number;
+  counts: Record<LinkHealthBucket, number>;
+  worst: { id: string; company: string | null; title: string | null; url: string; bucket: LinkHealthBucket }[];
+};
+
+export async function getLinkHealth(): Promise<LinkHealthReport> {
+  const admin = await requireAdmin();
+  requireRole(admin, ["owner", "admin"]);
+
+  const db = createAdminDbClient();
+  // Paginated: PostgREST caps a plain select at 1000 rows, which silently
+  // produced a partial (and therefore wrong) picture in an earlier
+  // hand-run version of this same count.
+  const rows: { id: string; company: string | null; title: string | null; external_apply_url: string | null }[] = [];
+  const PAGE = 1000;
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await db.database
+      .from("jobs")
+      .select("id, company, title, external_apply_url")
+      .not("external_apply_url", "is", null)
+      .range(from, from + PAGE - 1);
+    if (error || !data) break;
+    rows.push(...(data as typeof rows));
+    if (data.length < PAGE) break;
+  }
+
+  const counts: Record<LinkHealthBucket, number> = { direct: 0, board: 0, generic: 0, mirror: 0, unknown: 0 };
+  const worst: LinkHealthReport["worst"] = [];
+
+  for (const row of rows) {
+    if (!row.external_apply_url) continue;
+    const trust = classifyApplyHost(row.external_apply_url, row.company);
+    const specific = looksLikeSpecificJobPosting(row.external_apply_url);
+    let bucket: LinkHealthBucket;
+    if (trust === "ats" || (trust === "employer" && specific)) bucket = "direct";
+    else if (trust === "aggregator") bucket = "board";
+    else if (trust === "employer") bucket = "generic";
+    else if (trust === "low_quality") bucket = "mirror";
+    else bucket = "unknown";
+
+    counts[bucket]++;
+    if ((bucket === "mirror" || bucket === "unknown" || bucket === "generic") && worst.length < 50) {
+      worst.push({ id: row.id, company: row.company, title: row.title, url: row.external_apply_url, bucket });
+    }
+  }
+
+  return { total: rows.length, counts, worst };
 }

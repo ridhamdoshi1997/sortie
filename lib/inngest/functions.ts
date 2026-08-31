@@ -219,12 +219,24 @@ export const evaluateJobsAsync = inngest.createFunction(
                         // (SerpApi/Apify) stay gated behind the score, since
                         // this project's SerpApi keys are free-tier and
                         // shared with live user search.
+                        // "aggregator" (LinkedIn/Indeed/etc) is included too,
+                        // since 2026-08-30. A live measurement of a real
+                        // search with every other fix active found 48% of
+                        // results landing on a major job board — safe, but
+                        // not the employer's own posting. Those were never
+                        // retried before, because the gate only ever fired
+                        // on genuinely BAD links. The three repair tiers are
+                        // free, and reresolveApplyLinkForJob only ever swaps
+                        // up to an "ats"/"employer" destination, so trying
+                        // here can improve an aggregator link but never
+                        // degrade one.
                         const matchScore = evalResult?.matchScore ?? 0;
                         if (job.external_apply_url) {
                             const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
                             const needsResolution =
                                 currentTrust === "low_quality" ||
                                 currentTrust === "unverified" ||
+                                currentTrust === "aggregator" ||
                                 (currentTrust === "employer" &&
                                     !looksLikeSpecificJobPosting(job.external_apply_url));
                             if (needsResolution) {
@@ -905,6 +917,83 @@ export const reconcileStuckAgentRunsAsync = inngest.createFunction(
         });
 
         return { message: `Reconciled ${fixedCount} stuck agent run${fixedCount === 1 ? "" : "s"}.` };
+    },
+);
+
+// Self-healing apply-link repair (2026-08-30, direct user request while
+// planning for launch: "this will not happen with real users in the
+// future"). Wiping and re-scraping the jobs table was an acceptable
+// last-resort cleanup while this was test data; with real users it never
+// is. This continuously repairs bad links IN PLACE instead, so the same
+// class of problem never needs a destructive fix again.
+//
+// Deliberately FREE TIERS ONLY (freeOnly: true) — this project's SerpApi
+// access is 3 free-tier keys shared with live user search (one was
+// already observed exhausted during a single measurement search), so a
+// cron that could reach the paid tiers would be able to starve real users
+// of search. It also processes a bounded batch per run rather than the
+// whole table, so a large backlog drains gradually instead of hammering
+// employer career sites.
+const LINK_REPAIR_BATCH_SIZE = 40;
+
+export const repairApplyLinksAsync = inngest.createFunction(
+    { id: "repair-apply-links", name: "Repair Apply Links", triggers: [{ cron: "20 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const repaired = await step.run("repair-batch", async () => {
+            // Oldest-attempted first (nulls first) so every job gets a turn
+            // and nothing is starved by newer arrivals.
+            const { data: candidates, error } = await admin.database
+                .from("jobs")
+                .select("id, title, company, location, external_apply_url, raw_apply_options, apply_link_resolved_at")
+                .not("external_apply_url", "is", null)
+                .order("apply_link_resolved_at", { ascending: true, nullsFirst: true })
+                .limit(LINK_REPAIR_BATCH_SIZE * 4)
+                .returns<{
+                    id: string;
+                    title: string | null;
+                    company: string | null;
+                    location: string | null;
+                    external_apply_url: string | null;
+                    raw_apply_options: unknown;
+                }[]>();
+
+            if (error || !candidates?.length) return 0;
+
+            const needsWork = candidates
+                .filter((job) => {
+                    if (!job.external_apply_url) return false;
+                    const trust = classifyApplyHost(job.external_apply_url, job.company);
+                    if (trust === "ats") return false;
+                    if (trust === "employer") return !looksLikeSpecificJobPosting(job.external_apply_url);
+                    return true;
+                })
+                .slice(0, LINK_REPAIR_BATCH_SIZE);
+
+            let count = 0;
+            for (const job of needsWork) {
+                const before = job.external_apply_url;
+                try {
+                    await reresolveApplyLinkForJob(admin, job, { freeOnly: true });
+                } catch (err) {
+                    console.error("[inngest] repairApplyLinksAsync", job.id, err);
+                    continue;
+                }
+                const { data: after } = await admin.database
+                    .from("jobs")
+                    .select("external_apply_url")
+                    .eq("id", job.id)
+                    .single();
+                if (after && after.external_apply_url !== before) count++;
+            }
+            return count;
+        });
+
+        return { message: `Repaired ${repaired} apply link${repaired === 1 ? "" : "s"}.` };
     },
 );
 
