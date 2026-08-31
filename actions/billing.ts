@@ -1,7 +1,7 @@
 "use server";
 
 import { requireUser } from "@/lib/auth";
-import { createInsforgeServer } from "@/lib/insforge-server";
+import { createInsforgeServer, createInsforgeServerAnon } from "@/lib/insforge-server";
 import { getPlan, getPremiumFeatureStatus, getUserSubscription, listPlans, type PlanConfig } from "@/lib/subscription";
 import { getSiteUrl } from "@/lib/siteUrl";
 import { toUserMessage } from "@/lib/errors";
@@ -67,11 +67,17 @@ export async function getBillingSummary(): Promise<{ success: true; data: Billin
 export type PricedPlan = PlanConfig & { displayPriceCents: number; displayCurrency: string };
 
 // Public plan list for /pricing — no admin gate, this is marketing content.
-// Wraps lib/subscription.ts's listPlans() with the user's own cookie-scoped
-// client (subscription_plans has an "anyone can view" RLS policy, so this
-// works for logged-out visitors too).
+// Wraps lib/subscription.ts's listPlans() with an identity-free client —
+// subscription_plans has an "anyone can view" RLS policy and this read
+// never needs to know who's asking, so it deliberately skips cookies()
+// (unlike createInsforgeServer()) to keep /'s and /pricing's static
+// rendering from being forced dynamic just for this one read. Real,
+// per-visitor dynamism on these pages comes from getRequestCountry()
+// below (headers()-based, a separate and NOT-yet-fixed cause — see
+// app/page.tsx's comment) and from the client-side auth check
+// (AuthStateProvider) — not from this plan list.
 export async function getPlansForPricing(): Promise<PricedPlan[]> {
-  const insforge = await createInsforgeServer();
+  const insforge = createInsforgeServerAnon();
   const [plans, country] = await Promise.all([listPlans(insforge), getRequestCountry()]);
   const regionKey = regionKeyForCountry(country);
   return plans.map((plan) => {

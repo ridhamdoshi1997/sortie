@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
-import { Navbar } from "@/components/layout/Navbar";
+import { NavbarAuto } from "@/components/layout/NavbarAuto";
 import { Footer } from "@/components/layout/Footer";
 import { CTASection } from "@/components/homepage/CTASection";
-import { getCurrentUser } from "@/lib/auth";
+import { AuthStateProvider } from "@/components/auth/AuthStateProvider";
 
 export const metadata: Metadata = {
   title: "Pricing — Sortie",
@@ -23,17 +23,22 @@ function FaqItem({ question, children }: { question: string; children: React.Rea
   );
 }
 
-export default async function PricingPage() {
-  // Optional auth — this page is reachable logged-out (marketing) and
-  // logged-in (a real upgrade destination, e.g. the navbar's "Upgrade"
-  // CTA). A signed-in visitor should keep their real app nav, not the
-  // marketing one with a dead-end "Start for free"/"Sign in" pair (direct
-  // user report: no visible upgrade path once logged in).
-  const user = await getCurrentUser();
-
+// Optional auth — this page is reachable logged-out (marketing) and
+// logged-in (a real upgrade destination, e.g. the navbar's "Upgrade"
+// CTA). A signed-in visitor should keep their real app nav, not the
+// marketing one with a dead-end "Start for free"/"Sign in" pair (direct
+// user report: no visible upgrade path once logged in). Used to check
+// this via a server-side getCurrentUser() call, which forced the whole
+// route dynamic (cookies() access — same fix/reasoning as app/page.tsx,
+// see its comment). Now resolved client-side via AuthStateProvider
+// instead, same as the homepage — NOTE this page still won't actually
+// cache today regardless, because CTASection's plan pricing reads
+// getRequestCountry() (lib/geo.ts, headers()-based, for regional
+// pricing) — a separate, not-yet-addressed dynamic-render cause.
+export default function PricingPage() {
   return (
-    <>
-      <Navbar isAuthenticated={Boolean(user)} />
+    <AuthStateProvider>
+      <NavbarAuto />
       <main className="pb-0">
         <div className="mx-auto max-w-3xl px-4 pt-16 text-center sm:px-6 lg:px-8">
           <h1 className="font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">Pricing</h1>
@@ -60,6 +65,6 @@ export default async function PricingPage() {
       <div className="px-4 sm:px-6 lg:px-8">
         <Footer />
       </div>
-    </>
+    </AuthStateProvider>
   );
 }

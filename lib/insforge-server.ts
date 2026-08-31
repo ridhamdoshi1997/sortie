@@ -6,3 +6,12 @@ export async function createInsforgeServer() {
     cookies: await cookies(),
   });
 }
+
+// No cookies() access — for reads that don't need the caller's identity
+// (e.g. a public plan list). Touching cookies()/headers() anywhere in a
+// route's render forces Next.js to treat the whole route as dynamic
+// (no caching, ever); this keeps a route static when the read genuinely
+// doesn't depend on who's asking.
+export function createInsforgeServerAnon() {
+  return createServerClient();
+}
