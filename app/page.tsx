@@ -25,7 +25,11 @@ import { AuthStateProvider } from "@/components/auth/AuthStateProvider";
 export default function HomePage() {
   return (
     <AuthStateProvider>
-      <NavbarAuto />
+      {/* showSearchBar={false} — direct user instruction: the persistent
+          search bar is an app-shell feature for after login/signup, never
+          the marketing homepage, even for a visitor who's already signed
+          in (e.g. clicking the logo). See Navbar.tsx's prop comment. */}
+      <NavbarAuto showSearchBar={false} />
       <main className="pb-0">
         <Hero />
         <SuccessStory />

@@ -8,6 +8,6 @@ import { useAuthState } from "@/components/auth/AuthStateProvider";
 // comments) can still show the correct variant. Navbar itself is
 // untouched — every other call site keeps passing isAuthenticated
 // explicitly from a real server-side check as before.
-export function NavbarAuto() {
-  return <Navbar isAuthenticated={useAuthState()} />;
+export function NavbarAuto({ showSearchBar }: { showSearchBar?: boolean } = {}) {
+  return <Navbar isAuthenticated={useAuthState()} showSearchBar={showSearchBar} />;
 }

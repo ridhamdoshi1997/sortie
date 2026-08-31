@@ -98,9 +98,16 @@ function isItemActive(href: string, pathname: string): boolean {
 
 type Props = {
   isAuthenticated?: boolean;
+  // Off only for the public marketing homepage (app/page.tsx) — direct
+  // user instruction: the persistent search bar is an app-shell feature
+  // for after login/signup, not something a marketing landing page
+  // should show even to a visitor who happens to be signed in already
+  // (e.g. clicking the logo). Every other authenticated page keeps the
+  // default true.
+  showSearchBar?: boolean;
 };
 
-export function Navbar({ isAuthenticated = false }: Props) {
+export function Navbar({ isAuthenticated = false, showSearchBar = true }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const [jobsOpen, setJobsOpen] = useState(false);
@@ -533,7 +540,7 @@ export function Navbar({ isAuthenticated = false }: Props) {
         down the page and overlapped list content below it — this stays at
         its normal in-flow position and scrolls away like any other page
         content once you scroll past it. */}
-    <GlobalSearchBar />
+    {showSearchBar && <GlobalSearchBar />}
     </>
   );
 }
