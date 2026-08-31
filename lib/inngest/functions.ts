@@ -204,8 +204,23 @@ export const evaluateJobsAsync = inngest.createFunction(
                         // "unverified" always re-triggers, regardless of
                         // specificity, since 2026-08-30 — see the matching
                         // comment in app/find-jobs/[id]/page.tsx's own gate.
+                        // Score gate now decides HOW HARD to try, not
+                        // whether to try at all (changed 2026-08-30, direct
+                        // user request to fix future searches, not just the
+                        // stored backlog). A live audit found only ~29% of
+                        // stored jobs linked straight to a real employer
+                        // posting, with ~29% on known low-quality mirrors —
+                        // the old "only bother for 70+ scores" rule left
+                        // every lower-scoring job carrying a bad link until
+                        // someone happened to open it. The first three
+                        // repair tiers (stored candidates, ATS board guess,
+                        // employer careers-page discovery) cost nothing, so
+                        // EVERY job now gets those; only the paid tiers
+                        // (SerpApi/Apify) stay gated behind the score, since
+                        // this project's SerpApi keys are free-tier and
+                        // shared with live user search.
                         const matchScore = evalResult?.matchScore ?? 0;
-                        if (matchScore >= EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD && job.external_apply_url) {
+                        if (job.external_apply_url) {
                             const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
                             const needsResolution =
                                 currentTrust === "low_quality" ||
@@ -221,7 +236,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                         location: job.location,
                                         external_apply_url: job.external_apply_url,
                                         raw_apply_options: job.raw_apply_options,
-                                    });
+                                    }, { freeOnly: matchScore < EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD });
                                 } catch (err) {
                                     console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
                                 }

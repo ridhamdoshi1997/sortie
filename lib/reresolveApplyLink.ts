@@ -236,7 +236,18 @@ function tryStoredCandidates(job: ResolvableJob): { applyUrl: string } | null {
   return { applyUrl: picked };
 }
 
-export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: ResolvableJob): Promise<void> {
+// `freeOnly` stops before the two PAID tiers (SerpApi search, Apify web
+// search) and runs only the three zero-cost ones. Exists for bulk repair
+// across the whole backlog: this project's SerpApi access is 3 free-tier
+// keys SHARED WITH LIVE USER SEARCH, so running the paid tier over
+// hundreds of stored jobs would exhaust the month's quota and break real
+// users' searches — a genuine operational limit, not just a budget
+// preference.
+export async function reresolveApplyLinkForJob(
+  insforge: InsforgeClient,
+  job: ResolvableJob,
+  options?: { freeOnly?: boolean }
+): Promise<void> {
   if (!job.title || !job.company) return;
 
   try {
@@ -278,6 +289,13 @@ export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: Re
       if (error) console.error("[reresolveApplyLink] update (discovered ats match)", job.id, error);
       return;
     }
+
+    // Everything below this line costs real money — see the freeOnly note
+    // on this function's signature. Deliberately does NOT stamp
+    // apply_link_resolved_at when bailing out here: a free-only pass that
+    // found nothing shouldn't permanently mark the job as "already tried"
+    // and block a real, full attempt later.
+    if (options?.freeOnly) return;
 
     const results = await searchJobs(job.title, job.location ?? "", "ca");
     const match = results.find((r) => companiesMatch(r.company, job.company as string));
