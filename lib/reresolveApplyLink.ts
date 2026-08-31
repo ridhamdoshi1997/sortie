@@ -1,5 +1,5 @@
 import { searchJobs } from "@/lib/jobScraper";
-import { classifyApplyHost, extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
+import { classifyApplyHost, extractLikelyLogoDomain, pickBestApplyLink } from "@/lib/applyLinkTrust";
 import { fetchAtsJobs, fetchDiscoveredAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
 import type { createInsforgeServer } from "@/lib/insforge-server";
 
@@ -163,6 +163,10 @@ type ResolvableJob = {
   // caller that doesn't have it handy; that tier is simply skipped when
   // absent, same as when it's null.
   external_apply_url?: string | null;
+  // The raw SerpApi apply-option list already stored on the job row —
+  // powers the free tryStoredCandidates() tier below. Same "named to match
+  // the real column" reasoning as external_apply_url above.
+  raw_apply_options?: unknown;
 };
 
 // Real, direct-employer-domain discovery for enterprise ATS platforms that
@@ -193,10 +197,62 @@ async function tryEmployerAtsDiscovery(job: ResolvableJob): Promise<{ applyUrl: 
   return fallbackSearchUrl ? { applyUrl: fallbackSearchUrl } : null;
 }
 
+// Free, zero-API-call, tried FIRST: re-run the picker over the candidate
+// list SerpApi already returned for this job and stored on the row. Added
+// 2026-08-30 after a real discovery — replaying three genuinely-broken
+// jobs' own stored raw_apply_options through the fixed pickBestApplyLink
+// showed the correct employer link was sitting in the candidate list the
+// whole time (Manulife's real careers.manulife.com posting was literally
+// candidate #1, passed over because the buggy classifier picked an
+// unrelated company's Workday link as "ats" first). Every job stored
+// before the classifier fix has the same latent recovery available for
+// free, so trying a fresh paid search before re-checking what's already on
+// the row would be both slower and worse.
+function tryStoredCandidates(job: ResolvableJob): { applyUrl: string } | null {
+  const options = job.raw_apply_options;
+  if (!Array.isArray(options) || options.length === 0) return null;
+
+  const links = options
+    .map((o) => (o && typeof o === "object" && "link" in o ? (o as { link?: unknown }).link : null))
+    .filter((l): l is string => typeof l === "string" && l.length > 0);
+  if (links.length === 0) return null;
+
+  const picked = pickBestApplyLink(links, job.company);
+  if (!picked || picked === job.external_apply_url) return null;
+
+  // Only ever swap UP to a genuine employer destination — a confirmed ATS
+  // board for this company, or the company's own domain. Deliberately NOT
+  // a plain trust-rank comparison: "aggregator" ranks above "unverified"
+  // in the picker's own ordering, but a real dry run over the live dataset
+  // showed that rule proposing active downgrades — Intact Financial and
+  // Clio both currently hold their OWN real Workday posting (correct
+  // links whose tenant slug just doesn't string-match the company's legal
+  // name), and a rank comparison wanted to replace them with a generic
+  // Glassdoor/ZipRecruiter listing. An unmatched-tenant ATS link is
+  // usually still the real posting; a generic aggregator page never is.
+  const pickedTrust = classifyApplyHost(picked, job.company);
+  if (pickedTrust !== "ats" && pickedTrust !== "employer") return null;
+
+  return { applyUrl: picked };
+}
+
 export async function reresolveApplyLinkForJob(insforge: InsforgeClient, job: ResolvableJob): Promise<void> {
   if (!job.title || !job.company) return;
 
   try {
+    const stored = tryStoredCandidates(job);
+    if (stored) {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: stored.applyUrl,
+          apply_link_resolved_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (stored candidates)", job.id, error);
+      return;
+    }
+
     const atsMatch = await tryAtsGuess(job);
     if (atsMatch) {
       const { error } = await insforge.database

@@ -339,7 +339,17 @@ export function pickBestApplyLink(candidates: string[], company?: string | null)
   const clean = candidates.filter(Boolean);
   if (clean.length === 0) return undefined;
 
-  const ats = clean.find((url) => classifyApplyHost(url) === "ats");
+  // `company` is threaded into EVERY tier, including this first one — the
+  // real 2026-08-30 Manulife/Tapestry bug (see classifyApplyHost's own
+  // comment) was picked here, at scrape time, not by re-resolution: this
+  // line used to call classifyApplyHost(url) with no company at all, which
+  // hits that function's "no company to check against, trust any known ATS
+  // host" guard and hands back "ats" for a completely unrelated employer's
+  // posting. Fixing only the classifier would have left every FUTURE
+  // scraped job hitting the same bug, since this is where a new job's
+  // apply link is actually chosen (lib/jobScraper.ts already passes the
+  // real company in — it just got dropped here).
+  const ats = clean.find((url) => classifyApplyHost(url, company) === "ats");
   if (ats) return ats;
 
   if (company) {
@@ -347,7 +357,7 @@ export function pickBestApplyLink(candidates: string[], company?: string | null)
     if (employerMatch) return employerMatch;
   }
 
-  const tier1 = clean.find((url) => classifyApplyHost(url) === "aggregator");
+  const tier1 = clean.find((url) => classifyApplyHost(url, company) === "aggregator");
   if (tier1) return tier1;
 
   return clean.slice().sort((a, b) => trackingParamCount(a) - trackingParamCount(b))[0];
