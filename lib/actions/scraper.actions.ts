@@ -6,7 +6,8 @@ import { inngest } from "@/lib/inngest/client";
 import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
-import { extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
+import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
+import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit } from "@/lib/subscription";
@@ -43,6 +44,13 @@ type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 // the company already has, so the biggest employers in a result set — the
 // ones a candidate is most likely to care about — are enriched first.
 const MAX_DIRECT_ATS_COMPANIES = 8;
+
+// See the cap's own comment at its use site below for the full incident.
+// 80 matches what a healthy, un-enriched SerpApi search already returned
+// before today's Adzuna/direct-ATS work (measured: "software developer"/
+// Toronto = 79) — the volume the evaluation pipeline was actually tuned
+// and timed for.
+const MAX_EVALUATED_JOBS = 80;
 
 async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string, searchLocation: string): Promise<NormalizedJob[]> {
     if (jobs.length === 0) return jobs;
@@ -354,7 +362,35 @@ export async function scrapeAndEvaluateJobs(
 
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
-    const uniqueJobs = Array.from(uniqueJobsMap.values());
+    let uniqueJobs = Array.from(uniqueJobsMap.values());
+
+    // Real regression found live (2026-08-31, direct user report — a
+    // search stuck at "Scoring 0 of 118" was actually progressing at
+    // ~1 job/26s, meaning a full 125-job batch would take close to an
+    // hour): nothing capped total volume after the Adzuna supplement and
+    // direct-ATS enrichment shipped the same day, both additive on top of
+    // SerpApi's own ~30-80 typical results. AI evaluation cost/time scales
+    // with job count, so 2-3x'ing the result set without a cap directly
+    // caused this. MAX_EVALUATED_JOBS restores a sane per-search ceiling
+    // — matching the volume the evaluation pipeline was actually tuned
+    // for — while keeping the highest-value jobs: sorted so a real,
+    // specific employer/ATS link always survives the cut before a
+    // major-board or low-quality one does, so trimming quantity doesn't
+    // also trim the quality this session's other work just improved.
+    if (uniqueJobs.length > MAX_EVALUATED_JOBS) {
+        const rank = (j: NormalizedJob) => {
+            const trust = j.applyUrl ? classifyApplyHost(j.applyUrl, j.company) : "unverified";
+            if (trust === "ats" || (trust === "employer" && j.applyUrl && looksLikeSpecificJobPosting(j.applyUrl))) return 0;
+            if (trust === "aggregator") return 1;
+            if (trust === "employer") return 2;
+            return 3;
+        };
+        uniqueJobs = uniqueJobs
+            .map((j, i) => ({ j, rank: rank(j), i })) // stable sort: original order as tiebreaker
+            .sort((a, b) => a.rank - b.rank || a.i - b.i)
+            .slice(0, MAX_EVALUATED_JOBS)
+            .map((x) => x.j);
+    }
 
     // A genuinely empty search — most commonly a narrow Date Posted filter
     // ("Past 24 hours") for a title/location combo with nothing that fresh —
