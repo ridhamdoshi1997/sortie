@@ -86,6 +86,7 @@ const navigationItems = [
   { href: "/career", label: "Career" },
   { href: "/resume", label: "Resume" },
   { href: "/interview", label: "Interview" },
+  { href: "/news", label: "News" },
 ];
 
 function isItemActive(href: string, pathname: string): boolean {
@@ -268,6 +269,9 @@ export function Navbar({ isAuthenticated = false, showSearchBar = true }: Props)
             <Link href="/methodology" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
               Methodology
             </Link>
+            <Link href="/news" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
+              News
+            </Link>
             <Link href="/pricing" className="text-sm font-medium text-overlay-foreground/60 transition-colors hover:text-overlay-foreground">
               Pricing
             </Link>
@@ -319,6 +323,9 @@ export function Navbar({ isAuthenticated = false, showSearchBar = true }: Props)
               </Link>
               <Link href="/methodology" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Methodology
+              </Link>
+              <Link href="/news" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
+                News
               </Link>
               <Link href="/pricing" className="block rounded-lg px-3 py-2 text-sm font-medium text-overlay-foreground/70 hover:bg-overlay-foreground/5">
                 Pricing
