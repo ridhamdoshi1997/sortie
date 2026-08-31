@@ -3,7 +3,7 @@
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { getCurrentUser } from "@/lib/auth";
 import { inngest } from "@/lib/inngest/client";
-import { searchJobs, type NormalizedJob } from "@/lib/jobScraper";
+import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
@@ -44,7 +44,7 @@ type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 // ones a candidate is most likely to care about — are enriched first.
 const MAX_DIRECT_ATS_COMPANIES = 8;
 
-async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string): Promise<NormalizedJob[]> {
+async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string, searchLocation: string): Promise<NormalizedJob[]> {
     if (jobs.length === 0) return jobs;
 
     const byCompany = new Map<string, { company: string; domain: string | null; count: number }>();
@@ -101,7 +101,15 @@ async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: strin
         })
     );
 
-    const extra = found.flat();
+    // Critical, and a real bug caught live (2026-08-31, direct user
+    // report): fetchJobsForCompany pulls a company's board FILTERED BY
+    // TITLE ONLY — an employer's ATS board has openings in every city it
+    // hires in, not just the one searched. Confirmed via screenshot: a
+    // Toronto "advisor" search returned a wall of San Francisco/NYC
+    // engineering roles from one enriched company's board. Every other
+    // path that can add jobs to a result set already goes through
+    // filterByCity (lib/jobScraper.ts) — this was the one that didn't.
+    const extra = filterByCity(found.flat(), searchLocation);
     if (extra.length === 0) return jobs;
 
     // Same title+company dedup key the thin-results merge uses, so a job
@@ -342,7 +350,7 @@ export async function scrapeAndEvaluateJobs(
     // and lib/atsRegistry.ts caches which ATS each one uses globally, so
     // the discovery cost is paid once per company ever (measured: ~2s
     // first time, ~100ms cached) rather than once per search.
-    rawJobs = await enrichWithDirectAtsJobs(rawJobs, title);
+    rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
 
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));

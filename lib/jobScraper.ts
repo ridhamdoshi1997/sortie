@@ -278,8 +278,24 @@ async function searchWithSerpApiKey(
     // paginate — keep a job only if its location matches the (possibly
     // resolved) searched city, is unbound ("Anywhere"), or is
     // explicitly titled remote.
-    const searchCity = resolvedLocation.split(",")[0].trim().toLowerCase();
-    return allJobs.filter((job) => {
+    return filterByCity(allJobs, resolvedLocation);
+}
+
+// Extracted 2026-08-31, real user-reported bug: this filter only ever ran
+// on SerpApi's own raw results — direct-ATS enrichment (scraper.actions.ts)
+// bypasses SerpApi entirely (it queries a company's board directly), so an
+// employer's ENTIRE board (every city, every role) was landing unfiltered
+// in results for any other city. Confirmed live: a "advisor"/Toronto
+// search returned a wall of San Francisco/NYC engineering roles from one
+// enriched company's Ashby board. Every path that can add jobs to a
+// result set — SerpApi, the Adzuna thin-results supplement, and
+// direct-ATS enrichment — now filters through this one function, so
+// there is exactly one place city relevance is decided, not three
+// separately-maintained copies of the same logic.
+export function filterByCity<T extends { location?: string; title?: string }>(jobs: T[], location: string): T[] {
+    const searchCity = location.split(",")[0].trim().toLowerCase();
+    if (!searchCity) return jobs;
+    return jobs.filter((job) => {
         const jobLocation = (job.location || "").toLowerCase();
         const jobTitle = (job.title || "").toLowerCase();
         return (
@@ -649,7 +665,13 @@ async function supplementThinResults(
     if (primary.length >= THIN_RESULT_THRESHOLD || !getAdzunaCredentials()) return primary;
 
     try {
-        const extra = await adzunaProvider.search(jobTitle, location, countryCode, datePosted);
+        // filterByCity as a defensive second layer, not the primary
+        // control — Adzuna's own `where=` param already does real
+        // server-side filtering (verified live: Toronto/Vancouver/Halifax
+        // return sensibly different counts), but this keeps exactly one
+        // function deciding city relevance rather than trusting each
+        // provider's own filtering to be equally strict.
+        const extra = filterByCity(await adzunaProvider.search(jobTitle, location, countryCode, datePosted), location);
         if (extra.length === 0) return primary;
         const merged = dedupeJobs([...primary, ...extra]);
         console.warn(
