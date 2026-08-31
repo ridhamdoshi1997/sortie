@@ -42,7 +42,13 @@ export type JobEvaluationResult = {
   dimensions: EvaluationDimensionResult[];
   overallGrade: EvaluationGrade;
   recommendationScore: number; // 1-5
-  matchScore: number; // recommendationScore * 20, kept for existing sort/filter UI
+  // recommendationScore * 20, kept for existing sort/filter UI. null ONLY
+  // for a genuinely failed evaluation (see EVALUATION_FAILED_REASON below)
+  // — never a fabricated number standing in for "we don't know." The UI's
+  // existing `match_score !== null` checks (JobResultCard.tsx,
+  // JobDetailDrawer.tsx) already treat null as "not scored yet" and render
+  // the same honest pending/retry state, so this needed no UI changes.
+  matchScore: number | null;
   matchedSkills: string[];
   missingSkills: string[];
   reasoning: string; // one-line overall summary for the existing "Agent read" UI
@@ -215,11 +221,26 @@ Nice to have: ${(job.nice_to_have ?? []).join("; ") || "Not listed"}
 Benefits: ${(job.benefits ?? []).join("; ") || "Not listed"}${buildCorrectionsHint(job, corrections)}`;
 }
 
+// Exported so callers (the UI, the Inngest retry sweep) can detect a failed
+// evaluation by identity rather than string-matching reasoning text, and so
+// the neutral "C" grade this returns is never confused with a real,
+// deliberate grade the model actually gave. matchScore stays null (not a
+// fake 60) — a real fix for a live bug: a fabricated 60% MATCH read as a
+// genuine, decent score to a candidate, even with the reasoning text
+// admitting failure right below it (confirmed live, 2026-08-31 — ~73% of a
+// large search's evaluations fell back like this, root cause was several
+// concurrent searches racing the same rate-limited free-tier Gemini key,
+// not a per-job content problem — see evaluateJobCompatibility's retry
+// above this function for the actual fix; this fallback is now the rare
+// last resort after a retry already failed twice).
+export const EVALUATION_FAILED_REASON =
+  "Automated evaluation failed for this job — will be retried automatically.";
+
 function fallbackEvaluation(id: string): JobEvaluationResult {
   const dimensions = EVALUATION_DIMENSIONS.map((dimension) => ({
     dimension,
     grade: "C" as EvaluationGrade,
-    note: "Evaluation unavailable — graded as neutral pending re-evaluation.",
+    note: "Evaluation unavailable — this job will be re-scored automatically.",
   }));
 
   return {
@@ -227,10 +248,10 @@ function fallbackEvaluation(id: string): JobEvaluationResult {
     dimensions,
     overallGrade: "C",
     recommendationScore: 3,
-    matchScore: 60,
+    matchScore: null,
     matchedSkills: [],
     missingSkills: [],
-    reasoning: "Automated evaluation failed for this job; showing a neutral placeholder score.",
+    reasoning: EVALUATION_FAILED_REASON,
     responsibilities: [],
     requirements: [],
     niceToHave: [],
@@ -322,48 +343,78 @@ ${buildConstraintsText(constraints)}
 JOBS TO EVALUATE:
 ${jobs.map((job) => buildJobText(job, corrections)).join("\n\n---\n\n")}`;
 
-  const raw = await complete(await getModel(provider, tier), {
-    systemPrompt: SYSTEM_PROMPT,
-    userPrompt,
-    temperature: 0.3,
-    // NOT the fix for batch completeness — tested 12000 and 24000 with no
-    // difference; the model was never truncating, it was silently omitting
-    // jobs from the batch (see chunkArray call site in functions.ts, which
-    // is the actual fix). This budget just needs headroom for a 5-job chunk
-    // of richer 2-3 sentence notes, verified against real output length.
-    // Bumped 8000 -> 10000 when responsibilities/requirements/niceToHave/
-    // benefits extraction was added to this same call — real headroom need
-    // (extra JSON fields per job), not a re-attempt at the completeness fix
-    // above.
-    maxTokens: 10000,
-    jsonResponse: true,
-  });
+  // Retried up to twice (one retry) before ever falling back — a real,
+  // confirmed live incident (2026-08-31) found ~73% of a large search's
+  // chunks failing parse/schema/completeness, and replaying the EXACT same
+  // failing job data by hand succeeded immediately on a plain retry. Root
+  // cause was several concurrent searches racing the same rate-limited
+  // free-tier Gemini key (see evaluateJobChunk's throttle in
+  // lib/inngest/functions.ts, the actual fix for the rate itself) — under
+  // contention, complete()'s fallback chain lands on weaker, unvetted
+  // backup models that are less reliable against this schema's size. A
+  // retry after a short delay usually lands back on a healthy model/window.
+  // Never retries more than once — a genuinely malformed job (not a
+  // transient provider hiccup) shouldn't double real AI spend for nothing.
+  async function attemptOnce(): Promise<{ evaluations: z.infer<typeof jobEvaluationSchema>[] } | null> {
+    const raw = await complete(await getModel(provider, tier), {
+      systemPrompt: SYSTEM_PROMPT,
+      userPrompt,
+      temperature: 0.3,
+      // NOT the fix for batch completeness — tested 12000 and 24000 with no
+      // difference; the model was never truncating, it was silently omitting
+      // jobs from the batch (see chunkArray call site in functions.ts, which
+      // is the actual fix). This budget just needs headroom for a 5-job chunk
+      // of richer 2-3 sentence notes, verified against real output length.
+      // Bumped 8000 -> 10000 when responsibilities/requirements/niceToHave/
+      // benefits extraction was added to this same call — real headroom need
+      // (extra JSON fields per job), not a re-attempt at the completeness fix
+      // above.
+      maxTokens: 10000,
+      jsonResponse: true,
+    });
 
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    console.error("[lib/evaluator] JSON parse failed", error);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.error("[lib/evaluator] JSON parse failed", error);
+      return null;
+    }
+
+    const result = responseSchema.safeParse(parsed);
+    if (!result.success) {
+      console.error("[lib/evaluator] schema validation failed", result.error);
+      return null;
+    }
+
+    if (result.data.evaluations.length < jobs.length) {
+      // The model can return syntactically valid JSON that just omits some
+      // requested jobs — schema validation alone won't catch this.
+      console.error(
+        `[lib/evaluator] incomplete batch: requested ${jobs.length} jobs, model returned ${result.data.evaluations.length}`,
+      );
+      return null;
+    }
+
+    return result.data;
+  }
+
+  let data = await attemptOnce();
+  if (!data) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    data = await attemptOnce();
+  }
+
+  if (!data) {
+    // Both attempts failed — a genuinely persistent issue (not the usual
+    // transient contention), not something to keep retrying inline forever.
+    // Missing jobs silently fall back to neutral C-grade placeholders below;
+    // this log is the only signal that happened, so don't remove it.
+    console.error(`[lib/evaluator] both attempts failed for a ${jobs.length}-job chunk — falling back`);
     return jobs.map((job) => fallbackEvaluation(job.id));
   }
 
-  const result = responseSchema.safeParse(parsed);
-  if (!result.success) {
-    console.error("[lib/evaluator] schema validation failed", result.error);
-    return jobs.map((job) => fallbackEvaluation(job.id));
-  }
-
-  if (result.data.evaluations.length < jobs.length) {
-    // The model can return syntactically valid JSON that just omits some
-    // requested jobs — schema validation alone won't catch this. Missing
-    // jobs silently fall back to neutral C-grade placeholders below; this
-    // log is the only signal that happened, so don't remove it.
-    console.error(
-      `[lib/evaluator] incomplete batch: requested ${jobs.length} jobs, model returned ${result.data.evaluations.length}`,
-    );
-  }
-
-  const byId = new Map(result.data.evaluations.map((evaluation) => [evaluation.id, evaluation]));
+  const byId = new Map(data.evaluations.map((evaluation) => [evaluation.id, evaluation]));
 
   return jobs.map((job) => {
     const evaluation = byId.get(job.id);

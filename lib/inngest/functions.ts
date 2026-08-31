@@ -1,6 +1,7 @@
 import { inngest } from "./client";
 import { resolveModelForUser } from "@/lib/subscription";
-import { evaluateJobCompatibility, type SkillCorrection } from "@/lib/evaluator";
+import { evaluateJobCompatibility, type SkillCorrection, type EvaluationJob, type JobEvaluationResult } from "@/lib/evaluator";
+import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
@@ -24,6 +25,63 @@ function chunkArray<T>(arr: T[], size: number): T[][] {
         arr.slice(i * size, i * size + size)
     );
 }
+
+// Extracted from evaluateJobsAsync's own per-chunk loop (2026-08-31, real
+// production incident) so the actual Gemini call can carry Inngest's
+// `throttle` config — a GLOBAL rate gate enforced across every invocation
+// of this function, regardless of which parent run or which user triggered
+// it. Before this, evaluateJobsAsync called evaluateJobCompatibility
+// directly inside its own step.run() loop with only a 3s step.sleep between
+// chunks WITHIN one run — that does nothing to coordinate against every
+// OTHER concurrent run for every OTHER user hammering the exact same
+// shared API key at the exact same time. Confirmed live: a single test
+// account running 3 overlapping searches (281 jobs total) against the
+// free-tier GEMINI_API_KEY_FAST — a key this codebase's own comments
+// already document as capped at 15 requests/minute — pushed ~73% of
+// evaluated jobs into evaluator.ts's fallback path. That's not a per-job
+// content problem (replaying the exact same failing job data by hand
+// succeeded immediately) — it's uncoordinated concurrent load blowing the
+// real rate cap, which pushes complete()'s retry chain onto weaker,
+// unvetted backup models that are less reliable against this schema's
+// size. At real multi-user launch volume, ANY handful of simultaneous
+// searches reproduces this, not just a pathological retry loop from one
+// account.
+//
+// limit/period is a deliberately conservative, UNIFORM safety net across
+// every provider+tier combo (keyed separately per combo via throttleKey,
+// so gemini/fast doesn't starve gemini/smart or vice versa) — 12/min stays
+// safely under gemini/fast's confirmed 15 RPM ceiling. The paid tiers
+// (gemini/smart, openai, anthropic) almost certainly tolerate far more than
+// 12/min, but there's no live-verified number for any of them yet (per this
+// project's own "verify before claiming" rule) — raise their real ceiling
+// once that's actually measured, rather than guessing a higher number now.
+// Inngest queues excess invocations rather than dropping or erroring them,
+// so this only adds latency under real contention, never a new failure
+// mode.
+type EvaluateJobChunkEventData = {
+    jobs: EvaluationJob[];
+    filters: Record<string, string>;
+    profile: Profile;
+    provider: ModelProvider;
+    tier: ModelTier;
+    corrections: SkillCorrection[];
+    throttleKey: string;
+};
+
+export const evaluateJobChunk = inngest.createFunction(
+    {
+        id: "evaluate-job-chunk",
+        name: "Evaluate one job chunk (rate-limited)",
+        throttle: { limit: 12, period: "60s", key: "event.data.throttleKey" },
+        triggers: [{ event: "jobs/evaluate-chunk" }],
+    },
+    async ({ event }) => {
+        const { jobs, filters, profile, provider, tier, corrections } = event.data as EvaluateJobChunkEventData;
+
+        const evaluations = await evaluateJobCompatibility(jobs, filters, profile, provider, corrections, tier);
+        return { evaluations };
+    },
+);
 
 export const evaluateJobsAsync = inngest.createFunction(
     {
@@ -141,18 +199,40 @@ export const evaluateJobsAsync = inngest.createFunction(
         // with zero fallbacks; size 8 already failed the same way size 10 did.
         const jobChunks = chunkArray(rawJobs, 5);
 
-        try {
-            for (const [chunkIndex, chunk] of jobChunks.entries()) {
-                await step.run(`evaluate-chunk-${chunkIndex}`, async () => {
-                    const evaluations = await evaluateJobCompatibility(
-                        chunk,
+        // Chunks are independent (each owns a disjoint slice of jobIds, no
+        // shared mutable state) and used to run strictly sequentially with a
+        // 3s step.sleep between each — a weak, per-run-only guess at pacing
+        // that did nothing to protect the shared API key from every OTHER
+        // concurrent run (see evaluateJobChunk's throttle above, the actual
+        // fix for that). Once the real pacing moved to a global throttle,
+        // that sleep became pure dead time stacked on top of it — a
+        // 16-chunk (80-job) search was burning up to 48s in sleeps alone,
+        // on top of every chunk's own AI-call latency, entirely serially.
+        // Firing every chunk concurrently instead turns a search's total
+        // wait from "sum of every chunk's latency" into "the slowest single
+        // chunk's latency" — Inngest's throttle still queues them safely
+        // against the real rate limit, it just no longer waits for this
+        // run's OWN earlier chunks to finish first for no reason.
+        const processChunk = async (chunk: (typeof rawJobs)[number][], chunkIndex: number): Promise<void> => {
+                // Cast, not relied-on generic inference — matches this
+                // file's existing convention of casting event.data at the
+                // boundary (see `event.data as {...}` above) rather than
+                // fighting the Inngest SDK's generics for a cross-function
+                // invoke result.
+                const { evaluations } = (await step.invoke(`evaluate-chunk-${chunkIndex}`, {
+                    function: evaluateJobChunk,
+                    data: {
+                        jobs: chunk as EvaluationJob[],
                         filters,
                         profile,
                         provider,
-                        (corrections ?? []) as SkillCorrection[],
                         tier,
-                    );
+                        corrections: (corrections ?? []) as SkillCorrection[],
+                        throttleKey: `${provider}:${tier}`,
+                    },
+                })) as { evaluations: JobEvaluationResult[] };
 
+                await step.run(`persist-chunk-${chunkIndex}`, async () => {
                     for (const job of chunk) {
                         const evalResult = evaluations.find((e) => e.id === job.id);
 
@@ -160,7 +240,14 @@ export const evaluateJobsAsync = inngest.createFunction(
                         const { error: updateError } = await admin.database
                             .from("jobs")
                             .update({
-                                match_score: evalResult?.matchScore ?? 0,
+                                // null (not 0) when evaluation genuinely
+                                // failed — a fabricated 0/60 read as a real
+                                // score to a candidate (confirmed live
+                                // 2026-08-31, see evaluateJobChunk's comment
+                                // above). null keeps this job in the same
+                                // honest "not scored yet" UI state as a job
+                                // that hasn't been evaluated at all.
+                                match_score: evalResult?.matchScore ?? null,
                                 match_reason: evalResult?.reasoning || null,
                                 matched_skills: evalResult?.matchedSkills || [],
                                 missing_skills: evalResult?.missingSkills || [],
@@ -274,8 +361,21 @@ export const evaluateJobsAsync = inngest.createFunction(
                         }
                     }
                 });
+        };
 
-                await step.sleep(`delay-between-ai-calls-${chunkIndex}`, "3s");
+        try {
+            // allSettled, not all — a rejection from one chunk must not
+            // cancel the Promise and leave every OTHER already-in-flight
+            // chunk's steps as unhandled rejections (Node warns/crashes on
+            // those). Every chunk still gets its fair, independent attempt;
+            // any failure is surfaced (and the run marked failed) only after
+            // everything has actually settled.
+            const settled = await Promise.allSettled(
+                jobChunks.map((chunk, chunkIndex) => processChunk(chunk, chunkIndex)),
+            );
+            const firstFailure = settled.find((r): r is PromiseRejectedResult => r.status === "rejected");
+            if (firstFailure) {
+                throw firstFailure.reason;
             }
         } catch (err) {
             console.error("Chunk evaluation failed:", err);

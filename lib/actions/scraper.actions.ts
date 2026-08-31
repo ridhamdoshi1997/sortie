@@ -231,12 +231,28 @@ async function evaluateWithinQuota(
     insforge: InsforgeServerClient,
     userId: string,
     userEmail: string | undefined,
-    savedJobs: { id: string }[],
+    savedJobs: { id: string; match_score?: number | null }[],
     filters: Record<string, string>,
     runId: string | null
 ) {
+    // Real bug found live (2026-08-31, direct user report): savedJobs from
+    // upsertScrapedJobs includes every REFRESHED job too (an existing job
+    // matched by fingerprint on a repeat search — see that function's own
+    // comment), each already carrying its real match_score from a prior
+    // evaluation. This function used to queue ALL of them for evaluation
+    // with no check for "already scored" — meaning simply repeating the
+    // exact same search (same title+location) silently re-ran the full
+    // expensive LLM rubric on every job that was already scored, for zero
+    // new information. That's real, wasted AI spend AND — as of the same
+    // incident — extra pressure on the shared rate-limited free Gemini key
+    // (see evaluateJobChunk's throttle in lib/inngest/functions.ts) on top
+    // of whatever the search's genuinely new jobs already needed. A search
+    // should only ever spend its evaluation budget on jobs that don't
+    // already have a real score.
+    const needsEvaluation = savedJobs.filter((job) => job.match_score === null || job.match_score === undefined);
+
     const evaluableJobIds: string[] = [];
-    for (const job of savedJobs) {
+    for (const job of needsEvaluation) {
         const evalCheck = await checkJobEvaluationLimit(insforge, userId, userEmail);
         if (!evalCheck.allowed) break;
         evaluableJobIds.push(job.id);
