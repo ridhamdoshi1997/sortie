@@ -201,12 +201,16 @@ export const evaluateJobsAsync = inngest.createFunction(
                         // can still be a generic category/marketing page,
                         // not the specific posting (real confirmed cases:
                         // RBC, TD). Trust alone isn't enough.
+                        // "unverified" always re-triggers, regardless of
+                        // specificity, since 2026-08-30 — see the matching
+                        // comment in app/find-jobs/[id]/page.tsx's own gate.
                         const matchScore = evalResult?.matchScore ?? 0;
                         if (matchScore >= EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD && job.external_apply_url) {
                             const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
                             const needsResolution =
                                 currentTrust === "low_quality" ||
-                                ((currentTrust === "unverified" || currentTrust === "employer") &&
+                                currentTrust === "unverified" ||
+                                (currentTrust === "employer" &&
                                     !looksLikeSpecificJobPosting(job.external_apply_url));
                             if (needsResolution) {
                                 try {

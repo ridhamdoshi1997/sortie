@@ -110,10 +110,16 @@ export default async function JobDetailsPage({ params }: Props) {
   // link to look like a specific listing (a real posting id in the path or
   // query — see looksLikeSpecificJobPosting's own comment).
   const applyLinkTrust = job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
+  // "unverified" always re-triggers now, regardless of specificity — a real
+  // 2026-08-30 case (Manulife job pointing at a Tapestry Workday posting,
+  // complete with a real posting id) showed "unverified" can now mean
+  // "this IS a known ATS host, but its tenant doesn't match the claimed
+  // employer" (see applyLinkTrust.ts's classifyApplyHost), which is worse
+  // than a merely-unrecognized domain and shouldn't get a specificity pass.
   const applyLinkNeedsResolution =
     applyLinkTrust === "low_quality" ||
-    ((applyLinkTrust === "employer" || applyLinkTrust === "unverified") &&
-      !looksLikeSpecificJobPosting(job.external_apply_url!));
+    applyLinkTrust === "unverified" ||
+    (applyLinkTrust === "employer" && !looksLikeSpecificJobPosting(job.external_apply_url!));
 
   if (!job.apply_link_resolved_at && job.external_apply_url && applyLinkNeedsResolution) {
     after(() => reresolveApplyLinkForJob(insforge, job));

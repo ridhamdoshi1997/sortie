@@ -150,10 +150,108 @@ function looksLikeScamShape(rawUrl: string): boolean {
   }
 }
 
+// Real bug found live (2026-08-30, direct user report): a job titled/
+// company'd "Manulife" had external_apply_url pointing at
+// tapestry.wd108.myworkdayjobs.com — a completely unrelated employer
+// (Tapestry, the Coach/Kate Spade parent). Root cause: this classifier
+// treated ANY known ATS host as automatically the gold-standard "ats" tier
+// with zero check that the specific TENANT within that host is actually
+// the claimed employer — correct reasoning for a single-tenant board where
+// the URL was hand-constructed from the company's own slug, but wrong for
+// a raw SerpApi Google Jobs candidate, which can legitimately mix in a
+// completely unrelated company's ATS-hosted listing under a broad search
+// query (confirmed: this job's apply_link_resolved_at was null — never
+// even went through re-resolution, this was the ORIGINAL scraped value).
+// Multi-tenant ATS platforms all encode the tenant identifier somewhere
+// derivable from the URL (subdomain for Workday/iCIMS/Taleo/breezy/
+// recruitee, first path segment for Greenhouse/Lever/Ashby/SmartRecruiters/
+// Workable) — extracted here and checked against the job's own company
+// name the same fuzzy way looksLikeEmployerHost already does, so a
+// mismatch downgrades out of "ats" instead of being blindly trusted.
+// Returns every plausible tenant identifier for a URL, not just one — a
+// real false positive caught live: Workday's SUBDOMAIN is often a short,
+// cryptic abbreviation ("fil" for Fidelity Investments, "intactfc" for
+// Intact Financial Corporation) while the PATH board segment right after
+// it is the fuller, human-readable slug ("fidelitycanada",
+// "ClioCareerSite") — checking only the subdomain false-flagged Fidelity
+// Canada's own real, correct link as a mismatch. A match against EITHER
+// candidate counts.
+function extractAtsTenantSlugs(rawUrl: string, host: string): string[] {
+  let pathname: string;
+  try {
+    pathname = new URL(rawUrl).pathname;
+  } catch {
+    return [];
+  }
+  const segments = pathname.split("/").filter(Boolean);
+  const labels = host.split(".");
+
+  if (host.endsWith("myworkdayjobs.com")) {
+    // .../{locale}/{board}/job/... or .../{board}/job/... — board is
+    // whichever segment immediately precedes "job", not always index 1
+    // (locale prefix isn't always present).
+    const jobIdx = segments.indexOf("job");
+    const board = jobIdx > 0 ? segments[jobIdx - 1] : segments[segments.length - 1];
+    return [labels[0], board].filter((s): s is string => Boolean(s));
+  }
+  if (host.endsWith("icims.com") || host.endsWith("taleo.net") || host.endsWith("breezy.hr") || host.endsWith("recruitee.com")) {
+    return labels[0] ? [labels[0]] : [];
+  }
+  if (host === "workable.com" || host.endsWith(".workable.com")) {
+    const candidates = [];
+    if (labels.length > 2 && labels[0] !== "apply" && labels[0] !== "www") candidates.push(labels[0]);
+    if (segments[0]) candidates.push(segments[0]);
+    return candidates;
+  }
+  // greenhouse.io, job-boards.greenhouse.io, lever.co, ashbyhq.com,
+  // smartrecruiters.com — company slug is the first real path segment.
+  // (SmartRecruiters' api.smartrecruiters.com/v1/companies/{slug}/... has
+  // "v1"/"companies" ahead of it — skip those two literal segments.)
+  if (host === "api.smartrecruiters.com") {
+    const idx = segments.indexOf("companies");
+    const slug = idx >= 0 ? segments[idx + 1] : segments[0];
+    return slug ? [slug] : [];
+  }
+  return segments[0] ? [segments[0]] : [];
+}
+
+function atsTenantMatchesCompany(tenants: string[], company: string): boolean {
+  const slugs = employerSlugs(company);
+  return tenants.some((tenant) => {
+    // Real false positives caught live: a Workday/Ashby/Workable tenant
+    // slug is often hyphenated ("Agentis-Capital-Advisors",
+    // "kingsdale-advisors") while employerSlugs() strips ALL non-
+    // alphanumeric chars from the company name — comparing
+    // "agentis-capital-advisors" against "agentiscapitaladvisors" never
+    // matches even though they're clearly the same company. Strip the
+    // same way here.
+    const t = tenant.toLowerCase().replace(/[^a-z0-9]/g, "");
+    return slugs.some((slug) => {
+      if (slug.length < 2) return false;
+      if (t === slug) return true;
+      if (slug.length < 4 || t.length < 4) return false;
+      return t.includes(slug) || slug.includes(t);
+    });
+  });
+}
+
 export function classifyApplyHost(rawUrl: string, company?: string | null): ApplyLinkTrust {
   const host = normalizedHost(rawUrl);
   if (!host) return "unverified";
-  if (hostMatches(host, ATS_HOSTS)) return "ats";
+  if (hostMatches(host, ATS_HOSTS)) {
+    // No company to check against, or a tenant couldn't be derived from
+    // this URL shape (e.g. a Taleo careersection query string this
+    // extractor doesn't fully parse) — keep the original "always trust a
+    // known ATS host" behavior rather than risk a false-negative downgrade.
+    if (!company) return "ats";
+    const tenants = extractAtsTenantSlugs(rawUrl, host);
+    if (tenants.length === 0 || atsTenantMatchesCompany(tenants, company)) return "ats";
+    // A real tenant WAS found and it does NOT match the claimed employer —
+    // don't fall through to "employer"/"aggregator" either (this host is
+    // definitely not this company's own domain); "unverified" is correct,
+    // same tier a never-classified host gets, so it's still subject to
+    // re-resolution and never silently trusted as the "gold standard".
+  }
   if (company && looksLikeEmployerHost(host, company)) return "employer";
   if (hostMatches(host, TIER1_SAFE_AGGREGATOR_HOSTS)) return "aggregator";
   // Folded into the same "low_quality" bucket as a known Tier-2 mirror —
