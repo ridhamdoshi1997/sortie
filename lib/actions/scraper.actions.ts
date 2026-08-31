@@ -6,6 +6,7 @@ import { inngest } from "@/lib/inngest/client";
 import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
+import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
 import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
@@ -15,25 +16,6 @@ import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@insforge/sdk'; //
-
-// Dedup audit finding (build-plan.md §37): the upsert's
-// onConflict('user_id,external_id') only catches a repeat SerpApi
-// job_id — confirmed via a real production data check that Google Jobs
-// itself does NOT return a stable job_id for the same real listing
-// across separate search runs (each carries a differently-signed
-// htidocid token), so this path alone let the exact same listing get
-// re-inserted as a brand new row on every repeat search — one real
-// account had up to 11 duplicate rows for a single URL. Fixed with a
-// title+company+location fingerprint pre-check: a job whose fingerprint
-// already exists for this user gets its existing row refreshed
-// (run_id/dropped_from_search_at) instead of a second row inserted.
-// Extracted into a shared helper (was inline in scrapeAndEvaluateJobs)
-// so scanTargetCompanies() reuses the exact same dedup/upsert path
-// instead of a second, divergent copy of it.
-function fingerprint(title: string | undefined, company: string | undefined, location: string | undefined): string {
-    const norm = (s: string | undefined) => (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
-    return `${norm(title)}|${norm(company)}|${norm(location)}`;
-}
 
 type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -120,105 +102,53 @@ async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: strin
     const extra = filterByCity(found.flat(), searchLocation);
     if (extra.length === 0) return jobs;
 
-    // Same title+company dedup key the thin-results merge uses, so a job
-    // already present from SerpApi/Adzuna isn't duplicated by its own
-    // direct-ATS twin. Direct-ATS entries are appended AFTER the originals
-    // so an existing (already-scored, already-linked) job keeps its row.
-    const seen = new Set(
-        jobs.map((j) => `${(j.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(j.company ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}`)
-    );
-    const additions = extra.filter((j) => {
-        const key = `${(j.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(j.company ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
-        if (seen.has(key)) return false;
-        seen.add(key);
-        return true;
-    });
-
-    if (additions.length > 0) {
-        console.warn(`Direct-ATS enrichment added ${additions.length} job(s) from ${targets.length} company board(s).`);
-    }
-    return [...jobs, ...additions];
+    // No dedup here anymore (2026-08-31) — this used to run its own
+    // title+company Set-based check against `jobs`, a DIFFERENT and
+    // weaker key than the real per-user dedup fingerprint used everywhere
+    // else (lib/jobCanonicalization.ts's canonical_key), normalized
+    // differently and missing location entirely. That inconsistency was
+    // the exact bug this migration/module closes: the same real job could
+    // dedupe correctly in one path and slip through as a duplicate here.
+    // upsertScrapedJobs now runs every job from every source (SerpApi,
+    // Adzuna, and these ATS additions) through the SAME canonicalization
+    // path, so a direct-ATS job matching an already-present SerpApi job
+    // merges into one row there — atomically, safe even when both land in
+    // the same search — rather than needing to be pre-filtered here.
+    console.log(`Direct-ATS enrichment found ${extra.length} job(s) from ${targets.length} company board(s).`);
+    return [...jobs, ...extra];
 }
 
+// Rewritten 2026-08-31 onto lib/jobCanonicalization.ts's atomic
+// merge_job_source RPC (see migrations/20260831233851_add-job-canonicalization.sql)
+// — replaces the old title+company+location fingerprint pre-check
+// (app-level SELECT then INSERT-or-UPDATE) with a single DB-atomic upsert
+// per job, keyed on the same canonical_key EVERY ingestion path now
+// shares (SerpApi, Adzuna, and enrichWithDirectAtsJobs's ATS additions —
+// no more separate, weaker in-search dedup for that path). Also fixes
+// first-seen-data-wins-forever: a higher-priority source (direct ATS)
+// found later now upgrades an already-stored job's title/description/
+// apply_url in place, where the old refresh path only ever touched
+// run_id/dropped_from_search_at.
+//
+// Runs on the admin client, not the caller's session client — matches
+// enrichWithDirectAtsJobs's own ats_registry access and
+// evaluateJobsAsync's writes to jobs, both already admin-client-only for
+// the same reason (this is atomic-merge/reference-data machinery, not a
+// plain per-request user write).
 async function upsertScrapedJobs(
-    insforge: InsforgeServerClient,
     userId: string,
     jobs: NormalizedJob[],
     runId: string | null
 ) {
-    const uniqueJobsMap = new Map<string, NormalizedJob>();
-    jobs.forEach(job => uniqueJobsMap.set(job.id, job));
-    const uniqueJobs = Array.from(uniqueJobsMap.values());
+    if (jobs.length === 0) return [];
 
-    if (uniqueJobs.length === 0) return [];
-
-    const candidateTitles = Array.from(new Set(uniqueJobs.map(j => j.title).filter(Boolean)));
-    const { data: existingByFingerprint } = candidateTitles.length
-        ? await insforge.database
-            .from("jobs")
-            .select("id,title,company,location")
-            .eq("user_id", userId)
-            .in("title", candidateTitles)
-        : { data: [] as { id: string; title: string; company: string; location: string }[] };
-
-    const existingFingerprints = new Map<string, string>();
-    for (const row of existingByFingerprint ?? []) {
-        existingFingerprints.set(fingerprint(row.title, row.company, row.location), row.id);
-    }
-
-    const genuinelyNewJobs: typeof uniqueJobs = [];
-    const refreshExistingJobIds: string[] = [];
-    for (const job of uniqueJobs) {
-        const existingId = existingFingerprints.get(fingerprint(job.title, job.company, job.location));
-        if (existingId) {
-            refreshExistingJobIds.push(existingId);
-        } else {
-            genuinelyNewJobs.push(job);
-        }
-    }
-
-    if (refreshExistingJobIds.length > 0) {
-        await insforge.database
-            .from("jobs")
-            .update({ run_id: runId, dropped_from_search_at: null })
-            .in("id", refreshExistingJobIds)
-            .eq("user_id", userId);
-    }
-
-    const jobsToInsert = genuinelyNewJobs.map(job => ({
-        external_id: job.id,
-        title: job.title,
-        company: job.company,
-        location: job.location,
-        description: job.description,
-        user_id: userId,
-        salary: job.salary || null,
-        job_type: job.type || null,
-        url: job.url || null,
-        source: job.source || null,
-        external_apply_url: job.applyUrl || null,
-        raw_apply_options: job.rawApplyOptions ?? null,
-        posted_at: job.postedAt || null,
-        company_logo_url: job.logoUrl || null,
-        run_id: runId,
-        dropped_from_search_at: null,
-    }));
-
-    const { data: newlySavedJobs, error } = jobsToInsert.length > 0
-        ? await insforge.database
-            .from("jobs")
-            .upsert(jobsToInsert, { onConflict: 'user_id,external_id' })
-            .select('*')
-        : { data: [], error: null };
-
-    const { data: refreshedJobs } = refreshExistingJobIds.length > 0
-        ? await insforge.database.from("jobs").select("*").in("id", refreshExistingJobIds)
-        : { data: [] };
-
-    const savedJobs = [...(newlySavedJobs ?? []), ...(refreshedJobs ?? [])];
-    if (error) console.error("❌ INSFORGE UPSERT ERROR:", error);
-
-    return savedJobs;
+    const admin = createAdminDbClient();
+    return canonicalizeJobSources(
+        admin,
+        userId,
+        runId,
+        jobs.map((job) => ({ sourceType: job.source, job })),
+    );
 }
 
 // Sends newly-saved jobs through the AI evaluator, respecting the caller's
@@ -429,7 +359,7 @@ export async function scrapeAndEvaluateJobs(
 
     console.log("🔍 [Scraper] Unique jobs to insert:", uniqueJobs.length);
 
-    const savedJobs = await upsertScrapedJobs(insforge, userId, uniqueJobs, runId);
+    const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
     console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
 
     if (!savedJobs || savedJobs.length === 0) {
@@ -545,7 +475,7 @@ export async function scanTargetCompanies(userId: string) {
     );
     const allJobs = results.flat();
 
-    const savedJobs = await upsertScrapedJobs(insforge, userId, allJobs, null);
+    const savedJobs = await upsertScrapedJobs(userId, allJobs, null);
 
     await insforge.database
         .from("target_companies")
