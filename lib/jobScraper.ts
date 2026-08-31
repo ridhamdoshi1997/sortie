@@ -463,6 +463,24 @@ function getAdzunaCredentials(): { appId: string; appKey: string } | null {
 const ADZUNA_PAGES = 3;
 const ADZUNA_PER_PAGE = 50;
 
+// Adzuna's index genuinely carries long-dead listings alongside fresh
+// ones — measured, not assumed: a real 50-result sample for "advisor" in
+// Toronto (2026-08-31) was 62% from the current month but still included
+// two postings from July 2024, over two years old. Unlike Google Jobs
+// (which prunes aggressively), Adzuna will happily return those, and a
+// candidate tailoring a résumé for a two-year-dead posting is a real
+// waste of their effort. 90 days is deliberately generous — it keeps
+// everything in the sampled distribution back through June while dropping
+// the genuinely abandoned tail.
+const ADZUNA_MAX_AGE_DAYS = 90;
+
+function isRecentEnough(created: string | undefined, maxAgeDays: number): boolean {
+    if (!created) return true; // No date given is not evidence of staleness.
+    const ts = Date.parse(created);
+    if (Number.isNaN(ts)) return true;
+    return Date.now() - ts <= maxAgeDays * 24 * 60 * 60 * 1000;
+}
+
 const adzunaProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
         const creds = getAdzunaCredentials();
@@ -490,7 +508,9 @@ const adzunaProvider: JobScraperProvider = {
             if (pageJobs.length < ADZUNA_PER_PAGE) break;
         }
 
-        return jobs.map((job) => ({
+        return jobs
+            .filter((job) => isRecentEnough(job.created, ADZUNA_MAX_AGE_DAYS))
+            .map((job) => ({
             id: `adzuna-${job.id}`,
             title: job.title ?? "",
             company: job.company?.display_name ?? "",
