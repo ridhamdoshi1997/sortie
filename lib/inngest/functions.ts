@@ -71,18 +71,36 @@ export const evaluateJobsAsync = inngest.createFunction(
             }]);
         }
 
-        const { data: rawJobs, error } = await admin.database
-            .from("jobs")
-            .select("*")
-            .in("id", jobIds);
+        // Batched, not one .in("id", jobIds) call — real production
+        // failure found live (2026-08-31): PostgREST's .in() filter is
+        // serialized into the GET request's query string, and a large
+        // enough job count (~100+ UUIDs, 36 chars each) blows past the
+        // gateway's URL-length limit — confirmed via two real failed
+        // agent_runs, "414 Request-URI Too Large" and a related "502 Bad
+        // Gateway", both on searches with 108/210 jobs. This bug always
+        // existed; the direct-ATS enrichment work shipped the same day
+        // just pushed typical job counts past the threshold that exposed
+        // it. 50 IDs/batch keeps each request comfortably short.
+        const JOB_FETCH_BATCH_SIZE = 50;
+        // Untyped, matching this SDK's own "*" select shape — the
+        // single-call version this replaces relied on the same structural
+        // flow into EvaluationJob[] downstream (evaluateJobCompatibility),
+        // not an explicit row type, so batching preserves that rather than
+        // inventing a narrower one.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawJobs: any[] = [];
+        for (let i = 0; i < jobIds.length; i += JOB_FETCH_BATCH_SIZE) {
+            const batch = jobIds.slice(i, i + JOB_FETCH_BATCH_SIZE);
+            const { data, error } = await admin.database.from("jobs").select("*").in("id", batch);
+            if (error) {
+                console.error("🔍 [Inngest] DB Query Error:", error);
+                await markRunFailed(`Failed to fetch jobs from DB: ${error.message}`);
+                throw new Error(`Failed to fetch jobs from DB: ${error.message}`);
+            }
+            if (data) rawJobs.push(...data);
+        }
 
         console.log("🔍 [Inngest] Database returned jobs count:", rawJobs?.length);
-
-        if (error) {
-            console.error("🔍 [Inngest] DB Query Error:", error);
-            await markRunFailed(`Failed to fetch jobs from DB: ${error.message}`);
-            throw new Error(`Failed to fetch jobs from DB: ${error.message}`);
-        }
 
         if (!rawJobs || rawJobs.length === 0) {
             return { message: `Successfully evaluated 0 jobs. (Received ${jobIds?.length || 0} IDs, DB returned 0)` };
