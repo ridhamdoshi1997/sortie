@@ -1,0 +1,229 @@
+import {
+  discoverAtsForRegistry,
+  fetchAtsJobs,
+  fetchRegisteredAtsJobs,
+  guessCompanySlugs,
+  type AtsPlatform,
+  type DiscoveredAts,
+} from "@/lib/atsProviders";
+import type { NormalizedJob } from "@/lib/jobScraper";
+
+// Global, self-building cache of which ATS each real employer uses — see
+// migrations/20260831120000_add-ats-registry.sql for the full rationale.
+// Short version: an employer's own ATS board is the only source that is
+// legitimate by construction AND free/unlimited, which is exactly what a
+// cost-sensitive product needs. Discovery is the expensive part (up to 4
+// HTTP fetches per company), so it is paid for once, globally, and reused
+// forever after.
+
+function companyKey(company: string): string {
+  return company
+    .toLowerCase()
+    .replace(/\b(inc|llc|ltd|corp|co|company|group|holdings|ulc)\b\.?/g, "")
+    .replace(/[^a-z0-9]/g, "");
+}
+
+// A known-negative is re-checked occasionally rather than never: a company
+// genuinely can migrate onto Greenhouse/Workday later, and a permanent
+// "no" would lock us out of that forever.
+const RECHECK_NEGATIVE_AFTER_DAYS = 30;
+
+type RegistryRow = {
+  company_key: string;
+  company_name: string;
+  company_domain: string | null;
+  platform: string | null;
+  config: unknown;
+  last_checked_at: string;
+  failed_attempts: number;
+};
+
+// Structurally typed rather than importing the SDK's own client type:
+// callers always already have an admin client (the Inngest crons build
+// one, actions use createAdminDbClient), so taking it as a parameter
+// keeps this module free of a runtime SDK import — which also lets it be
+// exercised directly from a plain script without the SDK's own subpath
+// exports needing to resolve.
+type AdminDb = {
+  database: {
+    from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  };
+};
+
+async function readRow(db: AdminDb, key: string): Promise<RegistryRow | null> {
+  const { data } = await db.database
+    .from("ats_registry")
+    .select("company_key, company_name, company_domain, platform, config, last_checked_at, failed_attempts")
+    .eq("company_key", key)
+    .maybeSingle();
+  return (data as RegistryRow | null) ?? null;
+}
+
+function isStaleNegative(row: RegistryRow): boolean {
+  if (row.platform) return false;
+  const age = Date.now() - Date.parse(row.last_checked_at);
+  return age > RECHECK_NEGATIVE_AFTER_DAYS * 24 * 60 * 60 * 1000;
+}
+
+// Tries each guessable-slug platform against each name-derived slug
+// candidate, and accepts the first that returns real postings. Only
+// reached when careers-page discovery came up empty, and only ever runs
+// once per company thanks to the registry cache — the same brute-force
+// guessing would be far too wasteful to repeat per search.
+// Two candidates only, both .com: the bare name and the legal-suffix-
+// stripped one — the same split lib/applyLinkTrust.ts's employerSlugs()
+// already established (FDM Group keeps "group", Shopify Inc. drops
+// "inc"). Deliberately not exhaustive: each guess costs real HTTP
+// fetches, and this only has to work often enough to be worth the one
+// cached attempt per company.
+function guessCompanyDomains(company: string): string[] {
+  const lower = company.toLowerCase();
+  const bare = lower.replace(/[^a-z0-9]/g, "");
+  const stripped = lower
+    .replace(/\b(inc|llc|ltd|corp|co|company|group|holdings|canada|ulc)\b\.?/g, "")
+    .replace(/[^a-z0-9]/g, "");
+  // Minimum 2, not 3: real employers genuinely have two-letter domains,
+  // and a live run proved it matters — "TD" was silently skipped by a
+  // 3-char floor even though td.com resolves to their real Workday board.
+  return Array.from(new Set([bare, stripped]))
+    .filter((s) => s.length >= 2 && s.length <= 30)
+    .map((s) => `${s}.com`);
+}
+
+const GUESSABLE: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters"];
+
+async function guessAtsBySlug(companyName: string): Promise<DiscoveredAts | null> {
+  const slugs = guessCompanySlugs(companyName);
+  if (slugs.length === 0) return null;
+
+  const attempts = GUESSABLE.flatMap((platform) => slugs.map((slug) => ({ platform, slug })));
+  const results = await Promise.all(
+    attempts.map(async ({ platform, slug }) => {
+      try {
+        const jobs = await fetchAtsJobs(platform, slug, companyName);
+        return jobs.length > 0 ? { platform, slug } : null;
+      } catch {
+        return null;
+      }
+    })
+  );
+  return results.find((r): r is { platform: AtsPlatform; slug: string } => r !== null) ?? null;
+}
+
+// Resolves (and caches) which ATS a company uses. Returns null when the
+// company genuinely has no reachable ATS — a normal, common outcome, not
+// an error.
+export async function resolveAts(
+  db: AdminDb,
+  companyName: string,
+  companyDomain: string | null,
+): Promise<DiscoveredAts | null> {
+  const key = companyKey(companyName);
+  if (key.length < 2) return null;
+
+  const existing = await readRow(db, key);
+  if (existing && !isStaleNegative(existing)) {
+    return existing.platform ? ({ platform: existing.platform, ...(existing.config as object) } as DiscoveredAts) : null;
+  }
+
+  // Cache miss (or a stale negative worth re-checking) — pay the discovery
+  // cost once, then persist whichever way it lands.
+  //
+  // Two strategies, because neither alone is sufficient (both verified
+  // live): reading the company's careers page catches employers whose
+  // board slug isn't derivable from their name (TD -> Workday tenant
+  // "td"/"TD_Bank_Careers", Wealthsimple -> Ashby "wealthsimple"), but
+  // misses any careers page that renders its board link via JavaScript —
+  // a real miss on Stripe and Shopify, both of which certainly do have
+  // public boards. The name-derived slug guess catches exactly those.
+  // A company domain often isn't derivable from the job's own apply link
+  // — an Adzuna or aggregator redirect reveals nothing about the real
+  // employer — which would skip careers-page discovery entirely, the
+  // strongest of the two strategies. Guessing domains from the name
+  // recovers it for a large share of real employers (scotiabank.com,
+  // sephora.com, holtrenfrew.com all resolve correctly). A wrong guess is
+  // harmless: the fetch simply 404s and we fall through, and the negative
+  // is cached so no company is ever guessed at twice.
+  const domains = companyDomain ? [companyDomain] : guessCompanyDomains(companyName);
+
+  let discovered: DiscoveredAts | null = null;
+  let resolvedDomain: string | null = companyDomain;
+  for (const domain of domains) {
+    discovered = await discoverAtsForRegistry(domain);
+    if (discovered) {
+      // Record the domain that actually worked, not the (often null) one
+      // we were handed — that's the useful fact for every future lookup.
+      resolvedDomain = domain;
+      break;
+    }
+  }
+  if (!discovered) discovered = await guessAtsBySlug(companyName);
+
+  const payload = {
+    company_key: key,
+    company_name: companyName,
+    company_domain: resolvedDomain,
+    platform: discovered?.platform ?? null,
+    config: discovered ? { ...discovered } : null,
+    last_checked_at: new Date().toISOString(),
+    last_success_at: discovered ? new Date().toISOString() : (existing ? undefined : null),
+    failed_attempts: discovered ? 0 : (existing?.failed_attempts ?? 0) + 1,
+  };
+
+  // upsert on the unique company_key so concurrent searches for the same
+  // company can't create duplicate rows.
+  const { error } = await db.database.from("ats_registry").upsert([payload], { onConflict: "company_key" });
+  if (error) console.warn("[atsRegistry] upsert failed", key, error.message);
+
+  return discovered;
+}
+
+// Which of these companies the registry ALREADY knows have a real board.
+// One cheap DB query, so a search can spend its polling budget on the
+// employers most likely to yield direct links (instant, already cached)
+// rather than on whichever company happened to return the most
+// aggregator rows — a real problem observed live, where bulk Adzuna
+// results crowded out TD, whose Workday board genuinely had 20 matching
+// postings.
+export async function partitionByKnownAts(
+  db: AdminDb,
+  companies: string[],
+): Promise<{ known: Set<string>; unknown: Set<string> }> {
+  const keys = companies.map(companyKey).filter((k) => k.length >= 2);
+  if (keys.length === 0) return { known: new Set(), unknown: new Set() };
+
+  const { data } = await db.database
+    .from("ats_registry")
+    .select("company_key, platform")
+    .in("company_key", keys);
+
+  const rows = (data ?? []) as { company_key: string; platform: string | null }[];
+  const known = new Set(rows.filter((r) => r.platform).map((r) => r.company_key));
+  const seen = new Set(rows.map((r) => r.company_key));
+  const unknown = new Set(keys.filter((k) => !seen.has(k)));
+  return { known, unknown };
+}
+
+export function toCompanyKey(company: string): string {
+  return companyKey(company);
+}
+
+// Pulls a company's own current openings straight from whichever ATS the
+// registry says it uses. Free and unlimited (public ATS endpoints), and
+// every link returned is a real posting on the employer's own system.
+export async function fetchJobsForCompany(
+  db: AdminDb,
+  companyName: string,
+  companyDomain: string | null,
+  searchTitle: string,
+): Promise<NormalizedJob[]> {
+  const ats = await resolveAts(db, companyName, companyDomain);
+  if (!ats) return [];
+
+  try {
+    return await fetchRegisteredAtsJobs(ats, companyName, searchTitle);
+  } catch (error) {
+    console.warn(`[atsRegistry] fetch failed for ${companyName}`, error);
+    return [];
+  }
+}

@@ -206,9 +206,23 @@ function careersUrlCandidates(domain: string): string[] {
   return [`https://jobs.${domain}`, `https://careers.${domain}`, `https://${domain}/careers`, `https://www.${domain}/careers`];
 }
 
-type DiscoveredAts =
+export type DiscoveredAts =
   | { platform: "workday"; tenant: string; wdInstance: string; locale: string; board: string }
-  | { platform: "icims"; tenant: string };
+  | { platform: "icims"; tenant: string }
+  | { platform: AtsPlatform; slug: string };
+
+// The four slug-based platforms are detected from a careers page the same
+// way Workday/iCIMS already were — a company that embeds or links its
+// Greenhouse/Lever/Ashby/SmartRecruiters board is telling us its real
+// slug directly, which is far more reliable than guessCompanySlugs()'
+// name-derived guess (that guess is why boards like "td"/"rbc" 404 —
+// the company simply isn't on those platforms under that name).
+const SLUG_ATS_PATTERNS: { platform: AtsPlatform; pattern: RegExp }[] = [
+  { platform: "greenhouse", pattern: /(?:boards|job-boards)\.greenhouse\.io\/([a-z0-9_-]+)/i },
+  { platform: "lever", pattern: /jobs\.lever\.co\/([a-z0-9_-]+)/i },
+  { platform: "ashby", pattern: /jobs\.ashbyhq\.com\/([a-z0-9_%-]+)/i },
+  { platform: "smartrecruiters", pattern: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/i },
+];
 
 async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | null> {
   for (const url of careersUrlCandidates(domain)) {
@@ -226,12 +240,44 @@ async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | nu
       return { platform: "workday", tenant: workday[1], wdInstance: workday[2], locale: workday[3] ?? "en-US", board: workday[4] };
     }
 
+    for (const { platform, pattern } of SLUG_ATS_PATTERNS) {
+      const hit = html.match(pattern);
+      if (hit?.[1]) return { platform, slug: decodeURIComponent(hit[1]) };
+    }
+
     const icims = html.match(ICIMS_TENANT_PATTERN);
     if (icims && icims[1] !== "www" && icims[1] !== "careers") {
       return { platform: "icims", tenant: icims[1] };
     }
   }
   return null;
+}
+
+// Exported entry point for lib/atsRegistry.ts, which caches the result
+// globally so this cost is paid once per company rather than per search.
+export async function discoverAtsForRegistry(domain: string): Promise<DiscoveredAts | null> {
+  return discoverAtsFromDomain(domain);
+}
+
+// Fetches from an already-discovered Workday/iCIMS tenant, skipping
+// rediscovery entirely — the registry already knows the connection
+// details, so this is a single API call per company.
+export async function fetchRegisteredAtsJobs(
+  ats: DiscoveredAts,
+  companyName: string,
+  searchTitle: string
+): Promise<NormalizedJob[]> {
+  if (ats.platform === "workday") {
+    return fetchWorkdayJobs(ats, companyName, searchTitle);
+  }
+  if (ats.platform === "icims") {
+    const words = searchTitle
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length > 2);
+    return fetchIcimsJobs(ats, companyName, words);
+  }
+  return fetchAtsJobs(ats.platform, ats.slug, companyName);
 }
 
 type WorkdayJobPosting = {
@@ -341,11 +387,20 @@ async function fetchIcimsJobs(
 // match later, it's honestly a "here's this employer's real live search,
 // filtered to what you were looking for" link, not a claim to be the
 // exact original listing.
-function fallbackSearchUrl(discovered: DiscoveredAts, searchTitle: string): string {
+// Only Workday and iCIMS expose a keyword-filterable public search URL
+// that was verified live. The slug-based boards (Greenhouse/Lever/Ashby/
+// SmartRecruiters) return their full posting list from the API instead,
+// so an exact-match miss there means the posting genuinely isn't on that
+// board — there's no useful "search page" to fall back to, and inventing
+// one would just be a guess.
+function fallbackSearchUrl(discovered: DiscoveredAts, searchTitle: string): string | null {
   if (discovered.platform === "workday") {
     return `https://${discovered.tenant}.${discovered.wdInstance}.myworkdayjobs.com/${discovered.locale}/${discovered.board}?q=${encodeURIComponent(searchTitle)}`;
   }
-  return `https://${discovered.tenant}.icims.com/jobs/search?ss=1&searchKeyword=${encodeURIComponent(searchTitle)}`;
+  if (discovered.platform === "icims") {
+    return `https://${discovered.tenant}.icims.com/jobs/search?ss=1&searchKeyword=${encodeURIComponent(searchTitle)}`;
+  }
+  return null;
 }
 
 export type DiscoveredAtsResult = { jobs: NormalizedJob[]; fallbackSearchUrl: string | null };
@@ -353,25 +408,14 @@ export type DiscoveredAtsResult = { jobs: NormalizedJob[]; fallbackSearchUrl: st
 // Entry point: given a real company domain (NOT a guessed slug — see
 // lib/applyLinkTrust.ts's extractLikelyLogoDomain, which resolves one from
 // a job's own already-employer-classified apply link), discover and query
-// whichever of Workday/iCIMS that company actually uses. Returns an empty
-// result and never throws if neither is detected — a normal, expected
-// outcome for most companies, not an error.
+// whichever ATS that company actually uses. Returns an empty result and
+// never throws if none is detected — a normal, expected outcome for most
+// companies, not an error.
 export async function fetchDiscoveredAtsJobs(domain: string, companyName: string, searchTitle: string): Promise<DiscoveredAtsResult> {
   const discovered = await discoverAtsFromDomain(domain);
   if (!discovered) return { jobs: [], fallbackSearchUrl: null };
 
-  const jobs =
-    discovered.platform === "workday"
-      ? await fetchWorkdayJobs(discovered, companyName, searchTitle)
-      : await fetchIcimsJobs(
-          discovered,
-          companyName,
-          searchTitle
-            .toLowerCase()
-            .split(/[^a-z0-9]+/)
-            .filter((w) => w.length > 2)
-        );
-
+  const jobs = await fetchRegisteredAtsJobs(discovered, companyName, searchTitle);
   return { jobs, fallbackSearchUrl: fallbackSearchUrl(discovered, searchTitle) };
 }
 

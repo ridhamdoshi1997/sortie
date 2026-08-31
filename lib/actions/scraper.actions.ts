@@ -5,6 +5,9 @@ import { getCurrentUser } from "@/lib/auth";
 import { inngest } from "@/lib/inngest/client";
 import { searchJobs, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
+import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
+import { extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
+import { createAdminDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
@@ -32,6 +35,94 @@ function fingerprint(title: string | undefined, company: string | undefined, loc
 }
 
 type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
+
+// How many distinct companies from a single search get polled directly.
+// Bounded because a first-time company costs a real ~2s discovery pass;
+// once cached in ats_registry that drops to ~100ms, so this ceiling is
+// about the worst case, not the steady state. Ordered by how many results
+// the company already has, so the biggest employers in a result set — the
+// ones a candidate is most likely to care about — are enriched first.
+const MAX_DIRECT_ATS_COMPANIES = 8;
+
+async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string): Promise<NormalizedJob[]> {
+    if (jobs.length === 0) return jobs;
+
+    const byCompany = new Map<string, { company: string; domain: string | null; count: number }>();
+    for (const job of jobs) {
+        if (!job.company) continue;
+        const key = job.company.toLowerCase().trim();
+        const existing = byCompany.get(key);
+        if (existing) {
+            existing.count++;
+            // Keep the first non-null domain we can derive — a job whose
+            // own apply link already resolves to the employer's real
+            // domain saves a guess entirely.
+            existing.domain = existing.domain ?? extractLikelyLogoDomain(job.applyUrl, job.company);
+        } else {
+            byCompany.set(key, {
+                company: job.company,
+                domain: extractLikelyLogoDomain(job.applyUrl, job.company),
+                count: 1,
+            });
+        }
+    }
+
+    const all = Array.from(byCompany.values());
+    if (all.length === 0) return jobs;
+
+    // Service-role client: ats_registry is server-derived reference data
+    // with RLS on and zero client policies (same posture as news_items),
+    // so the caller's own session client can't read or write it.
+    const db = createAdminDbClient() as unknown as Parameters<typeof fetchJobsForCompany>[0];
+
+    // Spend the polling budget on employers already KNOWN to have a real
+    // board first — those are instant (cached) and reliably yield direct
+    // links — then use whatever budget remains to discover a few new
+    // companies, which is how the registry grows itself over time.
+    // Sorting purely by result count was a real observed mistake: bulk
+    // aggregator rows crowded out TD, whose own Workday board had 20
+    // genuinely matching postings.
+    const { known } = await partitionByKnownAts(db, all.map((c) => c.company));
+    const isKnown = (c: { company: string }) => known.has(toCompanyKey(c.company));
+    const targets = [
+        ...all.filter(isKnown).sort((a, b) => b.count - a.count),
+        ...all.filter((c) => !isKnown(c)).sort((a, b) => b.count - a.count),
+    ].slice(0, MAX_DIRECT_ATS_COMPANIES);
+
+    const found = await Promise.all(
+        targets.map(async (t) => {
+            try {
+                return await fetchJobsForCompany(db, t.company, t.domain, searchTitle);
+            } catch {
+                // Enrichment is strictly additive — a failure here must
+                // never fail a search that already has real results.
+                return [] as NormalizedJob[];
+            }
+        })
+    );
+
+    const extra = found.flat();
+    if (extra.length === 0) return jobs;
+
+    // Same title+company dedup key the thin-results merge uses, so a job
+    // already present from SerpApi/Adzuna isn't duplicated by its own
+    // direct-ATS twin. Direct-ATS entries are appended AFTER the originals
+    // so an existing (already-scored, already-linked) job keeps its row.
+    const seen = new Set(
+        jobs.map((j) => `${(j.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(j.company ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}`)
+    );
+    const additions = extra.filter((j) => {
+        const key = `${(j.title ?? "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()}|${(j.company ?? "").toLowerCase().replace(/[^a-z0-9]/g, "")}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+
+    if (additions.length > 0) {
+        console.warn(`Direct-ATS enrichment added ${additions.length} job(s) from ${targets.length} company board(s).`);
+    }
+    return [...jobs, ...additions];
+}
 
 async function upsertScrapedJobs(
     insforge: InsforgeServerClient,
@@ -240,6 +331,18 @@ export async function scrapeAndEvaluateJobs(
         }
         throw err;
     }
+
+    // Direct-from-employer enrichment (2026-08-31). The cost-effective
+    // route to competitor-grade link quality: an employer's own ATS board
+    // is ground truth (a legitimate, specific link by construction, always
+    // current) and its public endpoints are FREE and unlimited — unlike
+    // every paid aggregator, and unlike TheirStack, which is on a finite
+    // 200-credit allowance here and stays reserved for real emergencies.
+    // The companies to poll come from the search results we already have,
+    // and lib/atsRegistry.ts caches which ATS each one uses globally, so
+    // the discovery cost is paid once per company ever (measured: ~2s
+    // first time, ~100ms cached) rather than once per search.
+    rawJobs = await enrichWithDirectAtsJobs(rawJobs, title);
 
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
