@@ -45,6 +45,28 @@ const TIER1_SAFE_AGGREGATOR_HOSTS = [
   "eluta.ca",
   "jobboom.com",
   "careerbeacon.com",
+  // Added 2026-08-30 after a real measurement pass found legitimate,
+  // well-known boards landing in the "unverified" bucket — a
+  // classification gap, not a link-quality problem. Every one of these is
+  // already trusted elsewhere in this codebase: extension/README.md's
+  // capture support covers Built In, We Work Remotely, RemoteOK, Dice and
+  // Monster as first-class sources with real per-site extractors, so
+  // treating the same domains as unknown here was an internal
+  // contradiction. Flagging them "unverified" also wasted repair attempts
+  // on links that were never broken.
+  "builtin.com",
+  "builtintoronto.com",
+  "builtinnyc.com",
+  "builtinchicago.org",
+  "weworkremotely.com",
+  "remoteok.com",
+  "remoteok.io",
+  "dice.com",
+  "monster.com",
+  "monster.ca",
+  "wellfound.com",
+  "welcometothejungle.com",
+  "otta.com",
 ];
 
 // Known high-volume, low-curation scrapers/redirect engines — real,
