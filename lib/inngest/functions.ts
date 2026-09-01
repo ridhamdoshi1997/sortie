@@ -5,7 +5,7 @@ import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
-import { classifyApplyHost } from "@/lib/applyLinkTrust";
+import { classifyApplyHost, isLinkedInHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import type { Profile, WorkExperience } from "@/types";
 
@@ -369,6 +369,33 @@ export const evaluateJobsAsync = inngest.createFunction(
                                     }, { freeOnly: matchScore < EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD });
                                 } catch (err) {
                                     console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
+                                }
+
+                                // "Genuine portal or LinkedIn, nothing else"
+                                // (direct user request, 2026-08-31) — the
+                                // above resolution attempts are best-effort
+                                // and free-tier-only for most jobs; if the
+                                // link STILL isn't the employer's own
+                                // domain/ATS or LinkedIn specifically after
+                                // trying, this job no longer meets the bar
+                                // and is hidden rather than shown on an
+                                // Indeed/Glassdoor/ZipRecruiter/etc. link.
+                                // Re-fetches rather than trusts the pre-
+                                // resolution `currentTrust` computed above —
+                                // reresolveApplyLinkForJob may have just
+                                // updated external_apply_url in the DB and
+                                // returns void, not the new value.
+                                const { data: refetched } = await admin.database
+                                    .from("jobs")
+                                    .select("external_apply_url")
+                                    .eq("id", job.id)
+                                    .maybeSingle<{ external_apply_url: string | null }>();
+                                const finalUrl = refetched?.external_apply_url ?? job.external_apply_url;
+                                const finalTrust = finalUrl ? classifyApplyHost(finalUrl, job.company) : "unverified";
+                                const isLinkedIn = finalUrl ? isLinkedInHost(finalUrl) : false;
+                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || (finalTrust === "aggregator" && isLinkedIn);
+                                if (!meetsGenuineBar) {
+                                    await admin.database.from("jobs").update({ is_hidden: true }).eq("id", job.id);
                                 }
                             }
                         }

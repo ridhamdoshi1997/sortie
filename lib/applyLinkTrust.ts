@@ -257,6 +257,17 @@ function atsTenantMatchesCompany(tenants: string[], company: string): boolean {
   });
 }
 
+// "Genuine portal or LinkedIn, nothing else" (direct user request,
+// 2026-08-31) — every other Tier-1 aggregator (Indeed, Glassdoor,
+// ZipRecruiter, etc.) is still SAFE (no scam risk), just no longer
+// acceptable as this app's final state for a listed job; only LinkedIn is
+// carved out as an aggregator exception. See the hard-hide gate in
+// lib/inngest/functions.ts's persist-chunk step for where this is enforced.
+export function isLinkedInHost(rawUrl: string): boolean {
+  const host = normalizedHost(rawUrl);
+  return host !== null && hostMatches(host, ["linkedin.com"]);
+}
+
 export function classifyApplyHost(rawUrl: string, company?: string | null): ApplyLinkTrust {
   const host = normalizedHost(rawUrl);
   if (!host) return "unverified";

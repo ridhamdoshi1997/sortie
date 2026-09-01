@@ -8,6 +8,8 @@ import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
 import { preFilterJob } from "@/lib/jobPreFilter";
+import { rankJobsByRelevance } from "@/lib/jobRelevance";
+import type { Profile } from "@/types";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
 import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
@@ -34,6 +36,13 @@ const MAX_DIRECT_ATS_COMPANIES = 8;
 // Toronto = 79) — the volume the evaluation pipeline was actually tuned
 // and timed for.
 const MAX_EVALUATED_JOBS = 80;
+
+// Matches the research-settled "top 15-20" figure for a relevance
+// pre-filter — see rankJobsByRelevance's own use site comment. Only
+// changes evaluation ORDER when a search has more not-yet-scored jobs
+// than this; below the threshold, everything just gets evaluated as
+// before.
+const RELEVANCE_TOP_N = 20;
 
 async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string, searchLocation: string): Promise<NormalizedJob[]> {
     if (jobs.length === 0) return jobs;
@@ -206,8 +215,37 @@ async function evaluateWithinQuota(
     // already have a real score.
     const needsEvaluation = passesPreFilter.filter((job) => job.match_score === null || job.match_score === undefined);
 
+    // Relevance pre-filter (2026-08-31 research day) — when a search
+    // returns more not-yet-scored jobs than this, prioritize the ones most
+    // relevant to the candidate's own real skills/desired titles first,
+    // using the full-text search infrastructure already built for global
+    // search (lib/jobRelevance.ts) instead of an embeddings API. Jobs
+    // beyond RELEVANCE_TOP_N still get saved and are still evaluable
+    // later (a future search, a manual "Score this job" click) — this
+    // only decides evaluation ORDER when there's more supply than a
+    // single search's evaluation budget, it never permanently excludes a
+    // job the way the Phase 2 pre-filter's is_hidden does.
+    let orderedForEvaluation = needsEvaluation;
+    if (needsEvaluation.length > RELEVANCE_TOP_N) {
+        const { data: profileForRelevance } = await insforge.database
+            .from("profiles")
+            .select("skills,job_titles_seeking")
+            .eq("id", userId)
+            .maybeSingle<Pick<Profile, "skills" | "job_titles_seeking">>();
+
+        if (profileForRelevance) {
+            const rankedIds = await rankJobsByRelevance(
+                insforge,
+                needsEvaluation.map((j) => j.id),
+                profileForRelevance,
+            );
+            const byId = new Map(needsEvaluation.map((j) => [j.id, j]));
+            orderedForEvaluation = rankedIds.map((id) => byId.get(id)).filter((j): j is (typeof needsEvaluation)[number] => Boolean(j));
+        }
+    }
+
     const evaluableJobIds: string[] = [];
-    for (const job of needsEvaluation) {
+    for (const job of orderedForEvaluation) {
         const evalCheck = await checkJobEvaluationLimit(insforge, userId, userEmail);
         if (!evalCheck.allowed) break;
         evaluableJobIds.push(job.id);
