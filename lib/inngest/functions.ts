@@ -248,6 +248,67 @@ export const evaluateJobsAsync = inngest.createFunction(
                         const legitimacyGrade = evalResult?.dimensions.find((d) => d.dimension === "Legitimacy")?.grade;
                         const failsLegitimacy = legitimacyGrade === "D" || legitimacyGrade === "F";
 
+                        // Real bug found live (2026-09-01, direct user
+                        // report — a screenshot showed a job with a
+                        // "Third-party source" warning that the DB already
+                        // showed had a genuine, real Workday link):
+                        // re-resolution used to run AFTER match_score was
+                        // already written to the DB, as a SEPARATE later
+                        // update. The client's polling stops as soon as
+                        // every watched job has a non-null match_score —
+                        // if that poll landed in the window between "score
+                        // written" and "re-resolution/hide finished" (a
+                        // real, observed race, not theoretical), the
+                        // client froze on the stale not-yet-resolved link
+                        // forever, since nothing ever polls again after
+                        // stopping. Fixed by moving resolution BEFORE the
+                        // main write and folding its result into the SAME
+                        // single update the client's poll condition is
+                        // keyed on — there is no longer an in-between state
+                        // for a poll to ever observe.
+                        let finalApplyUrl = job.external_apply_url;
+                        let failsGenuineLinkBar = false;
+                        const preResolveMatchScore = evalResult?.matchScore ?? 0;
+                        if (job.external_apply_url) {
+                            const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
+                            const needsResolution =
+                                currentTrust === "low_quality" ||
+                                currentTrust === "unverified" ||
+                                currentTrust === "aggregator" ||
+                                (currentTrust === "employer" &&
+                                    !looksLikeSpecificJobPosting(job.external_apply_url));
+                            if (needsResolution) {
+                                try {
+                                    await reresolveApplyLinkForJob(admin, {
+                                        id: job.id,
+                                        title: job.title,
+                                        company: job.company,
+                                        location: job.location,
+                                        external_apply_url: job.external_apply_url,
+                                        raw_apply_options: job.raw_apply_options,
+                                    }, { freeOnly: preResolveMatchScore < EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD });
+                                } catch (err) {
+                                    console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
+                                }
+
+                                // "Genuine portal or LinkedIn, nothing else"
+                                // (direct user request, 2026-08-31) —
+                                // reresolveApplyLinkForJob writes directly
+                                // and returns void, so its result has to be
+                                // re-read rather than returned.
+                                const { data: refetched } = await admin.database
+                                    .from("jobs")
+                                    .select("external_apply_url")
+                                    .eq("id", job.id)
+                                    .maybeSingle<{ external_apply_url: string | null }>();
+                                finalApplyUrl = refetched?.external_apply_url ?? job.external_apply_url;
+                                const finalTrust = finalApplyUrl ? classifyApplyHost(finalApplyUrl, job.company) : "unverified";
+                                const isLinkedIn = finalApplyUrl ? isLinkedInHost(finalApplyUrl) : false;
+                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || (finalTrust === "aggregator" && isLinkedIn);
+                                failsGenuineLinkBar = !meetsGenuineBar;
+                            }
+                        }
+
                         // Capture the error from the database update
                         const { error: updateError } = await admin.database
                             .from("jobs")
@@ -294,110 +355,26 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 ...(job.company_logo_url || !evalResult?.companyDomain
                                     ? {}
                                     : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
-                                ...(failsLegitimacy ? { is_hidden: true } : {}),
+                                // Only ever SETS is_hidden true, never
+                                // explicitly false — a job could already be
+                                // hidden for an unrelated reason (user
+                                // action, the Phase 2 pre-filter), and this
+                                // write must never silently un-hide one.
+                                // Combines BOTH hide reasons (AI legitimacy
+                                // grade, apply-link genuineness) into this
+                                // SAME write specifically so there is no
+                                // window where match_score is visible to a
+                                // client poll before the link check has
+                                // landed — see this loop's own comment above
+                                // for the real race this closes.
+                                ...(failsLegitimacy || failsGenuineLinkBar ? { is_hidden: true } : {}),
+                                ...(finalApplyUrl !== job.external_apply_url ? { external_apply_url: finalApplyUrl } : {}),
                             })
                             .eq("id", job.id);
 
                         // Force a crash if the database rejects the save
                         if (updateError) {
                             throw new Error(`Database Update Failed for Job ${job.id}: ${updateError.message}`);
-                        }
-
-                        // Eager re-resolution for high-scoring jobs whose
-                        // stored apply link is a known low-quality mirror
-                        // (build-plan.md, direct user request 2026-08-30) —
-                        // front-loads the same fix the job-detail page's
-                        // lazy path already does, so a genuinely good match
-                        // often already has a real link by the time it shows
-                        // up in the list, not just after someone opens it.
-                        // Never blocks/fails the evaluation itself — a
-                        // re-resolution failure here is a soft miss, not a
-                        // reason to mark this whole batch as failed.
-                        // Same specificity gap fixed 2026-08-30 in
-                        // app/find-jobs/[id]/page.tsx's own gate applies
-                        // here too — a link on the employer's real domain
-                        // can still be a generic category/marketing page,
-                        // not the specific posting (real confirmed cases:
-                        // RBC, TD). Trust alone isn't enough.
-                        // "unverified" always re-triggers, regardless of
-                        // specificity, since 2026-08-30 — see the matching
-                        // comment in app/find-jobs/[id]/page.tsx's own gate.
-                        // Score gate now decides HOW HARD to try, not
-                        // whether to try at all (changed 2026-08-30, direct
-                        // user request to fix future searches, not just the
-                        // stored backlog). A live audit found only ~29% of
-                        // stored jobs linked straight to a real employer
-                        // posting, with ~29% on known low-quality mirrors —
-                        // the old "only bother for 70+ scores" rule left
-                        // every lower-scoring job carrying a bad link until
-                        // someone happened to open it. The first three
-                        // repair tiers (stored candidates, ATS board guess,
-                        // employer careers-page discovery) cost nothing, so
-                        // EVERY job now gets those; only the paid tiers
-                        // (SerpApi/Apify) stay gated behind the score, since
-                        // this project's SerpApi keys are free-tier and
-                        // shared with live user search.
-                        // "aggregator" (LinkedIn/Indeed/etc) is included too,
-                        // since 2026-08-30. A live measurement of a real
-                        // search with every other fix active found 48% of
-                        // results landing on a major job board — safe, but
-                        // not the employer's own posting. Those were never
-                        // retried before, because the gate only ever fired
-                        // on genuinely BAD links. The three repair tiers are
-                        // free, and reresolveApplyLinkForJob only ever swaps
-                        // up to an "ats"/"employer" destination, so trying
-                        // here can improve an aggregator link but never
-                        // degrade one.
-                        const matchScore = evalResult?.matchScore ?? 0;
-                        if (job.external_apply_url) {
-                            const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
-                            const needsResolution =
-                                currentTrust === "low_quality" ||
-                                currentTrust === "unverified" ||
-                                currentTrust === "aggregator" ||
-                                (currentTrust === "employer" &&
-                                    !looksLikeSpecificJobPosting(job.external_apply_url));
-                            if (needsResolution) {
-                                try {
-                                    await reresolveApplyLinkForJob(admin, {
-                                        id: job.id,
-                                        title: job.title,
-                                        company: job.company,
-                                        location: job.location,
-                                        external_apply_url: job.external_apply_url,
-                                        raw_apply_options: job.raw_apply_options,
-                                    }, { freeOnly: matchScore < EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD });
-                                } catch (err) {
-                                    console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
-                                }
-
-                                // "Genuine portal or LinkedIn, nothing else"
-                                // (direct user request, 2026-08-31) — the
-                                // above resolution attempts are best-effort
-                                // and free-tier-only for most jobs; if the
-                                // link STILL isn't the employer's own
-                                // domain/ATS or LinkedIn specifically after
-                                // trying, this job no longer meets the bar
-                                // and is hidden rather than shown on an
-                                // Indeed/Glassdoor/ZipRecruiter/etc. link.
-                                // Re-fetches rather than trusts the pre-
-                                // resolution `currentTrust` computed above —
-                                // reresolveApplyLinkForJob may have just
-                                // updated external_apply_url in the DB and
-                                // returns void, not the new value.
-                                const { data: refetched } = await admin.database
-                                    .from("jobs")
-                                    .select("external_apply_url")
-                                    .eq("id", job.id)
-                                    .maybeSingle<{ external_apply_url: string | null }>();
-                                const finalUrl = refetched?.external_apply_url ?? job.external_apply_url;
-                                const finalTrust = finalUrl ? classifyApplyHost(finalUrl, job.company) : "unverified";
-                                const isLinkedIn = finalUrl ? isLinkedInHost(finalUrl) : false;
-                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || (finalTrust === "aggregator" && isLinkedIn);
-                                if (!meetsGenuineBar) {
-                                    await admin.database.from("jobs").update({ is_hidden: true }).eq("id", job.id);
-                                }
-                            }
                         }
                     }
                 });
