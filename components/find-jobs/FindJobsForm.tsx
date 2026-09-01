@@ -64,6 +64,44 @@ export function FindJobsForm({
     }, [lastRunAt]);
 
     const router = useRouter();
+
+    // Real, documented Next.js 16 behavior, not a bug in this app's own
+    // code (confirmed against node_modules/next/dist/docs/01-app/
+    // 04-glossary.md's own Client Cache entry, 2026-09-01, after two prior
+    // sessions treated this as unsolved): "Pages are not cached by default
+    // but are reused during browser back/forward navigation" — pressing
+    // Back always shows whatever this page rendered before the user left
+    // it, regardless of staleTimes or any other cache-freshness config,
+    // specifically to preserve scroll position. popstate fires reliably on
+    // real back/forward navigation independent of whether this component
+    // instance itself remounts (the whole point of the cache is that it
+    // often doesn't), so it's the one signal that actually correlates with
+    // this exact symptom — a mount-only effect isn't guaranteed to re-fire
+    // here. router.refresh() re-executes this page's Server Component and
+    // delivers a fresh `initialJobs` prop; the effect below is what
+    // actually gets that fresh prop back into visible state, since
+    // useState(initialJobs) only reads its initializer once and does not
+    // react to later prop changes on its own.
+    useEffect(() => {
+        const handlePopState = () => router.refresh();
+        window.addEventListener("popstate", handlePopState);
+        return () => window.removeEventListener("popstate", handlePopState);
+    }, [router]);
+
+    // Adjusted during render, not in an effect — this project's own
+    // react-hooks/set-state-in-effect rule (and React's own guidance:
+    // https://react.dev/learn/you-might-not-need-an-effect) treats
+    // "reset state when a prop changes" as a render-time concern, not an
+    // effect: comparing against the last-seen prop and calling setState
+    // synchronously here bails out before paint, avoiding the extra
+    // commit+effect+re-render an Effect-based version would cost.
+    const [lastInitialJobs, setLastInitialJobs] = useState(initialJobs);
+    if (initialJobs !== lastInitialJobs) {
+        setLastInitialJobs(initialJobs);
+        setJobs(initialJobs);
+        setJobIds(initialJobs.filter((job) => job.match_score === null).map((job) => job.id));
+    }
+
     const urlSearchParams = useSearchParams();
     // Initialized once from the URL on mount (shareable/bookmarkable filtered
     // searches, per agy's competitor research) — not kept in sync with
