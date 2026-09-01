@@ -83,6 +83,51 @@ export function sourcePriority(sourceType: string): number {
   return 10;
 }
 
+// Real production bug found live (2026-09-01, direct user report — a
+// search that should have found 33 distinct real jobs collapsed to just
+// 5): SerpApi's own `detected_extensions.posted_at` field is a human-
+// readable RELATIVE string ("7 days ago", "25 days ago", "Just posted"),
+// not a timestamp — passing it straight through to merge_job_source's
+// `p_posted_at` (a real `timestamptz` column) failed Postgres's own type
+// parser for every job whose posting used this format, which merge_
+// job_source's catch-and-return-null treated as a silent per-job failure,
+// not a hard error — 28 of 33 real, distinct jobs were dropped this way,
+// not merged/deduped as the "collision" log line misleadingly suggested.
+// Adzuna/TheirStack/Apify already provide real ISO timestamps, so this
+// only ever fires for SerpApi — but it's applied to every source here
+// (the one shared canonicalization entry point) rather than fixed
+// per-provider in jobScraper.ts, so a future provider with the same
+// relative-string quirk doesn't reintroduce this exact bug.
+function parsePostedAt(raw: string | null | undefined): string | null {
+  if (!raw) return null;
+
+  const direct = Date.parse(raw);
+  if (!Number.isNaN(direct)) return new Date(direct).toISOString();
+
+  const relative = raw.trim().toLowerCase();
+  if (/^(just posted|today|posted today)$/.test(relative)) return new Date().toISOString();
+
+  const match = relative.match(/^(\d+)\+?\s*(minute|hour|day|week|month)s?\s+ago$/);
+  if (match) {
+    const amount = Number(match[1]);
+    const unitMs: Record<string, number> = {
+      minute: 60_000,
+      hour: 3_600_000,
+      day: 86_400_000,
+      week: 604_800_000,
+      month: 2_592_000_000, // 30 days — approximate, matches this field's own "30+ days ago" imprecision
+    };
+    return new Date(Date.now() - amount * unitMs[match[2]]).toISOString();
+  }
+
+  // Never invent a date for a shape this doesn't recognize — extraction,
+  // not guessing, same rule the AI evaluator's own field extraction
+  // follows elsewhere in this codebase. null is a safe, honest value here
+  // (posted_at is nullable), unlike silently dropping the whole job the
+  // way an unhandled Postgres type error did.
+  return null;
+}
+
 export type CanonicalizeParams = {
   userId: string;
   runId: string | null;
@@ -110,10 +155,12 @@ type AdminDb = {
 // concurrent hits on the same real job, e.g. an ATS-enrichment result and
 // a SerpApi result for the same posting landing in the same search, would
 // otherwise race into creating two rows).
+export type CanonicalizeResult = { status: "merged"; job: Job } | { status: "error"; message: string; title: string | null };
+
 export async function canonicalizeJobSource(
   admin: AdminDb,
   { userId, runId, sourceType, job }: CanonicalizeParams,
-): Promise<Job | null> {
+): Promise<CanonicalizeResult> {
   const canonicalKey = buildCanonicalKey(job.company, job.title, job.location);
   const descriptionHash = computeDescriptionHash(job.description);
 
@@ -139,15 +186,14 @@ export async function canonicalizeJobSource(
     p_external_id: job.id ?? null,
     p_external_apply_url: job.applyUrl ?? null,
     p_raw_apply_options: job.rawApplyOptions ?? null,
-    p_posted_at: job.postedAt ?? null,
+    p_posted_at: parsePostedAt(job.postedAt),
     p_company_logo_url: job.logoUrl ?? null,
   });
 
   if (error) {
-    console.error("[jobCanonicalization] merge_job_source failed", sourceType, job.title, error.message);
-    return null;
+    return { status: "error", message: error.message, title: job.title ?? null };
   }
-  return data as Job;
+  return { status: "merged", job: data as Job };
 }
 
 // Runs a batch of raw scrape hits through canonicalization and returns the
@@ -156,6 +202,16 @@ export async function canonicalizeJobSource(
 // count IS the collision-rate signal worth watching; logged here rather
 // than wired into a metrics backend, matching this phase's deliberately
 // light-touch instrumentation).
+//
+// Real production bug found live (2026-09-01): a hard RPC error (the
+// parsePostedAt bug above, before it was fixed) used to be logged
+// per-job and then silently folded into the SAME "collision" count as a
+// genuine, correct dedup merge — a search that should have found 33
+// distinct real jobs collapsed to 5, and the log line ("28 collisions")
+// read as if dedup was just doing its job, not as the data-loss bug it
+// actually was. Failures and real collisions are now counted and logged
+// separately so this class of bug is never silently mistaken for normal
+// merging again.
 export async function canonicalizeJobSources(
   admin: AdminDb,
   userId: string,
@@ -167,14 +223,23 @@ export async function canonicalizeJobSources(
   );
 
   const byId = new Map<string, Job>();
-  for (const row of results) {
-    if (row) byId.set(row.id, row);
+  const failures: { title: string | null; message: string }[] = [];
+  for (const result of results) {
+    if (result.status === "merged") byId.set(result.job.id, result.job);
+    else failures.push({ title: result.title, message: result.message });
   }
 
-  const collisions = jobsBySourceType.length - byId.size;
-  if (collisions > 0) {
+  if (failures.length > 0) {
+    console.error(
+      `[jobCanonicalization] ${failures.length}/${jobsBySourceType.length} raw hits FAILED to canonicalize (real errors, jobs dropped, not deduped):`,
+      failures.slice(0, 5).map((f) => `"${f.title}": ${f.message}`),
+    );
+  }
+
+  const realCollisions = jobsBySourceType.length - failures.length - byId.size;
+  if (realCollisions > 0) {
     console.log(
-      `[jobCanonicalization] ${jobsBySourceType.length} raw hits merged into ${byId.size} canonical jobs (${collisions} collision(s))`,
+      `[jobCanonicalization] ${jobsBySourceType.length} raw hits merged into ${byId.size} canonical jobs (${realCollisions} genuine dedup collision(s), ${failures.length} error(s))`,
     );
   }
 
