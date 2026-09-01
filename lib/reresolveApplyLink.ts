@@ -331,7 +331,17 @@ export async function reresolveApplyLinkForJob(
     // and block a real, full attempt later.
     if (options?.freeOnly) return;
 
-    const results = await searchJobs(job.title, job.location ?? "", "ca");
+    // Real gap found live (2026-09-01, direct investigation after a
+    // "Financial Advisor"/Toronto search stayed low-volume even with the
+    // paid rescue running): this used to search by TITLE ALONE — the exact
+    // same query shape the original search already ran, so a company whose
+    // posting didn't surface in THAT batch was quite likely to be absent
+    // from an identical re-run too. Folding the company name into the
+    // query text (same free-text `q` param a real person would type into
+    // Google Jobs, e.g. "software engineer RBC") biases the re-search
+    // toward the SPECIFIC posting this job needs, not just more of the
+    // same generic results.
+    const results = await searchJobs(`${job.title} ${job.company}`, job.location ?? "", "ca");
     const match = results.find((r) => companiesMatch(r.company, job.company as string));
 
     if (
@@ -378,4 +388,209 @@ export async function reresolveApplyLinkForJob(
   } catch (error) {
     console.error("[reresolveApplyLink] search failed", job.id, error);
   }
+}
+
+function needsLinkResolution(applyUrl: string, company: string | null | undefined): boolean {
+  const trust = classifyApplyHost(applyUrl, company);
+  return (
+    trust === "low_quality" ||
+    trust === "unverified" ||
+    trust === "aggregator" ||
+    (trust === "employer" && !looksLikeSpecificJobPosting(applyUrl))
+  );
+}
+
+// "Genuine employer/ATS link, or a trusted major board — nothing else."
+// Same bar Phase 38 originally enforced INSIDE the AI evaluation step.
+// "aggregator" means classifyApplyHost's TIER1_SAFE_AGGREGATOR_HOSTS list
+// (LinkedIn, Indeed, Glassdoor, ZipRecruiter, CareerBuilder, government job
+// banks, etc — see applyLinkTrust.ts's own comment); only
+// "low_quality"/"unverified" fail.
+export function meetsGenuineLinkBar(applyUrl: string | null, company: string | null | undefined): boolean {
+  if (!applyUrl) return false;
+  const trust = classifyApplyHost(applyUrl, company);
+  return trust === "ats" || trust === "employer" || trust === "aggregator";
+}
+
+// Real, direct correction (2026-09-01, direct user feedback) to this
+// function's own history the SAME session: it originally hard-hid any job
+// the free tier couldn't fix — live-tested and found a real 51->16
+// visible-job collapse on "Financial Advisor"/Toronto (root cause: Adzuna,
+// added the same session specifically to boost volume, redirects through
+// adzuna.ca, which the three free tiers usually can't fix for a company not
+// on Greenhouse/Lever/Ashby/SmartRecruiters). The first fix moved the paid-
+// tier rescue back to AFTER a match score existed, gated on score >= 70 —
+// but that's a DIFFERENT, worse bug: a job's authenticity has nothing to do
+// with how well it fits one candidate's profile. A candidate searching
+// outside their usual lane (a developer browsing Financial Advisor roles,
+// someone exploring a career change) would see real, official postings
+// disappear purely because they scored low for THEM — genuine listings
+// were being hidden as if they were fake. Confirmed live: 26 of 27 scored
+// jobs on that exact search landed at 20/100 (the candidate's profile was a
+// software developer's), and every one of them lost its shot at the paid
+// rescue and got hidden — not because the postings were fake, but because
+// they were a poor fit.
+//
+// The correct fix: authenticity (this function) and fit (the AI score) are
+// orthogonal, and only authenticity should ever gate visibility. So the
+// paid rescue now runs HERE, unconditionally, for every job the free tier
+// couldn't fix — no score exists yet at this point in the pipeline, and
+// none is needed anymore. PAID_RESCUE_CAP bounds it instead — a blunter
+// lever, but one that doesn't discriminate against a legitimate posting
+// for being a bad fit. Logged when hit so a capped search is visible in
+// output, not silently truncated.
+//
+// Real, direct correction (2026-09-01, same day, caught by the user asking
+// a sharp follow-up question — "till yesterday only 2 keys exhausted, what
+// about the 3rd?"): the original 30 here was picked as "bounded" without
+// actually checking this project's real SerpApi budget. Checked live via
+// SerpApi's own account.json: 3 accounts, 250 searches/MONTH each, 750/month
+// combined — and BEFORE this rescue mechanism existed, a search cost
+// roughly ONE SerpApi call. Each rescued job here is its own real
+// searchJobs() call (see reresolveApplyLinkForJob's paid tier below), so a
+// cap of 30 meant a single search could cost up to 31 calls — over 4% of
+// the ENTIRE MONTHLY budget in one search. That is very likely what
+// finished off the third account through ordinary heavy testing THE SAME
+// DAY, independent of the separate "unlimited for admin" mistake this
+// session already reverted. 5 keeps the real fix (authenticity no longer
+// score-gated) while capping worst-case spend at 6 calls/search — ~125
+// searches/month if every single one maxed the cap, a sane ceiling against
+// a 750/month budget instead of a ~24/month one.
+//
+// NOT bypassed for admin/owner/testing accounts — a real, live-tested
+// mistake this same session (direct user request to remove it, then a
+// direct live finding that reverted it): every OTHER cap in this pipeline
+// (MAX_EVALUATED_JOBS, the daily quota functions) protects a PER-USER
+// allowance, so exempting admin from those is free — it only affects what
+// that one account sees. This cap protects a SHARED, finite resource
+// instead: this project runs on 3 real SerpApi accounts, the same ones
+// every user's live search depends on. Removing the cap for one account
+// burned through 2 of the 3 keys in a single search (confirmed live via
+// Vercel logs: "SerpApi key 1/3 exhausted", "key 2/3 exhausted") — that's
+// not "no limitations for admin," that's admin testing breaking search for
+// every other user. A per-user exemption cannot apply to a shared-capacity
+// gate; the fix for wanting to see more here is raising this constant (or
+// adding more SerpApi accounts), not bypassing it by identity.
+const PAID_RESCUE_CAP = 5;
+
+// Phase 1 of the 3-phase redesign — "the moment jobs are canonicalized,
+// resolve/verify every job's apply link concurrently before anything
+// else." Runs ONCE per search, synchronously, before the search response
+// is ever revealed to the candidate — every visible job's link has already
+// been checked (free AND, when needed, paid) by the time it's on screen,
+// and a job still failing the genuine bar afterward is hidden here, before
+// any AI evaluation is ever spent on it.
+//
+// The free tiers run unthrottled (plain HTTP to ATS platforms/employer
+// domains, not an LLM call — no shared rate-limited key to protect). The
+// paid tier is a real, metered SerpApi search — same key pool live user
+// search itself uses — so it's bounded by PAID_RESCUE_CAP, not run
+// unbounded just because it's no longer score-gated.
+export async function verifyApplyLinksBeforeReveal<
+  T extends {
+    id: string;
+    title: string | null;
+    company: string | null;
+    location: string | null;
+    external_apply_url: string | null;
+    raw_apply_options?: unknown;
+  },
+>(insforge: InsforgeClient, jobs: T[]): Promise<{ hiddenIds: string[] }> {
+  const needsWork = jobs.filter(
+    (job) => job.external_apply_url && job.title && job.company && needsLinkResolution(job.external_apply_url, job.company),
+  );
+
+  if (needsWork.length > 0) {
+    await Promise.all(
+      needsWork.map((job) =>
+        reresolveApplyLinkForJob(insforge, job, { freeOnly: true }).catch((err) =>
+          console.error("[verifyApplyLinksBeforeReveal] free-tier resolve failed", job.id, err),
+        ),
+      ),
+    );
+  }
+
+  // Re-fetch every job that either needed resolution above, or never had a
+  // link in the first place — everything else already passed and needs no
+  // DB round-trip. Batched, not one .in() call over a potentially large id
+  // list — same PostgREST URL-length gotcha this codebase has already hit
+  // once live (see lib/inngest/functions.ts's own JOB_FETCH_BATCH_SIZE
+  // comment).
+  const toCheck = jobs.filter((job) => !job.external_apply_url || needsWork.some((w) => w.id === job.id));
+  if (toCheck.length === 0) return { hiddenIds: [] };
+
+  const ID_BATCH_SIZE = 50;
+  const refetched: { id: string; external_apply_url: string | null; company: string | null }[] = [];
+  for (let i = 0; i < toCheck.length; i += ID_BATCH_SIZE) {
+    const batchIds = toCheck.slice(i, i + ID_BATCH_SIZE).map((j) => j.id);
+    const { data } = await insforge.database
+      .from("jobs")
+      .select("id,external_apply_url,company")
+      .in("id", batchIds)
+      .returns<{ id: string; external_apply_url: string | null; company: string | null }[]>();
+    if (data) refetched.push(...data);
+  }
+  const byId = new Map(refetched.map((r) => [r.id, r]));
+
+  const stillFailing = toCheck.filter((job) => {
+    const current = byId.get(job.id);
+    return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company);
+  });
+
+  // Unconditional paid rescue, bounded only by PAID_RESCUE_CAP — see this
+  // module's own comment above for why score no longer gates this — and
+  // PAID_RESCUE_CAP's own comment for why this cap applies uniformly, with
+  // no admin/owner/testing exemption.
+  const toRescue = stillFailing.slice(0, PAID_RESCUE_CAP);
+  if (stillFailing.length > PAID_RESCUE_CAP) {
+    console.log(
+      `[verifyApplyLinksBeforeReveal] ${stillFailing.length} jobs still need a paid-tier link rescue, capped at ${PAID_RESCUE_CAP} for this search — the rest fall back to the hourly repairApplyLinksAsync cron (free tier only) and the per-view lazy resolver.`,
+    );
+  }
+  if (toRescue.length > 0) {
+    await Promise.all(
+      toRescue.map((job) =>
+        reresolveApplyLinkForJob(insforge, job, { freeOnly: false }).catch((err) =>
+          console.error("[verifyApplyLinksBeforeReveal] paid-tier rescue failed", job.id, err),
+        ),
+      ),
+    );
+  }
+
+  // Final check — only for jobs that just went through a rescue attempt;
+  // anything beyond the cap (or that never needed rescue) already has its
+  // answer from `stillFailing`/the original pass-through.
+  const rescuedIds = new Set(toRescue.map((j) => j.id));
+  const finalRefetched: { id: string; external_apply_url: string | null; company: string | null }[] = [];
+  for (let i = 0; i < toRescue.length; i += ID_BATCH_SIZE) {
+    const batchIds = toRescue.slice(i, i + ID_BATCH_SIZE).map((j) => j.id);
+    const { data } = await insforge.database
+      .from("jobs")
+      .select("id,external_apply_url,company")
+      .in("id", batchIds)
+      .returns<{ id: string; external_apply_url: string | null; company: string | null }[]>();
+    if (data) finalRefetched.push(...data);
+  }
+  const finalById = new Map(finalRefetched.map((r) => [r.id, r]));
+
+  const hiddenIds = stillFailing
+    .filter((job) => {
+      if (!rescuedIds.has(job.id)) return true; // capped out — still failing, no further check needed
+      const current = finalById.get(job.id);
+      return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company);
+    })
+    .map((job) => job.id);
+
+  if (hiddenIds.length > 0) {
+    // Only ever SETS is_hidden true — matches every other hide-write in
+    // this codebase. A job could already be hidden for an unrelated reason
+    // (a user action); this must never un-hide one.
+    for (let i = 0; i < hiddenIds.length; i += ID_BATCH_SIZE) {
+      const batchIds = hiddenIds.slice(i, i + ID_BATCH_SIZE);
+      const { error } = await insforge.database.from("jobs").update({ is_hidden: true }).in("id", batchIds);
+      if (error) console.error("[verifyApplyLinksBeforeReveal] hide write failed", error);
+    }
+  }
+
+  return { hiddenIds };
 }

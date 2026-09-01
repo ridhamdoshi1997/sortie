@@ -1,24 +1,22 @@
 import { inngest } from "./client";
 import { resolveModelForUser } from "@/lib/subscription";
-import { evaluateJobCompatibility, type SkillCorrection, type EvaluationJob, type JobEvaluationResult } from "@/lib/evaluator";
+import {
+    evaluateJobCompatibility,
+    evaluateJobCompatibilityLite,
+    type SkillCorrection,
+    type EvaluationJob,
+    type JobEvaluationResult,
+    type LiteEvaluationResult,
+    type EvaluationGrade,
+} from "@/lib/evaluator";
 import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
+import { crawlKnownAtsCompanies } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
-
-// Real-money threshold, not arbitrary: reresolveApplyLinkForJob's search
-// fallback calls real, metered SerpApi search (lib/jobScraper.ts's
-// searchJobs, ~2.5 cents/call per ai_cost_rates) — running it for every
-// scraped job regardless of quality would multiply spend across this app's
-// entire scrape volume. 70 is the same "genuinely worth the candidate's
-// attention" bar the rest of the app already treats as a real match (see
-// scoreTierClass in JobResultCard.tsx). Below it, the existing lazy,
-// per-view resolution (app/find-jobs/[id]/page.tsx) is the only path — free
-// in the common case where nobody ever opens that specific job.
-const EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD = 70;
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
     return Array.from({ length: Math.ceil(arr.length / size) }, (_, i) =>
@@ -66,6 +64,20 @@ type EvaluateJobChunkEventData = {
     tier: ModelTier;
     corrections: SkillCorrection[];
     throttleKey: string;
+    // "lite" (Phase 2 of the 3-phase redesign, 2026-09-01) is what every
+    // search/scan/backlog evaluation actually runs now — score + one-line
+    // reasoning + matched/missing skills + Legitimacy grade only, at a
+    // fraction of the input/output tokens the full 10-dimension pass costs.
+    // "full" is the on-demand upgrade for a single job someone actually
+    // opens (see evaluateJobFullAsync below) — the original, full rubric.
+    mode: "lite" | "full";
+    // "full" mode only — the score this job was ALREADY given by its lite
+    // pass, so the full pass's own dimension write-ups stay consistent with
+    // it instead of silently deriving a different one (see
+    // buildPinnedVerdictHint's comment in lib/evaluator.ts for why this
+    // matters — a list/detail score mismatch was explicitly flagged as a
+    // trust-breaker by the research that validated this redesign).
+    pinnedVerdict?: { matchScore: number; overallGrade: EvaluationGrade };
 };
 
 export const evaluateJobChunk = inngest.createFunction(
@@ -76,9 +88,15 @@ export const evaluateJobChunk = inngest.createFunction(
         triggers: [{ event: "jobs/evaluate-chunk" }],
     },
     async ({ event }) => {
-        const { jobs, filters, profile, provider, tier, corrections } = event.data as EvaluateJobChunkEventData;
+        const { jobs, filters, profile, provider, tier, corrections, mode, pinnedVerdict } =
+            event.data as EvaluateJobChunkEventData;
 
-        const evaluations = await evaluateJobCompatibility(jobs, filters, profile, provider, corrections, tier);
+        if (mode === "full") {
+            const evaluations = await evaluateJobCompatibility(jobs, filters, profile, provider, corrections, tier, pinnedVerdict);
+            return { evaluations };
+        }
+
+        const evaluations = await evaluateJobCompatibilityLite(jobs, filters, profile, provider, corrections, tier);
         return { evaluations };
     },
 );
@@ -218,7 +236,13 @@ export const evaluateJobsAsync = inngest.createFunction(
                 // file's existing convention of casting event.data at the
                 // boundary (see `event.data as {...}` above) rather than
                 // fighting the Inngest SDK's generics for a cross-function
-                // invoke result.
+                // invoke result. mode: "lite" — Phase 2 of the 3-phase
+                // redesign (2026-09-01): this event only ever runs the
+                // cheap list-view pass now (score + one-liner + skills +
+                // Legitimacy grade). The full 10-dimension write-ups/JD
+                // extraction are a separate, on-demand call
+                // (evaluateJobFullAsync below), triggered only for a job
+                // someone actually opens.
                 const { evaluations } = (await step.invoke(`evaluate-chunk-${chunkIndex}`, {
                     function: evaluateJobChunk,
                     data: {
@@ -229,176 +253,75 @@ export const evaluateJobsAsync = inngest.createFunction(
                         tier,
                         corrections: (corrections ?? []) as SkillCorrection[],
                         throttleKey: `${provider}:${tier}`,
+                        mode: "lite",
                     },
-                })) as { evaluations: JobEvaluationResult[] };
+                })) as { evaluations: LiteEvaluationResult[] };
 
                 await step.run(`persist-chunk-${chunkIndex}`, async () => {
-                    // Real latency regression found live (2026-09-01): this
-                    // used to be a sequential `for` loop, so job 2's own
-                    // link-check couldn't even start until job 1's entire
-                    // resolution pipeline (several real, sequential network
-                    // calls — Greenhouse/Ashby/Lever guesses, sometimes a
-                    // paid search) had fully finished — confirmed live, a
-                    // 27-job search sat at 1 scored after 75 seconds. Each
-                    // job's own write is already fully independent (only
-                    // ever touches its own row), so there's no correctness
-                    // reason for them to run one at a time — Promise.all
-                    // runs all 5 jobs in this chunk concurrently instead,
-                    // roughly a 5x speedup bounded by the slowest single
-                    // job's resolution rather than the sum of all 5.
+                    // Apply-link authenticity (free AND paid-tier rescue)
+                    // is now decided ENTIRELY upfront, in
+                    // verifyApplyLinksBeforeReveal (lib/reresolveApplyLink.ts),
+                    // synchronously in scraper.actions.ts before this job
+                    // was ever queued for evaluation — a job still failing
+                    // the genuine-link bar after that never reaches this
+                    // step at all. Direct correction (2026-09-01, same
+                    // session): an earlier version of this file gated the
+                    // paid rescue on THIS lite score, which made a real
+                    // posting's visibility depend on how well it happened
+                    // to fit one candidate's profile — a developer
+                    // searching "Financial Advisor" would score everything
+                    // low and lose real, official postings that a
+                    // finance-background candidate would have kept. That's
+                    // backwards: authenticity and fit are orthogonal, and
+                    // only authenticity should ever decide visibility. See
+                    // verifyApplyLinksBeforeReveal's own comment for the
+                    // full account.
+                    //
+                    // Jobs in a chunk are independent (each only ever
+                    // touches its own row), so Promise.all runs every
+                    // write in this chunk concurrently rather than one at
+                    // a time.
                     await Promise.all(chunk.map(async (job) => {
                         const evalResult = evaluations.find((e) => e.id === job.id);
 
-                        // Phase 2 hard-hide (2026-08-31) — a D/F Legitimacy
-                        // grade used to just render a warning label under a
-                        // still-visible job; now it's hidden outright, the
-                        // same way the pre-filter hides obvious junk before
-                        // evaluation (lib/jobPreFilter.ts). Only ever SETS
-                        // is_hidden true here, never explicitly false — a
-                        // job could already be hidden for an unrelated
-                        // reason (user action, the pre-filter), and this
-                        // write must never silently un-hide one.
-                        const legitimacyGrade = evalResult?.dimensions.find((d) => d.dimension === "Legitimacy")?.grade;
-                        const failsLegitimacy = legitimacyGrade === "D" || legitimacyGrade === "F";
+                        // Phase 2 hard-hide (2026-08-31, unchanged by this
+                        // redesign) — a D/F Legitimacy grade hides the job
+                        // outright, same as the pre-filter hides obvious
+                        // junk before evaluation (lib/jobPreFilter.ts).
+                        // Only ever SETS is_hidden true, never explicitly
+                        // false — a job could already be hidden for an
+                        // unrelated reason (Phase 1's link gate, the
+                        // pre-filter, a user action), and this write must
+                        // never silently un-hide one.
+                        const failsLegitimacy = evalResult?.legitimacyGrade === "D" || evalResult?.legitimacyGrade === "F";
 
-                        // Real bug found live (2026-09-01, direct user
-                        // report — a screenshot showed a job with a
-                        // "Third-party source" warning that the DB already
-                        // showed had a genuine, real Workday link):
-                        // re-resolution used to run AFTER match_score was
-                        // already written to the DB, as a SEPARATE later
-                        // update. The client's polling stops as soon as
-                        // every watched job has a non-null match_score —
-                        // if that poll landed in the window between "score
-                        // written" and "re-resolution/hide finished" (a
-                        // real, observed race, not theoretical), the
-                        // client froze on the stale not-yet-resolved link
-                        // forever, since nothing ever polls again after
-                        // stopping. Fixed by moving resolution BEFORE the
-                        // main write and folding its result into the SAME
-                        // single update the client's poll condition is
-                        // keyed on — there is no longer an in-between state
-                        // for a poll to ever observe.
-                        let finalApplyUrl = job.external_apply_url;
-                        let failsGenuineLinkBar = false;
-                        const preResolveMatchScore = evalResult?.matchScore ?? 0;
-                        if (job.external_apply_url) {
-                            const currentTrust = classifyApplyHost(job.external_apply_url, job.company);
-                            const needsResolution =
-                                currentTrust === "low_quality" ||
-                                currentTrust === "unverified" ||
-                                currentTrust === "aggregator" ||
-                                (currentTrust === "employer" &&
-                                    !looksLikeSpecificJobPosting(job.external_apply_url));
-                            if (needsResolution) {
-                                try {
-                                    await reresolveApplyLinkForJob(admin, {
-                                        id: job.id,
-                                        title: job.title,
-                                        company: job.company,
-                                        location: job.location,
-                                        external_apply_url: job.external_apply_url,
-                                        raw_apply_options: job.raw_apply_options,
-                                    }, { freeOnly: preResolveMatchScore < EAGER_RERESOLVE_MATCH_SCORE_THRESHOLD });
-                                } catch (err) {
-                                    console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
-                                }
-
-                                // "Genuine portal or a trusted major board"
-                                // (widened 2026-09-01, direct user request —
-                                // narrowed too far to LinkedIn-only the same
-                                // day it shipped, which tanked visible
-                                // volume for no real authenticity gain).
-                                // "aggregator" here means classifyApplyHost's
-                                // TIER1_SAFE_AGGREGATOR_HOSTS list —
-                                // LinkedIn, Indeed, Glassdoor, ZipRecruiter,
-                                // CareerBuilder, government job banks, and a
-                                // handful of other real, moderated boards
-                                // with actual trust & safety teams (see that
-                                // list's own comment in applyLinkTrust.ts).
-                                // Only "low_quality" (BeBee, Jooble,
-                                // Workopolis, etc — real, confirmed mirror/
-                                // scam-adjacent domains) and "unverified"
-                                // still get hidden. reresolveApplyLinkForJob
-                                // writes directly and returns void, so its
-                                // result has to be re-read rather than
-                                // returned.
-                                const { data: refetched } = await admin.database
-                                    .from("jobs")
-                                    .select("external_apply_url")
-                                    .eq("id", job.id)
-                                    .maybeSingle<{ external_apply_url: string | null }>();
-                                finalApplyUrl = refetched?.external_apply_url ?? job.external_apply_url;
-                                const finalTrust = finalApplyUrl ? classifyApplyHost(finalApplyUrl, job.company) : "unverified";
-                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || finalTrust === "aggregator";
-                                failsGenuineLinkBar = !meetsGenuineBar;
-                            }
-                        }
-
-                        // Capture the error from the database update
                         const { error: updateError } = await admin.database
                             .from("jobs")
                             .update({
                                 // null (not 0) when evaluation genuinely
                                 // failed — a fabricated 0/60 read as a real
                                 // score to a candidate (confirmed live
-                                // 2026-08-31, see evaluateJobChunk's comment
-                                // above). null keeps this job in the same
-                                // honest "not scored yet" UI state as a job
-                                // that hasn't been evaluated at all.
+                                // 2026-08-31). null keeps this job in the
+                                // same honest "not scored yet" UI state as
+                                // a job that hasn't been evaluated at all.
                                 match_score: evalResult?.matchScore ?? null,
                                 match_reason: evalResult?.reasoning || null,
                                 matched_skills: evalResult?.matchedSkills || [],
                                 missing_skills: evalResult?.missingSkills || [],
-                                evaluation: evalResult?.dimensions ?? null,
                                 recommendation_score: evalResult?.recommendationScore ?? null,
                                 overall_grade: evalResult?.overallGrade ?? null,
-                                responsibilities: evalResult?.responsibilities || [],
-                                requirements: evalResult?.requirements || [],
-                                nice_to_have: evalResult?.niceToHave || [],
-                                benefits: evalResult?.benefits || [],
-                                about_role: evalResult?.aboutRole || null,
-                                hiring_process: evalResult?.hiringProcess || [],
-                                seniority_level: evalResult?.seniorityLevel || null,
-                                years_experience_required: evalResult?.yearsExperienceRequired || null,
-                                title_scope_mismatch: evalResult?.titleScopeMismatch ?? null,
-                                // Fallback only — never overwrite a real
-                                // structured salary already on the row
-                                // (e.g. from the scraper's own source data).
-                                ...(job.salary ? {} : { salary: evalResult?.salary || null }),
-                                // Fallback only — never overwrite a real
-                                // scraped thumbnail from SerpApi. Built from
-                                // the model's own knowledge of the company's
-                                // real domain (see companyDomain's comment in
-                                // evaluator.ts), not the old naive
-                                // lowercase-the-name guess — that guess is
-                                // what actually caused most missing/wrong
-                                // logos, confirmed live 2026-07-28. Source is
-                                // unavatar.io, not Clearbit — Clearbit's Logo
-                                // API turned out to be fully DNS-dead as of
-                                // 2026-07-28 (confirmed live), not
-                                // ad-blocker-blocked as first guessed.
-                                ...(job.company_logo_url || !evalResult?.companyDomain
-                                    ? {}
-                                    : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
-                                // Only ever SETS is_hidden true, never
-                                // explicitly false — a job could already be
-                                // hidden for an unrelated reason (user
-                                // action, the Phase 2 pre-filter), and this
-                                // write must never silently un-hide one.
-                                // Combines BOTH hide reasons (AI legitimacy
-                                // grade, apply-link genuineness) into this
-                                // SAME write specifically so there is no
-                                // window where match_score is visible to a
-                                // client poll before the link check has
-                                // landed — see this loop's own comment above
-                                // for the real race this closes.
-                                ...(failsLegitimacy || failsGenuineLinkBar ? { is_hidden: true } : {}),
-                                ...(finalApplyUrl !== job.external_apply_url ? { external_apply_url: finalApplyUrl } : {}),
+                                // evaluation (10-dimension write-ups) and
+                                // the JD-extraction fields deliberately
+                                // stay untouched here — a lite pass has
+                                // none of that yet. EvaluationBreakdown.tsx
+                                // already no-ops on an empty `evaluation`
+                                // array, and RequestFullEvaluationButton
+                                // (job-detail page) is what fills these in
+                                // on demand.
+                                ...(failsLegitimacy ? { is_hidden: true } : {}),
                             })
                             .eq("id", job.id);
 
-                        // Force a crash if the database rejects the save
                         if (updateError) {
                             throw new Error(`Database Update Failed for Job ${job.id}: ${updateError.message}`);
                         }
@@ -461,6 +384,112 @@ export const evaluateJobsAsync = inngest.createFunction(
 
         return { message: `Successfully evaluated ${rawJobs.length} jobs.` };
     }
+);
+
+// Phase 3 of the 3-phase redesign (2026-09-01, see context/RESUME.md's
+// "Next session, start here") — the on-demand full-rubric upgrade for a
+// single job someone actually opens. Triggered by actions/jobs.ts's
+// requestFullJobEvaluation, the same manual-button UX
+// RequestScoringButton.tsx already established for a never-scored job
+// (RequestFullEvaluationButton.tsx reuses that exact pattern for a
+// lite-scored-but-not-yet-full one).
+//
+// Deliberately NEVER writes match_score/recommendation_score/overall_grade/
+// matched_skills/missing_skills/match_reason — those are locked in at lite
+// time and stay immutable here ("score drift" — the research that
+// validated this redesign flagged an 85%-in-the-list/65%-on-open mismatch
+// as an instant trust-breaker). This call only ADDS the 10-dimension
+// write-ups and JD-extraction fields the lite pass never produced; the
+// pinnedVerdict passed to evaluateJobChunk keeps the model's own dimension
+// notes consistent with the score it isn't allowed to change.
+export const evaluateJobFullAsync = inngest.createFunction(
+    { id: "evaluate-job-full", name: "Full-rubric evaluation (on-demand)", triggers: [{ event: "jobs/evaluate-full" }] },
+    async ({ event, step }) => {
+        const { jobId, userId } = event.data as { jobId: string; userId: string };
+
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const { data: job } = await admin.database
+            .from("jobs")
+            .select("*")
+            .eq("id", jobId)
+            .maybeSingle();
+
+        if (!job) return { message: "Job not found — nothing to evaluate." };
+        // requestFullJobEvaluation already guards both of these before
+        // sending this event, but this function can be invoked directly
+        // (Inngest dashboard replay, a future caller), so it re-checks
+        // rather than trusting the sender.
+        if (job.match_score === null || job.match_score === undefined) {
+            return { message: "Job has no lite score yet — full evaluation needs one to pin against." };
+        }
+        if (Array.isArray(job.evaluation) && job.evaluation.length > 0) {
+            return { message: "Job already has a full evaluation — nothing to do." };
+        }
+
+        const { data: profile } = await admin.database
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle<Profile>();
+        if (!profile) return { message: `Profile not found for user ${userId}.` };
+
+        const { data: corrections } = await admin.database
+            .from("skill_corrections")
+            .select("role_family,skill,correction_type")
+            .eq("user_id", userId);
+
+        const { provider, tier } = await resolveModelForUser(admin, userId, profile.email, profile.preferred_model);
+
+        const { evaluations } = (await step.invoke("evaluate-full", {
+            function: evaluateJobChunk,
+            data: {
+                jobs: [job] as EvaluationJob[],
+                filters: {},
+                profile,
+                provider,
+                tier,
+                corrections: (corrections ?? []) as SkillCorrection[],
+                throttleKey: `${provider}:${tier}`,
+                mode: "full",
+                pinnedVerdict: { matchScore: job.match_score, overallGrade: (job.overall_grade ?? "C") as EvaluationGrade },
+            },
+        })) as { evaluations: JobEvaluationResult[] };
+
+        const evalResult = evaluations[0];
+        if (!evalResult) return { message: "Full evaluation failed — will need a manual retry." };
+
+        await step.run("persist-full-evaluation", async () => {
+            const { error } = await admin.database
+                .from("jobs")
+                .update({
+                    evaluation: evalResult.dimensions ?? null,
+                    responsibilities: evalResult.responsibilities || [],
+                    requirements: evalResult.requirements || [],
+                    nice_to_have: evalResult.niceToHave || [],
+                    benefits: evalResult.benefits || [],
+                    about_role: evalResult.aboutRole || null,
+                    hiring_process: evalResult.hiringProcess || [],
+                    seniority_level: evalResult.seniorityLevel || null,
+                    years_experience_required: evalResult.yearsExperienceRequired || null,
+                    title_scope_mismatch: evalResult.titleScopeMismatch ?? null,
+                    // Fallback only, same rule as the lite/full write in
+                    // evaluateJobsAsync — never overwrite a real structured
+                    // value already on the row.
+                    ...(job.salary ? {} : { salary: evalResult.salary || null }),
+                    ...(job.company_logo_url || !evalResult.companyDomain
+                        ? {}
+                        : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
+                })
+                .eq("id", jobId);
+            if (error) throw new Error(`Full evaluation persist failed for job ${jobId}: ${error.message}`);
+        });
+
+        return { message: `Full evaluation complete for job ${jobId}.` };
+    },
 );
 
 // §Q4c Always-warm résumé — fired from actions/accomplishments.ts's
@@ -1155,6 +1184,32 @@ export const repairApplyLinksAsync = inngest.createFunction(
         });
 
         return { message: `Repaired ${repaired} apply link${repaired === 1 ? "" : "s"}.` };
+    },
+);
+
+// Proactive ATS crawl (2026-09-01) — see
+// migrations/20260901120000_add-proactive-ats-crawl.sql and
+// lib/proactiveAtsCrawl.ts for the full rationale (short version: closes
+// the reactive-only gap RESUME.md's redesign flagged as the actual lever
+// for the volume gap against a funded competitor). Every 30 minutes, not
+// hourly like repairApplyLinksAsync — this only reads PUBLIC, unlimited ATS
+// endpoints (no SerpApi/paid quota at risk the way that cron's freeOnly
+// guard exists to protect), so there's no real cost pressure to space it
+// out further; ats_registry simply grows too slowly for a tighter interval
+// to matter much either.
+export const proactiveAtsCrawlAsync = inngest.createFunction(
+    { id: "proactive-ats-crawl", name: "Proactive ATS Crawl", triggers: [{ cron: "*/30 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("crawl-batch", () => crawlKnownAtsCompanies(admin));
+
+        return {
+            message: `Crawled ${result.companiesCrawled} compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
+        };
     },
 );
 

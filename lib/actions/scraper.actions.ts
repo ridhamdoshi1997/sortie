@@ -7,16 +7,18 @@ import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
+import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
 import { preFilterJob } from "@/lib/jobPreFilter";
 import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Profile } from "@/types";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
-import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
+import { looksLikeSpecificJobPosting, verifyApplyLinksBeforeReveal } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
+import { isAdminUser } from "@/lib/access";
 import { unstable_noStore as noStore } from 'next/cache';
 import { createClient } from '@insforge/sdk'; //
 
@@ -369,6 +371,29 @@ export async function scrapeAndEvaluateJobs(
     // first time, ~100ms cached) rather than once per search.
     rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
 
+    // Proactive-crawl cache supplement (2026-09-01) — the volume-gap fix
+    // RESUME.md's redesign flagged as the actual lever, not just "add more
+    // real-time aggregators": enrichWithDirectAtsJobs above can only poll a
+    // company THIS search's own SerpApi/Adzuna results already surfaced.
+    // This instead pulls whatever the background proactive crawl
+    // (lib/proactiveAtsCrawl.ts, lib/inngest/functions.ts's
+    // proactiveAtsCrawlAsync) has ALREADY cached for ANY company matching
+    // this search's title, regardless of whether it showed up in this
+    // particular aggregator batch. Free (no live HTTP call, no paid API) —
+    // the crawl already paid for it on its own schedule. Additive only,
+    // deduped below same as every other source; a failure here (RLS/DB
+    // hiccup) must never fail a search that already has real results.
+    try {
+        const admin = createAdminDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
+        const cached = await queryProactiveCrawlCache(admin, title, location);
+        if (cached.length > 0) {
+            console.log(`Proactive-crawl cache supplied ${cached.length} additional job(s).`);
+            rawJobs = [...rawJobs, ...cached];
+        }
+    } catch (error) {
+        console.warn("[scraper.actions] proactive-crawl cache lookup failed", error);
+    }
+
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
     let uniqueJobs = Array.from(uniqueJobsMap.values());
@@ -386,7 +411,14 @@ export async function scrapeAndEvaluateJobs(
     // specific employer/ATS link always survives the cut before a
     // major-board or low-quality one does, so trimming quantity doesn't
     // also trim the quality this session's other work just improved.
-    if (uniqueJobs.length > MAX_EVALUATED_JOBS) {
+    //
+    // Skipped entirely for admin/owner/testing accounts (direct request,
+    // 2026-09-01) — same isAdminUser allowlist every quota/rate-limit
+    // check in this codebase already exempts (checkAndConsumeUsage,
+    // checkJobEvaluationLimit, checkRateLimit), extended here to this cap
+    // too so testing the real, uncapped scope of a search isn't itself
+    // capped.
+    if (!isAdminUser(user?.email) && uniqueJobs.length > MAX_EVALUATED_JOBS) {
         const rank = (j: NormalizedJob) => {
             const trust = j.applyUrl ? classifyApplyHost(j.applyUrl, j.company) : "unverified";
             if (trust === "ats" || (trust === "employer" && j.applyUrl && looksLikeSpecificJobPosting(j.applyUrl))) return 0;
@@ -436,6 +468,20 @@ export async function scrapeAndEvaluateJobs(
         }
         throw new Error("Insforge upsert did not return any saved jobs.");
     }
+
+    // Phase 1 of the 3-phase redesign (2026-09-01, see
+    // context/RESUME.md's "Next session, start here"): resolve/verify every
+    // job's apply link — free tier for everything, paid-tier rescue
+    // (bounded, not score-gated — see verifyApplyLinksBeforeReveal's own
+    // comment for why authenticity must never depend on match score) for
+    // whatever the free tier can't fix — BEFORE anything is evaluated or
+    // revealed. Runs synchronously here so a job that still fails the
+    // genuine-link bar afterward is hidden and excluded from evaluation
+    // entirely, never spending AI quota on a job that's never going to be
+    // shown regardless of how well it scores.
+    const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, savedJobs);
+    const linkVerifiedJobs =
+        linkHiddenIds.length > 0 ? savedJobs.filter((job) => !linkHiddenIds.includes(job.id)) : savedJobs;
 
     if (runId) {
         await insforge.database.rpc("update_agent_run", {
@@ -490,17 +536,18 @@ export async function scrapeAndEvaluateJobs(
         }
     }
 
-    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, savedJobs, filters, runId);
+    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, linkVerifiedJobs, filters, runId);
 
     // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
     // the caller can track exactly this search's batch by id, rather than
     // re-matching by title/location text (which drops jobs whose title or
     // location is phrased differently than the search box, e.g. "Software
     // Engineer" vs "Software Developer", or "Markham, ON" vs "Toronto, ON").
-    // Excludes anything the pre-filter just hid — this search's own
-    // immediate response should already match what a fresh page load would
-    // show, not include a job that's about to be filtered out anyway.
-    return hiddenIds.length > 0 ? savedJobs.filter((job) => !hiddenIds.includes(job.id)) : savedJobs;
+    // Excludes anything Phase 1's link gate or the Phase 2 pre-filter just
+    // hid — this search's own immediate response should already match what
+    // a fresh page load would show, not include a job that's about to be
+    // filtered out anyway.
+    return linkVerifiedJobs.filter((job) => !hiddenIds.includes(job.id));
 }
 
 export type TargetCompanyRow = {

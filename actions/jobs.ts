@@ -1612,3 +1612,52 @@ export async function requestJobEvaluation(jobId: string): Promise<RequestJobEva
     return { success: false, error: "Failed to start scoring" };
   }
 }
+
+// Phase 3 of the 3-phase redesign (2026-09-01, see context/RESUME.md's
+// "Next session, start here") — every job now only ever gets the cheap
+// lite pass automatically (score/reasoning/skills/Legitimacy grade only).
+// This is the on-demand upgrade to the full 10-dimension write-up + JD
+// extraction, reusing the exact same manual-button UX
+// requestJobEvaluation/RequestScoringButton.tsx already established for a
+// never-scored job — RequestFullEvaluationButton.tsx is that same pattern
+// for a lite-scored-but-not-yet-full one. Spends one evaluation from the
+// same daily quota, same as requestJobEvaluation.
+export async function requestFullJobEvaluation(jobId: string): Promise<RequestJobEvaluationResult> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: job } = await insforge.database
+      .from("jobs")
+      .select("id,match_score,evaluation")
+      .eq("id", jobId)
+      .eq("user_id", user.id)
+      .maybeSingle<{ id: string; match_score: number | null; evaluation: unknown }>();
+
+    if (!job) {
+      return { success: false, error: "Job not found" };
+    }
+    if (job.match_score === null) {
+      return { success: false, error: "This job hasn't been scored yet — use \"Score this job\" first" };
+    }
+    if (Array.isArray(job.evaluation) && job.evaluation.length > 0) {
+      return { success: false, error: "This job already has a full evaluation" };
+    }
+
+    const evalCheck = await checkJobEvaluationLimit(insforge, user.id, user.email);
+    if (!evalCheck.allowed) {
+      return { success: false, error: evalCheck.error, reason: evalCheck.reason, resetsAt: evalCheck.resetsAt, canUpgrade: evalCheck.canUpgrade };
+    }
+
+    await inngest.send({
+      name: "jobs/evaluate-full",
+      data: { jobId, userId: user.id },
+    });
+
+    return { success: true };
+  } catch (error) {
+    console.error("[actions/jobs] requestFullJobEvaluation", error);
+    return { success: false, error: "Failed to start full evaluation" };
+  }
+}

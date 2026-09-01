@@ -9,6 +9,16 @@ import { Navbar } from "@/components/layout/Navbar";
 import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job, Profile } from "@/types";
 
+// Phase 1 of the 3-phase redesign (2026-09-01) made scrapeAndEvaluateJobs
+// (the Server Action FindJobsForm.tsx calls, running under this route's own
+// duration limit) do a real, synchronous, concurrent apply-link
+// verification pass across every job BEFORE returning — previously all the
+// synchronous work here was SerpApi + direct-ATS enrichment + canonicalization,
+// comfortably under a default 10-15s function timeout; the added link
+// checks for a full ~80-job search can run longer. 60s gives real headroom
+// without guessing at an exact number no live measurement has confirmed yet.
+export const maxDuration = 60;
+
 export default async function FindJobsPage() {
     // 1. Fetch the user server-side
     const user = await requireUser();

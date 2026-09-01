@@ -114,6 +114,40 @@ export async function resolveCanonicalLocation(
     return null;
 }
 
+// Real, structural bug found live (2026-09-01, direct user question — "I
+// need the same as SerpApi and others who cover the global market but not
+// limited to Canada and USA"): every call site of searchJobs() hardcoded
+// countryCode to "ca", regardless of what location the candidate actually
+// typed — meaning a search for "London, UK" or "Berlin, Germany" was
+// silently told to search CANADA (SerpApi's `gl` param AND, worse,
+// Adzuna's own per-country endpoint literally becomes
+// api.adzuna.com/v1/api/jobs/ca/search/..., the Canada-only Adzuna
+// database, for every search regardless of the real target country). This
+// isn't a missing-provider gap — SerpApi's google_jobs engine and Adzuna
+// both already support dozens of countries; the pipeline just never told
+// them which one. Resolved here via the SAME SerpApi Locations API
+// resolveCanonicalLocation already uses, which returns a real
+// `country_code` per result (confirmed live: "London" correctly resolves
+// to GB/CA/US depending on which London) — and confirmed live that this
+// endpoint does NOT consume search quota (it returned real data even
+// against a key already at 0/250 for the month), so this costs nothing
+// beyond one extra fetch per search.
+async function resolveCountryCodeForLocation(rawLocation: string, apiKey: string): Promise<string | null> {
+    const primaryCity = rawLocation.split(",")[0].trim();
+    if (!primaryCity) return null;
+    try {
+        const params = new URLSearchParams({ q: primaryCity, limit: "1", api_key: apiKey });
+        const response = await fetch(`https://serpapi.com/locations.json?${params.toString()}`);
+        const results = await response.json();
+        if (Array.isArray(results) && typeof results[0]?.country_code === "string") {
+            return (results[0].country_code as string).toLowerCase();
+        }
+    } catch (err) {
+        console.warn(`[jobScraper] country-code resolution failed for "${rawLocation}"`, err);
+    }
+    return null;
+}
+
 // SerpApi returns HTTP 200 + a `data.error` string for both "out of
 // searches this month" and unrelated issues (bad location, etc) — there's
 // no distinct status code to key off, so detect quota exhaustion by the
@@ -121,7 +155,15 @@ export async function resolveCanonicalLocation(
 // key; a real "no results for this query" shouldn't retry on a second key.
 function isQuotaExhaustedError(err: unknown): boolean {
     const message = err instanceof Error ? err.message : String(err);
-    return /run out of searches|out of searches|monthly limit|plan.*limit|429/i.test(message);
+    // Broadened 2026-09-01 for JSearch/OpenWeb Ninja's own real error
+    // phrasing (confirmed live: "You are not subscribed to this API",
+    // HTTP 403, before the user activated the API on their dashboard —
+    // and the same phrasing would recur if PAYG billing itself lapses).
+    // Folding "not subscribed"/402/403 into the SAME "treat as exhausted,
+    // try the next fallback tier" path is the safe choice either way: a
+    // genuinely mis-configured tier degrading gracefully to the next one
+    // is strictly better than it crashing the whole search.
+    return /run out of searches|out of searches|monthly limit|plan.*limit|not subscribed|quota|insufficient credit|429|402|403/i.test(message);
 }
 
 // SerpApi reports a genuine zero-match query as a `data.error` string
@@ -443,6 +485,113 @@ const theirstackProvider: JobScraperProvider = {
     },
 };
 
+// OpenWeb Ninja's JSearch API — a second, independent wrapper around the
+// SAME Google for Jobs index SerpApi's own google_jobs engine scrapes (its
+// own product page says so directly: "in Real-Time from Google for Jobs").
+// NOT run concurrently with SerpApi on every search (that would mean
+// paying its per-use PAYG cost on every healthy search for near-duplicate
+// data) — only reached as a fallback tier, same as TheirStack/Apify,
+// specifically so a SerpApi quota exhaustion (the real incident this
+// project hit live, 2026-09-01 — all 3 SerpApi accounts hit 0/250 for the
+// month) doesn't block search entirely until the monthly reset. Confirmed
+// live (2026-09-01, real test calls against a real trial key): genuine
+// global coverage (tested Toronto AND Berlin, correctly localized results
+// in each), and a real apply-link mix comparable to SerpApi/Adzuna's own
+// (several direct employer career-site links alongside trusted-aggregator
+// and known-low-quality-mirror links) — handled by the SAME
+// classifyApplyHost/rescue pipeline every other source already goes
+// through, no special-casing needed here.
+type JSearchJobResult = {
+    job_id: string;
+    job_title?: string;
+    employer_name?: string;
+    employer_logo?: string;
+    employer_website?: string;
+    job_description?: string;
+    job_apply_link?: string;
+    job_apply_is_direct?: boolean;
+    job_employment_type?: string;
+    job_city?: string;
+    job_state?: string;
+    job_country?: string;
+    job_is_remote?: boolean;
+    job_posted_at_datetime_utc?: string;
+    job_min_salary?: number;
+    job_max_salary?: number;
+    job_salary_currency?: string;
+};
+
+function getOpenWebNinjaApiKey(): string | null {
+    return process.env.OPENWEBNINJA_API_KEY || null;
+}
+
+function formatJSearchLocation(job: JSearchJobResult): string {
+    if (job.job_is_remote) return "Remote";
+    return [job.job_city, job.job_state].filter(Boolean).join(", ") || job.job_country || "";
+}
+
+function formatJSearchSalary(job: JSearchJobResult): string | undefined {
+    if (!job.job_min_salary && !job.job_max_salary) return undefined;
+    const currency = job.job_salary_currency ?? "";
+    if (job.job_min_salary && job.job_max_salary) {
+        return `${currency}${Math.round(job.job_min_salary)} - ${currency}${Math.round(job.job_max_salary)}`;
+    }
+    return `${currency}${Math.round(job.job_min_salary ?? job.job_max_salary ?? 0)}`;
+}
+
+const jsearchProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode) {
+        const apiKey = getOpenWebNinjaApiKey();
+        if (!apiKey) throw new Error("Missing OPENWEBNINJA_API_KEY");
+
+        const params = new URLSearchParams({
+            query: `${jobTitle} in ${location}`,
+            country: countryCode.toLowerCase(),
+            num_pages: "1",
+        });
+
+        const response = await fetch(`https://api.openwebninja.com/jsearch/search-v2?${params.toString()}`, {
+            headers: { "x-api-key": apiKey },
+        });
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`JSearch API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const json = await response.json();
+        if (json.status !== "OK") {
+            throw new Error(`JSearch API error: ${json.error?.message ?? "unknown error"}`);
+        }
+
+        const jobs: JSearchJobResult[] = json.data?.jobs ?? [];
+
+        // Same "keep only what actually matches the searched city, or is
+        // explicitly unbound/remote" filter every other provider applies.
+        const searchCity = location.split(",")[0].trim().toLowerCase();
+        const filtered = jobs.filter((job) => {
+            if (job.job_is_remote) return true;
+            const candidates = [job.job_city, job.job_state, job.job_country].filter((v): v is string => Boolean(v)).map((v) => v.toLowerCase());
+            return candidates.some((c) => c.includes(searchCity));
+        });
+
+        return filtered.map((job) => ({
+            id: `jsearch-${job.job_id}`,
+            title: job.job_title ?? "",
+            company: job.employer_name ?? "",
+            location: formatJSearchLocation(job),
+            description: job.job_description ?? "",
+            url: job.job_apply_link ?? "",
+            applyUrl: job.job_apply_link,
+            salary: formatJSearchSalary(job),
+            type: job.job_employment_type,
+            postedAt: job.job_posted_at_datetime_utc,
+            source: "JSearch",
+            logoUrl: job.employer_logo,
+        }));
+    },
+};
+
 // Adzuna's own structured job-board API — real, direct listings (not a
 // Google Jobs scrape), confirmed live 2026-08-30 against the exact
 // ADZUNA_APP_ID/ADZUNA_APP_KEY already in .env. Country codes differ from
@@ -706,24 +855,60 @@ export async function searchJobs(
 ): Promise<NormalizedJob[]> {
 
     if (provider === "serpapi") {
-        // Chain: SerpApi -> TheirStack -> Adzuna -> Apify, each only reached
-        // if every prior tier is genuinely exhausted (quota), never on a
-        // real per-request error (bad location, malformed query, network
-        // blip) — same rule the original SerpApi->TheirStack step already
-        // established, just extended further. Arbeitnow was researched and
-        // its code written, but deliberately NOT wired in here — see the
-        // comment above apifyProvider's definition for why (a real,
-        // persistent TLS cert mismatch on arbeitnow.com found during live
-        // verification).
+        // Real country code for THIS search's actual target location,
+        // resolved via the free Locations API lookup above — overrides the
+        // caller-supplied `countryCode` (every current call site just
+        // hardcodes "ca", see resolveCountryCodeForLocation's own comment
+        // for the full story) whenever resolution succeeds. Falls back to
+        // the caller's value only when resolution genuinely can't happen
+        // (no SerpApi key configured at all, or an unrecognized location
+        // string) — never a hard failure, since a wrong-but-present
+        // default still lets the search proceed instead of blocking it.
+        const availableKeys = getSerpApiKeyChain();
+        const resolvedCountryCode =
+            availableKeys.length > 0 ? await resolveCountryCodeForLocation(location, availableKeys[0]) : null;
+        const effectiveCountryCode = resolvedCountryCode ?? countryCode;
+        // Chain: SerpApi -> TheirStack -> JSearch -> Apify, each only
+        // reached if every prior tier is genuinely exhausted (quota), never
+        // on a real per-request error (bad location, malformed query,
+        // network blip). Arbeitnow was researched and its code written, but
+        // deliberately NOT wired in here — see the comment above
+        // apifyProvider's definition for why (a real, persistent TLS cert
+        // mismatch on arbeitnow.com found during live verification).
+        //
+        // JSearch (2026-09-01, direct user request) sits between TheirStack
+        // and Apify — see jsearchProvider's own comment for why it's a
+        // fallback tier, not a concurrent source like Adzuna: it draws from
+        // the same Google for Jobs index SerpApi already queries, so
+        // running it on every healthy search would just pay its PAYG cost
+        // for near-duplicate data. It earns its place here specifically for
+        // the exact incident this project hit live the same day — every
+        // SerpApi account exhausted for the whole month with no overage
+        // option — where a second, independent quota against the same data
+        // pool is exactly what's needed.
+        //
+        // Adzuna is deliberately NOT one of these sequential "first success
+        // wins" tiers (real bug found live, 2026-09-01, direct user
+        // question after a search returned only 3 results): it used to sit
+        // in this same array, meaning once SerpApi was exhausted and
+        // TheirStack returned even a FEW real results (any non-empty,
+        // non-error response counts as "success" here), the loop returned
+        // immediately and Adzuna — normally a genuinely additive, ~free
+        // source running concurrently with SerpApi on every healthy search
+        // via fetchAndMergeAdzuna below — was never queried at all. Adzuna
+        // now always runs and merges into whichever fallback tier (or none)
+        // succeeds, the same additive relationship it already has with a
+        // healthy SerpApi, instead of competing with TheirStack/Apify for
+        // a single "winner" slot.
         const tiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
-            { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, countryCode, datePosted) },
-            { name: "Adzuna", hasCreds: () => Boolean(getAdzunaCredentials()), run: () => adzunaProvider.search(jobTitle, location, countryCode, datePosted) },
-            { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, countryCode, datePosted) },
+            { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
+            { name: "JSearch", hasCreds: () => Boolean(getOpenWebNinjaApiKey()), run: () => jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
+            { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
         ];
 
         try {
-            const serpApiPromise = serpApiProvider.search(jobTitle, location, countryCode, datePosted);
-            return await fetchAndMergeAdzuna(serpApiPromise, jobTitle, location, countryCode);
+            const serpApiPromise = serpApiProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
+            return await fetchAndMergeAdzuna(serpApiPromise, jobTitle, location, effectiveCountryCode);
         } catch (err) {
             if (!isQuotaExhaustedError(err)) throw err;
 
@@ -732,12 +917,21 @@ export async function searchJobs(
                 if (!tier.hasCreds()) continue;
                 try {
                     console.warn(`SerpApi exhausted — falling back to ${tier.name}.`);
-                    return await tier.run();
+                    return await fetchAndMergeAdzuna(tier.run(), jobTitle, location, effectiveCountryCode);
                 } catch (tierErr) {
                     if (!isQuotaExhaustedError(tierErr)) throw tierErr;
                     lastErr = tierErr;
                     console.warn(`${tier.name} also exhausted — trying next fallback.`);
                 }
+            }
+
+            // Every quota-based fallback (TheirStack, Apify) is exhausted
+            // or unconfigured — Adzuna alone (free, not quota-limited the
+            // same way) is still worth trying rather than failing the
+            // whole search outright.
+            if (getAdzunaCredentials()) {
+                console.warn("Every fallback exhausted — trying Adzuna alone.");
+                return await adzunaProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
             }
             throw lastErr;
         }

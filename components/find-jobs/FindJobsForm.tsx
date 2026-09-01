@@ -16,11 +16,6 @@ import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
-// How many of this search's jobs need to finish evaluating (scored,
-// hidden or not — "finished" is what matters here, not "visible") before
-// the results section reveals at all — see resultsRevealed's own comment.
-const REVEAL_THRESHOLD = 10;
-
 type Props = {
     userId: string;
     initialJobs?: Job[];
@@ -52,16 +47,6 @@ export function FindJobsForm({
     // got zero matches" — the latter needs its own empty state, not silence.
     const [hasSearched, setHasSearched] = useState(false);
     const [jobs, setJobs] = useState<Job[]>(initialJobs);
-    // Direct user request (2026-09-01): don't show a wall of individually-
-    // loading "Scoring…" cards the instant a search returns — hold the
-    // whole results section behind one full loader until a real first
-    // batch has actually finished evaluating, then reveal what's ready in
-    // one clean switch. Defaults true so a page load with existing scored
-    // history (the common case — returning to a past search) shows
-    // immediately, with no artificial wait; runSearch() explicitly flips
-    // it false for a genuinely fresh search that has real evaluation work
-    // ahead of it.
-    const [resultsRevealed, setResultsRevealed] = useState(true);
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
     const [jobIds, setJobIds] = useState<string[]>(
@@ -174,22 +159,6 @@ export function FindJobsForm({
                                 .filter((job) => !job.is_hidden)
                         );
 
-                        // Reveal the results section once a real first
-                        // batch has finished (direct user request,
-                        // 2026-09-01) — "finished" means scored at all,
-                        // hidden or not, not "visible": waiting for 10
-                        // VISIBLE jobs specifically could mean waiting for
-                        // nearly the whole batch on a search where most
-                        // jobs end up hidden by the authenticity gate,
-                        // defeating the point of an early reveal. Once
-                        // already true, never flips back — a later hide
-                        // shouldn't re-trigger the loader.
-                        setResultsRevealed((prevRevealed) => {
-                            if (prevRevealed) return true;
-                            const finishedCount = updatedJobs.filter((job) => job.match_score !== null).length;
-                            return finishedCount >= Math.min(REVEAL_THRESHOLD, jobIds.length) || finishedCount === jobIds.length;
-                        });
-
                         // Stop polling once every job we're watching has a score.
                         if (updatedJobs.every((job) => job.match_score !== null)) {
                             clearInterval(interval);
@@ -227,16 +196,20 @@ export function FindJobsForm({
         try {
             const result = await scrapeAndEvaluateJobs(title, location, evaluatorFilters, userId);
             if (Array.isArray(result)) {
+                // Phase 1 of the 3-phase redesign (2026-09-01) —
+                // scrapeAndEvaluateJobs now resolves/verifies every job's
+                // apply link synchronously before this promise ever
+                // resolves, so by the time `result` is in hand every job
+                // already has a genuine link (or was hidden and excluded
+                // entirely). There's no reason to hold the list behind a
+                // loader waiting for AI scores anymore — Phase 2's lite
+                // pass streams scores in progressively via the polling
+                // below, same as any other still-loading field.
                 const unscored = result.filter((job) => job.match_score === null);
                 setJobs(result);
                 setJobIds(unscored.map((job) => job.id));
                 setHasSearched(true);
                 setLastSearchedDatePosted(searchFilters.datePosted);
-                // Nothing left to wait for — either zero results, or a
-                // repeat search where everything found was already scored
-                // — reveal right away rather than sit behind a loader for
-                // work that isn't happening.
-                setResultsRevealed(unscored.length === 0);
             } else {
                 // reason is only ever populated for the real daily-cap-reached
                 // case — a kill-switch/suspension block has no reason and
@@ -418,26 +391,14 @@ export function FindJobsForm({
                 </div>
             )}
 
-            {/* Full-section loader (direct user request, 2026-09-01) — a
-                fresh search's results stay behind this instead of showing
-                a wall of individually-"Scoring…" cards the instant the
-                page has raw, unevaluated jobs. Swaps to the real list in
-                one clean switch once a real first batch has finished
-                (resultsRevealed's own comment has the exact threshold). */}
-            {jobs.length > 0 && !resultsRevealed && (
-                <div className="border-t border-border pt-10 pb-6 flex flex-col items-center gap-3 text-center">
-                    <Loader2 className="h-6 w-6 animate-spin text-agent" />
-                    <p className="font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
-                        Scanning the field — {scoredSoFar} of {totalScoring} evaluated
-                    </p>
-                    <p className="text-xs text-text-muted">
-                        Checking each listing&apos;s legitimacy and apply link before showing results.
-                    </p>
-                </div>
-            )}
-
-            {/* Results */}
-            {jobs.length > 0 && resultsRevealed && (
+            {/* Results — every visible job's apply link is already
+                verified by the time it's on screen (Phase 1 of the
+                3-phase redesign, 2026-09-01, runs synchronously inside
+                scrapeAndEvaluateJobs before this list is ever set). Match
+                scores stream in progressively via the polling above — see
+                stillScoringCount/JobResultCard's own "Scoring…" state for
+                that, not a whole-section loader. */}
+            {jobs.length > 0 && (
                 <div className="border-t border-border pt-6">
                     <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1">

@@ -11,6 +11,7 @@ import { CompanyResearch } from "@/components/job-details/CompanyResearch";
 import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
 import { EmailDrafts } from "@/components/job-details/EmailDrafts";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
+import { RequestFullEvaluationButton } from "@/components/job-details/RequestFullEvaluationButton";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
@@ -288,6 +289,18 @@ export default async function JobDetailsPage({ params }: Props) {
                         recommendationScore={job.recommendation_score}
                         overallGrade={job.overall_grade}
                       />
+                      {/* Phase 3 of the 3-phase redesign (2026-09-01) — a
+                          job scored under the new lite pass has a real
+                          match_score/overall_grade but no dimensions yet
+                          (EvaluationBreakdown already no-ops on an empty
+                          array above). Offer the on-demand full-rubric
+                          upgrade only in that exact state — never for a
+                          job still awaiting even its lite score (that's
+                          RequestScoringButton's job, in the identity rail),
+                          and never once a full evaluation already exists. */}
+                      {job.match_score !== null && (!job.evaluation || job.evaluation.length === 0) && (
+                        <RequestFullEvaluationButton jobId={job.id} />
+                      )}
                     </div>
 
                     <div className="flex flex-col gap-6">
