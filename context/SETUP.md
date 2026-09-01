@@ -37,10 +37,42 @@ keys and secrets. A fresh clone starts with none of it. Get a copy of the
 real `.env` from wherever it's kept outside git (a password manager, secure
 note, or copy it directly from the machine that already has it) — there is
 no other source for these values; nobody can regenerate someone else's
-existing API keys from scratch. If a specific key really is lost, the
-comment above that key in `.env`'s own history (check `git log -p` on an
-old commit if `.env` itself is never committed, or ask whoever owns that
-account) usually says which provider issued it and why.
+existing API keys from scratch.
+
+**Vercel's own environment variable store is NOT a way to retrieve these**
+— tried and confirmed wrong live (2026-09-01): `vercel env pull` writes the
+literal string `[SENSITIVE]` in place of every "Secret"-type variable's
+real value instead of the value itself; only "Config"-type variables
+(mostly the `NEXT_PUBLIC_*` ones) actually come back. `env ls`/`env pull`
+only tell you which KEYS exist, never the values — Vercel's Secret type is
+genuinely write-only by design (so a compromised deploy pipeline can't
+exfiltrate it), not a retrievable vault. Don't re-attempt this path
+expecting a different result, and don't switch existing keys to "Config"
+type to work around it — that trades away real protection (Config values
+are plainly visible in the dashboard to anyone with project access) for
+convenience on credentials that don't need to be that exposed.
+
+If a specific key really is lost with no backup anywhere, it has to be
+regenerated at the source (the provider's own dashboard — SerpApi, Adzuna,
+Gemini, etc.) and re-added to both `.env` and Vercel; there's no shortcut.
+
+## Step 3b — The other untracked files (see `.gitignore`)
+
+`.env` is the one that matters most, but three more paths are gitignored.
+Two are load-bearing enough to transfer directly if you'd rather not
+re-run the interactive link commands in Steps 4-5:
+
+- `.insforge/project.json` — contains a real API key inside it (same
+  sensitivity as `.env`, treat it that way) — copy it directly, or let
+  `npx @insforge/cli link` regenerate it.
+- `.vercel/project.json` — projectId/orgId, not itself a secret but needed
+  for the Vercel CLI to know which project to target — copy directly, or
+  let `npx vercel link` regenerate it.
+
+Everything else gitignored (`.claude/launch.json`,
+`.claude/settings.local.json`, `.impeccable/config.json`) is convenience
+only — each recreates itself to a sane default (or the tool that reads it
+just prompts again) if it's missing. Not worth chasing down.
 
 ## Step 4 — InsForge CLI link
 
