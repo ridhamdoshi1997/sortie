@@ -485,10 +485,14 @@ const ADZUNA_PER_PAGE = 50;
 // two postings from July 2024, over two years old. Unlike Google Jobs
 // (which prunes aggressively), Adzuna will happily return those, and a
 // candidate tailoring a résumé for a two-year-dead posting is a real
-// waste of their effort. 90 days is deliberately generous — it keeps
-// everything in the sampled distribution back through June while dropping
-// the genuinely abandoned tail.
-const ADZUNA_MAX_AGE_DAYS = 90;
+// waste of their effort. This is a cheap first-pass exclusion at ingestion
+// (avoids ever inserting an obviously-dead listing at all) — the real,
+// uniform staleness bar every source goes through regardless is
+// lib/jobPreFilter.ts's MAX_POSTING_AGE_DAYS, tightened to 45 days
+// 2026-09-01 (direct user follow-up after Adzuna started running on every
+// search) — kept in sync with that number rather than picked
+// independently, so there's one staleness policy, not two.
+const ADZUNA_MAX_AGE_DAYS = 45;
 
 function isRecentEnough(created: string | undefined, maxAgeDays: number): boolean {
     if (!created) return true; // No date given is not evidence of staleness.

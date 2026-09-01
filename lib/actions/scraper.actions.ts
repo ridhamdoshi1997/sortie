@@ -171,7 +171,7 @@ async function evaluateWithinQuota(
     insforge: InsforgeServerClient,
     userId: string,
     userEmail: string | undefined,
-    savedJobs: { id: string; match_score?: number | null; title?: string | null; company?: string | null; description?: string | null; salary?: string | null }[],
+    savedJobs: { id: string; match_score?: number | null; title?: string | null; company?: string | null; description?: string | null; salary?: string | null; posted_at?: string | null }[],
     filters: Record<string, string>,
     runId: string | null
 ): Promise<{ hiddenIds: string[] }> {

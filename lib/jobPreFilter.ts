@@ -18,7 +18,32 @@ type PreFilterableJob = {
   company?: string | null;
   description?: string | null;
   salary?: string | null;
+  posted_at?: string | null;
 };
+
+// Direct user follow-up (2026-09-01) after Adzuna started running on
+// every search: Adzuna's own index carries genuinely old listings
+// alongside fresh ones (a real, previously-measured 90-day filter already
+// existed there, kept from an earlier session). This applies the SAME
+// staleness bar to every source, not just Adzuna — a SerpApi/Google Jobs
+// posting can sit around for a while too, and now that posted_at is
+// reliably parsed into a real timestamp for every source (see
+// lib/jobCanonicalization.ts's parsePostedAt, which fixed SerpApi's
+// relative-date strings the same day), it's a real, comparable signal to
+// gate on everywhere at once instead of duplicating the check per-source.
+// 45 days, tighter than Adzuna's old 90 — deliberately not as aggressive
+// as "only this week" would be (a genuinely still-open role posted 6
+// weeks ago is common and shouldn't be treated as a ghost listing), but
+// tight enough to exclude the kind of multi-month-stale reposts that
+// motivated Adzuna's original filter.
+const MAX_POSTING_AGE_DAYS = 45;
+
+function isStale(postedAt: string | null | undefined): boolean {
+  if (!postedAt) return false; // no date given is not evidence of staleness
+  const ts = Date.parse(postedAt);
+  if (Number.isNaN(ts)) return false;
+  return Date.now() - ts > MAX_POSTING_AGE_DAYS * 24 * 60 * 60 * 1000;
+}
 
 // Real staffing/body-shop agencies that list roles under their own name
 // rather than the actual hiring company's — a real, named trust gap found
@@ -70,6 +95,10 @@ export function preFilterJob(job: PreFilterableJob): PreFilterResult {
   const descriptionLength = (job.description ?? "").trim().length;
   if (descriptionLength < 150 && !job.salary) {
     return { hide: true, reason: `Description too short (${descriptionLength} chars) with no salary listed` };
+  }
+
+  if (isStale(job.posted_at)) {
+    return { hide: true, reason: `Posted more than ${MAX_POSTING_AGE_DAYS} days ago (${job.posted_at})` };
   }
 
   const companyLower = job.company.toLowerCase();
