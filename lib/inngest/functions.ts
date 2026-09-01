@@ -233,7 +233,20 @@ export const evaluateJobsAsync = inngest.createFunction(
                 })) as { evaluations: JobEvaluationResult[] };
 
                 await step.run(`persist-chunk-${chunkIndex}`, async () => {
-                    for (const job of chunk) {
+                    // Real latency regression found live (2026-09-01): this
+                    // used to be a sequential `for` loop, so job 2's own
+                    // link-check couldn't even start until job 1's entire
+                    // resolution pipeline (several real, sequential network
+                    // calls — Greenhouse/Ashby/Lever guesses, sometimes a
+                    // paid search) had fully finished — confirmed live, a
+                    // 27-job search sat at 1 scored after 75 seconds. Each
+                    // job's own write is already fully independent (only
+                    // ever touches its own row), so there's no correctness
+                    // reason for them to run one at a time — Promise.all
+                    // runs all 5 jobs in this chunk concurrently instead,
+                    // roughly a 5x speedup bounded by the slowest single
+                    // job's resolution rather than the sum of all 5.
+                    await Promise.all(chunk.map(async (job) => {
                         const evalResult = evaluations.find((e) => e.id === job.id);
 
                         // Phase 2 hard-hide (2026-08-31) — a D/F Legitimacy
@@ -389,7 +402,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                         if (updateError) {
                             throw new Error(`Database Update Failed for Job ${job.id}: ${updateError.message}`);
                         }
-                    }
+                    }));
                 });
         };
 
