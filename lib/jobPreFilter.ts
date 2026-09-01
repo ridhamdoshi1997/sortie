@@ -31,12 +31,12 @@ type PreFilterableJob = {
 // lib/jobCanonicalization.ts's parsePostedAt, which fixed SerpApi's
 // relative-date strings the same day), it's a real, comparable signal to
 // gate on everywhere at once instead of duplicating the check per-source.
-// 45 days, tighter than Adzuna's old 90 — deliberately not as aggressive
-// as "only this week" would be (a genuinely still-open role posted 6
-// weeks ago is common and shouldn't be treated as a ghost listing), but
-// tight enough to exclude the kind of multi-month-stale reposts that
-// motivated Adzuna's original filter.
-const MAX_POSTING_AGE_DAYS = 45;
+// 60 days (direct user request, 2026-09-01 — widened from an initial 45),
+// tighter than Adzuna's old 90 but looser than "only this week" — a
+// genuinely still-open role posted a month or two ago is common and
+// shouldn't be treated as a ghost listing, while multi-month-stale
+// reposts still get excluded.
+const MAX_POSTING_AGE_DAYS = 60;
 
 function isStale(postedAt: string | null | undefined): boolean {
   if (!postedAt) return false; // no date given is not evidence of staleness

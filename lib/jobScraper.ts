@@ -488,11 +488,10 @@ const ADZUNA_PER_PAGE = 50;
 // waste of their effort. This is a cheap first-pass exclusion at ingestion
 // (avoids ever inserting an obviously-dead listing at all) — the real,
 // uniform staleness bar every source goes through regardless is
-// lib/jobPreFilter.ts's MAX_POSTING_AGE_DAYS, tightened to 45 days
-// 2026-09-01 (direct user follow-up after Adzuna started running on every
-// search) — kept in sync with that number rather than picked
+// lib/jobPreFilter.ts's MAX_POSTING_AGE_DAYS (60 days as of 2026-09-01,
+// direct user request) — kept in sync with that number rather than picked
 // independently, so there's one staleness policy, not two.
-const ADZUNA_MAX_AGE_DAYS = 45;
+const ADZUNA_MAX_AGE_DAYS = 60;
 
 function isRecentEnough(created: string | undefined, maxAgeDays: number): boolean {
     if (!created) return true; // No date given is not evidence of staleness.

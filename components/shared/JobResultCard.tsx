@@ -74,7 +74,17 @@ export function JobResultCard({
   // related jobs are showing third party portals like bebee"). Previously
   // only visible after clicking into a job; this is the same classifier, no
   // new logic, just a second, earlier surface for it.
-  const applyTrust = job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
+  // Real user confusion found live (2026-09-01): a job just scraped and
+  // not yet evaluated shows this badge against its raw, unresolved link —
+  // reading as a final verdict on a job the app hasn't actually tried to
+  // fix or judge yet. The real evaluation pipeline attempts a free link
+  // repair for every job before it ever shows a genuine/not-genuine
+  // result (lib/inngest/functions.ts's persist-chunk step), and hides
+  // anything that still fails afterward — so a STILL-scoring job showing
+  // this warning is always premature, never a real finding. Gated on
+  // match_score being set (evaluation actually finished) so the badge
+  // only ever reflects a link that was actually checked and still failed.
+  const applyTrust = job.match_score !== null && job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
   const isLowQualitySource = applyTrust === "low_quality" || applyTrust === "unverified";
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
