@@ -14,6 +14,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Read Before Anything Else
 
+**First time opening this project on this machine/account?** Read
+`context/SETUP.md` before anything below — it covers `.env`, InsForge/Vercel
+CLI linking, and which skills/MCP servers this project needs, none of which
+travel with the git repo automatically. Run `node scripts/verify-setup.mjs`
+to check. If that script reports clean, skip straight to the list below.
+
 Read in this exact order before any implementation:
 
 0. **context/RESUME.md — read this one first, always.** Fast-orientation layer: current state, reorientation steps, known gotchas. The rest of this list is the full detail underneath it.
