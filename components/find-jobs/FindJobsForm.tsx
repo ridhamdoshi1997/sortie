@@ -143,10 +143,20 @@ export function FindJobsForm({
                         // getJobsByIds only returns the polled (still-unscored)
                         // subset, and setJobs(updatedJobs) was wiping out every
                         // other already-scored job from view each tick.
+                        //
+                        // Real gap found live (2026-09-01, direct user
+                        // question: "if it's hiding jobs in the background,
+                        // how do I see that live?") — this merge updated a
+                        // polled job's fields (score, reasoning, etc.) but
+                        // never checked is_hidden, so a job the evaluator's
+                        // genuine-link gate hid mid-poll stayed fully
+                        // visible in the list until the next full page
+                        // load. Filtering it out here is what actually
+                        // makes a job disappear live, not just on refresh.
                         setJobs((prev) =>
-                            prev.map(
-                                (job) => updatedJobs.find((updated) => updated.id === job.id) ?? job
-                            )
+                            prev
+                                .map((job) => updatedJobs.find((updated) => updated.id === job.id) ?? job)
+                                .filter((job) => !job.is_hidden)
                         );
 
                         // Stop polling once every job we're watching has a score.

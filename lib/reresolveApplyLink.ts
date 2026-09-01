@@ -5,6 +5,28 @@ import type { createInsforgeServer } from "@/lib/insforge-server";
 
 type InsforgeClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 
+// Real regression found live (2026-09-01): merge_job_source's ON CONFLICT
+// upsert (migrations/20260831233851_add-job-canonicalization.sql) only
+// lets a source overwrite external_apply_url when its source_priority is
+// >= the row's stored one — but every update below was writing a newly
+// resolved link WITHOUT ever bumping source_priority to match. A job
+// upgraded here to a real Workday link stayed recorded at SerpApi's
+// priority (50) forever, so the next time the SAME real posting was
+// re-scraped by a plain search (still SerpApi, still priority 50, since
+// SerpApi's own raw data never changes), the >= check let it silently
+// overwrite the good link right back to the original weak one. This
+// keeps source_priority honest about what tier of link is ACTUALLY
+// stored, matching the same scale sourcePriority() in
+// lib/jobCanonicalization.ts uses for the initial ingest path, so a
+// resolved upgrade can never be silently clobbered by a re-merge again.
+function applyLinkSourcePriority(applyUrl: string, company: string | null | undefined): number {
+  const trust = classifyApplyHost(applyUrl, company);
+  if (trust === "ats") return 100;
+  if (trust === "employer") return 90;
+  if (trust === "aggregator") return 50;
+  return 10;
+}
+
 // Lazy, on-demand fix for jobs already scraped before lib/applyLinkTrust.ts
 // existed, whose stored apply link classifies as a confirmed low-quality
 // mirror. Direct exact-listing re-lookup (SerpApi's google_jobs_listing,
@@ -267,6 +289,7 @@ export async function reresolveApplyLinkForJob(
         .update({
           external_apply_url: stored.applyUrl,
           apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(stored.applyUrl, job.company),
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (stored candidates)", job.id, error);
@@ -280,6 +303,7 @@ export async function reresolveApplyLinkForJob(
         .update({
           external_apply_url: atsMatch.applyUrl,
           apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(atsMatch.applyUrl, job.company),
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (ats match)", job.id, error);
@@ -293,6 +317,7 @@ export async function reresolveApplyLinkForJob(
         .update({
           external_apply_url: discoveredMatch.applyUrl,
           apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(discoveredMatch.applyUrl, job.company),
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (discovered ats match)", job.id, error);
@@ -320,6 +345,7 @@ export async function reresolveApplyLinkForJob(
           external_apply_url: match.applyUrl,
           raw_apply_options: match.rawApplyOptions ?? null,
           apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(match.applyUrl, job.company),
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (resolved)", job.id, error);
@@ -333,6 +359,7 @@ export async function reresolveApplyLinkForJob(
         .update({
           external_apply_url: apifyMatch.applyUrl,
           apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(apifyMatch.applyUrl, job.company),
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (apify match)", job.id, error);
