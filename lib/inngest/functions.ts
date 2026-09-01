@@ -5,7 +5,7 @@ import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@insforge/sdk';
-import { classifyApplyHost, isLinkedInHost } from "@/lib/applyLinkTrust";
+import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import type { Profile, WorkExperience } from "@/types";
 
@@ -291,11 +291,25 @@ export const evaluateJobsAsync = inngest.createFunction(
                                     console.error("[evaluateJobsAsync] eager re-resolve failed", job.id, err);
                                 }
 
-                                // "Genuine portal or LinkedIn, nothing else"
-                                // (direct user request, 2026-08-31) —
-                                // reresolveApplyLinkForJob writes directly
-                                // and returns void, so its result has to be
-                                // re-read rather than returned.
+                                // "Genuine portal or a trusted major board"
+                                // (widened 2026-09-01, direct user request —
+                                // narrowed too far to LinkedIn-only the same
+                                // day it shipped, which tanked visible
+                                // volume for no real authenticity gain).
+                                // "aggregator" here means classifyApplyHost's
+                                // TIER1_SAFE_AGGREGATOR_HOSTS list —
+                                // LinkedIn, Indeed, Glassdoor, ZipRecruiter,
+                                // CareerBuilder, government job banks, and a
+                                // handful of other real, moderated boards
+                                // with actual trust & safety teams (see that
+                                // list's own comment in applyLinkTrust.ts).
+                                // Only "low_quality" (BeBee, Jooble,
+                                // Workopolis, etc — real, confirmed mirror/
+                                // scam-adjacent domains) and "unverified"
+                                // still get hidden. reresolveApplyLinkForJob
+                                // writes directly and returns void, so its
+                                // result has to be re-read rather than
+                                // returned.
                                 const { data: refetched } = await admin.database
                                     .from("jobs")
                                     .select("external_apply_url")
@@ -303,8 +317,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                     .maybeSingle<{ external_apply_url: string | null }>();
                                 finalApplyUrl = refetched?.external_apply_url ?? job.external_apply_url;
                                 const finalTrust = finalApplyUrl ? classifyApplyHost(finalApplyUrl, job.company) : "unverified";
-                                const isLinkedIn = finalApplyUrl ? isLinkedInHost(finalApplyUrl) : false;
-                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || (finalTrust === "aggregator" && isLinkedIn);
+                                const meetsGenuineBar = finalTrust === "ats" || finalTrust === "employer" || finalTrust === "aggregator";
                                 failsGenuineLinkBar = !meetsGenuineBar;
                             }
                         }
