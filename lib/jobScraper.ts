@@ -622,21 +622,12 @@ const apifyProvider: JobScraperProvider = {
     },
 };
 
-// Below this many results, SerpApi's answer is treated as thin coverage
-// rather than a complete picture, and Adzuna is queried to supplement it.
-// Grounded in a real, reported case (2026-08-30): "advisor" in Toronto
-// returned 7 jobs from SerpApi — not a bug, and not quota (pagination
-// correctly stopped because Google Jobs itself had no next page) — while
-// a direct Adzuna query for the same thing reported 4,454. Google Jobs is
-// a consumer aggregator with genuinely uneven per-query coverage, so
-// "SerpApi returned few results" and "few such jobs exist" are not the
-// same thing, and the old chain only ever consulted another provider on
-// hard quota exhaustion.
-const THIN_RESULT_THRESHOLD = 25;
-
 // Same title+company job legitimately appears in more than one provider's
 // index; keyed on both since neither URL nor id is comparable across
-// providers.
+// providers. This is a cheap in-request dedup pass before canonicalization
+// ever sees the data — canonicalizeJobSources' own 3-tier match handles
+// the real, durable dedup, but there's no reason to hand it two obviously
+// identical hits when a plain title+company check already catches them.
 function dedupeJobs(jobs: NormalizedJob[]): NormalizedJob[] {
     const seen = new Set<string>();
     const out: NormalizedJob[] = [];
@@ -649,40 +640,58 @@ function dedupeJobs(jobs: NormalizedJob[]): NormalizedJob[] {
     return out;
 }
 
-// Deliberately Adzuna only, not the whole fallback chain: Adzuna's
-// credentials are free-tier with a large index, whereas TheirStack burns
-// per-search credits and Apify costs real money per run (~$0.015). Those
-// two stay reserved for genuine total-quota-exhaustion, where there's no
-// alternative — spending them speculatively on every thin-but-successful
-// search would be a real, recurring cost for a topping-up nicety.
-async function supplementThinResults(
-    primary: NormalizedJob[],
+// Real regression found live (2026-09-01, direct user pushback): Adzuna
+// used to only get queried when SerpApi's OWN result count looked "thin"
+// (< 25) — but SerpApi's count says nothing about how much real supply
+// exists elsewhere. Confirmed with real data the same day: SerpApi found
+// 33 "Financial Advisor"/Toronto results (comfortably clearing the old
+// 25-result threshold, so Adzuna was never even queried) while a direct
+// Adzuna call for the identical search found 267. Gating a second free
+// source behind the first source's own count was leaving most of the real
+// supply on the table whenever SerpApi happened to clear an arbitrary bar.
+// Now runs unconditionally, every search, CONCURRENTLY with SerpApi (not
+// sequentially after it) — the two calls don't depend on each other, so
+// there's no reason to pay both latencies back-to-back. Safe to merge them
+// now that canonicalizeJobSources' 3-tier match + source-priority merge
+// (Phase 1, 2026-08-31) reliably collapses genuine duplicates between the
+// two sources instead of just accumulating separate rows the way the
+// pre-canonicalization pipeline would have. TheirStack/Apify stay reserved
+// for genuine SerpApi quota exhaustion — TheirStack burns paid per-search
+// credits and Apify costs real money per result, neither is a "run it
+// every time for free" source the way Adzuna is.
+async function fetchAndMergeAdzuna(
+    serpApiPromise: Promise<NormalizedJob[]>,
     jobTitle: string,
     location: string,
     countryCode: string,
-    datePosted?: string
 ): Promise<NormalizedJob[]> {
-    if (primary.length >= THIN_RESULT_THRESHOLD || !getAdzunaCredentials()) return primary;
+    if (!getAdzunaCredentials()) return serpApiPromise;
 
-    try {
+    const [primary, adzunaResult] = await Promise.all([
+        serpApiPromise,
         // filterByCity as a defensive second layer, not the primary
         // control — Adzuna's own `where=` param already does real
         // server-side filtering (verified live: Toronto/Vancouver/Halifax
         // return sensibly different counts), but this keeps exactly one
         // function deciding city relevance rather than trusting each
         // provider's own filtering to be equally strict.
-        const extra = filterByCity(await adzunaProvider.search(jobTitle, location, countryCode, datePosted), location);
-        if (extra.length === 0) return primary;
-        const merged = dedupeJobs([...primary, ...extra]);
-        console.warn(
-            `SerpApi returned ${primary.length} result(s) for "${jobTitle}" — supplemented with Adzuna to ${merged.length}.`
-        );
-        return merged;
-    } catch {
-        // Supplementing is a best-effort improvement, never a reason to
-        // fail a search that already has real results.
-        return primary;
-    }
+        adzunaProvider
+            .search(jobTitle, location, countryCode)
+            .then((jobs) => filterByCity(jobs, location))
+            // Merging is a best-effort improvement, never a reason to fail
+            // a search that already has real SerpApi results.
+            .catch((err) => {
+                console.error("[jobScraper] Adzuna merge failed", err);
+                return [] as NormalizedJob[];
+            }),
+    ]);
+
+    if (adzunaResult.length === 0) return primary;
+    const merged = dedupeJobs([...primary, ...adzunaResult]);
+    console.warn(
+        `SerpApi returned ${primary.length} result(s) for "${jobTitle}" — merged with Adzuna's ${adzunaResult.length} to ${merged.length}.`
+    );
+    return merged;
 }
 
 export async function searchJobs(
@@ -710,8 +719,8 @@ export async function searchJobs(
         ];
 
         try {
-            const primary = await serpApiProvider.search(jobTitle, location, countryCode, datePosted);
-            return await supplementThinResults(primary, jobTitle, location, countryCode, datePosted);
+            const serpApiPromise = serpApiProvider.search(jobTitle, location, countryCode, datePosted);
+            return await fetchAndMergeAdzuna(serpApiPromise, jobTitle, location, countryCode);
         } catch (err) {
             if (!isQuotaExhaustedError(err)) throw err;
 
