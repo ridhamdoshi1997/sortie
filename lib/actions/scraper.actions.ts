@@ -7,6 +7,7 @@ import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
+import { preFilterJob } from "@/lib/jobPreFilter";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
 import { looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
@@ -161,10 +162,34 @@ async function evaluateWithinQuota(
     insforge: InsforgeServerClient,
     userId: string,
     userEmail: string | undefined,
-    savedJobs: { id: string; match_score?: number | null }[],
+    savedJobs: { id: string; match_score?: number | null; title?: string | null; company?: string | null; description?: string | null; salary?: string | null }[],
     filters: Record<string, string>,
     runId: string | null
-) {
+): Promise<{ hiddenIds: string[] }> {
+    // Phase 2 pre-filter (2026-08-31) — cheap heuristics reject obvious
+    // junk (staffing agencies, near-empty scrapes, spam phrasing) before it
+    // ever reaches the expensive LLM evaluation, for free. Sets
+    // is_hidden=true, the SAME column the find-jobs page's own query
+    // already filters on (.eq("is_hidden", false)) — no UI change needed,
+    // a pre-filtered job is simply never shown, not labeled with a
+    // warning. hiddenIds is returned so the caller can also exclude these
+    // from what it hands straight back to the client for this search's own
+    // immediate response, not just from future page loads.
+    const hiddenIds: string[] = [];
+    const passesPreFilter: typeof savedJobs = [];
+    for (const job of savedJobs) {
+        const result = preFilterJob(job);
+        if (result.hide) {
+            hiddenIds.push(job.id);
+            console.log(`[evaluateWithinQuota] pre-filtered "${job.title}" — ${result.reason}`);
+        } else {
+            passesPreFilter.push(job);
+        }
+    }
+    if (hiddenIds.length > 0) {
+        await insforge.database.from("jobs").update({ is_hidden: true }).in("id", hiddenIds).eq("user_id", userId);
+    }
+
     // Real bug found live (2026-08-31, direct user report): savedJobs from
     // upsertScrapedJobs includes every REFRESHED job too (an existing job
     // matched by fingerprint on a repeat search — see that function's own
@@ -179,7 +204,7 @@ async function evaluateWithinQuota(
     // of whatever the search's genuinely new jobs already needed. A search
     // should only ever spend its evaluation budget on jobs that don't
     // already have a real score.
-    const needsEvaluation = savedJobs.filter((job) => job.match_score === null || job.match_score === undefined);
+    const needsEvaluation = passesPreFilter.filter((job) => job.match_score === null || job.match_score === undefined);
 
     const evaluableJobIds: string[] = [];
     for (const job of needsEvaluation) {
@@ -209,7 +234,7 @@ async function evaluateWithinQuota(
         }
     }
 
-    return evaluableJobIds;
+    return { hiddenIds };
 }
 
 export type ScrapeBlockedResult = {
@@ -427,14 +452,17 @@ export async function scrapeAndEvaluateJobs(
         }
     }
 
-    await evaluateWithinQuota(insforge, userId, user?.email, savedJobs, filters, runId);
+    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, savedJobs, filters, runId);
 
     // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
     // the caller can track exactly this search's batch by id, rather than
     // re-matching by title/location text (which drops jobs whose title or
     // location is phrased differently than the search box, e.g. "Software
     // Engineer" vs "Software Developer", or "Markham, ON" vs "Toronto, ON").
-    return savedJobs;
+    // Excludes anything the pre-filter just hid — this search's own
+    // immediate response should already match what a fresh page load would
+    // show, not include a job that's about to be filtered out anyway.
+    return hiddenIds.length > 0 ? savedJobs.filter((job) => !hiddenIds.includes(job.id)) : savedJobs;
 }
 
 export type TargetCompanyRow = {
@@ -482,11 +510,10 @@ export async function scanTargetCompanies(userId: string) {
         .update({ last_scanned_at: new Date().toISOString() })
         .in("id", companies.map((c) => c.id));
 
-    if (savedJobs.length > 0) {
-        await evaluateWithinQuota(insforge, userId, user?.email, savedJobs, {}, null);
-    }
+    if (savedJobs.length === 0) return savedJobs;
 
-    return savedJobs;
+    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, savedJobs, {}, null);
+    return hiddenIds.length > 0 ? savedJobs.filter((job) => !hiddenIds.includes(job.id)) : savedJobs;
 }
 
 export async function getTargetCompanies(userId: string) {

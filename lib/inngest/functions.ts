@@ -236,6 +236,18 @@ export const evaluateJobsAsync = inngest.createFunction(
                     for (const job of chunk) {
                         const evalResult = evaluations.find((e) => e.id === job.id);
 
+                        // Phase 2 hard-hide (2026-08-31) — a D/F Legitimacy
+                        // grade used to just render a warning label under a
+                        // still-visible job; now it's hidden outright, the
+                        // same way the pre-filter hides obvious junk before
+                        // evaluation (lib/jobPreFilter.ts). Only ever SETS
+                        // is_hidden true here, never explicitly false — a
+                        // job could already be hidden for an unrelated
+                        // reason (user action, the pre-filter), and this
+                        // write must never silently un-hide one.
+                        const legitimacyGrade = evalResult?.dimensions.find((d) => d.dimension === "Legitimacy")?.grade;
+                        const failsLegitimacy = legitimacyGrade === "D" || legitimacyGrade === "F";
+
                         // Capture the error from the database update
                         const { error: updateError } = await admin.database
                             .from("jobs")
@@ -282,6 +294,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 ...(job.company_logo_url || !evalResult?.companyDomain
                                     ? {}
                                     : { company_logo_url: `https://unavatar.io/${evalResult.companyDomain}?fallback=false` }),
+                                ...(failsLegitimacy ? { is_hidden: true } : {}),
                             })
                             .eq("id", job.id);
 
