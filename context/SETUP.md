@@ -30,49 +30,77 @@ empty or absent), `.insforge/project.json` (InsForge CLI link),
 Re-run it after fixing anything it flags — it's safe to run as many times
 as you want, read-only.
 
-## Step 3 — Real credentials (`.env`)
+## Step 3 — Real credentials, via Doppler (the actual central store, added Phase 40)
 
-`.env` is intentionally NOT in git (see `.gitignore`) — it holds real API
-keys and secrets. A fresh clone starts with none of it. Get a copy of the
-real `.env` from wherever it's kept outside git (a password manager, secure
-note, or copy it directly from the machine that already has it) — there is
-no other source for these values; nobody can regenerate someone else's
-existing API keys from scratch.
+`.env`, `.insforge/project.json`, and `.vercel/project.json` are all
+intentionally NOT in git (see `.gitignore`) — they hold real API keys and
+secrets. A fresh clone starts with none of them. As of Phase 40, there IS a
+real central place these live outside git: a Doppler project. Nobody but
+the account owner can create it or push the first copy of real secrets
+into it — that first upload is a deliberate, human action, not something
+an AI session should do automatically, the same way logging into any other
+account is.
 
 **Vercel's own environment variable store is NOT a way to retrieve these**
 — tried and confirmed wrong live (2026-09-01): `vercel env pull` writes the
 literal string `[SENSITIVE]` in place of every "Secret"-type variable's
 real value instead of the value itself; only "Config"-type variables
-(mostly the `NEXT_PUBLIC_*` ones) actually come back. `env ls`/`env pull`
-only tell you which KEYS exist, never the values — Vercel's Secret type is
-genuinely write-only by design (so a compromised deploy pipeline can't
-exfiltrate it), not a retrievable vault. Don't re-attempt this path
-expecting a different result, and don't switch existing keys to "Config"
-type to work around it — that trades away real protection (Config values
-are plainly visible in the dashboard to anyone with project access) for
-convenience on credentials that don't need to be that exposed.
+(mostly the `NEXT_PUBLIC_*` ones) actually come back. Vercel's Secret type
+is genuinely write-only by design, not a retrievable vault — don't
+re-attempt this path, and don't switch keys to "Config" type to work
+around it (that trades away real protection for convenience on credentials
+that don't need that exposure). Doppler is the actual answer to "where do
+these live," not Vercel.
 
-If a specific key really is lost with no backup anywhere, it has to be
-regenerated at the source (the provider's own dashboard — SerpApi, Adzuna,
-Gemini, etc.) and re-added to both `.env` and Vercel; there's no shortcut.
+### 3a — One-time initial setup (already done once for this project; only repeat if starting a genuinely new Doppler project from scratch)
 
-## Step 3b — The other untracked files (see `.gitignore`)
+1. Create a free account: [dashboard.doppler.com/register](https://dashboard.doppler.com/register)
+2. Install the CLI:
+   - Windows: `winget install doppler.doppler`
+   - macOS: `brew install dopplerhq/cli/doppler`
+   - Linux: `curl -Ls https://cli.doppler.com/install.sh | sh`
+3. `doppler login` — opens a browser to authenticate this device to the account.
+4. `doppler projects create sortie`
+5. `doppler setup` — interactive; run from this repo's root, pick the `sortie` project and a config (e.g. `dev`). Writes a local `.doppler.yaml` linking this folder to that project+config (safe to commit — it holds no secrets, just which project/config this folder maps to).
+6. Push the real values in — run these yourself, they're the actual secret-transmission step:
+   ```bash
+   doppler secrets upload .env
+   doppler secrets set INSFORGE_PROJECT_JSON="$(cat .insforge/project.json)"
+   doppler secrets set VERCEL_PROJECT_JSON="$(cat .vercel/project.json)"
+   ```
 
-`.env` is the one that matters most, but three more paths are gitignored.
-Two are load-bearing enough to transfer directly if you'd rather not
-re-run the interactive link commands in Steps 4-5:
+### 3b — New machine or new account (the real, repeatable path — do this every time, not step 3a)
 
-- `.insforge/project.json` — contains a real API key inside it (same
-  sensitivity as `.env`, treat it that way) — copy it directly, or let
-  `npx @insforge/cli link` regenerate it.
-- `.vercel/project.json` — projectId/orgId, not itself a secret but needed
-  for the Vercel CLI to know which project to target — copy directly, or
-  let `npx vercel link` regenerate it.
+1. `git clone` this repo (or already have it) and `cd` into it.
+2. Install the Doppler CLI (same OS-specific command as step 2 above).
+3. `doppler login` — your action, once per device, authenticates to the SAME existing Doppler account (not a new project).
+4. `doppler setup` — pick the existing `sortie` project and the right config.
+5. Reconstruct the three files:
+   ```bash
+   doppler secrets download --no-file --format env > .env
+   mkdir -p .insforge .vercel
+   doppler secrets get INSFORGE_PROJECT_JSON --plain > .insforge/project.json
+   doppler secrets get VERCEL_PROJECT_JSON --plain > .vercel/project.json
+   ```
+6. Run `node scripts/verify-setup.mjs` to confirm everything landed correctly.
+
+Once `doppler login` + `doppler setup` are done on a device, a Claude Code
+session in this repo can run either of the commands in step 5 itself, or
+run the app directly with secrets injected at runtime with no `.env` file
+needed at all: `doppler run -- npm run dev`. No manual copy-pasting of
+secrets between machines needed again.
+
+If a specific key really is lost with no backup anywhere (including
+Doppler), it has to be regenerated at the source (the provider's own
+dashboard — SerpApi, Adzuna, Gemini, etc.) and re-added to `.env`/Doppler
+and Vercel; there's no shortcut.
+
+## Step 3c — Files that don't need any of this
 
 Everything else gitignored (`.claude/launch.json`,
 `.claude/settings.local.json`, `.impeccable/config.json`) is convenience
 only — each recreates itself to a sane default (or the tool that reads it
-just prompts again) if it's missing. Not worth chasing down.
+just prompts again) if it's missing. Not worth storing anywhere.
 
 ## Step 4 — InsForge CLI link
 
