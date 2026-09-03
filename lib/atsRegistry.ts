@@ -208,6 +208,41 @@ export function toCompanyKey(company: string): string {
   return companyKey(company);
 }
 
+// Real bug found live (2026-09-03), not caught until a full-pipeline test
+// against a real query: scraper.actions.ts's own comment on this function's
+// caller (enrichWithDirectAtsJobs) already asserted "fetchJobsForCompany
+// pulls a company's board FILTERED BY TITLE ONLY" — true for Workday
+// (searchText) and iCIMS (its own word-overlap filter, both handled inside
+// fetchRegisteredAtsJobs), but never actually true for the 4 slug-based
+// platforms (Greenhouse/Lever/Ashby/SmartRecruiters) — fetchRegisteredAtsJobs
+// silently drops the searchTitle argument for those and returns a company's
+// ENTIRE board. Confirmed live: enriching "Financial Advisor"/Toronto with
+// iCapital (a real Greenhouse-hosted company that showed up in that same
+// search) pulled 212 of its openings, of which ZERO were finance-relevant
+// ("Actuarial Software Engineer", "Agentic AI Engineer", etc.) — Blue Moon
+// Metals similarly dumped 33 mining-industry roles. This isn't just
+// harmless noise: scrapeAndEvaluateJobs' own MAX_EVALUATED_JOBS=80 trim
+// ranks by apply-link TRUST TIER (direct ATS links rank above aggregator
+// links), with no relevance check at that stage — meaning a big irrelevant
+// board dump from ONE enriched company can crowd Adzuna's actually-relevant
+// results entirely out of the 80-slot cap before evaluation ever sees them.
+// Fixed here, not in fetchRegisteredAtsJobs itself — that function is also
+// called from lib/reresolveApplyLink.ts's per-job rescue path, which needs
+// the FULL unfiltered board (it does its own stricter exact-substring
+// titlesMatch afterward, and a loose word-overlap pre-filter here could
+// wrongly drop a legitimate match when the searched title is longer/more
+// specific than the real posting's title). This is the one call site
+// that's genuinely a bulk relevance filter, not a specific-posting lookup.
+function titleWordsMatch(searchTitle: string, candidateTitle: string): boolean {
+  const words = searchTitle
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2);
+  if (words.length === 0) return true;
+  const lowerCandidate = candidateTitle.toLowerCase();
+  return words.every((w) => lowerCandidate.includes(w));
+}
+
 // Pulls a company's own current openings straight from whichever ATS the
 // registry says it uses. Free and unlimited (public ATS endpoints), and
 // every link returned is a real posting on the employer's own system.
@@ -221,7 +256,11 @@ export async function fetchJobsForCompany(
   if (!ats) return [];
 
   try {
-    return await fetchRegisteredAtsJobs(ats, companyName, searchTitle);
+    const jobs = await fetchRegisteredAtsJobs(ats, companyName, searchTitle);
+    // Workday/iCIMS already filtered server-side/internally (see comment
+    // above) — only the 4 slug-based platforms need this extra pass.
+    if (ats.platform === "workday" || ats.platform === "icims") return jobs;
+    return jobs.filter((job) => titleWordsMatch(searchTitle, job.title));
   } catch (error) {
     console.warn(`[atsRegistry] fetch failed for ${companyName}`, error);
     return [];

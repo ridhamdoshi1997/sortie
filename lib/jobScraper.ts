@@ -1162,7 +1162,21 @@ export async function searchJobs(
                 attempts.push({ name: "JobsPipe", promise: jobsPipeProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
             }
             if (getOpenWebNinjaApiKey()) {
-                attempts.push({ name: "JSearch", promise: jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
+                // Real, repeatedly-observed failure mode (2026-09-03,
+                // direct user pushback prompted re-checking this): JSearch's
+                // own API timed out with a real HTTP 504 in live testing,
+                // contributing 0 results while SerpApi was down — the exact
+                // moment this fallback tier matters most. Same one-retry
+                // treatment as Adzuna above, since this looks like the same
+                // class of transient-failure-swallowed-as-empty problem.
+                attempts.push({
+                    name: "JSearch",
+                    promise: jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted).catch(async (err) => {
+                        console.warn("[jobScraper] JSearch failed, retrying once", err);
+                        await new Promise((resolve) => setTimeout(resolve, 1500));
+                        return jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
+                    }),
+                });
             }
 
             const [settled, remoteOkResult] = await Promise.all([
