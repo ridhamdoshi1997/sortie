@@ -60,8 +60,20 @@ AS $$
       p_location IS NULL
       OR btrim(split_part(p_location, ',', 1)) = ''
       OR location ILIKE '%' || btrim(split_part(p_location, ',', 1)) || '%'
-      OR location ILIKE '%remote%'
-      OR location ILIKE '%anywhere%'
+      -- Only GENUINELY location-independent remote, not a bare '%remote%'
+      -- contains-match and not merely a 'remote%' prefix. Both looser
+      -- versions were tried against a real Toronto search and both leaked
+      -- roles a Toronto candidate cannot take: '%remote%' surfaced "USA,
+      -- Wisconsin - Full Time Remote", and 'remote%' still surfaced "Remote
+      -- - United States". Most remote roles are remote WITHIN a country or
+      -- state, so the word alone means nothing — the accompanying geography
+      -- is the signal. This accepts a location that is ONLY a remote marker
+      -- ("Remote", "Anywhere", "Remote - Worldwide") and rejects anything
+      -- naming a specific place. "Remote - Canada" is rejected too, which
+      -- costs a few real matches for Canadian searches; that false negative
+      -- is the right side to err on, since showing a wrong-country job is
+      -- the failure this whole filter exists to prevent.
+      OR location ~* '^(remote|anywhere)([[:space:]\-–,:]*(worldwide|global|anywhere))?$'
     )
   ORDER BY
     -- Real city matches first, remote second, so the limit is spent on the
