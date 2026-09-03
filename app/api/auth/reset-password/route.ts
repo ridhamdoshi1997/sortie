@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@insforge/sdk/ssr";
+import { createInsforgeServerAnon } from "@/lib/insforge-server";
 import { toUserMessage } from "@/lib/errors";
 
 // resetPassword() returns only { message } — no session — so a successful
@@ -22,7 +22,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const insforge = createServerClient();
+    const insforge = createInsforgeServerAnon();
 
     const { data: exchangeData, error: exchangeError } =
       await insforge.auth.exchangeResetPasswordToken({ email, code });

@@ -2,7 +2,7 @@ import { ShieldCheck } from "lucide-react";
 
 import { EmailPasswordForm } from "@/components/auth/EmailPasswordForm";
 import { GoogleOneTap } from "@/components/auth/GoogleOneTap";
-import { AppleIcon, GitHubIcon, GoogleIcon, LinkedInIcon, MicrosoftIcon } from "@/components/auth/BrandIcons";
+import { GitHubIcon, GoogleIcon, MicrosoftIcon } from "@/components/auth/BrandIcons";
 
 const errorMessages: Record<string, string> = {
   callback: "We could not finish signing you in. Please try again.",
@@ -84,16 +84,6 @@ export function LoginCard({ error, defaultMode = "signin" }: Props) {
               <GitHubIcon className="h-4.5 w-4.5" />
             </button>
           </form>
-          <form action="/api/auth/oauth/linkedin" method="get">
-            <button
-              type="submit"
-              aria-label="Continue with LinkedIn"
-              title="Continue with LinkedIn"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <LinkedInIcon className="h-4.5 w-4.5" />
-            </button>
-          </form>
           <form action="/api/auth/oauth/microsoft" method="get">
             <button
               type="submit"
@@ -102,16 +92,6 @@ export function LoginCard({ error, defaultMode = "signin" }: Props) {
               className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
             >
               <MicrosoftIcon className="h-4.5 w-4.5" />
-            </button>
-          </form>
-          <form action="/api/auth/oauth/apple" method="get">
-            <button
-              type="submit"
-              aria-label="Continue with Apple"
-              title="Continue with Apple"
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-border bg-surface text-text-secondary transition-colors hover:border-accent hover:text-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
-            >
-              <AppleIcon className="h-4.5 w-4.5" />
             </button>
           </form>
         </div>

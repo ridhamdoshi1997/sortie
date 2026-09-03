@@ -1,4 +1,4 @@
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from "@/lib/admin/client";
 
 // IP-based daily rate limiting for genuinely public, unauthenticated
 // routes — the free ATS score checker (build-plan.md §I) is the first one

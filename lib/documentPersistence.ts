@@ -113,7 +113,7 @@ export async function persistGeneratedDocument({
   await archiveCurrentDocument(insforge, existingApplication ?? null, kind, userId, jobId);
 
   // SDK has no upsert — remove then upload, matching resume/generate/route.tsx.
-  await insforge.storage.from("resumes").remove(storagePath);
+  await insforge.storage.from("resumes").remove([storagePath]);
   const blob = new Blob([pdfBuffer as unknown as ArrayBuffer], {
     type: "application/pdf",
   });

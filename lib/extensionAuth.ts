@@ -1,5 +1,5 @@
 import { createHash } from "crypto";
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from "@/lib/admin/client";
 
 // Shared bearer-token resolution for every /api/extension/* route — the
 // browser extension has no access to this app's session cookie, so each

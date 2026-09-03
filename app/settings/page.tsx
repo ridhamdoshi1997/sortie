@@ -24,7 +24,7 @@ export default async function SettingsPage() {
         <h1 className="font-display mb-6 text-2xl font-bold text-text-primary">Settings</h1>
         <SettingsPanel
           email={data.user?.email ?? user.email ?? ""}
-          providers={data.user?.providers ?? []}
+          providers={data.user?.app_metadata?.providers ?? []}
         />
       </main>
     </>

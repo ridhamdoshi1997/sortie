@@ -2,7 +2,7 @@
 
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from "@/lib/admin/client";
 import { toUserMessage } from "@/lib/errors";
 
 // Referral system (Phase 18 item 3, context/RESUME.md). Own-row ops go

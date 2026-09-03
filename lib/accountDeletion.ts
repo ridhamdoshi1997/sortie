@@ -1,5 +1,5 @@
 import { assertUuid, runAdminSql } from "@/lib/insforge-admin-sql";
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from "@/lib/admin/client";
 
 function adminClient() {
   return createAdminClient({
@@ -56,7 +56,7 @@ export async function deleteAllUserData(targetUserId: string): Promise<void> {
   for (const path of storagePaths) {
     await admin.storage
       .from("resumes")
-      .remove(path)
+      .remove([path])
       .catch((error) => {
         console.error("[lib/accountDeletion] storage remove failed, continuing", path, error);
       });

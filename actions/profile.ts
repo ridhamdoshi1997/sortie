@@ -414,7 +414,7 @@ export async function uploadResume(
     const path = `${user.id}/resume.pdf`;
 
     // SDK has no upsert option — remove existing file first, then upload fresh
-    await insforge.storage.from("resumes").remove(path);
+    await insforge.storage.from("resumes").remove([path]);
 
     const { error: uploadError } = await insforge.storage
       .from("resumes")
@@ -576,7 +576,7 @@ export async function extractProfile(): Promise<{
       .eq("id", user.id)
       .maybeSingle<Pick<Profile, "preferred_model">>();
 
-    return await extractProfileFromBuffer(buffer, existingProfile?.preferred_model ?? null, insforge, user.id, user.email);
+    return await extractProfileFromBuffer(buffer, existingProfile?.preferred_model ?? null, insforge, user.id, user.email ?? "");
   } catch (error) {
     console.error("[actions/profile] extractProfile", error);
 

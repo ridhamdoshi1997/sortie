@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient } from "@insforge/sdk/ssr";
+import { createInsforgeServerAnon } from "@/lib/insforge-server";
 import { toUserMessage } from "@/lib/errors";
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
@@ -9,7 +9,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       return NextResponse.json({ success: false, error: "Email is required." }, { status: 400 });
     }
 
-    const insforge = createServerClient();
+    const insforge = createInsforgeServerAnon();
     const { error } = await insforge.auth.resendVerificationEmail({
       email,
       redirectTo: new URL("/login", request.url).toString(),

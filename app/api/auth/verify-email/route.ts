@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+import { createInsforgeServer } from "@/lib/insforge-server";
 
 import { getPostLoginRedirectPath } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
@@ -15,7 +15,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const insforge = createServerClient();
+    const insforge = await createInsforgeServer();
     const { data, error } = await insforge.auth.verifyEmail({ email, otp });
 
     if (error || !data?.accessToken || !data.user) {
@@ -26,12 +26,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const redirectPath = await getPostLoginRedirectPath(data.user.id);
-    const response = NextResponse.json({ success: true, redirectPath });
-    setAuthCookies(response.cookies, {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-    });
-    return response;
+    return NextResponse.json({ success: true, redirectPath });
   } catch (error) {
     console.error("[auth/verify-email]", error);
     return NextResponse.json(

@@ -1,7 +1,6 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from "react";
-import { getAccessTokenCookieName } from "@insforge/sdk/ssr";
 
 // Lets app/page.tsx and app/pricing/page.tsx render as static Server
 // Components (no cookies() access) instead of forcing the whole route
@@ -18,21 +17,28 @@ import { getAccessTokenCookieName } from "@insforge/sdk/ssr";
 //    matching the static HTML, and React itself reconciles the real
 //    client value on hydration) — a real returning user sees the
 //    authenticated UI almost immediately, no network wait.
-// 2. Authoritative: POST /api/auth/refresh (this app's own route,
-//    already wired to createRefreshAuthRouter() — see
+// 2. Authoritative: POST /api/auth/refresh (this app's own route, now
+//    backed by Supabase's getUser() server-side — see
 //    app/api/auth/refresh/route.ts) to confirm/reconcile. A stale or
 //    expired cookie downgrades back to false once this resolves.
-//    Deliberately NOT using insforge.auth.getCurrentUser() (from
-//    lib/insforge-client.ts) here — traced through the installed SDK
-//    and confirmed its cold-load path (no in-memory session yet)
-//    calls refreshSession(), which posts to the InsForge backend's
-//    own absolute origin, not this app's — cookies scoped to this
-//    app's domain won't ride along cross-origin, so it would
-//    misreport real signed-in users as signed-out. This app's own
-//    /api/auth/refresh route handler runs the same check
-//    server-side against the real request cookie, no cross-origin
-//    problem.
+//    Note: with @supabase/ssr's browser client, the cross-origin cookie
+//    problem InsForge had (calling the backend's own absolute origin,
+//    whose cookies don't ride along cross-origin) likely doesn't apply the
+//    same way — @supabase/ssr stores the session in a cookie on THIS app's
+//    own domain by design. This two-step pattern is kept as-is for now
+//    (safer to preserve known-working behavior during migration) rather
+//    than assuming that's fully true without live-testing it — worth
+//    revisiting once Supabase auth is verified stable.
 const AuthStateContext = createContext(false);
+
+// Supabase's own documented cookie-naming convention for @supabase/ssr's
+// browser client: `sb-<project-ref>-auth-token`. Derived from the project
+// URL rather than hardcoded, so this doesn't silently break if the project
+// URL env var ever changes.
+function getAccessTokenCookieName(): string {
+  const projectRef = process.env.NEXT_PUBLIC_SUPABASE_URL?.match(/^https:\/\/([^.]+)\./)?.[1] ?? "";
+  return `sb-${projectRef}-auth-token`;
+}
 
 function hasAccessTokenCookie(): boolean {
   const name = getAccessTokenCookieName();

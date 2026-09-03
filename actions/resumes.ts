@@ -147,7 +147,7 @@ export async function uploadResumeSlot(
             profileRow?.preferred_model ?? null,
             insforge,
             user.id,
-            user.email,
+            user.email ?? "",
           );
           if (extraction.success && extraction.data) {
             extractedData = extraction.data;
@@ -184,7 +184,7 @@ export async function uploadResumeSlot(
       console.error("[actions/resumes] uploadResumeSlot insert", insertError);
       // Storage file was written but the DB row wasn't — clean up rather
       // than leave an orphaned, unreferenced file in the bucket.
-      await insforge.storage.from("resumes").remove(storagePath);
+      await insforge.storage.from("resumes").remove([storagePath]);
       return { success: false, error: "Failed to save résumé" };
     }
 
@@ -333,7 +333,7 @@ export async function deleteResume(id: string): Promise<{ success: boolean; erro
     // Best-effort — the DB row is the source of truth for "this résumé is
     // gone"; a leftover orphaned file is a cleanup nit, not a correctness
     // issue for the user.
-    await insforge.storage.from("resumes").remove(target.storage_path);
+    await insforge.storage.from("resumes").remove([target.storage_path]);
 
     revalidatePath("/profile");
     revalidatePath("/resume");
@@ -374,7 +374,7 @@ export async function deleteTailoredResume(jobId: string): Promise<{ success: bo
     }
 
     if (application.resume_pdf_url) {
-      await insforge.storage.from("resumes").remove(application.resume_pdf_url);
+      await insforge.storage.from("resumes").remove([application.resume_pdf_url]);
     }
 
     const hasCoverLetter = Boolean(application.cover_letter_pdf_url || application.generated_cover_letter);

@@ -143,7 +143,7 @@ ${profileContext}`,
 
     // Remove existing file then upload fresh (SDK has no upsert — matches actions/profile.ts pattern)
     const path = `${user.id}/resume.pdf`;
-    await insforge.storage.from("resumes").remove(path);
+    await insforge.storage.from("resumes").remove([path]);
 
     // InsForge storage upload expects a Blob — wrap the Node Buffer.
     // Cast to ArrayBuffer to satisfy strict TS — Buffer is a safe subtype at runtime.

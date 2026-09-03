@@ -1,7 +1,10 @@
 "use server";
 
+import Stripe from "stripe";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer, createInsforgeServerAnon } from "@/lib/insforge-server";
+
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!);
 import { getPlan, getPremiumFeatureStatus, getUserSubscription, listPlans, type PlanConfig } from "@/lib/subscription";
 import { getSiteUrl } from "@/lib/siteUrl";
 import { toUserMessage } from "@/lib/errors";
@@ -124,41 +127,43 @@ export async function createCheckoutSessionAction(tier: string): Promise<ActionR
 
     const siteUrl = getSiteUrl();
     const isOneTime = plan.billingPeriod === "lifetime";
-    const { data, error } = await insforge.payments.stripe.createCheckoutSession("test", {
-      mode: isOneTime ? "payment" : "subscription",
-      lineItems: [{ priceId: effectivePriceId, quantity: 1 }],
-      successUrl: `${siteUrl}/settings?upgraded=1`,
-      cancelUrl: `${siteUrl}/pricing`,
-      subject: { type: "user", id: user.id },
-      customerEmail: user.email ?? null,
-      // Stamped so fulfill_stripe_one_time_purchase() can resolve which
-      // plan a one-time Checkout Session was for — a Checkout Session
-      // webhook payload carries no line-item/price array to reverse-map
-      // the way an invoice does (see the migration's own comment). Harmless
-      // to also send on a subscription checkout, just unused there.
-      // region_key is traceable in the Stripe dashboard/support, not read
-      // by any fulfillment logic — fulfillment resolves the tier from the
-      // Price ID itself (see fulfill_stripe_subscription_event's
-      // regional_prices lookup, fixed 2026-08-28).
-      metadata: { plan_tier: tier, region_key: regionKey ?? "base" },
-      idempotencyKey: `user:${user.id}:${tier}:${Date.now()}`,
-    });
+    // client_reference_id + metadata.supabase_user_id both set (not just
+    // one) — client_reference_id is the idiomatic Stripe field for "which
+    // of my users is this," but subscription_data.metadata is what actually
+    // survives onto invoice.paid's `parent.subscription_details.metadata`
+    // for recurring plans (see app/api/webhooks/stripe/route.ts's own
+    // comment on why InsForge's insforge_subject_id + customer_mappings
+    // lookup became this instead).
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: isOneTime ? "payment" : "subscription",
+        line_items: [{ price: effectivePriceId, quantity: 1 }],
+        success_url: `${siteUrl}/settings?upgraded=1`,
+        cancel_url: `${siteUrl}/pricing`,
+        client_reference_id: user.id,
+        customer_email: user.email ?? undefined,
+        metadata: { plan_tier: tier, region_key: regionKey ?? "base", supabase_user_id: user.id },
+        ...(isOneTime ? {} : { subscription_data: { metadata: { supabase_user_id: user.id } } }),
+      },
+      { idempotencyKey: `user:${user.id}:${tier}:${Date.now()}` },
+    );
 
-    if (error || !data?.checkoutSession.url) {
-      console.error("[actions/billing] createCheckoutSessionAction", error);
-      return { success: false, error: toUserMessage(error, "Failed to start checkout — try again.") };
+    if (!session.url) {
+      console.error("[actions/billing] createCheckoutSessionAction: no session URL returned");
+      return { success: false, error: "Failed to start checkout — try again." };
     }
 
-    return { success: true, url: data.checkoutSession.url };
+    return { success: true, url: session.url };
   } catch (error) {
     return { success: false, error: toUserMessage(error, "Failed to start checkout — try again.") };
   }
 }
 
-// Existing paying customers only — portal creation needs a real
-// payments.customer_mappings row (skills/insforge/payments/stripe.md), which
-// only exists after at least one completed checkout. Surfaced from Settings'
-// billing section, gated on the user actually being on a paid plan.
+// Existing paying customers only — portal creation needs a real Stripe
+// customer id, stored on user_subscriptions.payment_customer_id by the
+// webhook handler at fulfillment time, which only exists after at least one
+// completed checkout. Surfaced from Settings' billing section, gated on the
+// user actually being on a paid plan.
 export async function createBillingPortalSessionAction(): Promise<ActionResult> {
   // requireUser must be outside try/catch — redirect() throws NEXT_REDIRECT
   // which would otherwise be caught and swallowed as a generic error.
@@ -167,18 +172,24 @@ export async function createBillingPortalSessionAction(): Promise<ActionResult> 
   try {
     const insforge = await createInsforgeServer();
 
-    const { data, error } = await insforge.payments.stripe.createCustomerPortalSession("test", {
-      subject: { type: "user", id: user.id },
-      returnUrl: `${getSiteUrl()}/settings`,
-    });
+    const { data: subRow } = await insforge.database
+      .from("user_subscriptions")
+      .select("payment_customer_id")
+      .eq("user_id", user.id)
+      .maybeSingle();
 
-    if (error || !data?.customerPortalSession.url) {
-      console.error("[actions/billing] createBillingPortalSessionAction", error);
+    if (!subRow?.payment_customer_id) {
       return { success: false, error: "No billing account found yet — subscribe first." };
     }
 
-    return { success: true, url: data.customerPortalSession.url };
+    const session = await stripe.billingPortal.sessions.create({
+      customer: subRow.payment_customer_id,
+      return_url: `${getSiteUrl()}/settings`,
+    });
+
+    return { success: true, url: session.url };
   } catch (error) {
+    console.error("[actions/billing] createBillingPortalSessionAction", error);
     return { success: false, error: toUserMessage(error, "Failed to open billing portal — try again.") };
   }
 }

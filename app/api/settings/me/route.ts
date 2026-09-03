@@ -14,6 +14,6 @@ export async function GET(): Promise<NextResponse> {
 
   return NextResponse.json({
     email: data.user?.email ?? user.email ?? "",
-    providers: data.user?.providers ?? [],
+    providers: data.user?.app_metadata?.providers ?? [],
   });
 }

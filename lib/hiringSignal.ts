@@ -1,4 +1,4 @@
-import { createAdminClient } from "@insforge/sdk";
+import { createAdminClient } from "@/lib/admin/client";
 
 // Signal-based outreach automation, free half (Phase 18 item 5,
 // context/RESUME.md). No paid Clay/Apollo account exists yet — this

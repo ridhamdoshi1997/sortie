@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerClient, setAuthCookies } from "@insforge/sdk/ssr";
+import { createInsforgeServer } from "@/lib/insforge-server";
 
 import { getPostLoginRedirectPath } from "@/lib/auth";
 import { toUserMessage } from "@/lib/errors";
@@ -15,17 +15,14 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const insforge = createServerClient();
+    const insforge = await createInsforgeServer();
     const { data, error } = await insforge.auth.signInWithPassword({ email, password });
 
     if (error || !data?.accessToken || !data.user) {
-      const unverified = error?.statusCode === 403;
+      // Supabase's real error message for this case, not a status code —
+      // confirmed via @supabase/auth-js's own AuthApiError shape.
+      const unverified = error?.message === "Email not confirmed";
       if (unverified) {
-        // The UI tells the user "we sent you a code" the moment it shows
-        // the verify screen — make that true here rather than relying on
-        // whatever code (if any) was sent during the original signup,
-        // which may be long expired or, like this project's first real
-        // signup attempt, never delivered at all (SMTP provider outage).
         await insforge.auth
           .resendVerificationEmail({ email, redirectTo: new URL("/login", request.url).toString() })
           .catch(() => {});
@@ -43,12 +40,7 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
     }
 
     const redirectPath = await getPostLoginRedirectPath(data.user.id);
-    const response = NextResponse.json({ success: true, redirectPath });
-    setAuthCookies(response.cookies, {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-    });
-    return response;
+    return NextResponse.json({ success: true, redirectPath });
   } catch (error) {
     console.error("[auth/signin]", error);
     return NextResponse.json(

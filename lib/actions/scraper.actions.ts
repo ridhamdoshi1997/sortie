@@ -20,7 +20,6 @@ import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isAdminUser } from "@/lib/access";
 import { unstable_noStore as noStore } from 'next/cache';
-import { createClient } from '@insforge/sdk'; //
 
 type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -664,10 +663,7 @@ export async function getJobsByIds(ids: string[]) {
 export async function getUserJobs(userId: string, title?: string, location?: string) {
     noStore(); // 🛑 Disables Next.js caching for this function
 
-    const insforge = createClient({
-        baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!, //
-        anonKey: process.env.NEXT_PUBLIC_INSFORGE_ANON_KEY! //
-    });
+    const insforge = createAdminDbClient();
 
     let query = insforge.database
         .from('jobs')

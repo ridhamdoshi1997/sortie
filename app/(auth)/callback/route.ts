@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import {
-  clearAuthCookies,
-  createServerClient,
-  setAuthCookies,
-} from "@insforge/sdk/ssr";
-
-const verifierCookieName = "sortie_oauth_code_verifier";
+import { createInsforgeServer } from "@/lib/insforge-server";
 
 type ProfileCompletionRow = {
   is_complete: boolean | null;
   onboarding_completed_at: string | null;
 };
 
-async function getRedirectPath(userId: string, accessToken: string): Promise<string> {
-  const insforge = createServerClient({ accessToken });
+async function getRedirectPath(insforge: Awaited<ReturnType<typeof createInsforgeServer>>, userId: string): Promise<string> {
   const { data, error } = await insforge.database
     .from("profiles")
     .select("is_complete,onboarding_completed_at")
@@ -40,47 +33,33 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const callbackError = request.nextUrl.searchParams.get("error");
-    const code = request.nextUrl.searchParams.get("insforge_code");
-    const codeVerifier = request.cookies.get(verifierCookieName)?.value;
+    const code = request.nextUrl.searchParams.get("code");
 
-    if (callbackError || !code || !codeVerifier) {
+    if (callbackError || !code) {
       loginUrl.searchParams.set("error", "callback");
-      const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete(verifierCookieName);
-      clearAuthCookies(response.cookies);
-      return response;
+      return NextResponse.redirect(loginUrl);
     }
 
-    const insforge = createServerClient();
-    const { data, error } = await insforge.auth.exchangeOAuthCode(
-      code,
-      codeVerifier,
-    );
+    // No manual code-verifier cookie to read — Supabase's own PKCE verifier
+    // cookie (set by signInWithOAuth in app/api/auth/oauth/[provider]/route.ts,
+    // via the SAME cookies()-bound client type) is read automatically here.
+    // The session cookie itself is also written automatically as a side
+    // effect of this call, via this client's cookie adapter — no manual
+    // setAuthCookies needed.
+    const insforge = await createInsforgeServer();
+    const { data, error } = await insforge.auth.exchangeOAuthCode(code);
 
-    if (error || !data?.accessToken || !data.user) {
+    if (error || !data?.user) {
       console.error("[auth/callback]", error);
       loginUrl.searchParams.set("error", "callback");
-      const response = NextResponse.redirect(loginUrl);
-      response.cookies.delete(verifierCookieName);
-      clearAuthCookies(response.cookies);
-      return response;
+      return NextResponse.redirect(loginUrl);
     }
 
-    const redirectPath = await getRedirectPath(data.user.id, data.accessToken);
-    const response = NextResponse.redirect(new URL(redirectPath, request.url));
-    response.cookies.delete(verifierCookieName);
-    setAuthCookies(response.cookies, {
-      accessToken: data.accessToken,
-      refreshToken: data.refreshToken,
-    });
-
-    return response;
+    const redirectPath = await getRedirectPath(insforge, data.user.id);
+    return NextResponse.redirect(new URL(redirectPath, request.url));
   } catch (error) {
     console.error("[auth/callback]", error);
     loginUrl.searchParams.set("error", "callback");
-    const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete(verifierCookieName);
-    clearAuthCookies(response.cookies);
-    return response;
+    return NextResponse.redirect(loginUrl);
   }
 }

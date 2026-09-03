@@ -12,7 +12,7 @@ import {
 import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
-import { createAdminClient } from '@insforge/sdk';
+import { createAdminClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { crawlKnownAtsCompanies } from "@/lib/proactiveAtsCrawl";

@@ -365,7 +365,7 @@ export async function deleteTailoredCoverLetter(jobId: string): Promise<{ succes
     }
 
     if (application.cover_letter_pdf_url) {
-      await insforge.storage.from("resumes").remove(application.cover_letter_pdf_url);
+      await insforge.storage.from("resumes").remove([application.cover_letter_pdf_url]);
     }
 
     const hasResume = Boolean(application.generated_resume || application.resume_pdf_url);
@@ -489,7 +489,7 @@ export async function restoreDocumentVersion(
     }
 
     const liveStoragePath = `${user.id}/${version.job_id}/${version.kind === "resume" ? "resume" : "cover-letter"}.pdf`;
-    await insforge.storage.from("resumes").remove(liveStoragePath);
+    await insforge.storage.from("resumes").remove([liveStoragePath]);
     const { error: uploadError } = await insforge.storage.from("resumes").upload(liveStoragePath, versionBlob);
     if (uploadError) {
       console.error("[actions/documents] restoreDocumentVersion upload", uploadError);
