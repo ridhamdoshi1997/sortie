@@ -42,36 +42,33 @@ type CrawlCandidate = {
   config: { slug?: string } | null;
 };
 
-// Raised from 15 (Phase 40/43, direct user decision): the registry just
-// grew from ~80 organically-discovered companies to ~9,646 via the free
-// LastRound AI ATS directory seed — at the old 15/30min rate, one full pass
-// would have taken ~13 days. These are plain, unauthenticated public JSON
-// GET requests to Greenhouse/Lever/Ashby (no shared quota to protect, no
-// per-key rate limit the way SerpApi has), so there's no equivalent budget
-// constraint to the paid-tier caps elsewhere in this codebase — the only
-// real limit is being reasonably polite to each company's own endpoint,
-// which this doesn't threaten since every company in a batch is a
-// different server. Still bounded (not unbounded) so a backlog drains
-// gradually across runs rather than in one giant burst; companies are
-// picked oldest-crawled-first (nulls first) so newly-seeded rows — all
-// currently null — get priority and every company eventually gets a turn.
-const CRAWL_BATCH_SIZE = 150;
-
-// Real bug found live 2026-09-03 while crawling Workable: stale-marking
-// failed with a bare "Bad Request" for Anduril Industries and ALO — the two
-// companies in that batch with the MOST postings. Cause: the diff was
-// expressed as a single PostgREST `.not("external_id","in",(...))` filter
-// carrying every current posting id inline, so a big board blows the URL
-// length limit. The failure was silent-by-design (logged, non-fatal), which
-// made it worse: stale-marking is exactly what stops filled/pulled roles
-// showing forever, and it was failing precisely for the largest employers,
-// where it matters most.
+// Sized against a real measurement, not a guess (2026-09-03). Timing a
+// 150-company batch showed 16.3s total of which only 1.3s was fetching —
+// the rest was per-company database chatter, since every company issued its
+// own upsert, stale-marking read and cursor write (~450 round-trips). Those
+// are now batched (see the phases in crawlKnownAtsCompanies), which brought
+// the same batch to 12.3s and, more importantly, changed the shape of the
+// cost: it now scales with POSTINGS WRITTEN rather than companies visited.
 //
-// Now diffed in memory instead: read this company's active ids (one small
-// select), compute what's missing, and deactivate only those, in batches —
-// the same ID_BATCH_SIZE approach lib/reresolveApplyLink.ts already uses
-// after hitting this identical PostgREST gotcha. Shared by all three
-// crawlers rather than a fourth copy of the same block.
+// The cron cadence was briefly raised to every 5 minutes to chase coverage
+// and then deliberately put BACK to every 15, for two measured reasons.
+// First, coverage had already arrived: 22,515 of the registry's 24,064
+// companies were crawled, so the backlog that motivated a faster cadence was
+// 94% gone, and what remains is periodic re-crawling for freshness — which
+// job postings simply do not need every five minutes. Second, this project's
+// Supabase plan allows 5 GB of egress a month, and tripling the cadence
+// triples the crawl's share of it for almost no benefit.
+//
+// 200 per 15 minutes (4,800/hour across the three crawlers) comfortably
+// sustains freshness over a 24,000-company registry, and each invocation
+// stays well inside the 60s ceiling declared in app/api/inngest/route.ts.
+// These are plain unauthenticated public endpoints with no shared quota
+// (unlike SerpApi), and every company in a batch is a different host, so the
+// limit here is our own budget, not politeness. Still ordered
+// oldest-crawled-first, so the queue drains evenly and every company gets a
+// turn.
+const CRAWL_BATCH_SIZE = 200;
+
 // Real bug found live 2026-09-03: "ON CONFLICT DO UPDATE command cannot
 // affect row a second time" — a board returned the SAME posting id twice in
 // one response, so a single upsert carried two rows with an identical
@@ -86,8 +83,76 @@ function dedupePostingRows<T extends { ats_platform: string; company_key: string
   return [...byKey.values()];
 }
 
-const STALE_ID_BATCH_SIZE = 50;
+// Rows per batched upsert, companies per batched cursor update, and
+// companies per stale-marking RPC call. All three exist to keep a single
+// PostgREST request from growing unbounded — the same payload/URL limit that
+// already bit this file's stale-marking once.
+const UPSERT_CHUNK_SIZE = 500;
+const CURSOR_CHUNK_SIZE = 200;
+const STALE_RPC_CHUNK_SIZE = 100;
 
+// Hard storage guard (2026-09-03). This project's Supabase plan caps the
+// database at 500 MB, and that budget has to cover real user data — profiles,
+// applications, résumés — not just a cache of other people's job ads.
+//
+// Measured, because the risk was not obvious: most platforms return no
+// description at all in list mode (Greenhouse/Ashby/Workday/BambooHR all
+// average 0 chars), but the two adapters added today are the opposite —
+// Dayforce averages 3,719 chars per posting and Workable 2,209. Only 131 of
+// 692 Dayforce and 3 of 6,499 Workable companies had been crawled at the
+// time of measuring, so those averages had barely begun to land. Extrapolated
+// across their full registries they would have added roughly 300-400 MB of
+// description text by themselves and blown the entire quota.
+//
+// 500 chars keeps a genuinely useful preview — enough to tell roles apart in
+// a list and to give the evaluator real signal — while cutting the storage
+// those two platforms need by roughly 85%. Nothing downstream needs more
+// from the CACHE specifically: the pre-filter's short-description rule
+// already exempts direct-ATS sources (lib/jobPreFilter.ts), and a posting a
+// candidate actually opens goes through the on-demand full evaluation path,
+// which reads the employer's own live page rather than this table.
+const CACHED_DESCRIPTION_MAX_CHARS = 500;
+
+function truncateDescription(description: string | undefined): string | null {
+  const trimmed = (description ?? "").trim();
+  if (!trimmed) return null;
+  return trimmed.length > CACHED_DESCRIPTION_MAX_CHARS ? `${trimmed.slice(0, CACHED_DESCRIPTION_MAX_CHARS)}…` : trimmed;
+}
+
+// Batched form of markMissingPostingsInactive: one read covering every
+// company in the crawl batch, rather than one read per company. Introduced
+// 2026-09-03 after measuring that DB chatter, not fetching, was capping
+// throughput (16.3s for a 150-company batch, only 1.3s of it fetching).
+//
+// Per-company semantics are unchanged — the diff is still computed against
+// that company's own current ids, and deactivations are still scoped to
+// (ats_platform, company_key) — they're just grouped in memory instead of
+// costing a round-trip each. Deactivation writes stay per-company because
+// they're genuinely rare: a first crawl has nothing to deactivate, and a
+// re-crawl usually finds only a handful of companies with removals.
+async function markMissingPostingsInactiveBatch(
+  admin: AdminDb,
+  entries: { platform: string; companyKey: string; companyName: string; currentIds: string[] }[],
+): Promise<void> {
+  // Sent in chunks purely to bound request BODY size; the response is a
+  // single integer either way.
+  for (let i = 0; i < entries.length; i += STALE_RPC_CHUNK_SIZE) {
+    const chunk = entries.slice(i, i + STALE_RPC_CHUNK_SIZE);
+    const { error } = await admin.database.rpc("mark_missing_postings_inactive", {
+      p_entries: chunk.map((e) => ({
+        platform: e.platform,
+        company_key: e.companyKey,
+        current_ids: e.currentIds,
+      })),
+    });
+    if (error) console.warn(`[proactiveAtsCrawl] stale-marking RPC failed (${chunk.length} companies)`, error.message);
+  }
+}
+
+// Single-company convenience wrapper over the same RPC, kept so the Workday
+// and iCIMS crawlers (which loop per company for their own reasons) get the
+// identical bandwidth and correctness properties without duplicating the
+// call shape.
 async function markMissingPostingsInactive(
   admin: AdminDb,
   platform: string,
@@ -95,34 +160,7 @@ async function markMissingPostingsInactive(
   currentIds: string[],
   companyName: string,
 ): Promise<void> {
-  const { data, error } = await admin.database
-    .from("discovered_postings")
-    .select("external_id")
-    .eq("ats_platform", platform)
-    .eq("company_key", companyKey)
-    .eq("is_active", true);
-
-  if (error) {
-    console.warn(`[proactiveAtsCrawl] stale-marking read failed for ${companyName}`, error.message);
-    return;
-  }
-
-  const current = new Set(currentIds);
-  const missing = ((data as { external_id: string }[] | null) ?? [])
-    .map((row) => row.external_id)
-    .filter((id) => !current.has(id));
-  if (missing.length === 0) return;
-
-  for (let i = 0; i < missing.length; i += STALE_ID_BATCH_SIZE) {
-    const batch = missing.slice(i, i + STALE_ID_BATCH_SIZE);
-    const { error: updateError } = await admin.database
-      .from("discovered_postings")
-      .update({ is_active: false })
-      .eq("ats_platform", platform)
-      .eq("company_key", companyKey)
-      .in("external_id", batch);
-    if (updateError) console.warn(`[proactiveAtsCrawl] stale-marking failed for ${companyName}`, updateError.message);
-  }
+  await markMissingPostingsInactiveBatch(admin, [{ platform, companyKey, companyName, currentIds }]);
 }
 
 export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
@@ -145,78 +183,106 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
 
   let postingsUpserted = 0;
 
-  await Promise.all(
+  // Phase 1 — fetch every board concurrently, touching no database.
+  //
+  // Split into phases 2026-09-03 after measuring where the time actually
+  // went: a 150-company batch took 16.3s, of which the fetching was 1.3s.
+  // The other ~15s was database round-trips, because each company issued its
+  // own upsert, its own stale-marking select/update and its own
+  // last_crawled_at write — roughly 450 round-trips per batch, nearly all of
+  // them tiny. Fetching scales fine on its own (500 boards measured at
+  // 1.8s), so the batch size was never limited by the ATS endpoints; it was
+  // limited by chatter with Postgres. Batching those writes is what makes a
+  // larger CRAWL_BATCH_SIZE viable at all.
+  const fetched = await Promise.all(
     candidates.map(async (candidate) => {
       const slug = candidate.config?.slug;
       const platform = candidate.platform as AtsPlatform;
-      if (!slug || !CRAWLABLE_PLATFORMS.includes(platform)) return;
+      if (!slug || !CRAWLABLE_PLATFORMS.includes(platform)) {
+        return { candidate, platform, jobs: [] as NormalizedJob[], fetchSucceeded: false, skipped: true };
+      }
 
-      let jobs: NormalizedJob[] = [];
       // Distinct from "board fetched fine, currently has zero postings" —
       // only a genuine fetch success should ever mark anything inactive
       // below. A network blip or a transient upstream error must never be
       // mistaken for "this company removed every one of its postings."
-      let fetchSucceeded = false;
       try {
-        jobs = await fetchAtsJobs(platform, slug, candidate.company_name);
-        fetchSucceeded = true;
+        const jobs = await fetchAtsJobs(platform, slug, candidate.company_name);
+        return { candidate, platform, jobs, fetchSucceeded: true, skipped: false };
       } catch (error) {
         console.warn(`[proactiveAtsCrawl] fetch failed for ${candidate.company_name}`, error);
+        return { candidate, platform, jobs: [] as NormalizedJob[], fetchSucceeded: false, skipped: false };
       }
-
-      if (jobs.length > 0) {
-        const now = new Date().toISOString();
-        const rows = jobs.map((job) => ({
-          ats_platform: platform,
-          company_key: candidate.company_key,
-          company_name: candidate.company_name,
-          external_id: job.id,
-          title: job.title,
-          location: job.location || null,
-          description: job.description || null,
-          salary: job.salary || null,
-          job_type: job.type || null,
-          apply_url: job.applyUrl ?? job.url,
-          posted_at: job.postedAt ?? null,
-          last_seen_at: now,
-          // Explicit, not left to the column default — a posting that was
-          // previously marked inactive (removed, then genuinely reposted)
-          // must be reactivated here, and upsert's ON CONFLICT path only
-          // touches the columns actually listed, not defaults.
-          is_active: true,
-        }));
-
-        const { error } = await admin.database
-          .from("discovered_postings")
-          .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
-        if (error) console.warn(`[proactiveAtsCrawl] upsert failed for ${candidate.company_name}`, error.message);
-        else postingsUpserted += rows.length;
-      }
-
-      // Real freshness fix (Phase 40/43): this used to only ever ADD/refresh
-      // postings, never notice one had disappeared from the employer's own
-      // board — a filled or pulled role stayed "active" in the cache
-      // forever. Diff this fetch's own external_ids against whatever this
-      // company already has marked active; anything missing gets flagged,
-      // but ONLY when the fetch itself genuinely succeeded (see
-      // fetchSucceeded above) — a failed fetch must never be treated as
-      // evidence every posting is gone.
-      if (fetchSucceeded) {
-        await markMissingPostingsInactive(
-          admin,
-          platform,
-          candidate.company_key,
-          jobs.map((job) => job.id),
-          candidate.company_name,
-        );
-      }
-
-      await admin.database
-        .from("ats_registry")
-        .update({ last_crawled_at: new Date().toISOString() })
-        .eq("company_key", candidate.company_key);
     }),
   );
+
+  // Phase 2 — one upsert per chunk of rows, instead of one per company.
+  const now = new Date().toISOString();
+  const allRows = fetched.flatMap(({ candidate, platform, jobs }) =>
+    jobs.map((job) => ({
+      ats_platform: platform,
+      company_key: candidate.company_key,
+      company_name: candidate.company_name,
+      external_id: job.id,
+      title: job.title,
+      location: job.location || null,
+      description: truncateDescription(job.description),
+      salary: job.salary || null,
+      job_type: job.type || null,
+      apply_url: job.applyUrl ?? job.url,
+      posted_at: job.postedAt ?? null,
+      last_seen_at: now,
+      // Explicit, not left to the column default — a posting that was
+      // previously marked inactive (removed, then genuinely reposted)
+      // must be reactivated here, and upsert's ON CONFLICT path only
+      // touches the columns actually listed, not defaults.
+      is_active: true,
+    })),
+  );
+
+  const deduped = dedupePostingRows(allRows);
+  for (let i = 0; i < deduped.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = deduped.slice(i, i + UPSERT_CHUNK_SIZE);
+    const { error } = await admin.database
+      .from("discovered_postings")
+      .upsert(chunk, { onConflict: "ats_platform,company_key,external_id" });
+    if (error) console.warn(`[proactiveAtsCrawl] batched upsert failed (${chunk.length} rows)`, error.message);
+    else postingsUpserted += chunk.length;
+  }
+
+  // Phase 3 — freshness diff (Phase 40/43): the crawl used to only ever
+  // ADD/refresh postings and never notice one had disappeared from the
+  // employer's own board, so a filled or pulled role stayed "active" in the
+  // cache forever. Only companies whose fetch genuinely SUCCEEDED are
+  // eligible: a network blip must never be read as "this company removed
+  // every posting." Now one read for the whole batch instead of one per
+  // company, with the per-company semantics preserved by grouping in memory.
+  const succeeded = fetched.filter((f) => f.fetchSucceeded && !f.skipped);
+  if (succeeded.length > 0) {
+    await markMissingPostingsInactiveBatch(
+      admin,
+      succeeded.map((f) => ({
+        platform: f.platform,
+        companyKey: f.candidate.company_key,
+        companyName: f.candidate.company_name,
+        currentIds: f.jobs.map((job) => job.id),
+      })),
+    );
+  }
+
+  // Phase 4 — one cursor write for the whole batch. Every candidate is
+  // touched, including skipped/failed ones: this list is ordered
+  // oldest-crawled-first, so a row that never gets its cursor bumped would
+  // win selection on every future batch forever and starve the queue.
+  const allKeys = candidates.map((c) => c.company_key);
+  for (let i = 0; i < allKeys.length; i += CURSOR_CHUNK_SIZE) {
+    const chunk = allKeys.slice(i, i + CURSOR_CHUNK_SIZE);
+    const { error } = await admin.database
+      .from("ats_registry")
+      .update({ last_crawled_at: new Date().toISOString() })
+      .in("company_key", chunk);
+    if (error) console.warn(`[proactiveAtsCrawl] cursor update failed (${chunk.length} companies)`, error.message);
+  }
 
   return { companiesCrawled: candidates.length, postingsUpserted };
 }
@@ -335,7 +401,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
           external_id: job.id,
           title: job.title,
           location: job.location || null,
-          description: job.description || null,
+          description: truncateDescription(job.description),
           salary: job.salary || null,
           job_type: job.type || null,
           apply_url: job.applyUrl ?? job.url,
@@ -438,7 +504,7 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
           external_id: job.id,
           title: job.title,
           location: job.location || null,
-          description: job.description || null,
+          description: truncateDescription(job.description),
           salary: job.salary || null,
           job_type: job.type || null,
           apply_url: job.applyUrl ?? job.url,
@@ -469,6 +535,34 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
   );
 
   return { companiesCrawled: candidates.length, postingsUpserted };
+}
+
+// Storage maintenance (2026-09-03). The crawl only ever adds rows or flips
+// them inactive, so without this the cache grows forever — and this project's
+// Supabase database is capped at 500 MB, shared with real user data. A
+// posting that has been gone from the employer's board for a month is not
+// coming back: the employer either filled it or withdrew it, and if it IS
+// reposted the crawl re-inserts it (the upsert reactivates on conflict), so
+// deleting is safe rather than lossy. Kept as a plain age check on
+// last_seen_at, which the crawl already maintains.
+const INACTIVE_RETENTION_DAYS = 30;
+
+export async function pruneStaleDiscoveredPostings(admin: AdminDb): Promise<{ pruned: number }> {
+  const cutoff = new Date(Date.now() - INACTIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  // head+count so the deleted rows are never shipped back — the point of
+  // this function is to protect the storage budget, not to spend egress
+  // describing what it removed.
+  const { count, error } = await admin.database
+    .from("discovered_postings")
+    .delete({ count: "exact", head: true })
+    .eq("is_active", false)
+    .lt("last_seen_at", cutoff);
+
+  if (error) {
+    console.warn("[proactiveAtsCrawl] prune failed", error.message);
+    return { pruned: 0 };
+  }
+  return { pruned: count ?? 0 };
 }
 
 // Read side, called from a live search (lib/actions/scraper.actions.ts) —

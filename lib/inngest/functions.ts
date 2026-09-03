@@ -16,7 +16,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
-import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies } from "@/lib/proactiveAtsCrawl";
+import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1273,6 +1273,26 @@ export const proactiveIcimsCrawlAsync = inngest.createFunction(
         return {
             message: `Crawled ${result.companiesCrawled} iCIMS compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
         };
+    },
+);
+
+// Daily storage maintenance for the crawl cache — see
+// pruneStaleDiscoveredPostings for why deleting long-inactive postings is
+// safe. Exists because the database is capped at 500 MB and shared with real
+// user data; an append-only cache would eventually crowd that out. Daily is
+// deliberate: this is housekeeping, not something worth spending an
+// invocation on every 15 minutes.
+export const pruneCrawlCacheAsync = inngest.createFunction(
+    { id: "prune-crawl-cache", name: "Prune Stale Crawl Cache", triggers: [{ cron: "30 3 * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("prune", () => pruneStaleDiscoveredPostings(admin));
+
+        return { message: `Pruned ${result.pruned} long-inactive cached posting(s).` };
     },
 );
 
