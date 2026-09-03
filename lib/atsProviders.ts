@@ -9,7 +9,7 @@ import type { NormalizedJob } from "@/lib/jobScraper";
 // greenhouse, Lever's own demo board, ramp/ashby) — see this session's
 // transcript / the approved plan for the raw responses.
 
-export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable";
+export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "bamboohr";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -226,6 +226,60 @@ export async function fetchWorkableJobs(accountSlug: string, companyName: string
   }
 }
 
+// BambooHR's public careers list — confirmed live 2026-09-03 against real
+// subdomains from the CC-BY-4.0 dataset (17capital returned 2 real postings;
+// its per-job apply URL, /careers/{id}, was separately confirmed to resolve
+// HTTP 200, so the link this produces is a real page and not a constructed
+// guess). Subdomain-per-employer, which behaves as a slug for our purposes,
+// so it joins the slug-based family rather than needing a tenant-shaped
+// crawler like Workday/iCIMS.
+//
+// List mode carries no description and no posted date — same shape as
+// Greenhouse, and the reason lib/jobPreFilter.ts's direct-ATS exemption
+// (2026-09-03) has to exist: without it every BambooHR job would be hidden
+// on arrival for having a short description and no salary.
+type BambooHrJob = {
+  id: string | number;
+  jobOpeningName: string;
+  departmentLabel?: string;
+  employmentStatusLabel?: string;
+  isRemote?: boolean | null;
+  location?: { city?: string | null; state?: string | null };
+};
+
+export async function fetchBambooHrJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.bamboohr.com/careers/list`, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) {
+      console.warn(`[atsProviders] BambooHR board "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: { result?: BambooHrJob[] } = await res.json();
+    return (data.result ?? []).map((job) => {
+      const applyUrl = `https://${slug}.bamboohr.com/careers/${job.id}`;
+      const location = job.isRemote ? "Remote" : [job.location?.city, job.location?.state].filter(Boolean).join(", ");
+      return {
+        id: `bamboohr-${slug}-${job.id}`,
+        title: job.jobOpeningName,
+        company: companyName,
+        location,
+        description: "",
+        url: applyUrl,
+        applyUrl,
+        type: job.employmentStatusLabel,
+        postedAt: undefined,
+        source: "bamboohr",
+      };
+    });
+  } catch (error) {
+    console.warn(`[atsProviders] BambooHR fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -238,6 +292,8 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchSmartRecruitersJobs(slug, companyName);
     case "workable":
       return fetchWorkableJobs(slug, companyName);
+    case "bamboohr":
+      return fetchBambooHrJobs(slug, companyName);
   }
 }
 
@@ -286,6 +342,7 @@ const SLUG_ATS_PATTERNS: { platform: AtsPlatform; pattern: RegExp }[] = [
   { platform: "ashby", pattern: /jobs\.ashbyhq\.com\/([a-z0-9_%-]+)/i },
   { platform: "smartrecruiters", pattern: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/i },
   { platform: "workable", pattern: /apply\.workable\.com\/([a-z0-9_-]+)/i },
+  { platform: "bamboohr", pattern: /([a-z0-9-]+)\.bamboohr\.com/i },
 ];
 
 async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | null> {

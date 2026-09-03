@@ -23,7 +23,7 @@ import { filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 // guessable/discoverable the same way but stays excluded until a real
 // SmartRecruiters-specific gap is observed live, matching the original
 // scope decision rather than widening on speculation.
-const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "workable"];
+const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "workable", "bamboohr"];
 
 // Same posture as lib/atsRegistry.ts's own AdminDb — structurally typed so
 // this module stays free of a runtime SDK import; every real caller
