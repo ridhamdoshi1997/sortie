@@ -1,5 +1,5 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
-import { filterByCity, type NormalizedJob } from "@/lib/jobScraper";
+import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
 // migrations/20260901120000_add-proactive-ats-crawl.sql for the full
@@ -473,21 +473,39 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
 
 // Read side, called from a live search (lib/actions/scraper.actions.ts) —
 // the free, instant supplement to that search's own reactive enrichment.
-// Simple word-overlap full-text match against the crawl cache's title
-// index (search_discovered_postings RPC, migrations/
-// 20260901120000_add-proactive-ats-crawl.sql), then the SAME filterByCity
-// helper every other ingestion path already runs its results through, so
-// this can't reintroduce the wrong-city bug that path was already fixed
-// for (see enrichWithDirectAtsJobs's own comment on that incident).
+// Full-text title match against the crawl cache, with the city constraint
+// applied INSIDE the query (search_discovered_postings, see migrations/
+// 20260903180000_fix-discovered-postings-location-filter.sql).
+//
+// Deliberately no longer re-filtered through filterByCity afterwards
+// (2026-09-03). That second pass was not merely redundant once the SQL
+// filters by city, it was actively destructive: the SQL intentionally keeps
+// remote and unknown-location postings alongside city matches, and
+// filterByCity then dropped exactly those (it only accepts a literal
+// "anywhere" location, or the word "remote" in the TITLE — a posting whose
+// LOCATION is "Remote" fails it). Because both run under the same LIMIT,
+// those soon-to-be-discarded rows consumed slots that city matches could
+// have used: measured live, a "Software Engineer"/Toronto search returned 5
+// jobs while 78 genuine Toronto matches sat in the cache. The SQL is now the
+// single source of truth for city relevance, and it implements the same
+// first-segment-before-the-comma rule filterByCity does, so this cannot
+// reintroduce the wrong-city bug that pass was originally added for.
 export async function queryProactiveCrawlCache(
   admin: AdminDb,
   searchTitle: string,
   searchLocation: string,
   limit = 30,
 ): Promise<NormalizedJob[]> {
+  // p_location is load-bearing, not an optimisation (2026-09-03): without it
+  // the RPC returned the 30 most-recent title matches GLOBALLY and
+  // filterByCity below then discarded essentially all of them, so this whole
+  // cache contributed ~0 jobs to real searches despite holding 98,000+
+  // postings. See migrations/20260903180000_fix-discovered-postings-location-
+  // filter.sql for the full measurement.
   const { data, error } = await admin.database.rpc("search_discovered_postings", {
     p_query: searchTitle,
     p_limit: limit,
+    p_location: searchLocation || null,
   });
   if (error || !data) return [];
 
@@ -521,5 +539,5 @@ export async function queryProactiveCrawlCache(
       source: row.ats_platform,
     }));
 
-  return filterByCity(normalized, searchLocation);
+  return normalized;
 }
