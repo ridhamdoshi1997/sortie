@@ -9,7 +9,7 @@ import type { NormalizedJob } from "@/lib/jobScraper";
 // greenhouse, Lever's own demo board, ramp/ashby) — see this session's
 // transcript / the approved plan for the raw responses.
 
-export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters";
+export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -165,6 +165,67 @@ export async function fetchSmartRecruitersJobs(companySlug: string, companyName:
   }
 }
 
+// Workable's public account widget API — confirmed live 2026-09-03 against
+// real accounts from the same CC-BY-4.0 dataset the Workday/iCIMS seeds came
+// from (1000heads returned 22 real postings). Note the endpoint choice is
+// load-bearing and was NOT assumed from docs: the newer-looking
+// /api/v3/accounts/{slug}/jobs path 404s on every account tested, while
+// /api/v1/widget/accounts/{slug}?details=true returns 200 with real data.
+//
+// Materially better payload than the other slug platforms: this one returns
+// a full `description` inline, so Workable jobs arrive with real body text
+// rather than the empty description Greenhouse's ?content=false list mode
+// gives (the very gap that made lib/jobPreFilter.ts hide every direct-ATS
+// job until 2026-09-03). Also carries employment_type, published_on and
+// structured city/state/country.
+type WorkableJob = {
+  title: string;
+  shortcode: string;
+  employment_type?: string;
+  url?: string;
+  shortlink?: string;
+  application_url?: string;
+  published_on?: string;
+  city?: string;
+  state?: string;
+  country?: string;
+  description?: string;
+};
+
+export async function fetchWorkableJobs(accountSlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(accountSlug);
+  try {
+    const res = await fetch(`https://apply.workable.com/api/v1/widget/accounts/${slug}?details=true`, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) {
+      console.warn(`[atsProviders] Workable account "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: { jobs?: WorkableJob[] } = await res.json();
+    return (data.jobs ?? []).map((job) => {
+      const applyUrl = job.shortlink ?? job.url ?? `https://apply.workable.com/j/${job.shortcode}`;
+      return {
+        id: `workable-${job.shortcode}`,
+        title: job.title,
+        company: companyName,
+        location: [job.city, job.state, job.country].filter(Boolean).join(", "),
+        // Strip Workable's HTML body to plain text, same treatment
+        // lib/jobScraper.ts's stripHtml gives RemoteOK's rich-text bodies.
+        description: (job.description ?? "").replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim(),
+        url: applyUrl,
+        applyUrl,
+        type: job.employment_type,
+        postedAt: job.published_on,
+        source: "workable",
+      };
+    });
+  } catch (error) {
+    console.warn(`[atsProviders] Workable fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -175,6 +236,8 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchAshbyJobs(slug, companyName);
     case "smartrecruiters":
       return fetchSmartRecruitersJobs(slug, companyName);
+    case "workable":
+      return fetchWorkableJobs(slug, companyName);
   }
 }
 
@@ -222,6 +285,7 @@ const SLUG_ATS_PATTERNS: { platform: AtsPlatform; pattern: RegExp }[] = [
   { platform: "lever", pattern: /jobs\.lever\.co\/([a-z0-9_-]+)/i },
   { platform: "ashby", pattern: /jobs\.ashbyhq\.com\/([a-z0-9_%-]+)/i },
   { platform: "smartrecruiters", pattern: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/i },
+  { platform: "workable", pattern: /apply\.workable\.com\/([a-z0-9_-]+)/i },
 ];
 
 async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | null> {

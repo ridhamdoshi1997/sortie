@@ -13,15 +13,17 @@ import { filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 // full board results in discovered_postings for every future search to draw
 // on for free.
 
-// Only the three platforms with a real "list everything on this board" call
-// with no required search term (fetchAtsJobs) — Workday/iCIMS need a query
-// string to search against and have no equivalent "list the whole board"
-// endpoint in lib/atsProviders.ts, so they're out of scope for a
-// title-agnostic proactive crawl. SmartRecruiters is guessable/discoverable
-// the same way but deliberately excluded here too, matching RESUME.md's own
-// scope ("Greenhouse/Lever/Ashby endpoints") — no SmartRecruiters-specific
-// gap has been observed live yet to justify widening this.
-const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby"];
+// The slug-based platforms with a real "list everything on this board" call
+// needing no search term (fetchAtsJobs). Workday and iCIMS are NOT here —
+// they're tenant-based with a different call shape, so they get their own
+// crawlers below (crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies).
+// Workable joined this list 2026-09-03 alongside its new adapter; it drops
+// straight in because it's slug-based like the rest, and it's the only one
+// of them that returns full descriptions in list mode. SmartRecruiters is
+// guessable/discoverable the same way but stays excluded until a real
+// SmartRecruiters-specific gap is observed live, matching the original
+// scope decision rather than widening on speculation.
+const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "workable"];
 
 // Same posture as lib/atsRegistry.ts's own AdminDb — structurally typed so
 // this module stays free of a runtime SDK import; every real caller
@@ -54,6 +56,60 @@ type CrawlCandidate = {
 // picked oldest-crawled-first (nulls first) so newly-seeded rows — all
 // currently null — get priority and every company eventually gets a turn.
 const CRAWL_BATCH_SIZE = 150;
+
+// Real bug found live 2026-09-03 while crawling Workable: stale-marking
+// failed with a bare "Bad Request" for Anduril Industries and ALO — the two
+// companies in that batch with the MOST postings. Cause: the diff was
+// expressed as a single PostgREST `.not("external_id","in",(...))` filter
+// carrying every current posting id inline, so a big board blows the URL
+// length limit. The failure was silent-by-design (logged, non-fatal), which
+// made it worse: stale-marking is exactly what stops filled/pulled roles
+// showing forever, and it was failing precisely for the largest employers,
+// where it matters most.
+//
+// Now diffed in memory instead: read this company's active ids (one small
+// select), compute what's missing, and deactivate only those, in batches —
+// the same ID_BATCH_SIZE approach lib/reresolveApplyLink.ts already uses
+// after hitting this identical PostgREST gotcha. Shared by all three
+// crawlers rather than a fourth copy of the same block.
+const STALE_ID_BATCH_SIZE = 50;
+
+async function markMissingPostingsInactive(
+  admin: AdminDb,
+  platform: string,
+  companyKey: string,
+  currentIds: string[],
+  companyName: string,
+): Promise<void> {
+  const { data, error } = await admin.database
+    .from("discovered_postings")
+    .select("external_id")
+    .eq("ats_platform", platform)
+    .eq("company_key", companyKey)
+    .eq("is_active", true);
+
+  if (error) {
+    console.warn(`[proactiveAtsCrawl] stale-marking read failed for ${companyName}`, error.message);
+    return;
+  }
+
+  const current = new Set(currentIds);
+  const missing = ((data as { external_id: string }[] | null) ?? [])
+    .map((row) => row.external_id)
+    .filter((id) => !current.has(id));
+  if (missing.length === 0) return;
+
+  for (let i = 0; i < missing.length; i += STALE_ID_BATCH_SIZE) {
+    const batch = missing.slice(i, i + STALE_ID_BATCH_SIZE);
+    const { error: updateError } = await admin.database
+      .from("discovered_postings")
+      .update({ is_active: false })
+      .eq("ats_platform", platform)
+      .eq("company_key", companyKey)
+      .in("external_id", batch);
+    if (updateError) console.warn(`[proactiveAtsCrawl] stale-marking failed for ${companyName}`, updateError.message);
+  }
+}
 
 export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   // Plain cast, not .returns<T>() — this module's AdminDb is a loosely
@@ -132,16 +188,13 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
       // fetchSucceeded above) — a failed fetch must never be treated as
       // evidence every posting is gone.
       if (fetchSucceeded) {
-        const currentIds = jobs.map((job) => job.id);
-        let staleQuery = admin.database
-          .from("discovered_postings")
-          .update({ is_active: false })
-          .eq("ats_platform", platform)
-          .eq("company_key", candidate.company_key)
-          .eq("is_active", true);
-        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
-        const { error: staleError } = await staleQuery;
-        if (staleError) console.warn(`[proactiveAtsCrawl] stale-marking failed for ${candidate.company_name}`, staleError.message);
+        await markMissingPostingsInactive(
+          admin,
+          platform,
+          candidate.company_key,
+          jobs.map((job) => job.id),
+          candidate.company_name,
+        );
       }
 
       await admin.database
@@ -285,16 +338,13 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
       }
 
       if (fetchSucceeded) {
-        const currentIds = jobs.map((job) => job.id);
-        let staleQuery = admin.database
-          .from("discovered_postings")
-          .update({ is_active: false })
-          .eq("ats_platform", "workday")
-          .eq("company_key", candidate.company_key)
-          .eq("is_active", true);
-        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
-        const { error: staleError } = await staleQuery;
-        if (staleError) console.warn(`[proactiveAtsCrawl] Workday stale-marking failed for ${candidate.company_name}`, staleError.message);
+        await markMissingPostingsInactive(
+          admin,
+          "workday",
+          candidate.company_key,
+          jobs.map((job) => job.id),
+          candidate.company_name,
+        );
       }
 
       await touchCrawled();
@@ -391,16 +441,13 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
       }
 
       if (fetchSucceeded) {
-        const currentIds = jobs.map((job) => job.id);
-        let staleQuery = admin.database
-          .from("discovered_postings")
-          .update({ is_active: false })
-          .eq("ats_platform", "icims")
-          .eq("company_key", candidate.company_key)
-          .eq("is_active", true);
-        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
-        const { error: staleError } = await staleQuery;
-        if (staleError) console.warn(`[proactiveAtsCrawl] iCIMS stale-marking failed for ${candidate.company_name}`, staleError.message);
+        await markMissingPostingsInactive(
+          admin,
+          "icims",
+          candidate.company_key,
+          jobs.map((job) => job.id),
+          candidate.company_name,
+        );
       }
 
       await touchCrawled();
