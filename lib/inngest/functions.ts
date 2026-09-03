@@ -15,7 +15,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
-import { crawlKnownAtsCompanies } from "@/lib/proactiveAtsCrawl";
+import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1191,14 +1191,21 @@ export const repairApplyLinksAsync = inngest.createFunction(
 // migrations/20260901120000_add-proactive-ats-crawl.sql and
 // lib/proactiveAtsCrawl.ts for the full rationale (short version: closes
 // the reactive-only gap RESUME.md's redesign flagged as the actual lever
-// for the volume gap against a funded competitor). Every 30 minutes, not
-// hourly like repairApplyLinksAsync — this only reads PUBLIC, unlimited ATS
-// endpoints (no SerpApi/paid quota at risk the way that cron's freeOnly
-// guard exists to protect), so there's no real cost pressure to space it
-// out further; ats_registry simply grows too slowly for a tighter interval
-// to matter much either.
+// for the volume gap against a funded competitor). This only reads PUBLIC,
+// unlimited ATS endpoints (no SerpApi/paid quota at risk the way that
+// cron's freeOnly guard exists to protect), so there's no cost pressure to
+// space this out.
+//
+// Tightened from every 30 minutes to every 15 (Phase 40/43, direct user
+// decision) alongside raising CRAWL_BATCH_SIZE from 15 to 150 — the
+// original "ats_registry grows too slowly for a tighter interval to
+// matter" reasoning was true for an ~80-company organically-discovered
+// registry, but no longer holds after seeding ~9,646 companies from the
+// free LastRound AI ATS directory. At 150/15min, a full pass over the
+// current registry completes in under a day instead of the ~13 days the
+// old rate would have needed.
 export const proactiveAtsCrawlAsync = inngest.createFunction(
-    { id: "proactive-ats-crawl", name: "Proactive ATS Crawl", triggers: [{ cron: "*/30 * * * *" }] },
+    { id: "proactive-ats-crawl", name: "Proactive ATS Crawl", triggers: [{ cron: "*/15 * * * *" }] },
     async ({ step }) => {
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
@@ -1209,6 +1216,29 @@ export const proactiveAtsCrawlAsync = inngest.createFunction(
 
         return {
             message: `Crawled ${result.companiesCrawled} compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
+        };
+    },
+);
+
+// Workday proactive crawl (Phase 40/43) — separate cron from the
+// Greenhouse/Lever/Ashby one above since Workday's "list mode" (an empty
+// searchText against its real CXS search API — confirmed live, see
+// lib/proactiveAtsCrawl.ts's own comment) is a genuinely different call
+// shape, not a drop-in extension of crawlKnownAtsCompanies. Every 15
+// minutes, same reasoning as the other proactive crawl — these are public
+// endpoints with no shared quota to protect.
+export const proactiveWorkdayCrawlAsync = inngest.createFunction(
+    { id: "proactive-workday-crawl", name: "Proactive Workday Crawl", triggers: [{ cron: "*/15 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("crawl-workday-batch", () => crawlKnownWorkdayCompanies(admin));
+
+        return {
+            message: `Crawled ${result.companiesCrawled} Workday compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
         };
     },
 );

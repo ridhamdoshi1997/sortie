@@ -1,4 +1,4 @@
-import { fetchAtsJobs, type AtsPlatform } from "@/lib/atsProviders";
+import { fetchAtsJobs, fetchRegisteredAtsJobs, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -40,12 +40,20 @@ type CrawlCandidate = {
   config: { slug?: string } | null;
 };
 
-// Bounded per run, same reasoning as repairApplyLinksAsync's own
-// LINK_REPAIR_BATCH_SIZE — a large backlog drains gradually across
-// scheduled runs instead of hammering every known employer's board at
-// once. Companies are picked oldest-crawled-first (nulls first) so every
-// one eventually gets a turn.
-const CRAWL_BATCH_SIZE = 15;
+// Raised from 15 (Phase 40/43, direct user decision): the registry just
+// grew from ~80 organically-discovered companies to ~9,646 via the free
+// LastRound AI ATS directory seed — at the old 15/30min rate, one full pass
+// would have taken ~13 days. These are plain, unauthenticated public JSON
+// GET requests to Greenhouse/Lever/Ashby (no shared quota to protect, no
+// per-key rate limit the way SerpApi has), so there's no equivalent budget
+// constraint to the paid-tier caps elsewhere in this codebase — the only
+// real limit is being reasonably polite to each company's own endpoint,
+// which this doesn't threaten since every company in a batch is a
+// different server. Still bounded (not unbounded) so a backlog drains
+// gradually across runs rather than in one giant burst; companies are
+// picked oldest-crawled-first (nulls first) so newly-seeded rows — all
+// currently null — get priority and every company eventually gets a turn.
+const CRAWL_BATCH_SIZE = 150;
 
 export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   // Plain cast, not .returns<T>() — this module's AdminDb is a loosely
@@ -74,8 +82,14 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
       if (!slug || !CRAWLABLE_PLATFORMS.includes(platform)) return;
 
       let jobs: NormalizedJob[] = [];
+      // Distinct from "board fetched fine, currently has zero postings" —
+      // only a genuine fetch success should ever mark anything inactive
+      // below. A network blip or a transient upstream error must never be
+      // mistaken for "this company removed every one of its postings."
+      let fetchSucceeded = false;
       try {
         jobs = await fetchAtsJobs(platform, slug, candidate.company_name);
+        fetchSucceeded = true;
       } catch (error) {
         console.warn(`[proactiveAtsCrawl] fetch failed for ${candidate.company_name}`, error);
       }
@@ -95,6 +109,11 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
           apply_url: job.applyUrl ?? job.url,
           posted_at: job.postedAt ?? null,
           last_seen_at: now,
+          // Explicit, not left to the column default — a posting that was
+          // previously marked inactive (removed, then genuinely reposted)
+          // must be reactivated here, and upsert's ON CONFLICT path only
+          // touches the columns actually listed, not defaults.
+          is_active: true,
         }));
 
         const { error } = await admin.database
@@ -102,6 +121,137 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
           .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] upsert failed for ${candidate.company_name}`, error.message);
         else postingsUpserted += rows.length;
+      }
+
+      // Real freshness fix (Phase 40/43): this used to only ever ADD/refresh
+      // postings, never notice one had disappeared from the employer's own
+      // board — a filled or pulled role stayed "active" in the cache
+      // forever. Diff this fetch's own external_ids against whatever this
+      // company already has marked active; anything missing gets flagged,
+      // but ONLY when the fetch itself genuinely succeeded (see
+      // fetchSucceeded above) — a failed fetch must never be treated as
+      // evidence every posting is gone.
+      if (fetchSucceeded) {
+        const currentIds = jobs.map((job) => job.id);
+        let staleQuery = admin.database
+          .from("discovered_postings")
+          .update({ is_active: false })
+          .eq("ats_platform", platform)
+          .eq("company_key", candidate.company_key)
+          .eq("is_active", true);
+        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
+        const { error: staleError } = await staleQuery;
+        if (staleError) console.warn(`[proactiveAtsCrawl] stale-marking failed for ${candidate.company_name}`, staleError.message);
+      }
+
+      await admin.database
+        .from("ats_registry")
+        .update({ last_crawled_at: new Date().toISOString() })
+        .eq("company_key", candidate.company_key);
+    }),
+  );
+
+  return { companiesCrawled: candidates.length, postingsUpserted };
+}
+
+// Workday proactive crawl (Phase 40/43) — a REAL, working "list mode"
+// exists despite Workday having no dedicated list-everything endpoint:
+// its CXS search API (fetchRegisteredAtsJobs, lib/atsProviders.ts) accepts
+// an empty searchText and returns the board's current postings same as a
+// real browse (confirmed live, 2026-09-02, against real tenants —
+// `axiomspace` returned total=81, `samaritanhealth` total=264 with an
+// empty query). Seeded from a real, verified dataset (huggingface.co/
+// datasets/latmay/ats-career-page-urls, 5,410 Workday tenant URLs,
+// CC-BY-4.0) — 3,113 ingested into ats_registry after company-key
+// deduplication. Kept as a SEPARATE function from crawlKnownAtsCompanies
+// rather than folded in, since Workday needs a real POST body (searchText)
+// and a different config shape (tenant/wdInstance/locale/board vs a plain
+// slug) — merging the two would make both harder to read for no real gain.
+//
+// Real, disclosed limitation, not yet resolved: ~1,323 of the 5,410 source
+// rows have their canonical URL ending in a generic "/Search" path rather
+// than a company-specific board name — Workday's own default browser UI
+// route, not necessarily the real CXS API board identifier. A live sample
+// confirmed this fails with a 404 on the actual API call (company-specific
+// board names worked fine). These rows are still ingested rather than
+// dropped (a 404 here is caught and logged, not fatal — same posture as
+// crawlKnownAtsCompanies' own fetch-failure handling), but they won't
+// actually yield postings until resolved — likely needs the same
+// careers-page-HTML-scraping technique discoverAtsFromDomain() already
+// uses to find the real board identifier. Worth fixing next session, not
+// blocking today's seed from shipping.
+const WORKDAY_CRAWL_BATCH_SIZE = 100;
+
+type WorkdayCrawlCandidate = {
+  company_key: string;
+  company_name: string;
+  config: { tenant?: string; wdInstance?: string; locale?: string; board?: string } | null;
+};
+
+export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
+  const { data } = await admin.database
+    .from("ats_registry")
+    .select("company_key,company_name,config")
+    .eq("platform", "workday")
+    .order("last_crawled_at", { ascending: true, nullsFirst: true })
+    .limit(WORKDAY_CRAWL_BATCH_SIZE);
+  const candidates = (data as WorkdayCrawlCandidate[] | null) ?? [];
+
+  if (candidates.length === 0) return { companiesCrawled: 0, postingsUpserted: 0 };
+
+  let postingsUpserted = 0;
+
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const { tenant, wdInstance, locale, board } = candidate.config ?? {};
+      if (!tenant || !wdInstance || !board) return;
+      const discovered: DiscoveredAts = { platform: "workday", tenant, wdInstance, locale: locale ?? "en-US", board };
+
+      let jobs: NormalizedJob[] = [];
+      let fetchSucceeded = false;
+      try {
+        jobs = await fetchRegisteredAtsJobs(discovered, candidate.company_name, "");
+        fetchSucceeded = true;
+      } catch (error) {
+        console.warn(`[proactiveAtsCrawl] Workday fetch failed for ${candidate.company_name}`, error);
+      }
+
+      if (jobs.length > 0) {
+        const now = new Date().toISOString();
+        const rows = jobs.map((job) => ({
+          ats_platform: "workday",
+          company_key: candidate.company_key,
+          company_name: candidate.company_name,
+          external_id: job.id,
+          title: job.title,
+          location: job.location || null,
+          description: job.description || null,
+          salary: job.salary || null,
+          job_type: job.type || null,
+          apply_url: job.applyUrl ?? job.url,
+          posted_at: job.postedAt ?? null,
+          last_seen_at: now,
+          is_active: true,
+        }));
+
+        const { error } = await admin.database
+          .from("discovered_postings")
+          .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
+        if (error) console.warn(`[proactiveAtsCrawl] Workday upsert failed for ${candidate.company_name}`, error.message);
+        else postingsUpserted += rows.length;
+      }
+
+      if (fetchSucceeded) {
+        const currentIds = jobs.map((job) => job.id);
+        let staleQuery = admin.database
+          .from("discovered_postings")
+          .update({ is_active: false })
+          .eq("ats_platform", "workday")
+          .eq("company_key", candidate.company_key)
+          .eq("is_active", true);
+        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
+        const { error: staleError } = await staleQuery;
+        if (staleError) console.warn(`[proactiveAtsCrawl] Workday stale-marking failed for ${candidate.company_name}`, staleError.message);
       }
 
       await admin.database

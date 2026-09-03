@@ -525,6 +525,83 @@ function getOpenWebNinjaApiKey(): string | null {
     return process.env.OPENWEBNINJA_API_KEY || null;
 }
 
+// JobsPipe — real, non-redundant structured job data (Workday + Indeed +
+// Glassdoor + 30 ATS sources per their own docs, NOT the same Google for
+// Jobs index SerpApi/JSearch already share). Confirmed live (2026-09-02,
+// real test calls against a real trial key): correct results, real
+// apply-link mix (direct ATS + trusted aggregators, no low-quality mirrors
+// in the sample tested), and — notably — every record already carries
+// server-side freshness fields (status/closed_at/verified_at) this app
+// would otherwise have to build itself. Billed per job record returned
+// (trial: 1,000/month), not per request.
+type JobsPipeJobResult = {
+    id: string;
+    job_title: string;
+    company: string;
+    url?: string;
+    final_url?: string | null;
+    source_url?: string;
+    location?: string;
+    short_location?: string;
+    remote?: boolean;
+    employment_statuses?: string[];
+    salary_string?: string | null;
+    date_posted?: string;
+    status?: string;
+};
+
+function getJobsPipeApiKey(): string | null {
+    return process.env.JOBSPIPE_API_KEY || null;
+}
+
+const jobsPipeProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode) {
+        const apiKey = getJobsPipeApiKey();
+        if (!apiKey) throw new Error("Missing JOBSPIPE_API_KEY");
+
+        const response = await fetch("https://api.jobspipe.dev/v1/jobs/search", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+            body: JSON.stringify({
+                job_title_or: [jobTitle],
+                job_country_code_or: [countryCode.toUpperCase()],
+                limit: 25,
+            }),
+        });
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`JobsPipe API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const json = await response.json();
+        const jobs: JobsPipeJobResult[] = json.data ?? [];
+
+        // Only postings JobsPipe itself still marks active — same intent as
+        // this project's own is_active tracking on discovered_postings, no
+        // reason to surface something they've already flagged closed.
+        const active = jobs.filter((job) => !job.status || job.status === "active");
+        const filtered = filterByCity(
+            active.map((job) => ({ ...job, location: job.short_location || job.location || "" })),
+            location,
+        );
+
+        return filtered.map((job) => ({
+            id: `jobspipe-${job.id}`,
+            title: job.job_title ?? "",
+            company: job.company ?? "",
+            location: job.remote ? "Remote" : job.short_location || job.location || "",
+            description: "",
+            url: job.source_url || job.url || "",
+            applyUrl: job.final_url || job.url || job.source_url,
+            salary: job.salary_string ?? undefined,
+            type: job.employment_statuses?.[0],
+            postedAt: job.date_posted,
+            source: "JobsPipe",
+        }));
+    },
+};
+
 function formatJSearchLocation(job: JSearchJobResult): string {
     if (job.job_is_remote) return "Remote";
     return [job.job_city, job.job_state].filter(Boolean).join(", ") || job.job_country || "";
@@ -876,35 +953,54 @@ export async function searchJobs(
         // apifyProvider's definition for why (a real, persistent TLS cert
         // mismatch on arbeitnow.com found during live verification).
         //
-        // JSearch (2026-09-01, direct user request) sits between TheirStack
-        // and Apify — see jsearchProvider's own comment for why it's a
-        // fallback tier, not a concurrent source like Adzuna: it draws from
-        // the same Google for Jobs index SerpApi already queries, so
-        // running it on every healthy search would just pay its PAYG cost
-        // for near-duplicate data. It earns its place here specifically for
-        // the exact incident this project hit live the same day — every
-        // SerpApi account exhausted for the whole month with no overage
-        // option — where a second, independent quota against the same data
-        // pool is exactly what's needed.
+        // Real, temporary reorder (2026-09-03, direct user decision, while
+        // all 3 SerpApi accounts sit at 0/250 for the month with no overage
+        // option): on SerpApi exhaustion, Adzuna + JobsPipe + JSearch now
+        // run CONCURRENTLY and merge together as the primary result set,
+        // instead of the old sequential "try TheirStack, then JSearch, then
+        // Apify, first non-empty response wins" chain. That old approach
+        // meant only ONE fallback's real supply ever reached the user even
+        // though several were independently available — the exact same
+        // class of bug this project already fixed once for Adzuna itself
+        // (see the historical comment below). JobsPipe is genuinely
+        // non-redundant with JSearch (Workday + Indeed + Glassdoor + 30 ATS
+        // sources, not the same Google for Jobs index JSearch/SerpApi
+        // share), so merging both plus Adzuna gets real, additive coverage
+        // instead of three near-duplicate attempts. TheirStack and Apify
+        // stay as a last-resort safety net — tried only if this merged
+        // primary set comes back completely empty — since TheirStack burns
+        // paid per-search credits and Apify costs real money per result,
+        // neither is a "run it concurrently every time" source the way
+        // Adzuna/JobsPipe/JSearch are treated here.
         //
-        // Adzuna is deliberately NOT one of these sequential "first success
-        // wins" tiers (real bug found live, 2026-09-01, direct user
-        // question after a search returned only 3 results): it used to sit
-        // in this same array, meaning once SerpApi was exhausted and
-        // TheirStack returned even a FEW real results (any non-empty,
-        // non-error response counts as "success" here), the loop returned
-        // immediately and Adzuna — normally a genuinely additive, ~free
-        // source running concurrently with SerpApi on every healthy search
-        // via fetchAndMergeAdzuna below — was never queried at all. Adzuna
-        // now always runs and merges into whichever fallback tier (or none)
-        // succeeds, the same additive relationship it already has with a
-        // healthy SerpApi, instead of competing with TheirStack/Apify for
-        // a single "winner" slot.
-        const tiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
-            { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
-            { name: "JSearch", hasCreds: () => Boolean(getOpenWebNinjaApiKey()), run: () => jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
-            { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
-        ];
+        // Revert this reorder once SerpApi's monthly quota resets — this is
+        // a deliberate, temporary rebalancing for the current outage, not a
+        // permanent architecture decision.
+        async function fetchMergedExhaustionFallback(): Promise<NormalizedJob[]> {
+            const attempts: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
+            if (getAdzunaCredentials()) {
+                attempts.push({ name: "Adzuna", promise: adzunaProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
+            }
+            if (getJobsPipeApiKey()) {
+                attempts.push({ name: "JobsPipe", promise: jobsPipeProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
+            }
+            if (getOpenWebNinjaApiKey()) {
+                attempts.push({ name: "JSearch", promise: jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
+            }
+
+            const settled = await Promise.all(
+                attempts.map(({ name, promise }) =>
+                    promise.catch((err) => {
+                        console.error(`[jobScraper] ${name} failed during exhaustion-fallback merge`, err);
+                        return [] as NormalizedJob[];
+                    }),
+                ),
+            );
+
+            const merged = dedupeJobs(settled.flat());
+            settled.forEach((jobs, i) => console.warn(`SerpApi exhausted — ${attempts[i].name} contributed ${jobs.length} result(s).`));
+            return filterByCity(merged, location);
+        }
 
         try {
             const serpApiPromise = serpApiProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
@@ -912,26 +1008,24 @@ export async function searchJobs(
         } catch (err) {
             if (!isQuotaExhaustedError(err)) throw err;
 
+            const merged = await fetchMergedExhaustionFallback();
+            if (merged.length > 0) return merged;
+
+            console.warn("Merged exhaustion fallback (Adzuna/JobsPipe/JSearch) returned nothing — trying TheirStack/Apify as a last resort.");
+            const lastResortTiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
+                { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
+                { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
+            ];
             let lastErr: unknown = err;
-            for (const tier of tiers) {
+            for (const tier of lastResortTiers) {
                 if (!tier.hasCreds()) continue;
                 try {
-                    console.warn(`SerpApi exhausted — falling back to ${tier.name}.`);
-                    return await fetchAndMergeAdzuna(tier.run(), jobTitle, location, effectiveCountryCode);
+                    return await tier.run();
                 } catch (tierErr) {
                     if (!isQuotaExhaustedError(tierErr)) throw tierErr;
                     lastErr = tierErr;
-                    console.warn(`${tier.name} also exhausted — trying next fallback.`);
+                    console.warn(`${tier.name} also exhausted — trying next.`);
                 }
-            }
-
-            // Every quota-based fallback (TheirStack, Apify) is exhausted
-            // or unconfigured — Adzuna alone (free, not quota-limited the
-            // same way) is still worth trying rather than failing the
-            // whole search outright.
-            if (getAdzunaCredentials()) {
-                console.warn("Every fallback exhausted — trying Adzuna alone.");
-                return await adzunaProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
             }
             throw lastErr;
         }
