@@ -10,7 +10,7 @@
 // candidates by how likely they are to be the REAL employer destination
 // instead of trying to enumerate every bad one.
 
-export type ApplyLinkTrust = "ats" | "employer" | "aggregator" | "low_quality" | "unverified";
+export type ApplyLinkTrust = "ats" | "employer" | "aggregator" | "aggregator_indirect" | "low_quality" | "unverified";
 
 // Applicant Tracking Systems — a match here is almost certainly the
 // employer's own real posting (the company chose to host it there),
@@ -86,10 +86,43 @@ const TIER2_LOW_QUALITY_HOSTS = [
   "jobleads.com",
   "lensa.com",
   "appcast.io",
-  "adzuna.com",
-  "adzuna.ca",
   "expertini.com",
 ];
+
+// A real, deliberately SEPARATE tier from both Tier-1 and Tier-2 (added
+// 2026-09-03, in direct response to the right question: Adzuna listings
+// are themselves pointers to a third party, so how do we avoid promoting
+// links that ultimately land somewhere bad?).
+//
+// Adzuna does not belong in Tier-2 alongside bebee/lensa/jooble: it's a
+// real, established board (founded 2011, ~20 countries, powers the UK
+// government's own "Find a job" service), it has a documented public API
+// this app already consumes under real credentials, and it is this
+// pipeline's single largest supplier of volume. Classifying its own domain
+// as an untrusted scraper mirror while ingesting from it as source #1 was
+// an internal contradiction — the same one this codebase already resolved
+// for RemoteOK/Dice/Monster/Built In on 2026-08-30.
+//
+// But it does not belong in Tier-1 either, and this is the important part:
+// on Indeed or LinkedIn the posting LIVES there, whereas an
+// adzuna.ca/details/{id} URL is a redirect to a source we genuinely cannot
+// see (confirmed live 2026-09-03: plain server-side fetch is reset with
+// ECONNRESET, and Jina Reader — this project's own tool for bot-protected
+// pages — gets an 849-byte challenge page, identical for every URL). We
+// cannot verify where it lands, so we must not rank it as if we had.
+//
+// Hence a third tier with three deliberate properties (see
+// lib/reresolveApplyLink.ts for the first two):
+//   1. It PASSES the genuine-link bar, so these jobs are visible rather
+//      than silently discarded — the honest position for a real board.
+//   2. It still triggers needsLinkResolution, so every rescue pass keeps
+//      trying to UPGRADE it to a real employer/ATS link, forever. It's a
+//      floor, never a resting state.
+//   3. It ranks below every other visible option, so it is only ever the
+//      choice when nothing better exists for that job.
+// Everything genuinely low-quality stays in TIER2 above and stays hidden —
+// this promotes exactly one named, verifiable board, not the whole tier.
+const INDIRECT_AGGREGATOR_HOSTS = ["adzuna.com", "adzuna.ca"];
 
 function normalizedHost(rawUrl: string): string | null {
   try {
@@ -287,6 +320,10 @@ export function classifyApplyHost(rawUrl: string, company?: string | null): Appl
   }
   if (company && looksLikeEmployerHost(host, company)) return "employer";
   if (hostMatches(host, TIER1_SAFE_AGGREGATOR_HOSTS)) return "aggregator";
+  // Checked before the Tier-2/scam gate below, so a real indirect board is
+  // never mistaken for a scraper mirror — but still after Tier-1, so it can
+  // never outrank a board whose posting actually lives on it.
+  if (hostMatches(host, INDIRECT_AGGREGATOR_HOSTS) && !looksLikeScamShape(rawUrl)) return "aggregator_indirect";
   // Folded into the same "low_quality" bucket as a known Tier-2 mirror —
   // both are treated identically downstream (rerouted through Google's own
   // listing, same UI note), so there's no need for a separate trust value.
@@ -392,6 +429,13 @@ export function pickBestApplyLink(candidates: string[], company?: string | null)
 
   const tier1 = clean.find((url) => classifyApplyHost(url, company) === "aggregator");
   if (tier1) return tier1;
+
+  // Below every tier above, above the unverified/low-quality scrape below:
+  // a real board, but one whose onward destination can't be verified (see
+  // INDIRECT_AGGREGATOR_HOSTS). Only ever reached when this job genuinely
+  // has no ATS, employer or Tier-1 candidate.
+  const indirect = clean.find((url) => classifyApplyHost(url, company) === "aggregator_indirect");
+  if (indirect) return indirect;
 
   return clean.slice().sort((a, b) => trackingParamCount(a) - trackingParamCount(b))[0];
 }

@@ -26,6 +26,10 @@ function applyLinkSourcePriority(applyUrl: string, company: string | null | unde
   if (trust === "ats") return 100;
   if (trust === "employer") return 90;
   if (trust === "aggregator") return 50;
+  // Above a raw unverified scrape, well below a Tier-1 board — so a future
+  // re-merge carrying any better link always wins, and an indirect link can
+  // never clobber one. See INDIRECT_AGGREGATOR_HOSTS in applyLinkTrust.ts.
+  if (trust === "aggregator_indirect") return 30;
   return 10;
 }
 
@@ -449,6 +453,11 @@ function needsLinkResolution(applyUrl: string, company: string | null | undefine
     trust === "low_quality" ||
     trust === "unverified" ||
     trust === "aggregator" ||
+    // Deliberately included: an indirect board link is a visible FLOOR, not
+    // a resting state. Every rescue pass (per-view lazy resolver, hourly
+    // repairApplyLinksAsync cron, and each new search) keeps trying to
+    // upgrade it to a real employer/ATS posting.
+    trust === "aggregator_indirect" ||
     (trust === "employer" && !looksLikeSpecificJobPosting(applyUrl))
   );
 }
@@ -462,7 +471,15 @@ function needsLinkResolution(applyUrl: string, company: string | null | undefine
 export function meetsGenuineLinkBar(applyUrl: string | null, company: string | null | undefined): boolean {
   if (!applyUrl) return false;
   const trust = classifyApplyHost(applyUrl, company);
-  return trust === "ats" || trust === "employer" || trust === "aggregator";
+  // "aggregator_indirect" (Adzuna — see applyLinkTrust.ts) clears the bar
+  // as of 2026-09-03: it's a real, established board, and hiding it outright
+  // was discarding 54% of this pipeline's entire supply for employers that
+  // provably aren't reachable on any free ATS (measured: 34 of the 44
+  // companies behind those hidden jobs are on no supported platform, and a
+  // JSearch re-link test found a genuine employer link for 0 of 8). It
+  // remains the lowest-ranked visible option and stays permanently eligible
+  // for upgrade — see needsLinkResolution above.
+  return trust === "ats" || trust === "employer" || trust === "aggregator" || trust === "aggregator_indirect";
 }
 
 // Real, direct correction (2026-09-01, direct user feedback) to this

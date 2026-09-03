@@ -16,7 +16,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
-import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies } from "@/lib/proactiveAtsCrawl";
+import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1250,6 +1250,28 @@ export const proactiveWorkdayCrawlAsync = inngest.createFunction(
 
         return {
             message: `Crawled ${result.companiesCrawled} Workday compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
+        };
+    },
+);
+
+// iCIMS proactive crawl (2026-09-03) — third sibling to the two crawls
+// above, same cadence and same public-endpoint reasoning (no shared quota
+// to protect). Covers the 1,617 iCIMS tenants seeded this session, which
+// skew far more cross-industry (healthcare, energy, legal, skilled trades,
+// municipal) than the Greenhouse/Lever/Ashby registries do — real coverage
+// for candidates outside tech, not just more of the same supply.
+export const proactiveIcimsCrawlAsync = inngest.createFunction(
+    { id: "proactive-icims-crawl", name: "Proactive iCIMS Crawl", triggers: [{ cron: "*/15 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("crawl-icims-batch", () => crawlKnownIcimsCompanies(admin));
+
+        return {
+            message: `Crawled ${result.companiesCrawled} iCIMS compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
         };
     },
 );

@@ -304,6 +304,112 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
   return { companiesCrawled: candidates.length, postingsUpserted };
 }
 
+// iCIMS proactive crawl (2026-09-03) — closes a gap that had made the whole
+// iCIMS adapter dead weight. fetchIcimsJobs (lib/atsProviders.ts) has
+// existed and been live-verified since the original ATS-adapter work, but
+// ats_registry contained ZERO iCIMS companies, so it had never once
+// contributed a job. Seeded 1,617 real tenants from the same CC-BY-4.0
+// latmay/ats-career-page-urls dataset the Workday seed came from, after
+// live-verifying the adapter against 6 random tenants from it (6/6 returned
+// real postings, 82 job links — across maintenance, healthcare, software,
+// legal and energy roles, i.e. genuinely cross-vertical coverage, not the
+// tech-only skew the Greenhouse/Lever/Ashby boards tend to have).
+//
+// Kept separate from both other crawlers for the same reason those are
+// separate from each other: iCIMS is tenant-based (no slug, no Workday
+// board/instance), and its list mode is "call fetchIcimsJobs with an empty
+// search title", which that function already handles by skipping its own
+// title filter entirely. Same batch/diff/is_active semantics as the others.
+const ICIMS_CRAWL_BATCH_SIZE = 100;
+
+type IcimsCrawlCandidate = {
+  company_key: string;
+  company_name: string;
+  config: { tenant?: string } | null;
+};
+
+export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
+  const { data } = await admin.database
+    .from("ats_registry")
+    .select("company_key,company_name,config")
+    .eq("platform", "icims")
+    .order("last_crawled_at", { ascending: true, nullsFirst: true })
+    .limit(ICIMS_CRAWL_BATCH_SIZE);
+  const candidates = (data as IcimsCrawlCandidate[] | null) ?? [];
+
+  if (candidates.length === 0) return { companiesCrawled: 0, postingsUpserted: 0 };
+
+  let postingsUpserted = 0;
+
+  await Promise.all(
+    candidates.map(async (candidate) => {
+      const tenant = candidate.config?.tenant;
+      const touchCrawled = () =>
+        admin.database
+          .from("ats_registry")
+          .update({ last_crawled_at: new Date().toISOString() })
+          .eq("company_key", candidate.company_key);
+
+      if (!tenant) {
+        await touchCrawled();
+        return;
+      }
+
+      let jobs: NormalizedJob[] = [];
+      let fetchSucceeded = false;
+      try {
+        // Empty search title = list mode (see this block's own comment).
+        jobs = await fetchRegisteredAtsJobs({ platform: "icims", tenant }, candidate.company_name, "");
+        fetchSucceeded = true;
+      } catch (error) {
+        console.warn(`[proactiveAtsCrawl] iCIMS fetch failed for ${candidate.company_name}`, error);
+      }
+
+      if (jobs.length > 0) {
+        const now = new Date().toISOString();
+        const rows = jobs.map((job) => ({
+          ats_platform: "icims",
+          company_key: candidate.company_key,
+          company_name: candidate.company_name,
+          external_id: job.id,
+          title: job.title,
+          location: job.location || null,
+          description: job.description || null,
+          salary: job.salary || null,
+          job_type: job.type || null,
+          apply_url: job.applyUrl ?? job.url,
+          posted_at: job.postedAt ?? null,
+          last_seen_at: now,
+          is_active: true,
+        }));
+
+        const { error } = await admin.database
+          .from("discovered_postings")
+          .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
+        if (error) console.warn(`[proactiveAtsCrawl] iCIMS upsert failed for ${candidate.company_name}`, error.message);
+        else postingsUpserted += rows.length;
+      }
+
+      if (fetchSucceeded) {
+        const currentIds = jobs.map((job) => job.id);
+        let staleQuery = admin.database
+          .from("discovered_postings")
+          .update({ is_active: false })
+          .eq("ats_platform", "icims")
+          .eq("company_key", candidate.company_key)
+          .eq("is_active", true);
+        staleQuery = currentIds.length > 0 ? staleQuery.not("external_id", "in", `(${currentIds.map((id) => `"${id}"`).join(",")})`) : staleQuery;
+        const { error: staleError } = await staleQuery;
+        if (staleError) console.warn(`[proactiveAtsCrawl] iCIMS stale-marking failed for ${candidate.company_name}`, staleError.message);
+      }
+
+      await touchCrawled();
+    }),
+  );
+
+  return { companiesCrawled: candidates.length, postingsUpserted };
+}
+
 // Read side, called from a live search (lib/actions/scraper.actions.ts) —
 // the free, instant supplement to that search's own reactive enrichment.
 // Simple word-overlap full-text match against the crawl cache's title

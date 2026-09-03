@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, ExternalLink, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
@@ -86,6 +86,14 @@ export function JobResultCard({
   // only ever reflects a link that was actually checked and still failed.
   const applyTrust = job.match_score !== null && job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
   const isLowQualitySource = applyTrust === "low_quality" || applyTrust === "unverified";
+  // Distinct from the warning above, deliberately (2026-09-03): an indirect
+  // board (Adzuna — see INDIRECT_AGGREGATOR_HOSTS in lib/applyLinkTrust.ts)
+  // is a REAL, established board, not a scam risk, so it must not borrow the
+  // amber ShieldAlert treatment. But its link is a redirect to a source we
+  // genuinely can't see ahead of time, and a candidate deserves to know that
+  // before clicking rather than discovering it on landing. Neutral styling,
+  // honest wording, no alarm.
+  const isIndirectSource = applyTrust === "aggregator_indirect";
   const animationDelay = `${Math.min(index, 8) * 60}ms`;
   const [saved, setSaved] = useState(job.is_saved);
   const [hidden, setHidden] = useState(job.is_hidden);
@@ -272,12 +280,18 @@ export function JobResultCard({
             </div>
           )}
 
-          {(tags.length > 0 || (Array.isArray(job.tags) && job.tags.length > 0) || signal || reappearanceSignal || isLowQualitySource) && (
+          {(tags.length > 0 || (Array.isArray(job.tags) && job.tags.length > 0) || signal || reappearanceSignal || isLowQualitySource || isIndirectSource) && (
             <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
               {isLowQualitySource && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-warning/15 px-2 py-0.5 text-[10.5px] font-medium text-warning">
                   <ShieldAlert className="h-3 w-3" />
                   Third-party source
+                </span>
+              )}
+              {isIndirectSource && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10.5px] font-medium text-text-secondary">
+                  <ExternalLink className="h-3 w-3" />
+                  Via Adzuna — one more click
                 </span>
               )}
               {tags.map((tag) => (
