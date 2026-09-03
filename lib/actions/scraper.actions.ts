@@ -23,13 +23,34 @@ import { unstable_noStore as noStore } from 'next/cache';
 
 type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 
-// How many distinct companies from a single search get polled directly.
-// Bounded because a first-time company costs a real ~2s discovery pass;
-// once cached in ats_registry that drops to ~100ms, so this ceiling is
-// about the worst case, not the steady state. Ordered by how many results
-// the company already has, so the biggest employers in a result set — the
-// ones a candidate is most likely to care about — are enriched first.
-const MAX_DIRECT_ATS_COMPANIES = 8;
+// Split into two budgets (2026-09-03) after measuring that one shared cap of
+// 8 was the wrong shape. The two kinds of company cost wildly different
+// amounts: an employer already in ats_registry is a cached lookup plus one
+// board fetch (~100ms), while an unknown one pays a real ~2s discovery pass.
+// Sharing a single budget between them meant a search could spend most of
+// its allowance discovering three new companies and poll almost none of the
+// employers we already knew how to reach.
+//
+// Measured on "Software Engineer"/Toronto (73 companies in the result set,
+// 35 already known):
+//   current cap of 8, mixed : 1.3s, 106 fetched,  34 after the city filter
+//   all 35 known companies  : 5.5s, 383 fetched,  75 after the city filter
+// Direct-employer results — the highest trust tier there is — more than
+// doubled. On "Financial Advisor"/Toronto the known-only pass was also
+// FASTER than the old mixed cap (1.7s vs 5.0s) because it stopped paying
+// for discovery mid-search.
+//
+// So: poll many known employers, and keep discovery of new ones deliberately
+// small. Discovery's real value is growing the registry for every FUTURE
+// search (and for the proactive crawl), not this one, so it doesn't deserve
+// to spend a candidate's latency budget.
+const MAX_KNOWN_ATS_COMPANIES = 30;
+const MAX_UNKNOWN_ATS_DISCOVERIES = 3;
+
+// One slow or hanging board must not stall the whole search. Everything here
+// runs concurrently, so this bounds the worst case rather than the total:
+// without it a single unresponsive employer holds up every other result.
+const ATS_FETCH_TIMEOUT_MS = 6000;
 
 // See the cap's own comment at its use site below for the full incident.
 // 80 matches what a healthy, un-enriched SerpApi search already returned
@@ -85,15 +106,23 @@ async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: strin
     // genuinely matching postings.
     const { known } = await partitionByKnownAts(db, all.map((c) => c.company));
     const isKnown = (c: { company: string }) => known.has(toCompanyKey(c.company));
+    // Two separate budgets, not one shared cap — see the constants' own
+    // comment for the measurements behind this.
     const targets = [
-        ...all.filter(isKnown).sort((a, b) => b.count - a.count),
-        ...all.filter((c) => !isKnown(c)).sort((a, b) => b.count - a.count),
-    ].slice(0, MAX_DIRECT_ATS_COMPANIES);
+        ...all.filter(isKnown).sort((a, b) => b.count - a.count).slice(0, MAX_KNOWN_ATS_COMPANIES),
+        ...all.filter((c) => !isKnown(c)).sort((a, b) => b.count - a.count).slice(0, MAX_UNKNOWN_ATS_DISCOVERIES),
+    ];
 
     const found = await Promise.all(
         targets.map(async (t) => {
             try {
-                return await fetchJobsForCompany(db, t.company, t.domain, searchTitle);
+                // Raced against a timeout rather than awaited outright: these
+                // run concurrently, so one unresponsive employer would
+                // otherwise hold the entire search open.
+                return await Promise.race([
+                    fetchJobsForCompany(db, t.company, t.domain, searchTitle),
+                    new Promise<NormalizedJob[]>((resolve) => setTimeout(() => resolve([]), ATS_FETCH_TIMEOUT_MS)),
+                ]);
             } catch {
                 // Enrichment is strictly additive — a failure here must
                 // never fail a search that already has real results.
