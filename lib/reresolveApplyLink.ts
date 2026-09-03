@@ -1,7 +1,7 @@
 import { searchJobs } from "@/lib/jobScraper";
 import { classifyApplyHost, extractLikelyLogoDomain, pickBestApplyLink } from "@/lib/applyLinkTrust";
 import { fetchAtsJobs, fetchDiscoveredAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
-import { fetchJobsForCompany } from "@/lib/atsRegistry";
+import { fetchJobsForCompany, isRegistryVerifiedLink } from "@/lib/atsRegistry";
 import { createAdminDbClient } from "@/lib/admin/client";
 import type { createInsforgeServer } from "@/lib/insforge-server";
 
@@ -468,8 +468,31 @@ function needsLinkResolution(applyUrl: string, company: string | null | undefine
 // (LinkedIn, Indeed, Glassdoor, ZipRecruiter, CareerBuilder, government job
 // banks, etc — see applyLinkTrust.ts's own comment); only
 // "low_quality"/"unverified" fail.
-export function meetsGenuineLinkBar(applyUrl: string | null, company: string | null | undefined): boolean {
+// Provenance beats heuristics (2026-09-03, found by a real render test, not
+// review): a job we fetched OURSELVES from an employer's own board via the
+// registry is direct by construction — lib/atsProviders.ts's own header says
+// exactly this ("the apply URL in the response IS the employer's real
+// posting, not a candidate to run through lib/applyLinkTrust.ts's
+// classifier") — but nothing actually enforced that intent here, so those
+// links were still being name-matched by classifyApplyHost and could fail.
+// Real case that surfaced it: Fidelity International's genuine Workday
+// posting at fil.wd3.myworkdayjobs.com classified "unverified" purely
+// because the tenant "fil" doesn't string-match "Fidelity International".
+// That hits every employer whose ATS tenant is an abbreviation (FIL, RBC,
+// TD, BMO, IBM...) — the exact asymmetry classifyApplyHost's own comment
+// already flags for RBC. The tenant/company check still guards links from
+// UNKNOWN provenance (the Manulife/Tapestry bug it was written for, where an
+// unrelated employer's posting arrived via an aggregator's candidate list) —
+// it just no longer overrules a board we pulled from ourselves.
+const DIRECT_ATS_SOURCES = new Set(["greenhouse", "lever", "ashby", "smartrecruiters", "workday", "icims"]);
+
+export function meetsGenuineLinkBar(
+  applyUrl: string | null,
+  company: string | null | undefined,
+  source?: string | null,
+): boolean {
   if (!applyUrl) return false;
+  if (source && DIRECT_ATS_SOURCES.has(source.toLowerCase())) return true;
   const trust = classifyApplyHost(applyUrl, company);
   // "aggregator_indirect" (Adzuna — see applyLinkTrust.ts) clears the bar
   // as of 2026-09-03: it's a real, established board, and hiding it outright
@@ -590,21 +613,21 @@ export async function verifyApplyLinksBeforeReveal<
   if (toCheck.length === 0) return { hiddenIds: [] };
 
   const ID_BATCH_SIZE = 50;
-  const refetched: { id: string; external_apply_url: string | null; company: string | null }[] = [];
+  const refetched: { id: string; external_apply_url: string | null; company: string | null; source: string | null }[] = [];
   for (let i = 0; i < toCheck.length; i += ID_BATCH_SIZE) {
     const batchIds = toCheck.slice(i, i + ID_BATCH_SIZE).map((j) => j.id);
     const { data } = await insforge.database
       .from("jobs")
-      .select("id,external_apply_url,company")
+      .select("id,external_apply_url,company,source")
       .in("id", batchIds)
-      .returns<{ id: string; external_apply_url: string | null; company: string | null }[]>();
+      .returns<{ id: string; external_apply_url: string | null; company: string | null; source: string | null }[]>();
     if (data) refetched.push(...data);
   }
   const byId = new Map(refetched.map((r) => [r.id, r]));
 
   const stillFailing = toCheck.filter((job) => {
     const current = byId.get(job.id);
-    return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company);
+    return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company, current?.source ?? null);
   });
 
   // Unconditional paid rescue, bounded only by PAID_RESCUE_CAP — see this
@@ -631,25 +654,43 @@ export async function verifyApplyLinksBeforeReveal<
   // anything beyond the cap (or that never needed rescue) already has its
   // answer from `stillFailing`/the original pass-through.
   const rescuedIds = new Set(toRescue.map((j) => j.id));
-  const finalRefetched: { id: string; external_apply_url: string | null; company: string | null }[] = [];
+  const finalRefetched: { id: string; external_apply_url: string | null; company: string | null; source: string | null }[] = [];
   for (let i = 0; i < toRescue.length; i += ID_BATCH_SIZE) {
     const batchIds = toRescue.slice(i, i + ID_BATCH_SIZE).map((j) => j.id);
     const { data } = await insforge.database
       .from("jobs")
-      .select("id,external_apply_url,company")
+      .select("id,external_apply_url,company,source")
       .in("id", batchIds)
-      .returns<{ id: string; external_apply_url: string | null; company: string | null }[]>();
+      .returns<{ id: string; external_apply_url: string | null; company: string | null; source: string | null }[]>();
     if (data) finalRefetched.push(...data);
   }
   const finalById = new Map(finalRefetched.map((r) => [r.id, r]));
 
-  const hiddenIds = stillFailing
-    .filter((job) => {
-      if (!rescuedIds.has(job.id)) return true; // capped out — still failing, no further check needed
+  const failedFinalCheck = stillFailing.filter((job) => {
+    if (!rescuedIds.has(job.id)) return true; // capped out — still failing, no further check needed
+    const current = finalById.get(job.id);
+    return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company, current?.source ?? null);
+  });
+
+  // Last chance before hiding: ask the registry whether this link genuinely
+  // belongs to the board it has on record for this employer. Catches the
+  // abbreviated-tenant case the name-matching classifier structurally
+  // can't (see isRegistryVerifiedLink in lib/atsRegistry.ts for the real
+  // Fidelity International case that surfaced it) — a job whose link we
+  // successfully rescued to the employer's own ATS must never be discarded
+  // just because the tenant slug doesn't spell out the company name.
+  const registryDb = createAdminDbClient() as unknown as Parameters<typeof isRegistryVerifiedLink>[0];
+  const registryVerdicts = await Promise.all(
+    failedFinalCheck.map(async (job) => {
       const current = finalById.get(job.id);
-      return !meetsGenuineLinkBar(current?.external_apply_url ?? job.external_apply_url, current?.company ?? job.company);
-    })
-    .map((job) => job.id);
+      const url = current?.external_apply_url ?? job.external_apply_url;
+      const company = current?.company ?? job.company;
+      if (!url || !company) return false;
+      return isRegistryVerifiedLink(registryDb, company, url).catch(() => false);
+    }),
+  );
+
+  const hiddenIds = failedFinalCheck.filter((_, i) => !registryVerdicts[i]).map((job) => job.id);
 
   if (hiddenIds.length > 0) {
     // Only ever SETS is_hidden true — matches every other hide-write in

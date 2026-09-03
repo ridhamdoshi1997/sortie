@@ -238,6 +238,45 @@ export function toCompanyKey(company: string): string {
   return companyKey(company);
 }
 
+// Registry cross-check for a link the name-matching classifier can't
+// confirm (2026-09-03, found by a real render test). classifyApplyHost
+// verifies an ATS link by checking the URL's tenant slug against the
+// company NAME — which fails for any employer whose tenant is an
+// abbreviation. Real case: the rescue pipeline successfully upgraded a
+// Fidelity International job to its genuine Workday posting at
+// fil.wd3.myworkdayjobs.com, and the gate would then have HIDDEN that job,
+// because "fil" doesn't string-match "Fidelity International". Our own
+// successful rescue thrown away by a heuristic — and it hits abbreviated
+// tenants hardest, which skews toward large employers (RBC, TD, BMO, IBM).
+//
+// The registry already holds the verified answer: it knows this company
+// resolves to this exact tenant/slug, established by real discovery or a
+// verified dataset seed. So when the classifier can't confirm a link, ask
+// the registry whether the URL actually belongs to the board it has on
+// record for that employer. Deliberately NOT folded into classifyApplyHost
+// itself — that function is sync, DB-free and runs in client components;
+// this is the async, server-side second opinion used only at the gate.
+export async function isRegistryVerifiedLink(db: AdminDb, companyName: string, applyUrl: string): Promise<boolean> {
+  const key = companyKey(companyName);
+  if (key.length < 2) return false;
+
+  const row = await readRow(db, key);
+  const config = row?.config as { tenant?: string; slug?: string } | null;
+  const identifier = config?.tenant ?? config?.slug;
+  if (!row?.platform || !identifier || identifier.length < 2) return false;
+
+  try {
+    const url = new URL(applyUrl);
+    const needle = identifier.toLowerCase();
+    // Host for tenant-style platforms (fil.wd3.myworkdayjobs.com,
+    // acme.icims.com), path for slug-style ones
+    // (job-boards.greenhouse.io/acme/...).
+    return url.hostname.toLowerCase().includes(needle) || url.pathname.toLowerCase().includes(`/${needle}`);
+  } catch {
+    return false;
+  }
+}
+
 // Real bug found live (2026-09-03), not caught until a full-pipeline test
 // against a real query: scraper.actions.ts's own comment on this function's
 // caller (enrichWithDirectAtsJobs) already asserted "fetchJobsForCompany
