@@ -636,14 +636,23 @@ async function fetchIcimsJobs(
       const lowerTitle = title.toLowerCase();
       if (searchTitleWords.length > 0 && !searchTitleWords.every((w) => lowerTitle.includes(w))) continue;
 
+      // `in_iframe=1` is iCIMS's own embedded-widget flag — a scraping
+      // artifact that shouldn't be handed to a candidate as their apply
+      // link. Measured 2026-09-03 on one real posting: the widget variant
+      // serves a stripped-down page (6,233 chars of text) while the same URL
+      // without it serves the full posting (13,155), so dropping it gives
+      // both a cleaner link and better text for the on-demand
+      // full-description fetch (lib/fullDescription.ts).
+      const cleanUrl = applyUrl.replace(/[?&]in_iframe=1/i, "").replace(/\?$/, "");
+
       jobs.push({
         id: `icims-${id}`,
         title,
         company: companyName,
         location: stripTags(card.match(ICIMS_LOCATION_PATTERN)?.[1] ?? ""),
         description: stripTags(card.match(ICIMS_DESCRIPTION_PATTERN)?.[1] ?? ""),
-        url: applyUrl,
-        applyUrl,
+        url: cleanUrl,
+        applyUrl: cleanUrl,
         postedAt: undefined,
         source: "icims",
       });

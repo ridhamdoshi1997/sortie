@@ -55,6 +55,7 @@ import { computeApplyVerdict } from "@/lib/applyVerdict";
 import { normalizeRoleFamily } from "@/lib/interviewQuestions";
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
+import { fetchFullDescription, needsFullDescription } from "@/lib/fullDescription";
 import type { Profile } from "@/types";
 
 type Props = {
@@ -124,6 +125,29 @@ export default async function JobDetailsPage({ params }: Props) {
 
   if (!job.apply_link_resolved_at && job.external_apply_url && applyLinkNeedsResolution) {
     after(() => reresolveApplyLinkForJob(insforge, job));
+  }
+
+  // Full description, fetched on demand (2026-09-03). The proactive crawl
+  // stores only a 500-char preview per cached posting — storing full text
+  // for every crawled posting would cost ~240 MB against a 500 MB database
+  // that also holds real user data. The full text is instead pulled from the
+  // employer's own source the first time someone actually opens the job, so
+  // only postings a candidate genuinely looked at ever cost storage. Same
+  // fire-and-forget after() shape as the apply-link rescue above, and gated
+  // by description_fetched_at so a posting whose source can't be fetched is
+  // attempted once rather than on every view.
+  if (!job.description_fetched_at && needsFullDescription(job.description)) {
+    after(async () => {
+      const applyUrl = job.external_apply_url ?? job.source_url;
+      const full = await fetchFullDescription(applyUrl, job.source, null).catch(() => null);
+      await insforge.database
+        .from("jobs")
+        .update({
+          description_fetched_at: new Date().toISOString(),
+          ...(full ? { description: full } : {}),
+        })
+        .eq("id", job.id);
+    });
   }
 
   const company = job.company ?? "this company";

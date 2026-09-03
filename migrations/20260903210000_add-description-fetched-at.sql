@@ -1,0 +1,16 @@
+-- Supports the on-demand full-description backfill (lib/fullDescription.ts).
+--
+-- The proactive crawl stores only a 500-character preview per cached posting,
+-- because storing full text would cost ~240 MB against a 500 MB database that
+-- also has to hold real user data (measured: Workable projects to ~51,000
+-- postings averaging 3,747 chars, Dayforce ~15,000 averaging 3,719). The
+-- product still offers a full-description preview, so the full text is
+-- fetched from the employer's own source when a candidate actually opens the
+-- job — meaning only postings someone genuinely looked at ever cost storage.
+--
+-- This column is the "attempt once" gate for that fetch, exactly mirroring
+-- how jobs.apply_link_resolved_at already gates the apply-link rescue on the
+-- same page. Without it, a posting whose source genuinely can't be fetched
+-- (a dead listing, a hard bot wall) would re-attempt on every single view.
+-- Stamped on attempt, not on success, for that reason.
+ALTER TABLE public.jobs ADD COLUMN IF NOT EXISTS description_fetched_at timestamptz;

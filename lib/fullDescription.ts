@@ -1,0 +1,199 @@
+import { fetchViaJinaReader } from "@/agent/research";
+
+// On-demand full job description (2026-09-03).
+//
+// Why this exists: the proactive crawl caches ~100,000+ postings so that a
+// live search can draw on them for free, but it deliberately stores only a
+// 500-character description preview (see CACHED_DESCRIPTION_MAX_CHARS in
+// lib/proactiveAtsCrawl.ts). That cap is not a nicety — measured against
+// real crawls, storing full text for Workable alone projects to ~51,000
+// postings and ~182 MB, with Dayforce adding ~56 MB, against a 500 MB
+// database that also has to hold real user data.
+//
+// The product still offers a full-description preview, so the text has to
+// come from somewhere. It comes from here: fetched from the employer's own
+// source at the moment a candidate actually OPENS a job, and written back to
+// that one jobs row. Only postings someone genuinely looked at ever cost
+// storage, which is a tiny fraction of the cache. Same fire-and-forget
+// after() + "attempt once" shape the apply-link rescue already uses on the
+// job detail page.
+//
+// Ordering is deliberate: a platform's own JSON API first (clean, exact
+// text), then the posting page as HTML, then Jina Reader for pages that
+// block plain server-side fetches — the same escalation
+// agent/research.ts already established for bot-protected pages.
+
+const GREENHOUSE_JOB_URL = /job-boards\.greenhouse\.io\/([a-z0-9_-]+)\/jobs\/(\d+)/i;
+const WORKABLE_JOB_URL = /apply\.workable\.com\/j\/([A-Z0-9]+)/i;
+
+// A cached preview is stored truncated with a trailing ellipsis, so its
+// presence is a reliable "there is more text at the source" marker. A very
+// short description means the platform's list mode returned none at all
+// (Greenhouse/Ashby/Workday/BambooHR all do), which is equally worth
+// filling in.
+const MIN_USEFUL_DESCRIPTION_CHARS = 600;
+
+export function needsFullDescription(description: string | null | undefined): boolean {
+  const text = (description ?? "").trim();
+  if (!text) return true;
+  return text.endsWith("…") || text.length < MIN_USEFUL_DESCRIPTION_CHARS;
+}
+
+function htmlToText(html: string): string {
+  return html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&rsquo;|&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+async function fromGreenhouse(applyUrl: string): Promise<string | null> {
+  const match = applyUrl.match(GREENHOUSE_JOB_URL);
+  if (!match) return null;
+  const [, slug, id] = match;
+  try {
+    const res = await fetch(`https://boards-api.greenhouse.io/v1/boards/${slug}/jobs/${id}`);
+    if (!res.ok) return null;
+    const data: { content?: string } = await res.json();
+    // Greenhouse returns HTML-escaped markup in `content`.
+    return data.content ? htmlToText(data.content.replace(/&lt;/g, "<").replace(/&gt;/g, ">")) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function fromWorkable(applyUrl: string, companySlug: string | null): Promise<string | null> {
+  const match = applyUrl.match(WORKABLE_JOB_URL);
+  if (!match || !companySlug) return null;
+  try {
+    const res = await fetch(`https://apply.workable.com/api/v2/accounts/${companySlug}/jobs/${match[1]}`, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) return null;
+    const data: { description?: string } = await res.json();
+    return data.description ? htmlToText(data.description) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Ashby's posting page is client-rendered too, but its public board API
+// returns descriptionPlain per job — already clean text, no HTML stripping
+// guesswork. Worth a dedicated branch rather than leaving it to the page
+// fallback: Ashby is the single largest platform in the crawl cache (38,617
+// postings), and the HTML fallback returned only ~640 borderline characters
+// of chrome for the same posting.
+const ASHBY_JOB_URL = /jobs\.ashbyhq\.com\/([a-z0-9_%-]+)\/([0-9a-f-]{36})/i;
+
+async function fromAshby(applyUrl: string): Promise<string | null> {
+  const match = applyUrl.match(ASHBY_JOB_URL);
+  if (!match) return null;
+  const [, slug, id] = match;
+  try {
+    const res = await fetch(`https://api.ashbyhq.com/posting-api/job-board/${decodeURIComponent(slug)}`);
+    if (!res.ok) return null;
+    const data: { jobs?: { id?: string; descriptionPlain?: string; descriptionHtml?: string }[] } = await res.json();
+    const job = (data.jobs ?? []).find((candidate) => candidate.id?.toLowerCase() === id.toLowerCase());
+    if (!job) return null;
+    return job.descriptionPlain?.trim() || (job.descriptionHtml ? htmlToText(job.descriptionHtml) : null);
+  } catch {
+    return null;
+  }
+}
+
+// Workday renders its posting page entirely client-side, so fetching the
+// apply URL as HTML yields nothing usable. Its CXS API does have a per-job
+// detail endpoint though, reachable by rewriting the human URL
+//   https://{tenant}.{wd}.myworkdayjobs.com/{locale}/{board}/job/...
+// into
+//   https://{tenant}.{wd}.myworkdayjobs.com/wday/cxs/{tenant}/{board}/job/...
+// Confirmed live 2026-09-03 against a real stored posting: HTTP 200 with
+// 5,395 characters of jobDescription.
+const WORKDAY_JOB_URL = /https:\/\/([a-z0-9-]+)\.(wd\d+)\.myworkdayjobs\.com\/(?:[a-z]{2}-[A-Z]{2}\/)?([^/]+)(\/job\/.*)$/i;
+
+async function fromWorkday(applyUrl: string): Promise<string | null> {
+  const match = applyUrl.match(WORKDAY_JOB_URL);
+  if (!match) return null;
+  const [, tenant, wdInstance, board, path] = match;
+  try {
+    const res = await fetch(`https://${tenant}.${wdInstance}.myworkdayjobs.com/wday/cxs/${tenant}/${board}${path}`, {
+      headers: { Accept: "application/json", "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) return null;
+    const data: { jobPostingInfo?: { jobDescription?: string } } = await res.json();
+    const description = data.jobPostingInfo?.jobDescription;
+    return description ? htmlToText(description) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Two user-agents, short one FIRST, and the order is not cosmetic. iCIMS
+// answers HTTP 405 to a full Chrome UA string and HTTP 200 to a bare
+// "Mozilla/5.0" — verified by isolating the two variables against one real
+// posting (clean URL + short UA: 200 with 13,155 chars; identical URL +
+// Chrome UA: 405). Presumably a WAF rule keyed on the longer string. Other
+// hosts do the opposite and want something browser-shaped, so both are
+// tried. Every ATS adapter in lib/atsProviders.ts already uses the short
+// form successfully, which is why it leads here.
+const PAGE_FETCH_USER_AGENTS = [
+  "Mozilla/5.0",
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+];
+
+async function fromPageHtml(applyUrl: string): Promise<string | null> {
+  for (const userAgent of PAGE_FETCH_USER_AGENTS) {
+    try {
+      const res = await fetch(applyUrl, { headers: { "User-Agent": userAgent }, redirect: "follow" });
+      if (!res.ok) continue;
+      const text = htmlToText(await res.text());
+      if (text.length >= MIN_USEFUL_DESCRIPTION_CHARS) return text;
+    } catch {
+      // Try the next user-agent rather than giving up on the host.
+    }
+  }
+  return null;
+}
+
+// Whole-page text is noisier than an API's own description field (it carries
+// nav and footer chrome), so it's capped to keep a single stored row sane.
+const MAX_STORED_DESCRIPTION_CHARS = 20000;
+
+export async function fetchFullDescription(
+  applyUrl: string | null | undefined,
+  source: string | null | undefined,
+  companySlug: string | null = null,
+): Promise<string | null> {
+  if (!applyUrl) return null;
+
+  const platform = (source ?? "").toLowerCase();
+  const viaApi =
+    platform === "greenhouse"
+      ? await fromGreenhouse(applyUrl)
+      : platform === "workable"
+        ? await fromWorkable(applyUrl, companySlug)
+        : platform === "workday"
+          ? await fromWorkday(applyUrl)
+          : platform === "ashby"
+            ? await fromAshby(applyUrl)
+            : null;
+
+  // `in_iframe=1` is iCIMS's own embedded-widget flag. It isn't fatal (that
+  // 405 turned out to be a user-agent rule, see PAGE_FETCH_USER_AGENTS), but
+  // the widget variant serves a stripped-down page — 6,233 chars against
+  // 13,155 for the same posting without it — so strip it for the fuller
+  // text. Rows crawled before the adapter stopped emitting it still carry it.
+  const fetchUrl = applyUrl.replace(/[?&]in_iframe=1/i, "").replace(/\?$/, "");
+
+  const text = viaApi ?? (await fromPageHtml(fetchUrl)) ?? (await fetchViaJinaReader(fetchUrl).then((t) => (t ? htmlToText(t) : null)).catch(() => null));
+
+  if (!text || text.length < MIN_USEFUL_DESCRIPTION_CHARS) return null;
+  return text.length > MAX_STORED_DESCRIPTION_CHARS ? text.slice(0, MAX_STORED_DESCRIPTION_CHARS) : text;
+}
