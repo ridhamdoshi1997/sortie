@@ -1,4 +1,4 @@
-import { fetchAtsJobs, fetchRegisteredAtsJobs, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
+import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { filterByCity, type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -168,30 +168,37 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
 // and a different config shape (tenant/wdInstance/locale/board vs a plain
 // slug) — merging the two would make both harder to read for no real gain.
 //
-// Real, disclosed limitation, not yet resolved: ~1,323 of the 5,410 source
-// rows have their canonical URL ending in a generic "/Search" path rather
-// than a company-specific board name — Workday's own default browser UI
-// route, not necessarily the real CXS API board identifier. A live sample
-// confirmed this fails with a 404 on the actual API call (company-specific
-// board names worked fine). These rows are still ingested rather than
-// dropped (a 404 here is caught and logged, not fatal — same posture as
-// crawlKnownAtsCompanies' own fetch-failure handling), but they won't
-// actually yield postings until resolved — likely needs the same
-// careers-page-HTML-scraping technique discoverAtsFromDomain() already
-// uses to find the real board identifier. Worth fixing next session, not
-// blocking today's seed from shipping.
+// Real gap found live, RESOLVED this session (Phase 43 → 44): ~1,323 of the
+// 5,410 seeded rows had their canonical URL ending in a generic "/Search"
+// path rather than a company-specific board name — Workday's own default
+// browser UI route, not the real CXS API board identifier — confirmed live
+// this 404s on the actual API call (company-specific board names worked
+// fine). Rather than drop these 1,323 companies, a generic "search" board
+// is now re-resolved through the SAME careers-page-HTML-scraping technique
+// discoverAtsFromDomain()/discoverAtsForRegistry() already use for
+// brand-new companies, using the company_domain already stored on the row
+// from the original seed. A successful re-resolution is persisted back onto
+// the registry row's config — this only ever costs the extra careers-page
+// fetch once per company, not on every future crawl. failed_attempts (an
+// existing ats_registry column) caps retries at 5 for companies whose
+// domain genuinely doesn't expose a discoverable board (dead domain, moved
+// off Workday, etc.) — without that cap a permanently-unresolvable company
+// would re-attempt discovery on every single crawl pass forever.
 const WORKDAY_CRAWL_BATCH_SIZE = 100;
+const WORKDAY_SEARCH_BOARD_MAX_ATTEMPTS = 5;
 
 type WorkdayCrawlCandidate = {
   company_key: string;
   company_name: string;
+  company_domain: string | null;
   config: { tenant?: string; wdInstance?: string; locale?: string; board?: string } | null;
+  failed_attempts: number | null;
 };
 
 export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   const { data } = await admin.database
     .from("ats_registry")
-    .select("company_key,company_name,config")
+    .select("company_key,company_name,company_domain,config,failed_attempts")
     .eq("platform", "workday")
     .order("last_crawled_at", { ascending: true, nullsFirst: true })
     .limit(WORKDAY_CRAWL_BATCH_SIZE);
@@ -203,8 +210,44 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
 
   await Promise.all(
     candidates.map(async (candidate) => {
-      const { tenant, wdInstance, locale, board } = candidate.config ?? {};
-      if (!tenant || !wdInstance || !board) return;
+      let { tenant, wdInstance, locale, board } = candidate.config ?? {};
+      const failedAttempts = candidate.failed_attempts ?? 0;
+      // Every exit path from here on MUST touch last_crawled_at exactly
+      // once — this is oldest-crawled-first ordered, so a candidate that
+      // returns early without bumping it would keep winning every future
+      // batch's selection forever instead of cycling like everything else.
+      const touchCrawled = (extra: Record<string, unknown> = {}) =>
+        admin.database
+          .from("ats_registry")
+          .update({ last_crawled_at: new Date().toISOString(), ...extra })
+          .eq("company_key", candidate.company_key);
+
+      if (!tenant || !wdInstance || !board) {
+        await touchCrawled();
+        return;
+      }
+
+      if (board.toLowerCase() === "search") {
+        if (!candidate.company_domain || failedAttempts >= WORKDAY_SEARCH_BOARD_MAX_ATTEMPTS) {
+          await touchCrawled();
+          return;
+        }
+        const rediscovered = await discoverAtsForRegistry(candidate.company_domain);
+        if (rediscovered?.platform === "workday" && rediscovered.board.toLowerCase() !== "search") {
+          tenant = rediscovered.tenant;
+          wdInstance = rediscovered.wdInstance;
+          locale = rediscovered.locale;
+          board = rediscovered.board;
+          await admin.database
+            .from("ats_registry")
+            .update({ config: { tenant, wdInstance, locale, board }, failed_attempts: 0 })
+            .eq("company_key", candidate.company_key);
+        } else {
+          await touchCrawled({ failed_attempts: failedAttempts + 1 });
+          return;
+        }
+      }
+
       const discovered: DiscoveredAts = { platform: "workday", tenant, wdInstance, locale: locale ?? "en-US", board };
 
       let jobs: NormalizedJob[] = [];
@@ -254,10 +297,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
         if (staleError) console.warn(`[proactiveAtsCrawl] Workday stale-marking failed for ${candidate.company_name}`, staleError.message);
       }
 
-      await admin.database
-        .from("ats_registry")
-        .update({ last_crawled_at: new Date().toISOString() })
-        .eq("company_key", candidate.company_key);
+      await touchCrawled();
     }),
   );
 

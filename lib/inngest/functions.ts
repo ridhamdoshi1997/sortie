@@ -3,6 +3,7 @@ import { resolveModelForUser } from "@/lib/subscription";
 import {
     evaluateJobCompatibility,
     evaluateJobCompatibilityLite,
+    evaluateLegitimacyOnly,
     type SkillCorrection,
     type EvaluationJob,
     type JobEvaluationResult,
@@ -284,15 +285,25 @@ export const evaluateJobsAsync = inngest.createFunction(
                     await Promise.all(chunk.map(async (job) => {
                         const evalResult = evaluations.find((e) => e.id === job.id);
 
-                        // Phase 2 hard-hide (2026-08-31, unchanged by this
-                        // redesign) — a D/F Legitimacy grade hides the job
-                        // outright, same as the pre-filter hides obvious
-                        // junk before evaluation (lib/jobPreFilter.ts).
-                        // Only ever SETS is_hidden true, never explicitly
-                        // false — a job could already be hidden for an
+                        // Two-strike Legitimacy rule (Phase 43/44, direct
+                        // user decision — see migrations/20260903120000_
+                        // add-legitimacy-two-strike-recheck.sql for the full
+                        // state machine). A job's FIRST-ever evaluation can
+                        // only ever set legitimacy_fail_count to 0 or 1 —
+                        // never hide on it. Real incident that motivated
+                        // this: the 2026-09-01 one-time backfill already
+                        // found two genuinely real jobs hidden purely
+                        // because a single grading pass misread a short
+                        // Adzuna preview snippet as a scam signal. Requiring
+                        // a SECOND, independent grade (via the periodic
+                        // legitimacyRecheckAsync cron below) before a job is
+                        // actually hidden means one flaky grade can no
+                        // longer permanently hide a real posting. Only ever
+                        // SETS is_hidden true via that separate recheck path
+                        // — never here, and never explicitly false here
+                        // either, since a job could already be hidden for an
                         // unrelated reason (Phase 1's link gate, the
-                        // pre-filter, a user action), and this write must
-                        // never silently un-hide one.
+                        // pre-filter, a user action).
                         const failsLegitimacy = evalResult?.legitimacyGrade === "D" || evalResult?.legitimacyGrade === "F";
 
                         const { error: updateError } = await admin.database
@@ -318,7 +329,7 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 // array, and RequestFullEvaluationButton
                                 // (job-detail page) is what fills these in
                                 // on demand.
-                                ...(failsLegitimacy ? { is_hidden: true } : {}),
+                                ...(evalResult ? { legitimacy_fail_count: failsLegitimacy ? 1 : 0, legitimacy_checked_at: new Date().toISOString() } : {}),
                             })
                             .eq("id", job.id);
 
@@ -1239,6 +1250,86 @@ export const proactiveWorkdayCrawlAsync = inngest.createFunction(
 
         return {
             message: `Crawled ${result.companiesCrawled} Workday compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
+        };
+    },
+);
+
+// Periodic Legitimacy recheck (Phase 43/44) — the other half of the
+// two-strike rule migrations/20260903120000_add-legitimacy-two-strike-
+// recheck.sql introduces. A job sitting at legitimacy_fail_count=1 (either
+// freshly flagged by its own first evaluation above, or backfilled there
+// from the OLD single-strike-hide rule) needs a SECOND, independent AI
+// grade before its status is treated as confirmed — this cron is the only
+// code path that can produce that second grade, advance a job to
+// fail_count=2/hidden, or clear a probation flag back to 0/visible.
+// Deliberately calls evaluateLegitimacyOnly, not evaluateJobCompatibilityLite
+// — legitimacy is a fact about the posting, not about any one user's fit
+// for it (same "authenticity and fit are orthogonal" principle this file's
+// persist-chunk step already established), so this can batch jobs from many
+// different users into one recheck call with no profile to load.
+// Every 30 minutes, a modest batch size — unlike the free-endpoint ATS
+// crawls above, this is a real paid-model call against the shared Gemini
+// key, so it's deliberately smaller/slower than those.
+//
+// Known, accepted imprecision (same posture the 2026-09-01 one-time backfill
+// already accepted for its own "is_hidden=true AND match_score IS NOT NULL"
+// heuristic): is_hidden is set unconditionally from this recheck's own
+// verdict for any job it selects, which could in principle overwrite a
+// user's own manual hide on a job that happened to also be on legitimacy
+// probation. No separate hidden-reason column exists yet to disambiguate
+// that — a real gap, but a narrow and pre-existing one, not introduced by
+// this migration.
+const LEGITIMACY_RECHECK_BATCH_SIZE = 25;
+
+export const legitimacyRecheckAsync = inngest.createFunction(
+    { id: "legitimacy-recheck", name: "Legitimacy Two-Strike Recheck", triggers: [{ cron: "*/30 * * * *" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("recheck-batch", async () => {
+            const { data } = await admin.database
+                .from("jobs")
+                .select(
+                    "id,title,company,location,description,about_role,salary,salary_min,salary_max,job_type,responsibilities,requirements,nice_to_have,benefits",
+                )
+                .eq("legitimacy_fail_count", 1)
+                .order("legitimacy_checked_at", { ascending: true, nullsFirst: true })
+                .limit(LEGITIMACY_RECHECK_BATCH_SIZE);
+
+            const candidates = (data as EvaluationJob[] | null) ?? [];
+            if (candidates.length === 0) return { rechecked: 0, confirmed: 0, cleared: 0 };
+
+            const results = await evaluateLegitimacyOnly(candidates);
+            const byId = new Map(results.map((r) => [r.id, r]));
+
+            let confirmed = 0;
+            let cleared = 0;
+            await Promise.all(
+                candidates.map(async (job) => {
+                    const verdict = byId.get(job.id);
+                    const failsAgain = verdict?.legitimacyGrade === "D" || verdict?.legitimacyGrade === "F";
+                    if (failsAgain) confirmed++;
+                    else cleared++;
+
+                    await admin.database
+                        .from("jobs")
+                        .update({
+                            legitimacy_fail_count: failsAgain ? 2 : 0,
+                            legitimacy_checked_at: new Date().toISOString(),
+                            is_hidden: failsAgain,
+                        })
+                        .eq("id", job.id);
+                }),
+            );
+
+            return { rechecked: candidates.length, confirmed, cleared };
+        });
+
+        return {
+            message: `Rechecked ${result.rechecked} probation job(s) — ${result.confirmed} confirmed (now hidden), ${result.cleared} cleared.`,
         };
     },
 );

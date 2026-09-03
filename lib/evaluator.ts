@@ -668,3 +668,106 @@ ${jobs.map((job) => buildJobTextLite(job, corrections)).join("\n\n---\n\n")}`;
     };
   });
 }
+
+// Legitimacy-only re-grade, used by the periodic recheck backfill
+// (lib/inngest/functions.ts's legitimacyRecheckAsync). Deliberately NOT a
+// second call into evaluateJobCompatibilityLite: that function requires a
+// specific candidate's Profile/constraints/corrections to produce a
+// matchScore, but legitimacyGrade's own prompt language never actually
+// reasons about the candidate — it's a ghost-listing/scam check on the
+// posting's own text, orthogonal to fit (same "authenticity and fit are
+// orthogonal" principle lib/inngest/functions.ts's persist-chunk comment
+// already established for why the paid apply-link rescue isn't gated on
+// match score either). A dedicated, profile-independent prompt means the
+// recheck backfill can re-grade any hidden/probation job for any user
+// without loading that user's profile at all.
+export type LegitimacyOnlyResult = { id: string; legitimacyGrade: EvaluationGrade; legitimacyNote: string };
+
+const legitimacyOnlyEvaluationSchema = z.object({
+  id: z.string(),
+  legitimacyGrade: gradeSchema,
+  legitimacyNote: z.string().min(1),
+});
+
+const legitimacyOnlyResponseSchema = z.object({
+  evaluations: z.array(legitimacyOnlyEvaluationSchema),
+});
+
+const LEGITIMACY_ONLY_SYSTEM_PROMPT = `You are re-checking whether job postings show real ghost-listing/scam signals. This is a legitimacy-only re-grade, not a fit evaluation — there is no candidate to consider.
+
+For each job, produce:
+- legitimacyGrade: real ghost-listing/scam signals ONLY — no identifiable real company or a name that reads fabricated, predatory/scam language (guaranteed huge pay for no experience, "send money to get started," pyramid-scheme phrasing), or content that actively contradicts itself. Grade HARSHLY (D/F) only when the posting shows one of THESE concrete red flags.
+- legitimacyNote: ONE sentence citing the specific signal (or lack of one) behind legitimacyGrade.
+
+Rules:
+- CRITICAL: a SHORT description is not itself a red flag. Many real job boards (Adzuna and others) only return a brief teaser/preview snippet via their API, cut off mid-sentence — that is a data-source limitation, not a sign of a fake posting. A short snippet from a real, named, identifiable company (e.g. a known bank, insurer, tech company) should grade B or A by default, even if it says almost nothing about the actual role — grade it down only if it shows one of the concrete red flags above, never merely for being brief or generic-sounding. Reserve C/D/F for when the company itself is unnamed/unidentifiable or the text shows an actual scam pattern.
+
+Return ONLY valid JSON matching this exact shape:
+{
+  "evaluations": [
+    { "id": "string — must match the job's given ID exactly", "legitimacyGrade": "A"|"B"|"C"|"D"|"F", "legitimacyNote": "string — one sentence" }
+  ]
+}`;
+
+function fallbackLegitimacyOnly(id: string): LegitimacyOnlyResult {
+  // C, not a D/F — a failed re-check must never itself count as a strike
+  // against the job (see legitimacyRecheckAsync's own comment: only a
+  // GENUINE second grade can confirm or clear the first one).
+  return { id, legitimacyGrade: "C", legitimacyNote: "Re-check unavailable — kept at its prior status." };
+}
+
+export async function evaluateLegitimacyOnly(
+  jobs: EvaluationJob[],
+  provider: ModelProvider = "gemini",
+  tier: ModelTier = "smart",
+): Promise<LegitimacyOnlyResult[]> {
+  const userPrompt = `JOBS TO RE-CHECK:
+${jobs.map((job) => buildJobTextLite(job)).join("\n\n---\n\n")}`;
+
+  async function attemptOnce(): Promise<{ evaluations: z.infer<typeof legitimacyOnlyEvaluationSchema>[] } | null> {
+    const raw = await complete(await getModel(provider, tier), {
+      systemPrompt: LEGITIMACY_ONLY_SYSTEM_PROMPT,
+      userPrompt,
+      temperature: 0.3,
+      maxTokens: 1500,
+      jsonResponse: true,
+    });
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      console.error("[lib/evaluator] legitimacy-only JSON parse failed", error);
+      return null;
+    }
+
+    const result = legitimacyOnlyResponseSchema.safeParse(parsed);
+    if (!result.success) {
+      console.error("[lib/evaluator] legitimacy-only schema validation failed", result.error);
+      return null;
+    }
+
+    if (result.data.evaluations.length < jobs.length) {
+      console.error(
+        `[lib/evaluator] legitimacy-only incomplete batch: requested ${jobs.length} jobs, model returned ${result.data.evaluations.length}`,
+      );
+      return null;
+    }
+
+    return result.data;
+  }
+
+  let data = await attemptOnce();
+  if (!data) {
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    data = await attemptOnce();
+  }
+
+  if (!data) {
+    console.error(`[lib/evaluator] legitimacy-only: both attempts failed for a ${jobs.length}-job chunk — falling back`);
+    return jobs.map((job) => fallbackLegitimacyOnly(job.id));
+  }
+
+  const byId = new Map(data.evaluations.map((evaluation) => [evaluation.id, evaluation]));
+  return jobs.map((job) => byId.get(job.id) ?? fallbackLegitimacyOnly(job.id));
+}

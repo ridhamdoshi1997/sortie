@@ -771,6 +771,136 @@ const adzunaProvider: JobScraperProvider = {
     },
 };
 
+// Careerjet was researched this session (Phase 43/44) and, unlike RemoteOK
+// below, is deliberately NOT wired in — a real live-verification finding,
+// not an oversight. The legacy `public.api.careerjet.net/search` endpoint
+// (what most third-party writeups still describe as "keyless") returned
+// real results with `Referer: https://example.com`, but a genuine 401 —
+// `"The legacy Job Search API is only accessible for authenticated legacy
+// users. Please use the new API (v4) instead"` — with this app's own real
+// referrer, confirmed reproducibly (2026-09-03). example.com evidently sits
+// on some grandfathered legacy allowlist; shipping code that only works by
+// presenting a fake referrer identity would be dishonest and could stop
+// working the moment Careerjet tightens that allowlist further. Their own
+// current partner docs (careerjet.com/partners/api) confirm the real,
+// current API requires a registered Publisher account and an API key used
+// as an HTTP Basic Auth username — account creation this app can't do on
+// the user's behalf, same real blocker as PayPal Payouts (see RESUME.md).
+// Re-verify the same way (a real fetch against this app's own domain, not
+// just a docs read) if this is ever revisited once a real Publisher key
+// exists.
+
+// RemoteOK's description is full rich-text HTML (Careerjet's own <b>-tagged
+// snippets would have needed the same treatment), unlike SerpApi/Adzuna's
+// already-plain-text descriptions. Deliberately minimal (strip tags, decode
+// the handful of entities actually observed live in real responses,
+// collapse whitespace) rather than a full HTML-entity table — this only
+// needs to produce readable plain text for the evaluator/UI, not a
+// lossless conversion.
+function stripHtml(html: string): string {
+    return html
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&#39;|&apos;/g, "'")
+        .replace(/&quot;/g, '"')
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+// RemoteOK's public JSON feed — confirmed live 2026-09-03, keyless, no
+// registration (https://remoteok.com/api, real HTTP 200, real postings).
+// Unlike every other provider here, this is a flat, unfiltered feed of
+// RemoteOK's current ~100 most recent listings site-wide, not a per-query
+// search endpoint — so relevance filtering happens client-side, the same
+// title-word-overlap approach lib/atsProviders.ts's fetchIcimsJobs already
+// uses for the same "server can't filter, so we must" situation. Every
+// result is inherently remote by construction (that's RemoteOK's entire
+// premise), so this is deliberately NOT run through filterByCity in
+// fetchAndMergeFreeSources below — a candidate searching from any city can
+// apply to a genuinely remote role regardless of what city they searched.
+// RemoteOK's own API terms (in its own response body) ask for attribution
+// back to remoteok.com — satisfied by this app's existing "source" badge
+// convention (source: "RemoteOK", same pattern as "Indeed (via Apify)") and
+// by applyUrl pointing at RemoteOK's own real listing page, never rewritten.
+//
+// Real data-quality caveat found live, not assumed clean: a sample of the
+// feed showed several genuinely non-tech postings (e.g. "Kitchen
+// Technician", "Janitor") carrying nonsensical tag arrays that included
+// "engineer"/"dev" alongside "legal"/"medical" — RemoteOK's own auto-tagger
+// evidently mis-tags some non-tech listings it also carries. Confirmed live
+// this actually breaks search relevance: an "Engineer" query matched
+// "Kitchen Technician" (Four Seasons) and "Joiner" (City of York Council)
+// purely off their noise tags before this was caught — see
+// remoteOkProvider's own filter comment for the fix (match job.position
+// only, tags array not used for relevance at all).
+type RemoteOkJobResult = {
+    id?: string;
+    company?: string;
+    position?: string;
+    tags?: string[];
+    location?: string;
+    description?: string;
+    date?: string;
+    salary_min?: number;
+    salary_max?: number;
+    apply_url?: string;
+    url?: string;
+};
+
+function titleWordsMatch(searchTitle: string, haystack: string): boolean {
+    const words = searchTitle
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length > 2);
+    if (words.length === 0) return true;
+    const lowerHaystack = haystack.toLowerCase();
+    return words.every((w) => lowerHaystack.includes(w));
+}
+
+const remoteOkProvider: JobScraperProvider = {
+    async search(jobTitle) {
+        const response = await fetch("https://remoteok.com/api", {
+            // A generic browser UA — RemoteOK's own API has been observed
+            // to reject requests with no User-Agent at all.
+            headers: { "User-Agent": "Mozilla/5.0" },
+        });
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`RemoteOK API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const json: RemoteOkJobResult[] = await response.json();
+        // The feed's own first entry is a legal/terms notice, not a job
+        // (confirmed live: no `position` field) — filtered out by the
+        // `.position` check below rather than assumed to always be index 0.
+        //
+        // Matches against job.position ONLY, deliberately excluding tags —
+        // a real bug found live testing this exact change (2026-09-03): a
+        // "Engineer" search matched "Kitchen Technician" (Four Seasons) and
+        // "Joiner" (City of York Council), both non-tech postings whose
+        // tags array nonsensically included "engineer" (see the
+        // RemoteOkJobResult comment above for the wider mis-tagging
+        // pattern). The job's own position title is unambiguous; the tags
+        // array on this feed is not reliable enough to search against.
+        return json
+            .filter((job) => job.position && titleWordsMatch(jobTitle, job.position))
+            .map((job) => ({
+                id: `remoteok-${job.id}`,
+                title: job.position ?? "",
+                company: job.company ?? "",
+                location: "Remote",
+                description: stripHtml(job.description ?? ""),
+                url: job.url ?? job.apply_url ?? "",
+                applyUrl: job.apply_url ?? job.url,
+                salary: job.salary_min && job.salary_max ? `$${job.salary_min} - $${job.salary_max}` : undefined,
+                postedAt: job.date,
+                source: "RemoteOK",
+            }));
+    },
+};
+
 // Arbeitnow was researched and its real API/field shape confirmed via
 // WebFetch (2026-08-30, keyless/public, title/company_name/location/url/
 // remote/job_types) — but a direct live fetch immediately afterward failed
@@ -888,38 +1018,76 @@ function dedupeJobs(jobs: NormalizedJob[]): NormalizedJob[] {
 // for genuine SerpApi quota exhaustion — TheirStack burns paid per-search
 // credits and Apify costs real money per result, neither is a "run it
 // every time for free" source the way Adzuna is.
-async function fetchAndMergeAdzuna(
+// Consistency fix (Phase 43/44, direct user decision): Adzuna's own merge
+// used to swallow ANY failure (network blip, a transient 5xx) straight to an
+// empty array on the first try — meaning one bad request silently dropped
+// Adzuna's real supply for that entire search, even though a second attempt
+// moments later would likely have succeeded (Adzuna has no shared-quota
+// exhaustion concept the way SerpApi does, so a failure here is almost
+// always transient, not a genuine "this source is out"). One retry, after a
+// short pause, before finally giving up and returning SerpApi's results
+// alone — same "retry once, then fall back" shape lib/evaluator.ts's own
+// lite-evaluation JSON-parse retry already uses.
+async function searchAdzunaWithRetry(jobTitle: string, location: string, countryCode: string): Promise<NormalizedJob[]> {
+    try {
+        return await adzunaProvider.search(jobTitle, location, countryCode);
+    } catch (err) {
+        console.warn("[jobScraper] Adzuna failed, retrying once", err);
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+        return adzunaProvider.search(jobTitle, location, countryCode);
+    }
+}
+
+// RemoteOK (Phase 43/44, direct user decision, "Part A" remaining items)
+// joins Adzuna in this same always-on concurrent merge — genuinely
+// keyless/free (no shared quota to protect, no per-key exhaustion concept),
+// so there's no reason to gate it behind SerpApi's own result count any
+// more than Adzuna already isn't (see this function's original 2026-09-01
+// regression comment above). Careerjet was researched alongside it but is
+// NOT included here — see the comment above stripHtml for why (its free
+// endpoint turned out to require a fake referrer identity to pass, a real
+// account is genuinely required). RemoteOK's own results skip filterByCity
+// entirely (see remoteOkProvider's own comment — every result is inherently
+// remote by construction).
+async function fetchAndMergeFreeSources(
     serpApiPromise: Promise<NormalizedJob[]>,
     jobTitle: string,
     location: string,
     countryCode: string,
 ): Promise<NormalizedJob[]> {
-    if (!getAdzunaCredentials()) return serpApiPromise;
+    const extraSources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
 
-    const [primary, adzunaResult] = await Promise.all([
+    if (getAdzunaCredentials()) {
+        extraSources.push({
+            name: "Adzuna",
+            // filterByCity as a defensive second layer, not the primary
+            // control — Adzuna's own `where=` param already does real
+            // server-side filtering (verified live: Toronto/Vancouver/
+            // Halifax return sensibly different counts), but this keeps
+            // exactly one function deciding city relevance rather than
+            // trusting each provider's own filtering to be equally strict.
+            promise: searchAdzunaWithRetry(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
+        });
+    }
+    extraSources.push({ name: "RemoteOK", promise: remoteOkProvider.search(jobTitle, location, countryCode) });
+
+    const [primary, ...settled] = await Promise.all([
         serpApiPromise,
-        // filterByCity as a defensive second layer, not the primary
-        // control — Adzuna's own `where=` param already does real
-        // server-side filtering (verified live: Toronto/Vancouver/Halifax
-        // return sensibly different counts), but this keeps exactly one
-        // function deciding city relevance rather than trusting each
-        // provider's own filtering to be equally strict.
-        adzunaProvider
-            .search(jobTitle, location, countryCode)
-            .then((jobs) => filterByCity(jobs, location))
-            // Merging is a best-effort improvement, never a reason to fail
-            // a search that already has real SerpApi results.
-            .catch((err) => {
-                console.error("[jobScraper] Adzuna merge failed", err);
+        ...extraSources.map(({ name, promise }) =>
+            // Merging is a best-effort improvement, never a reason to fail a
+            // search that already has real SerpApi results — Adzuna's own
+            // entry above has already had its one real retry by this point.
+            promise.catch((err) => {
+                console.error(`[jobScraper] ${name} merge failed`, err);
                 return [] as NormalizedJob[];
             }),
+        ),
     ]);
 
-    if (adzunaResult.length === 0) return primary;
-    const merged = dedupeJobs([...primary, ...adzunaResult]);
-    console.warn(
-        `SerpApi returned ${primary.length} result(s) for "${jobTitle}" — merged with Adzuna's ${adzunaResult.length} to ${merged.length}.`
-    );
+    const merged = dedupeJobs([primary, ...settled].flat());
+    settled.forEach((jobs, i) => {
+        if (jobs.length > 0) console.warn(`[jobScraper] ${extraSources[i].name} contributed ${jobs.length} result(s) to a ${primary.length}-result SerpApi search.`);
+    });
     return merged;
 }
 
@@ -976,6 +1144,15 @@ export async function searchJobs(
         // Revert this reorder once SerpApi's monthly quota resets — this is
         // a deliberate, temporary rebalancing for the current outage, not a
         // permanent architecture decision.
+        // RemoteOK joins this fallback the same way it joins the primary
+        // merge above — free/keyless, no reason to exclude it just because
+        // SerpApi happens to be the tier that's currently down. Kept OUT of
+        // the shared `attempts`/filterByCity pipeline and merged in
+        // separately, unfiltered — the same reason fetchAndMergeFreeSources
+        // excludes it from filterByCity: every RemoteOK result is
+        // inherently remote by construction, and running it through a city
+        // filter would wrongly drop genuinely-remote postings whose title
+        // doesn't happen to literally say "remote."
         async function fetchMergedExhaustionFallback(): Promise<NormalizedJob[]> {
             const attempts: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
             if (getAdzunaCredentials()) {
@@ -988,30 +1165,38 @@ export async function searchJobs(
                 attempts.push({ name: "JSearch", promise: jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
             }
 
-            const settled = await Promise.all(
-                attempts.map(({ name, promise }) =>
-                    promise.catch((err) => {
-                        console.error(`[jobScraper] ${name} failed during exhaustion-fallback merge`, err);
-                        return [] as NormalizedJob[];
-                    }),
+            const [settled, remoteOkResult] = await Promise.all([
+                Promise.all(
+                    attempts.map(({ name, promise }) =>
+                        promise.catch((err) => {
+                            console.error(`[jobScraper] ${name} failed during exhaustion-fallback merge`, err);
+                            return [] as NormalizedJob[];
+                        }),
+                    ),
                 ),
-            );
+                remoteOkProvider.search(jobTitle, location, effectiveCountryCode).catch((err) => {
+                    console.error("[jobScraper] RemoteOK failed during exhaustion-fallback merge", err);
+                    return [] as NormalizedJob[];
+                }),
+            ]);
 
-            const merged = dedupeJobs(settled.flat());
             settled.forEach((jobs, i) => console.warn(`SerpApi exhausted — ${attempts[i].name} contributed ${jobs.length} result(s).`));
-            return filterByCity(merged, location);
+            if (remoteOkResult.length > 0) console.warn(`SerpApi exhausted — RemoteOK contributed ${remoteOkResult.length} result(s).`);
+
+            const cityFiltered = filterByCity(dedupeJobs(settled.flat()), location);
+            return dedupeJobs([...cityFiltered, ...remoteOkResult]);
         }
 
         try {
             const serpApiPromise = serpApiProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
-            return await fetchAndMergeAdzuna(serpApiPromise, jobTitle, location, effectiveCountryCode);
+            return await fetchAndMergeFreeSources(serpApiPromise, jobTitle, location, effectiveCountryCode);
         } catch (err) {
             if (!isQuotaExhaustedError(err)) throw err;
 
             const merged = await fetchMergedExhaustionFallback();
             if (merged.length > 0) return merged;
 
-            console.warn("Merged exhaustion fallback (Adzuna/JobsPipe/JSearch) returned nothing — trying TheirStack/Apify as a last resort.");
+            console.warn("Merged exhaustion fallback (Adzuna/JobsPipe/JSearch/RemoteOK) returned nothing — trying TheirStack/Apify as a last resort.");
             const lastResortTiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
                 { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
                 { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
