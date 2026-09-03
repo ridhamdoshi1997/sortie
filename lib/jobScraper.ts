@@ -334,6 +334,24 @@ async function searchWithSerpApiKey(
 // direct-ATS enrichment — now filters through this one function, so
 // there is exactly one place city relevance is decided, not three
 // separately-maintained copies of the same logic.
+// Remote handling widened 2026-09-03 to match the SQL rule in
+// search_discovered_postings (migrations/20260903180000_...), so the two
+// places that decide city relevance agree instead of contradicting each
+// other. The original accepted a location of exactly "anywhere", or the word
+// "remote" in the TITLE — which meant a posting whose LOCATION is "Remote"
+// (or "Remote - Canada", or "Anywhere in the US") but whose title is a plain
+// "Software Engineer" was silently dropped for every city. Direct-ATS boards
+// write remote roles that way routinely: ~8% of the crawl cache's postings
+// are remote-by-location, and lib/atsProviders.ts's own Workable/BambooHR
+// adapters emit exactly that shape.
+//
+// Measured before changing it, rather than assumed: against 150 real Adzuna
+// results across three Toronto queries this changes nothing at all (Adzuna
+// always includes a real city), so the aggregator path is unaffected. The
+// gain is on the direct-ATS and enrichment paths, which is where the shape
+// actually occurs.
+const REMOTE_LOCATION_PATTERN = /\b(remote|anywhere|work from home|wfh)\b/i;
+
 export function filterByCity<T extends { location?: string; title?: string }>(jobs: T[], location: string): T[] {
     const searchCity = location.split(",")[0].trim().toLowerCase();
     if (!searchCity) return jobs;
@@ -342,7 +360,7 @@ export function filterByCity<T extends { location?: string; title?: string }>(jo
         const jobTitle = (job.title || "").toLowerCase();
         return (
             jobLocation.includes(searchCity) ||
-            jobLocation === "anywhere" ||
+            REMOTE_LOCATION_PATTERN.test(jobLocation) ||
             /\bremote\b/.test(jobTitle)
         );
     });

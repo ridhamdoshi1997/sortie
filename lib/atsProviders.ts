@@ -575,9 +575,37 @@ async function fetchWorkdayJobs(
 // real, specific-posting links ARE present in plain server-rendered HTML
 // (confirmed live: /jobs/search?ss=1&in_iframe=1 returns real
 // /jobs/{numericId}/{slug}/job links with zero JS execution). Parsed via a
-// simple href scan, same DOM-scraping tier the browser extension already
-// uses for platforms with no JSON API.
-const ICIMS_JOB_LINK_PATTERN = /href="(https:\/\/[a-z0-9-]+\.icims\.com\/jobs\/(\d+)\/([^"?]+)\/job[^"]*)"/gi;
+// DOM-shaped scan, same tier the browser extension already uses for
+// platforms with no JSON API.
+//
+// Rewritten 2026-09-03 from an href-only scan to per-card parsing, after
+// measuring that ALL 19,892 cached iCIMS postings had an empty location —
+// 20% of the entire crawl cache, and every one of them excluded from any
+// city-specific search once search_discovered_postings started (correctly)
+// refusing to treat unknown-location rows as city matches. The location was
+// there the whole time and was simply being discarded: each
+// `<li class="iCIMS_JobCardItem">` carries a "Job Locations" label followed
+// by the value (e.g. "US-NC-Cary HQ", "CA-ON-Toronto"), plus a real
+// description snippet and the properly-cased title in an <h3>. Parsing per
+// card recovers all three, so these postings become genuinely searchable by
+// city instead of being dead weight.
+const ICIMS_CARD_PATTERN = /<li class="iCIMS_JobCardItem">([\s\S]*?)<\/li>/gi;
+const ICIMS_LINK_PATTERN = /href="(https:\/\/[a-z0-9-]+\.icims\.com\/jobs\/(\d+)\/([^"?]+)\/job[^"]*)"/i;
+const ICIMS_LOCATION_PATTERN = /Job Locations<\/span>\s*<span[^>]*>\s*([^<]+)</i;
+const ICIMS_TITLE_PATTERN = /<h3[^>]*>\s*([^<]+?)\s*<\/h3>/i;
+const ICIMS_DESCRIPTION_PATTERN = /<div class="col-xs-12 description">([\s\S]*?)<\/div>/i;
+
+function stripTags(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&rsquo;/g, "'")
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/\s+/g, " ")
+    .trim();
+}
 
 async function fetchIcimsJobs(
   discovered: Extract<DiscoveredAts, { platform: "icims" }>,
@@ -585,30 +613,35 @@ async function fetchIcimsJobs(
   searchTitleWords: string[]
 ): Promise<NormalizedJob[]> {
   try {
-    const res = await fetch(`https://${discovered.tenant}.icims.com/jobs/search?ss=1&in_iframe=1`);
+    const res = await fetch(`https://${discovered.tenant}.icims.com/jobs/search?ss=1&in_iframe=1`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
     if (!res.ok) {
       console.warn(`[atsProviders] iCIMS tenant "${discovered.tenant}" returned ${res.status}`);
       return [];
     }
     const html = await res.text();
     const jobs: NormalizedJob[] = [];
-    for (const match of html.matchAll(ICIMS_JOB_LINK_PATTERN)) {
-      const [, applyUrl, id, slug] = match;
-      const title = decodeURIComponent(slug).replace(/-/g, " ");
-      // Filter to postings whose slug plausibly matches the title we're
-      // looking for — an iCIMS tenant's search page can list hundreds of
-      // unrelated jobs, and title-matching happens the same way the ATS
-      // guess path already does for the other platforms (titlesMatch, in
-      // lib/reresolveApplyLink.ts) — done here too since a company can have
-      // 500+ postings and there's no point returning all of them.
+    for (const [, card] of html.matchAll(ICIMS_CARD_PATTERN)) {
+      const link = card.match(ICIMS_LINK_PATTERN);
+      if (!link) continue;
+      const [, applyUrl, id, slug] = link;
+
+      // Prefer the card's own <h3>, which carries real casing and
+      // punctuation; the URL slug is a lossy fallback for cards whose
+      // heading markup differs.
+      const heading = card.match(ICIMS_TITLE_PATTERN)?.[1];
+      const title = heading ? stripTags(heading) : decodeURIComponent(slug).replace(/-/g, " ");
+
       const lowerTitle = title.toLowerCase();
       if (searchTitleWords.length > 0 && !searchTitleWords.every((w) => lowerTitle.includes(w))) continue;
+
       jobs.push({
         id: `icims-${id}`,
         title,
         company: companyName,
-        location: "",
-        description: "",
+        location: stripTags(card.match(ICIMS_LOCATION_PATTERN)?.[1] ?? ""),
+        description: stripTags(card.match(ICIMS_DESCRIPTION_PATTERN)?.[1] ?? ""),
         url: applyUrl,
         applyUrl,
         postedAt: undefined,
