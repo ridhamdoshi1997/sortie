@@ -72,6 +72,20 @@ const CRAWL_BATCH_SIZE = 150;
 // the same ID_BATCH_SIZE approach lib/reresolveApplyLink.ts already uses
 // after hitting this identical PostgREST gotcha. Shared by all three
 // crawlers rather than a fourth copy of the same block.
+// Real bug found live 2026-09-03: "ON CONFLICT DO UPDATE command cannot
+// affect row a second time" — a board returned the SAME posting id twice in
+// one response, so a single upsert carried two rows with an identical
+// (ats_platform, company_key, external_id) tuple, which Postgres rejects
+// outright. That fails the whole batch for that company, not just the
+// duplicate, so one sloppy board silently cost us every posting it had.
+// Deduped on exactly the conflict key the upsert targets; last occurrence
+// wins, matching the upsert's own "latest write wins" semantics.
+function dedupePostingRows<T extends { ats_platform: string; company_key: string; external_id: string }>(rows: T[]): T[] {
+  const byKey = new Map<string, T>();
+  for (const row of rows) byKey.set(`${row.ats_platform}|${row.company_key}|${row.external_id}`, row);
+  return [...byKey.values()];
+}
+
 const STALE_ID_BATCH_SIZE = 50;
 
 async function markMissingPostingsInactive(
@@ -174,7 +188,7 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
 
         const { error } = await admin.database
           .from("discovered_postings")
-          .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
+          .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] upsert failed for ${candidate.company_name}`, error.message);
         else postingsUpserted += rows.length;
       }
@@ -332,7 +346,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
 
         const { error } = await admin.database
           .from("discovered_postings")
-          .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
+          .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] Workday upsert failed for ${candidate.company_name}`, error.message);
         else postingsUpserted += rows.length;
       }
@@ -435,7 +449,7 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
 
         const { error } = await admin.database
           .from("discovered_postings")
-          .upsert(rows, { onConflict: "ats_platform,company_key,external_id" });
+          .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] iCIMS upsert failed for ${candidate.company_name}`, error.message);
         else postingsUpserted += rows.length;
       }
