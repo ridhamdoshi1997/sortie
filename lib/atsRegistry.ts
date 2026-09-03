@@ -90,7 +90,7 @@ function guessCompanyDomains(company: string): string[] {
     .map((s) => `${s}.com`);
 }
 
-const GUESSABLE: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr"];
+const GUESSABLE: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr"];  // dayforce excluded: session-priming makes blind guessing far too expensive
 
 async function guessAtsBySlug(companyName: string): Promise<DiscoveredAts | null> {
   const slugs = guessCompanySlugs(companyName);

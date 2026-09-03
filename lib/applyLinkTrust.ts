@@ -25,6 +25,7 @@ const ATS_HOSTS = [
   "icims.com",
   "taleo.net",
   "bamboohr.com",
+  "dayforcehcm.com",
   "breezy.hr",
   "recruitee.com",
 ];

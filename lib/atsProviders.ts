@@ -9,7 +9,7 @@ import type { NormalizedJob } from "@/lib/jobScraper";
 // greenhouse, Lever's own demo board, ramp/ashby) — see this session's
 // transcript / the approved plan for the raw responses.
 
-export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "bamboohr";
+export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "bamboohr" | "dayforce";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -280,6 +280,130 @@ export async function fetchBambooHrJobs(companySlug: string, companyName: string
   }
 }
 
+// Dayforce (Ceridian) — the hardest of these to reach, and worth recording
+// how it was actually solved, because guessing got nowhere. An initial pass
+// (2026-09-03) probed every plausible REST shape and got 404/403 on all of
+// them, and the served HTML is a Next.js SPA carrying no job data, so this
+// was briefly written off as unreachable. It isn't: driving a real client
+// portal in a browser and reading its own network calls revealed the API,
+// and then patching XMLHttpRequest to capture the app's own request body
+// gave the exact payload. Three things had to be right at once, none of
+// which are guessable:
+//   1. It's a POST to /api/geo/{clientNamespace}/jobposting/search — the
+//      earlier probes failed partly because they were GETs.
+//   2. It needs a session: load the portal page for cookies, then hit
+//      /api/auth/csrf and send the token as `x-csrf-token`. Without it the
+//      response is 403; with it, 400 (i.e. auth accepted, body wrong) —
+//      that transition is what proved the approach was viable.
+//   3. The body is camelCase and wants `jobBoardCode` ("CANDIDATEPORTAL",
+//      the careerSiteXRefCode from the portal's own route), NOT a numeric
+//      board id. Every PascalCase/JobBoardId variant is rejected.
+// Confirmed live end to end: 25 real postings with full 2,100-2,700 char
+// descriptions and real city/state locations.
+//
+// Also corrects an earlier misreading of the dataset: rows like
+// `jobs.dayforcehcm.com/api/geo/nextier` were dismissed as junk, but
+// `nextier` is a real clientNamespace — that path IS the API. Both the
+// /api/geo/{client} and /en-US/{client}/CANDIDATEPORTAL shapes are
+// harvestable for client codes.
+type DayforceJobPosting = {
+  jobPostingId: number;
+  jobTitle: string;
+  jobDescription?: string;
+  postingStartTimestampUTC?: string | null;
+  postingLocations?: { cityName?: string; stateCode?: string; isoCountryCode?: string }[];
+};
+
+const DAYFORCE_BASE = "https://jobs.dayforcehcm.com";
+const DAYFORCE_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
+
+export async function fetchDayforceJobs(clientNamespace: string, companyName: string, boardCode = "CANDIDATEPORTAL"): Promise<NormalizedJob[]> {
+  const client = normalizeSlug(clientNamespace);
+  const portalUrl = `${DAYFORCE_BASE}/en-US/${client}/${boardCode}`;
+  try {
+    // Establish the session the API requires (see step 2 above).
+    const jar: string[] = [];
+    const collect = (res: Response) => {
+      for (const [key, value] of res.headers) {
+        if (key.toLowerCase() === "set-cookie") jar.push(value.split(";")[0]);
+      }
+    };
+
+    const portal = await fetch(portalUrl, { headers: { "User-Agent": DAYFORCE_UA } });
+    if (!portal.ok) {
+      console.warn(`[atsProviders] Dayforce portal "${client}" returned ${portal.status}`);
+      return [];
+    }
+    collect(portal);
+
+    const csrfRes = await fetch(`${DAYFORCE_BASE}/api/auth/csrf`, {
+      headers: { "User-Agent": DAYFORCE_UA, Cookie: jar.join("; ") },
+    });
+    collect(csrfRes);
+    const { csrfToken } = (await csrfRes.json().catch(() => ({}))) as { csrfToken?: string };
+    if (!csrfToken) {
+      console.warn(`[atsProviders] Dayforce csrf token unavailable for "${client}"`);
+      return [];
+    }
+
+    const res = await fetch(`${DAYFORCE_BASE}/api/geo/${client}/jobposting/search`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+        "User-Agent": DAYFORCE_UA,
+        Origin: DAYFORCE_BASE,
+        Referer: portalUrl,
+        Cookie: jar.join("; "),
+        "x-csrf-token": csrfToken,
+      },
+      // Exactly the payload the portal's own client sends — camelCase,
+      // jobBoardCode not JobBoardId. Empty searchText is list mode.
+      body: JSON.stringify({
+        clientNamespace: client,
+        jobBoardCode: boardCode,
+        cultureCode: "en-US",
+        searchText: "",
+        distanceUnit: 0,
+        paginationStart: 0,
+      }),
+    });
+
+    if (!res.ok) {
+      console.warn(`[atsProviders] Dayforce search for "${client}" returned ${res.status}`);
+      return [];
+    }
+
+    // Guarded rather than a bare .json(): a minority of tenants answer 200
+    // with an HTML error/consent page instead of JSON, which would otherwise
+    // throw a noisy parse error per company on every crawl pass.
+    const data: { jobPostings?: DayforceJobPosting[] } = await res.json().catch(() => ({}));
+    return (data.jobPostings ?? []).map((job) => {
+      const applyUrl = `${DAYFORCE_BASE}/en-US/${client}/${boardCode}/jobs/${job.jobPostingId}`;
+      const loc = job.postingLocations?.[0];
+      return {
+        id: `dayforce-${client}-${job.jobPostingId}`,
+        title: job.jobTitle,
+        company: companyName,
+        location: [loc?.cityName, loc?.stateCode, loc?.isoCountryCode].filter(Boolean).join(", "),
+        description: (job.jobDescription ?? "")
+          .replace(/<[^>]+>/g, " ")
+          .replace(/&nbsp;/g, " ")
+          .replace(/&amp;/g, "&")
+          .replace(/\s+/g, " ")
+          .trim(),
+        url: applyUrl,
+        applyUrl,
+        postedAt: job.postingStartTimestampUTC ?? undefined,
+        source: "dayforce",
+      };
+    });
+  } catch (error) {
+    console.warn(`[atsProviders] Dayforce fetch failed for "${client}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -294,6 +418,8 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchWorkableJobs(slug, companyName);
     case "bamboohr":
       return fetchBambooHrJobs(slug, companyName);
+    case "dayforce":
+      return fetchDayforceJobs(slug, companyName);
   }
 }
 
@@ -343,6 +469,7 @@ const SLUG_ATS_PATTERNS: { platform: AtsPlatform; pattern: RegExp }[] = [
   { platform: "smartrecruiters", pattern: /jobs\.smartrecruiters\.com\/([a-z0-9_-]+)/i },
   { platform: "workable", pattern: /apply\.workable\.com\/([a-z0-9_-]+)/i },
   { platform: "bamboohr", pattern: /([a-z0-9-]+)\.bamboohr\.com/i },
+  { platform: "dayforce", pattern: /jobs\.dayforcehcm\.com\/(?:en-US\/)?([a-z0-9-]+)/i },
 ];
 
 async function discoverAtsFromDomain(domain: string): Promise<DiscoveredAts | null> {
