@@ -1,6 +1,8 @@
 import { searchJobs } from "@/lib/jobScraper";
 import { classifyApplyHost, extractLikelyLogoDomain, pickBestApplyLink } from "@/lib/applyLinkTrust";
 import { fetchAtsJobs, fetchDiscoveredAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
+import { fetchJobsForCompany } from "@/lib/atsRegistry";
+import { createAdminDbClient } from "@/lib/admin/client";
 import type { createInsforgeServer } from "@/lib/insforge-server";
 
 type InsforgeClient = Awaited<ReturnType<typeof createInsforgeServer>>;
@@ -133,6 +135,43 @@ async function tryAtsGuess(job: ResolvableJob): Promise<{ applyUrl: string } | n
     if (match?.applyUrl) return { applyUrl: match.applyUrl };
   }
   return null;
+}
+
+// Registry-backed rescue tier (2026-09-03) — the tier that was structurally
+// missing, and the reason Adzuna's real supply was being thrown away
+// wholesale. The other free tiers all fail on an Adzuna job for the same
+// root cause: tryStoredCandidates needs alternate candidate links Adzuna
+// never supplies; tryAtsGuess can only GUESS a board slug from the company
+// name (a guess that misses any company whose slug isn't its name); and
+// tryEmployerAtsDiscovery has to extract an employer domain from the
+// current link — but for an Adzuna job the current link IS adzuna.ca, so
+// there's nothing real to extract.
+//
+// What changed: ats_registry now holds 12,752 real companies with verified
+// board configs (9,646 Greenhouse/Lever/Ashby from the LastRound AI seed,
+// plus 3,113 Workday tenants from the latmay dataset — Phase 43). That
+// turns "which board does this employer use?" from a guess into a lookup,
+// keyed on the company NAME the job already carries — no domain extraction
+// and no slug guessing required. fetchJobsForCompany reads the registry
+// first and only falls back to live discovery on a miss, so a registry hit
+// costs a single board fetch.
+//
+// Deliberately placed BEFORE tryEmployerAtsDiscovery: a registry hit is a
+// verified, previously-confirmed board, whereas discovery is a fresh
+// 4-fetch guess off a derived domain. Free (public ATS endpoints), so it
+// belongs in the freeOnly set. A hit yields an "ats"-tier link — the
+// highest trust tier there is — so this rescues these jobs into genuine
+// employer postings rather than compromising on link quality.
+async function tryRegistryAtsLookup(job: ResolvableJob): Promise<{ applyUrl: string } | null> {
+  const admin = createAdminDbClient() as unknown as Parameters<typeof fetchJobsForCompany>[0];
+  try {
+    const jobs = await fetchJobsForCompany(admin, job.company as string, null, job.title as string);
+    const match = jobs.find((candidate) => titlesMatch(candidate.title, job.title as string));
+    return match?.applyUrl ? { applyUrl: match.applyUrl } : null;
+  } catch (error) {
+    console.warn("[reresolveApplyLink] registry lookup failed", job.company, error);
+    return null;
+  }
 }
 
 // Final fallback tier, after the free ATS guess and the paid SerpApi
@@ -307,6 +346,20 @@ export async function reresolveApplyLinkForJob(
         })
         .eq("id", job.id);
       if (error) console.error("[reresolveApplyLink] update (ats match)", job.id, error);
+      return;
+    }
+
+    const registryMatch = await tryRegistryAtsLookup(job);
+    if (registryMatch) {
+      const { error } = await insforge.database
+        .from("jobs")
+        .update({
+          external_apply_url: registryMatch.applyUrl,
+          apply_link_resolved_at: new Date().toISOString(),
+          source_priority: applyLinkSourcePriority(registryMatch.applyUrl, job.company),
+        })
+        .eq("id", job.id);
+      if (error) console.error("[reresolveApplyLink] update (registry ats match)", job.id, error);
       return;
     }
 

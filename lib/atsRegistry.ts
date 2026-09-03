@@ -123,7 +123,37 @@ export async function resolveAts(
 
   const existing = await readRow(db, key);
   if (existing && !isStaleNegative(existing)) {
-    return existing.platform ? ({ platform: existing.platform, ...(existing.config as object) } as DiscoveredAts) : null;
+    const cached = existing.platform ? ({ platform: existing.platform, ...(existing.config as object) } as DiscoveredAts) : null;
+    // Same generic-"/Search"-board problem crawlKnownWorkdayCompanies
+    // (lib/proactiveAtsCrawl.ts) already self-heals, fixed here too because
+    // this is the LIVE path — a real search's own enrichment and the
+    // apply-link rescue tier both come through here, and neither was
+    // benefiting from that fix. 623 of the 3,114 seeded Workday rows store
+    // Workday's default browser route ("Search") instead of a real
+    // company-specific board name, which 404s on the actual CXS API
+    // (confirmed live). Left unhandled, those 623 employers silently
+    // contribute nothing on every search, forever. Re-resolve through the
+    // same careers-page discovery used for an unknown company and persist
+    // the corrected board, so the cost is paid once per company.
+    if (cached?.platform === "workday" && cached.board.toLowerCase() === "search") {
+      const domains = existing.company_domain ? [existing.company_domain] : guessCompanyDomains(companyName);
+      for (const domain of domains) {
+        const rediscovered = await discoverAtsForRegistry(domain);
+        if (rediscovered?.platform === "workday" && rediscovered.board.toLowerCase() !== "search") {
+          await db.database
+            .from("ats_registry")
+            .upsert(
+              [{ company_key: key, company_name: companyName, company_domain: domain, platform: "workday", config: { ...rediscovered }, last_checked_at: new Date().toISOString(), last_success_at: new Date().toISOString(), failed_attempts: 0 }],
+              { onConflict: "company_key" },
+            );
+          return rediscovered;
+        }
+      }
+      // Genuinely unresolvable for now — return it anyway rather than null
+      // so behavior is no worse than before this fix existed.
+      return cached;
+    }
+    return cached;
   }
 
   // Cache miss (or a stale negative worth re-checking) — pay the discovery

@@ -19,7 +19,26 @@ type PreFilterableJob = {
   description?: string | null;
   salary?: string | null;
   posted_at?: string | null;
+  source?: string | null;
 };
+
+// Sources whose jobs come straight from the employer's own ATS board —
+// legitimate by construction (the apply link IS the employer's real
+// posting; see lib/atsProviders.ts's header). Their descriptions are empty
+// BY DESIGN, not by scraping failure: the board-listing endpoints are
+// deliberately fetched without content (Greenhouse literally with
+// `?content=false`) to keep list-mode payloads small. Discovered live
+// (2026-09-03, the root cause of "all this ATS work and the visible number
+// never moves"): the description-density check below was hiding 100% of
+// direct-ATS jobs on arrival — 39/39 greenhouse, 3/3 workday, 2/2 ashby in
+// the live DB at the time — silently nullifying the entire direct-ATS
+// strategy (the ats_registry seeding, the Workday crawler, the reactive
+// enrichment) before a single one ever reached evaluation or a user's
+// screen. An empty description from these sources means "we chose not to
+// fetch the body," never "this posting is thin or fake," so the density
+// heuristic is exempted for them; every other check (staleness, staffing
+// agencies, spam phrasing) still applies.
+const DIRECT_ATS_SOURCES = new Set(["greenhouse", "lever", "ashby", "smartrecruiters", "workday", "icims"]);
 
 // Direct user follow-up (2026-09-01) after Adzuna started running on
 // every search: Adzuna's own index carries genuinely old listings
@@ -93,7 +112,8 @@ export function preFilterJob(job: PreFilterableJob): PreFilterResult {
   // not either alone, since a short posting with a real salary figure is
   // still plausibly a real, just-terse listing.
   const descriptionLength = (job.description ?? "").trim().length;
-  if (descriptionLength < 150 && !job.salary) {
+  const isDirectAts = Boolean(job.source && DIRECT_ATS_SOURCES.has(job.source.toLowerCase()));
+  if (descriptionLength < 150 && !job.salary && !isDirectAts) {
     return { hide: true, reason: `Description too short (${descriptionLength} chars) with no salary listed` };
   }
 
