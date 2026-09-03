@@ -52,12 +52,28 @@ const MAX_UNKNOWN_ATS_DISCOVERIES = 3;
 // without it a single unresponsive employer holds up every other result.
 const ATS_FETCH_TIMEOUT_MS = 6000;
 
-// See the cap's own comment at its use site below for the full incident.
-// 80 matches what a healthy, un-enriched SerpApi search already returned
-// before today's Adzuna/direct-ATS work (measured: "software developer"/
-// Toronto = 79) — the volume the evaluation pipeline was actually tuned
-// and timed for.
-const MAX_EVALUATED_JOBS = 80;
+// Raised 80 -> 150 (2026-09-03, direct product decision) once the pipeline
+// started producing far more than 80 real candidates: a "Software Engineer"/
+// Toronto search now yields 200 unique candidates, and at 80 the trim was
+// discarding every single one of Adzuna's 84 results, because direct-ATS
+// jobs rank first by trust tier and filled the entire cap. Losing a whole
+// source is too blunt an outcome when that source reaches employers who
+// aren't on any ATS platform we cover.
+//
+// Sized against what the cap actually costs, which is TIME more than money.
+// Scoring runs in chunks of 5 jobs per AI call (evaluateJobsAsync) behind a
+// global 12-calls-per-60s throttle shared by every user, so:
+//     80 jobs  = 16 calls ≈ 80s to finish scoring
+//    150 jobs  = 30 calls ≈ 150s
+// Jobs are VISIBLE immediately either way — only the scores stream in
+// progressively — and lib/jobRelevance.ts already orders evaluation so the
+// most relevant jobs are scored first, which matters more at this size.
+// This is the knob to turn back down if scoring latency or shared-throttle
+// contention becomes the complaint; it scales linearly and predictably.
+//
+// Deliberately NOT unbounded: the throttle is global, so one large search
+// consumes capacity every other user's search is waiting on.
+const MAX_EVALUATED_JOBS = 150;
 
 // Matches the research-settled "top 15-20" figure for a relevance
 // pre-filter — see rankJobsByRelevance's own use site comment. Only
