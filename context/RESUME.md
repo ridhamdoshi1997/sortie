@@ -63,6 +63,22 @@ Full detail in `context/progress-tracker.md`'s Phase 44 entries. Headlines:
 - **Three more bugs surfaced by running things rather than reading them**: the gate discarding links our own rescue had just fixed (abbreviated ATS tenants like `fil` for Fidelity International); stale-marking silently failing on the largest boards (every posting id stuffed into one URL); and `ON CONFLICT ... cannot affect row a second time` when a board returns a duplicate posting id, which killed the whole batch for that company.
 - **Standing lesson, learned by getting it wrong**: Dayforce was declared unreachable on the strength of guessed URL shapes, then shipped after the user pushed back — driving the real portal in a browser and reading its own network calls found the API in minutes. Never conclude a platform has no API from guessed URLs; drive its real client first.
 
+### The search pipeline, end to end (accurate as of 2026-09-03)
+What actually happens when someone searches, e.g. "Financial Advisor" in Toronto. Entry point is `scrapeAndEvaluateJobs` in `lib/actions/scraper.actions.ts`; the measured numbers are from a real run of that exact query.
+
+1. **`agent_runs` row created** (status `running`). The find-jobs page scopes its results to the LATEST run id — so a user looking at an old search sees pre-fix results until they search again. This caused a real "why isn't it working" confusion this session.
+2. **`searchJobs()` — aggregators** (`lib/jobScraper.ts`). SerpApi first; it's currently exhausted (0/250 on all 3 keys), so every search falls into the merged exhaustion path: **Adzuna + JobsPipe + JSearch concurrently**, plus RemoteOK merged in separately (deliberately not city-filtered, since it's remote-only by construction). → **109 results**.
+3. **`enrichWithDirectAtsJobs()` — reactive ATS**. Groups those results by company, takes the top 8 (registry-known employers first), and polls each employer's OWN board through `fetchJobsForCompany`. Title-relevance filtered, then `filterByCity`. → 27 fetched, **4 survive the Toronto filter** (the rest were Bengaluru/Luxembourg/Taipei roles from the same boards).
+4. **`queryProactiveCrawlCache()` — the background cache**. Full-text title match with the city constraint applied INSIDE the SQL, against ~100k crawled postings. → **1** for this query (that vertical/city is genuinely thin; Software Engineer/Toronto gets 30).
+5. **Dedupe by id** → 114 unique candidates.
+6. **`MAX_EVALUATED_JOBS = 80` trim**, ranked by apply-link TRUST TIER (ats > aggregator > employer > other) — note: no relevance ranking at this stage, which is why unfiltered board dumps were so damaging before they were fixed. Skipped entirely for admin accounts.
+7. **`upsertScrapedJobs` → `canonicalizeJobSources`**: merges duplicates across sources into one canonical `jobs` row each, appending raw provenance to `job_sources`. → 114 raw → **84 canonical**.
+8. **`verifyApplyLinksBeforeReveal`**: free rescue tiers first (stored candidates → ATS slug guess → registry lookup → careers-page discovery), then a paid tier capped at 5 per search. Anything still failing the genuine-link bar is hidden here, before any AI spend.
+9. **`evaluateWithinQuota`**: the cheap `jobPreFilter` hides obvious junk (staffing agencies, spam phrasing, >60-day-stale) — direct-ATS sources are exempt from its short-description rule — then queues the rest for AI scoring via Inngest.
+10. **UI**: the page renders `is_hidden = false` jobs for the latest run and polls until every `match_score` is filled. Opening a job triggers two fire-and-forget backfills: apply-link rescue, and the on-demand full description.
+
+Result for that query: **84 stored, all 84 visible** (Adzuna 70, JSearch 8, Workday 5, JobsPipe 1).
+
 **Next session, start here, in order:**
 1. **Do a real, full-pipeline live test (not just `searchJobs()` alone) before ever reporting a "how many jobs" number again** — this session's own mistake, corrected the same day, but worth stating as a standing rule: `searchJobs()` alone omits reactive direct-ATS enrichment AND the proactive-crawl cache read, both of which materially change the real candidate count.
 2. Spot-check a few more real queries (different title/city, ideally a tech-titled one where RemoteOK/Greenhouse actually have supply) with the new `fetchJobsForCompany` relevance filter in place — only one query ("Financial Advisor"/Toronto) was used to find and verify this fix; confirm it holds up elsewhere and doesn't over-filter a legitimate match.
