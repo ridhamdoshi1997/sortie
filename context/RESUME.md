@@ -117,8 +117,11 @@ Both dev servers now run under a single session with `autoPort: false` in `.clau
 1. **Cache-first serving** — the ~43s LinkedIn wait is still the dominant latency, and the cache is now 637k postings deep. The lookup already runs concurrently with the providers; what remains is returning cache results before the providers finish, which needs the results UI to accept jobs arriving after first paint.
 2. **Let the crawl drain** — 17,374 companies awaiting a first crawl. Employer-board coverage (14/59 on the last measurement) rises on its own as it does, and the liveness signal gets more valuable with it.
 3. **Adzuna's logo-display obligation** — unverified claim from agy, worth checking before Adzuna is ever re-enabled.
-4. **paycom (5,135 companies)** is the largest remaining platform; its slugs are opaque hashes with no public board found. Would need real research.
-5. Nothing pushed to origin — 12 commits held local per standing preference.
+4. **paycom (5,135 companies)** — researched 2026-09-04, and it is REACHABLE, just not in one call. Its career page is a client-side SPA ("You need to enable JavaScript to run this app"), and every guessed REST path 404s. Driving it in a real browser and reading the network log found the actual call:
+   `GET https://www.paycomonline.net/v4/ats/web.php/portal/{clientkey}/career-page`
+   That returns 200 with **config, not jobs** — `{libConfig, features, primaryColor, sessionJWT, clientSettings, ...}`. So it is a two-step flow: fetch that, take the anonymous `sessionJWT`, then call the jobs endpoint with it. The JWT is issued to any anonymous visitor, so this is a normal public session rather than a lifted credential like JobSpy's Indeed key — but the second call was not identified before the session ended. **Start here**: load the page in the browser tools again, let it fetch jobs, and read the follow-up request that carries the JWT. The clientkey is the jobhive slug verbatim.
+5. **Vercel preview was NOT deployed** — the CLI is unauthenticated in this environment (`Not authorized`) and no `VERCEL_TOKEN` exists in Doppler or `.env`; only `VERCEL_PROJECT_JSON` (the project link). Requires `npx vercel login` by the product owner, after which deploy + re-point the `jobpilot-experiment-preview-sortie3.vercel.app` alias. Note the branch WAS pushed, so a connected GitHub integration may have built a preview on its own — check before deploying manually.
+6. Everything through Phase 47 IS pushed to `origin/feature/supabase-migration` (2026-09-04).
 
 ## Phase 46 (2026-09-04) — source set cut to LinkedIn + Indeed + our own ATS, four silent-discard bugs fixed, and a free "free" option rejected on identity grounds
 
