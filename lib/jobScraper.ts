@@ -1391,12 +1391,31 @@ async function fetchAndMergeFreeSources(
         });
     }
 
+    // Real bug found by running a live search (2026-09-04): this used to
+    // await serpApiPromise UNGUARDED inside Promise.all, so the moment
+    // SerpApi rejected — which it does on every search right now, all three
+    // keys sitting at 0/250 — the whole merge rejected and every other
+    // source's results were thrown away. Those sources had already been
+    // started, so the work (and, for the paid ones, the spend) happened and
+    // was then discarded. The caller's catch then re-ran a narrower set via
+    // fetchMergedExhaustionFallback, which is why a search returned only
+    // Adzuna/JobsPipe/JSearch and zero LinkedIn or Employer-ATS results.
+    //
+    // SerpApi is now caught like every other source. One dead provider must
+    // never be able to discard the others; whether it failed is reported
+    // back so the caller can still decide about its own last-resort tiers.
+    let serpApiFailure: unknown = null;
+    const guardedSerpApi = serpApiPromise.catch((err) => {
+        serpApiFailure = err;
+        return [] as NormalizedJob[];
+    });
+
     const [primary, ...settled] = await Promise.all([
-        serpApiPromise,
+        guardedSerpApi,
         ...extraSources.map(({ name, promise }) =>
             // Merging is a best-effort improvement, never a reason to fail a
-            // search that already has real SerpApi results — Adzuna's own
-            // entry above has already had its one real retry by this point.
+            // search that already has real results from elsewhere — Adzuna's
+            // own entry above has already had its one real retry by now.
             promise.catch((err) => {
                 console.error(`[jobScraper] ${name} merge failed`, err);
                 return [] as NormalizedJob[];
@@ -1406,8 +1425,13 @@ async function fetchAndMergeFreeSources(
 
     const merged = dedupeJobs([primary, ...settled].flat());
     settled.forEach((jobs, i) => {
-        if (jobs.length > 0) console.warn(`[jobScraper] ${extraSources[i].name} contributed ${jobs.length} result(s) to a ${primary.length}-result SerpApi search.`);
+        if (jobs.length > 0) console.warn(`[jobScraper] ${extraSources[i].name} contributed ${jobs.length} result(s) alongside SerpApi's ${primary.length}.`);
     });
+
+    // Only escalate to the paid last-resort tiers when SerpApi genuinely
+    // failed AND nothing else produced anything — not merely because SerpApi
+    // is out, which is now the normal state rather than an emergency.
+    if (merged.length === 0 && serpApiFailure) throw serpApiFailure;
     return merged;
 }
 
