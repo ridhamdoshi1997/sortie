@@ -596,7 +596,16 @@ export async function scrapeAndEvaluateJobs(
         }
     }
 
-    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, linkVerifiedJobs, filters, runId);
+    // The searched title/location travel WITH the evaluation (2026-09-04).
+    // Without them the evaluator only ever saw the candidate's stored profile
+    // and judged every result against their current career — so a developer
+    // deliberately searching "Financial Advisor" got a wall of 20% scores
+    // reading "does not utilize your software engineering expertise". That is
+    // technically true and completely useless: they asked for advisor roles.
+    // A deliberate search is a stated intent, and the evaluator has to know
+    // it was made, otherwise it is answering a question nobody asked.
+    const evaluationFilters = { ...filters, searched_title: title, searched_location: location };
+    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, linkVerifiedJobs, evaluationFilters, runId);
 
     // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
     // the caller can track exactly this search's batch by id, rather than
