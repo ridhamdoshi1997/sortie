@@ -35,7 +35,28 @@ export async function GET(
       return NextResponse.redirect(loginUrl);
     }
 
-    const callbackUrl = new URL("/callback", request.nextUrl.origin);
+    // Prefer an explicitly configured public URL over the origin this
+    // request happened to arrive on (2026-09-03, direct user report: OAuth
+    // on preview completed and then landed back on localhost).
+    //
+    // The origin itself was never wrong — a preview request correctly
+    // produced redirect_to=<preview>/callback. The failure is on Supabase's
+    // side: GoTrue silently ignores a redirect_to that isn't in its Redirect
+    // URLs allow-list and falls back to the project's Site URL, which is
+    // still localhost. That allow-list is the fix, but it can't be
+    // maintained against request.nextUrl.origin alone, because Vercel mints
+    // a NEW hostname for every single deployment — each one would need
+    // adding, and OAuth would break again on the next deploy.
+    //
+    // NEXT_PUBLIC_APP_URL pins the callback to one stable hostname per
+    // environment, so exactly one URL per environment needs allow-listing,
+    // permanently. Deliberately NOT lib/siteUrl.ts's getSiteUrl(): its
+    // VERCEL_URL fallback is that same per-deploy hostname, which is the
+    // problem being solved here. When the variable is unset (local dev, and
+    // any environment not yet configured) this falls back to the previous
+    // behaviour exactly.
+    const configuredOrigin = process.env.NEXT_PUBLIC_APP_URL?.trim();
+    const callbackUrl = new URL("/callback", configuredOrigin || request.nextUrl.origin);
     // No manual code-verifier cookie needed — Supabase's PKCE flow manages
     // its own verifier cookie internally via this same cookies()-bound
     // client's adapter, written automatically as a side effect of this call.
