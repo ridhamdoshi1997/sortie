@@ -39,6 +39,13 @@ export type NormalizedJob = {
     postedAt?: string;
     source: string;
     logoUrl?: string;
+    // Carried from sources that expose them (currently the two Apify actors
+    // added 2026-09-04). applicantCount is LinkedIn's own competition signal
+    // ("Be among the first 25 applicants", "52 applicants") — no other source
+    // wired here provides it, and it's one of the few facts that genuinely
+    // changes whether a candidate should bother applying.
+    applicantCount?: string;
+    experienceLevel?: string;
 };
 
 // Google Jobs listings via SerpApi carry a `share_link` (a google.com/search
@@ -1091,6 +1098,189 @@ const apifyProvider: JobScraperProvider = {
     },
 };
 
+// Two PAID Apify actors, added 2026-09-04 after live-testing five candidates
+// against the same real query. Both are deliberately capped and env-gated,
+// because unlike every free source above these spend real money per result.
+//
+// Why these two rather than an all-in-one: `truefetch/job-search` covers 42
+// sources in a single call and looked like the obvious answer, but measured
+// against the others it was 45x the price of kaix, by far the slowest
+// (160s+, aborted), and weakest exactly where this product needs strength —
+// only 3 ATS platforms, fewer than the 8 lib/proactiveAtsCrawl.ts already
+// crawls for free. Two specialists beat one generalist here:
+//
+//   kaix (LinkedIn)  — the volume and freshness source. LinkedIn is this
+//     pipeline's single largest blind spot: its public API is partner-only,
+//     so before this we had ZERO LinkedIn coverage. Measured: 100 results in
+//     47s for "Financial Advisor"/Toronto, every one a genuine advisor role,
+//     with applicant counts ("Be among the first 25", "52 applicants"),
+//     recruiter profiles and company logos. At $0.0001/result it is 12x
+//     cheaper than the Indeed actor this file already calls.
+//
+//   hirebase (ATS)   — the link-quality source. Returns DIRECT employer
+//     links (rbc.wd3.myworkdayjobs.com, jobs.scotiabank.com) rather than
+//     aggregator redirects, plus real structured salary ranges, visa
+//     sponsorship and staffing-agency flags. Also reaches SuccessFactors,
+//     which this codebase's own crawler does not cover. Slower per dollar
+//     ($0.003/result) but 2.5s per call and very high value per row.
+//
+// Item caps are the cost control and are deliberately conservative: at these
+// defaults one search costs about $0.01 (kaix) + $0.06 (hirebase). Raise
+// APIFY_LINKEDIN_MAX_ITEMS / APIFY_HIREBASE_MAX_ITEMS once a real budget
+// exists; set them to 0 to switch either source off without a deploy.
+function apifyItemCap(envVar: string, fallback: number): number {
+    const raw = Number(process.env[envVar]);
+    return Number.isFinite(raw) && raw >= 0 ? raw : fallback;
+}
+
+type KaixLinkedInJob = {
+    jobId?: string;
+    title?: string;
+    company?: string;
+    location?: string;
+    jobUrl?: string;
+    postedDate?: string;
+    postedTimeAgo?: string;
+    applicants?: string;
+    experienceLevel?: string;
+    employmentType?: string;
+    salary?: string;
+    description?: string;
+    companyLogoUrl?: string;
+};
+
+const apifyLinkedInProvider: JobScraperProvider = {
+    async search(jobTitle, location) {
+        const token = getApifyToken();
+        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        const maxJobs = apifyItemCap("APIFY_LINKEDIN_MAX_ITEMS", 100);
+        if (maxJobs === 0) return [];
+
+        const response = await fetch(
+            `https://api.apify.com/v2/acts/kaix~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${token}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    keywords: jobTitle,
+                    location,
+                    maxJobs,
+                    // Detail enrichment is left OFF deliberately. With it on,
+                    // the same run took 106s for 6 results; off, it returned
+                    // 100 in 47s with the fields that matter already present.
+                    fetchDetails: false,
+                    datePosted: "past_month",
+                    sortBy: "recent",
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`Apify LinkedIn error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const jobs: KaixLinkedInJob[] = await response.json();
+        return jobs
+            .filter((job) => job.jobId && job.title)
+            .map((job) => ({
+                id: `linkedin-${job.jobId}`,
+                title: job.title ?? "",
+                company: job.company ?? "",
+                location: job.location ?? "",
+                description: job.description ?? "",
+                url: job.jobUrl ?? "",
+                applyUrl: job.jobUrl,
+                salary: job.salary || undefined,
+                type: job.employmentType || undefined,
+                postedAt: job.postedDate,
+                source: "LinkedIn",
+                logoUrl: job.companyLogoUrl,
+                // Real competitive signal no other source here provides —
+                // LinkedIn's own applicant count ("Be among the first 25
+                // applicants", "52 applicants"). Carried through so the UI
+                // can show it; see NormalizedJob.applicantCount.
+                applicantCount: job.applicants || undefined,
+                experienceLevel: job.experienceLevel || undefined,
+            }));
+    },
+};
+
+type HirebaseJob = {
+    id?: string;
+    jobTitle?: string;
+    companyName?: string;
+    location?: string;
+    applicationLink?: string;
+    datePosted?: string;
+    jobType?: string;
+    experienceLevel?: string;
+    descriptionText?: string;
+    companyLogo?: string;
+    recruiterAgency?: boolean;
+    salaryRange?: { min?: number; max?: number; currency?: string };
+};
+
+const apifyHirebaseProvider: JobScraperProvider = {
+    async search(jobTitle, location) {
+        const token = getApifyToken();
+        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        const maxItems = apifyItemCap("APIFY_HIREBASE_MAX_ITEMS", 20);
+        if (maxItems === 0) return [];
+
+        const response = await fetch(
+            `https://api.apify.com/v2/acts/hirebase~job-search/run-sync-get-dataset-items?token=${token}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    jobTitles: [jobTitle],
+                    locations: [location],
+                    postedWithinDays: 30,
+                    maxItems,
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`Apify hirebase error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const jobs: HirebaseJob[] = await response.json();
+        return jobs
+            .filter((job) => job.jobTitle && job.applicationLink)
+            // Staffing agencies are already hidden downstream by
+            // lib/jobPreFilter.ts's own name list; this source states it as a
+            // real flag, so drop them before they ever cost an evaluation.
+            .filter((job) => !job.recruiterAgency)
+            .map((job) => {
+                const range = job.salaryRange;
+                const salary =
+                    range?.min && range?.max
+                        ? `${range.currency ?? "$"}${Math.round(range.min).toLocaleString()} - ${Math.round(range.max).toLocaleString()}`
+                        : undefined;
+                return {
+                    id: `hirebase-${job.id}`,
+                    title: job.jobTitle ?? "",
+                    company: job.companyName ?? "",
+                    location: job.location ?? "",
+                    description: job.descriptionText ?? "",
+                    // Already the employer's own ATS posting, so it needs no
+                    // rescue pass — classifyApplyHost will read it as "ats".
+                    url: job.applicationLink ?? "",
+                    applyUrl: job.applicationLink,
+                    salary,
+                    type: job.jobType || undefined,
+                    postedAt: job.datePosted,
+                    source: "Employer ATS",
+                    logoUrl: job.companyLogo,
+                    experienceLevel: job.experienceLevel || undefined,
+                };
+            });
+    },
+};
+
 // Same title+company job legitimately appears in more than one provider's
 // index; keyed on both since neither URL nor id is comparable across
 // providers. This is a cheap in-request dedup pass before canonicalization
@@ -1180,6 +1370,26 @@ async function fetchAndMergeFreeSources(
         });
     }
     extraSources.push({ name: "RemoteOK", promise: remoteOkProvider.search(jobTitle, location, countryCode) });
+
+    // The two PAID Apify sources (2026-09-04) — see their definitions above
+    // for the measurements behind choosing them. Run on every search rather
+    // than as an exhaustion fallback, because their whole point is closing a
+    // volume/quality gap that exists whether or not SerpApi is healthy:
+    // LinkedIn was a total blind spot, and hirebase is the only source here
+    // returning direct employer ATS links with real salary ranges.
+    //
+    // Both are gated on APIFY_API_TOKEN and on their own item caps, so a
+    // deployment without the token (or with the caps set to 0) simply
+    // behaves as it did before. filterByCity applies to hirebase because it
+    // returns whole-country matches; LinkedIn results are already
+    // location-scoped by the actor's own `location` input.
+    if (getApifyToken()) {
+        extraSources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
+        extraSources.push({
+            name: "Employer ATS",
+            promise: apifyHirebaseProvider.search(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
+        });
+    }
 
     const [primary, ...settled] = await Promise.all([
         serpApiPromise,
