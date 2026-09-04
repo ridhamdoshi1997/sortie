@@ -3,7 +3,7 @@
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { getCurrentUser } from "@/lib/auth";
 import { inngest } from "@/lib/inngest/client";
-import { searchJobs, filterByCity, type NormalizedJob } from "@/lib/jobScraper";
+import { searchJobs, filterByCity, filterByTitleRelevance, type NormalizedJob } from "@/lib/jobScraper";
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
@@ -441,6 +441,22 @@ export async function scrapeAndEvaluateJobs(
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
     let uniqueJobs = Array.from(uniqueJobsMap.values());
+
+    // Title relevance, applied to EVERY source at once (2026-09-03, direct
+    // user report of Directors/Engineers/Developers coming back for a
+    // "Financial Advisor" search — measured at 77% noise on that run).
+    // Deliberately placed HERE, before the MAX_EVALUATED_JOBS trim rather
+    // than after: the trim ranks purely by apply-link trust, so leaving the
+    // noise in meant irrelevant postings consumed slots that relevant ones
+    // needed AND then cost a real AI evaluation call each. Filtering first
+    // means the cap is spent entirely on jobs that actually match the
+    // search. See filterByTitleRelevance in lib/jobScraper.ts for the rule
+    // and why Adzuna's own title_only parameter wasn't used instead.
+    const beforeRelevance = uniqueJobs.length;
+    uniqueJobs = filterByTitleRelevance(uniqueJobs, title);
+    if (beforeRelevance !== uniqueJobs.length) {
+        console.log(`[scraper] title relevance: ${beforeRelevance} -> ${uniqueJobs.length} for "${title}"`);
+    }
 
     // Real regression found live (2026-08-31, direct user report — a
     // search stuck at "Scoring 0 of 118" was actually progressing at

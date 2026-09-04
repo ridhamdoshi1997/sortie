@@ -352,6 +352,78 @@ async function searchWithSerpApiKey(
 // contains the word). Keeping a wrong-city job out is worth more than
 // catching every genuinely-remote one — that tradeoff is this function's
 // entire reason for existing (see the 2026-08-31 incident above).
+// Title relevance (2026-09-03, direct user report: a "Financial Advisor"
+// search returned Directors, Engineers and Developers). Measured on that
+// exact run: 82 visible jobs, 19 relevant — 77% noise, and 58 of the 63 bad
+// ones came from Adzuna.
+//
+// Root cause is that most sources match on the DESCRIPTION as well as the
+// title. Adzuna's `what=` is full-text, so any posting at a financial firm
+// whose text mentions "financial advisors" matches — a Senior Software
+// Engineer at a wealth-tech company, a Data Science intern at an asset
+// manager. Workday's and iCIMS's own search params are fuzzy-relevance too,
+// which is why the exemption they used to get in lib/atsRegistry.ts's
+// fetchJobsForCompany was wrong (6 Workday results on that run, 1 relevant).
+//
+// Adzuna's own `title_only` parameter was tested as the alternative and is
+// far too blunt: it collapsed the same query from 317 matches to 9. So the
+// broad query is kept for supply and relevance is decided here instead,
+// uniformly, for every source.
+//
+// The rule: reduce each significant search word to a 5-character stem and
+// keep a job when ANY stem prefixes any word of its title. Stemming by
+// prefix rather than a real stemmer is deliberate — it costs no dependency
+// and covers the morphology that matters here (financial/finance,
+// advisor/advisory, engineer/engineering). Verified against the real 82-job
+// run: it dropped Software Engineer, Data Science Intern, Social Media
+// Manager, IT Production Operations and Corporate Tax, while keeping every
+// genuine advisor role including "Investment Advisor" and "Advisor
+// Development". Finance-adjacent titles like "Chief Financial Officer" do
+// survive; that's intended — they're in the right domain, and the AI's own
+// scoring is the right place to rank them down, not a keyword gate.
+const TITLE_STOP_WORDS = new Set(["the", "and", "for", "with", "senior", "junior", "lead", "of", "in", "at", "a", "an", "sr", "jr"]);
+
+// Deliberately tiny and high-confidence. A broad synonym map would quietly
+// undo the filter (pairing "manager" with "lead"/"supervisor" would let most
+// of the noise back in); these two are near-exact equivalents that would
+// otherwise cause real misses — "Software Developer" for an engineer search,
+// and the British "adviser" spelling.
+const TITLE_SYNONYM_GROUPS = [
+  ["engineer", "developer", "programmer"],
+  ["advisor", "adviser"],
+];
+
+function titleStems(searchTitle: string): string[] {
+  const words = searchTitle
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .filter((w) => w.length > 2 && !TITLE_STOP_WORDS.has(w));
+
+  const expanded = new Set<string>();
+  for (const word of words) {
+    expanded.add(word);
+    for (const group of TITLE_SYNONYM_GROUPS) {
+      if (group.some((member) => word.startsWith(member.slice(0, 5)))) {
+        for (const member of group) expanded.add(member);
+      }
+    }
+  }
+  return [...expanded].map((w) => w.slice(0, 5));
+}
+
+export function matchesSearchTitle(searchTitle: string, jobTitle: string | undefined): boolean {
+  const stems = titleStems(searchTitle);
+  if (stems.length === 0) return true;
+  const words = (jobTitle ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  if (words.length === 0) return false;
+  return stems.some((stem) => words.some((word) => word.startsWith(stem)));
+}
+
+export function filterByTitleRelevance<T extends { title?: string }>(jobs: T[], searchTitle: string): T[] {
+  if (!searchTitle.trim()) return jobs;
+  return jobs.filter((job) => matchesSearchTitle(searchTitle, job.title));
+}
+
 export function filterByCity<T extends { location?: string; title?: string }>(jobs: T[], location: string): T[] {
     const searchCity = location.split(",")[0].trim().toLowerCase();
     if (!searchCity) return jobs;

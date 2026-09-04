@@ -326,9 +326,22 @@ export async function fetchJobsForCompany(
 
   try {
     const jobs = await fetchRegisteredAtsJobs(ats, companyName, searchTitle);
-    // Workday/iCIMS already filtered server-side/internally (see comment
-    // above) — only the 4 slug-based platforms need this extra pass.
-    if (ats.platform === "workday" || ats.platform === "icims") return jobs;
+    // Applied to EVERY platform, including Workday and iCIMS (2026-09-03).
+    // Those two used to be exempted on the assumption that passing a search
+    // term to their APIs meant the server had already filtered — measuring a
+    // real "Financial Advisor" search disproved it: 6 Workday results came
+    // back and only 1 was an advisor role (the rest were a Full-Stack
+    // Software Engineer, a Project Management Office Director and similar).
+    // Their search parameters are fuzzy-relevance, not a strict filter, so
+    // they need the same gate the slug-based boards get.
+    //
+    // Deliberately the STRICT all-words rule here rather than the looser
+    // stem rule filterByTitleRelevance uses at the pipeline level, and the
+    // difference is load-bearing: this runs per-employer against a whole
+    // board, where a large bank can return hundreds of postings that merely
+    // contain "financial". Strict matching bounds how much any single
+    // employer can flood one search; the pipeline-level rule is the wider
+    // net for aggregator noise.
     return jobs.filter((job) => titleWordsMatch(searchTitle, job.title));
   } catch (error) {
     console.warn(`[atsRegistry] fetch failed for ${companyName}`, error);
