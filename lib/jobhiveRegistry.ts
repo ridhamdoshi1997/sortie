@@ -49,6 +49,9 @@ const JOBHIVE_ATS_TO_PLATFORM: Record<string, string> = {
   recruitee: "recruitee",
   teamtailor: "teamtailor",
   join_com: "join",
+  personio: "personio",
+  rippling: "rippling",
+  pinpoint: "pinpoint",
 };
 
 // Same normalisation ats_registry already uses for company_key, duplicated

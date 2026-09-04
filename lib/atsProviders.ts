@@ -20,7 +20,10 @@ export type AtsPlatform =
   | "breezy"
   | "recruitee"
   | "teamtailor"
-  | "join";
+  | "join"
+  | "personio"
+  | "rippling"
+  | "pinpoint";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -737,6 +740,142 @@ export async function fetchJoinJobs(companySlug: string, companyName: string): P
   }
 }
 
+
+// Personio / Rippling / Pinpoint — added 2026-09-04, all keyless and each
+// verified live against a real jobhive slug before being written.
+//
+// A further nine platforms in that dataset were probed and REJECTED because
+// their endpoints are not open: jazzhr, gem and softgarden 404, recruiterbox
+// 401, eightfold 403, jobvite and darwinbox return HTML rather than JSON,
+// gupy refused the connection outright. None were added on a guess.
+
+// Personio publishes an XML feed rather than JSON. Parsed with a narrow
+// regex rather than an XML library on purpose: the feed is flat, only four
+// fields are wanted, and adding a parser dependency for one provider is not
+// worth it. Entity-decoding matters here -- titles legitimately contain
+// "&amp;" and "(m/w/d)" markers.
+function decodeXmlEntities(value: string): string {
+  return value
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#3[49];/g, "'")
+    .replace(/&amp;/g, "&");
+}
+
+function pickXmlTag(block: string, tag: string): string | undefined {
+  // [^] rather than [\s\S]: this pattern is built from a TEMPLATE LITERAL,
+  // which consumes the backslashes before RegExp ever sees them, so
+  // "[\s\S]" silently becomes the character class [sS] -- matching only the
+  // letters s and S. That returned 0 jobs from a feed holding 317 positions.
+  const m = block.match(new RegExp(`<${tag}>([^]*?)</${tag}>`));
+  if (!m) return undefined;
+  const raw = m[1].replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1").trim();
+  return raw ? decodeXmlEntities(raw) : undefined;
+}
+
+export async function fetchPersonioJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.jobs.personio.de/xml`, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) {
+      console.warn(`[atsProviders] Personio company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const xml = await res.text();
+    const jobs: NormalizedJob[] = [];
+    for (const block of xml.split("<position>").slice(1)) {
+      const id = pickXmlTag(block, "id");
+      const title = pickXmlTag(block, "name");
+      if (!id || !title) continue;
+      jobs.push({
+        id: `personio-${id}`,
+        title,
+        company: companyName,
+        location: pickXmlTag(block, "office") ?? "",
+        description: "",
+        url: `https://${slug}.jobs.personio.de/job/${id}`,
+        applyUrl: `https://${slug}.jobs.personio.de/job/${id}`,
+        type: pickXmlTag(block, "employmentType"),
+        postedAt: pickXmlTag(block, "createdAt"),
+        source: "personio",
+      });
+    }
+    return jobs;
+  } catch (error) {
+    console.warn(`[atsProviders] Personio fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
+type RipplingJob = { uuid?: string; name?: string; url?: string; workLocation?: { label?: string }; department?: { label?: string } };
+
+export async function fetchRipplingJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] Rippling company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: RipplingJob[] = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((job) => job.uuid && job.name)
+      .map((job) => ({
+        id: `rippling-${job.uuid}`,
+        title: job.name as string,
+        company: companyName,
+        location: job.workLocation?.label ?? "",
+        description: "",
+        url: job.url ?? `https://ats.rippling.com/${slug}/jobs`,
+        applyUrl: job.url ?? `https://ats.rippling.com/${slug}/jobs`,
+        source: "rippling",
+      }));
+  } catch (error) {
+    console.warn(`[atsProviders] Rippling fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
+type PinpointPosting = {
+  id?: string;
+  title?: string;
+  url?: string;
+  location?: { name?: string };
+  employment_type?: string;
+  created_at?: string;
+};
+
+export async function fetchPinpointJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.pinpointhq.com/postings.json`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] Pinpoint company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const body: { data?: PinpointPosting[] } = await res.json();
+    return (body.data ?? [])
+      .filter((job) => job.id && job.title)
+      .map((job) => ({
+        id: `pinpoint-${job.id}`,
+        title: job.title as string,
+        company: companyName,
+        location: job.location?.name ?? "",
+        description: "",
+        url: job.url ?? `https://${slug}.pinpointhq.com/`,
+        applyUrl: job.url ?? `https://${slug}.pinpointhq.com/`,
+        type: job.employment_type || undefined,
+        postedAt: job.created_at,
+        source: "pinpoint",
+      }));
+  } catch (error) {
+    console.warn(`[atsProviders] Pinpoint fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -761,6 +900,12 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchTeamtailorJobs(slug, companyName);
     case "join":
       return fetchJoinJobs(slug, companyName);
+    case "personio":
+      return fetchPersonioJobs(slug, companyName);
+    case "rippling":
+      return fetchRipplingJobs(slug, companyName);
+    case "pinpoint":
+      return fetchPinpointJobs(slug, companyName);
   }
 }
 

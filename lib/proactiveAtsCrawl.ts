@@ -36,7 +36,7 @@ import { type NormalizedJob } from "@/lib/jobScraper";
 const CRAWLABLE_PLATFORMS: AtsPlatform[] = [
   "greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr", "dayforce",
   // Added 2026-09-04, all keyless and verified live before enabling.
-  "breezy", "recruitee", "teamtailor", "join",
+  "breezy", "recruitee", "teamtailor", "join", "personio", "rippling", "pinpoint",
 ];
 
 // Same posture as lib/atsRegistry.ts's own AdminDb — structurally typed so

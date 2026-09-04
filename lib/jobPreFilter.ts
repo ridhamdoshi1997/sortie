@@ -57,6 +57,7 @@ const DIRECT_ATS_SOURCES = new Set([
   // rule would hide every posting from them on arrival -- the exact failure
   // that has already swallowed two whole sources in this codebase.
   "breezy", "recruitee", "teamtailor", "join",
+  "personio", "rippling", "pinpoint",
 ]);
 
 // Direct user follow-up (2026-09-01) after Adzuna started running on
