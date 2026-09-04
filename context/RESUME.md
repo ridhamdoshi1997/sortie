@@ -4,7 +4,7 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-09-04, Phase 46. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
+Last updated: 2026-09-04, Phase 47. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
 
@@ -62,6 +62,63 @@ Full detail in `context/progress-tracker.md`'s Phase 44 entries. Headlines:
 - **Four platforms added**: iCIMS (1,617 — the adapter had existed unused since the original ATS work, contributing nothing), Workable (6,499), BambooHR (2,457), Dayforce (692). Registry now **24,059 companies across 8 platforms, 98,549 active cached postings**.
 - **Three more bugs surfaced by running things rather than reading them**: the gate discarding links our own rescue had just fixed (abbreviated ATS tenants like `fil` for Fidelity International); stale-marking silently failing on the largest boards (every posting id stuffed into one URL); and `ON CONFLICT ... cannot affect row a second time` when a board returns a duplicate posting id, which killed the whole batch for that company.
 - **Standing lesson, learned by getting it wrong**: Dayforce was declared unreachable on the strength of guessed URL shapes, then shipped after the user pushed back — driving the real portal in a browser and reading its own network calls found the API in minutes. Never conclude a platform has no API from guessed URLs; drive its real client first.
+
+## Phase 47 (2026-09-04, same day as 46) — ATS coverage nearly doubled, eight adapters added, and the first thing on this product no job board can do
+
+### Coverage, start of day to end
+| | Before | After |
+|---|---|---|
+| Crawlable companies | 37,799 | **68,291** |
+| ATS platforms | 6 | **16** |
+| Crawl cache | ~463k postings | **637,930** (609,225 active) |
+| Awaiting first crawl | 5,768 | 17,374 |
+
+**128,831 of those postings come from platforms that could not be crawled at all this morning**: smartrecruiters 84,065 · breezy 17,507 · teamtailor 11,790 · join 10,429 · recruitee 4,908 · personio 89 · rippling 35 · pinpoint 8. (The last three were only registered late; their companies are still in the crawl queue.)
+
+### SmartRecruiters was built and never running
+Registered (1,841 companies), implemented in `atsProviders`, reachable through `fetchAtsJobs`' switch — but absent from `CRAWLABLE_PLATFORMS`, so the crawl never selected one. Workday and iCIMS are absent from that list legitimately (dedicated crons); SmartRecruiters had neither. It also fetched a single `limit=50` page: three of ten test slugs returned exactly 50, i.e. silently truncated boards. Now paginated at the API max of 100, capped at 5 pages. **166 → 1,036 postings on the same ten slugs**, and 84,065 in the cache since.
+
+### Eight adapters added, nine platforms rejected on evidence
+Added, each verified live against a real jobhive slug BEFORE being written and again through `fetchAtsJobs` after wiring: **smartrecruiters, breezy, recruitee, teamtailor, join, personio, rippling, pinpoint**.
+
+**Rejected rather than guessed at**: jazzhr / gem / softgarden (404), recruiterbox (401), eightfold (403), jobvite / darwinbox (HTML not JSON), gupy (connection refused), paycom (5,135 companies but opaque hash slugs, no public board). Structurally unsuitable: successfactors (search-based, needs a query term), oracle / taleo / cornerstone / ukg / adp (per-tenant URLs, no uniform slug). **No adapters remain that clear the bar.**
+
+**join.com** is the largest at 23,341 companies and needed real research: its API is closed (401/404), but the company page ships `__NEXT_DATA__` containing the jobs. Parsing a page's own embedded JSON is ordinary public scraping — no key, no auth, no impersonation — which is exactly why it is acceptable where JobSpy's Indeed path was not. **Gotcha**: that script tag carries a per-response `nonce`, so a `<script id="__NEXT_DATA__" type="application/json">` regex silently matches nothing; locate it by index.
+
+**Every new platform is wired in four places**: adapter, `fetchAtsJobs` switch, `CRAWLABLE_PLATFORMS`, `JOBHIVE_ATS_TO_PLATFORM` — plus `jobPreFilter`'s exemption list, since all of them return empty descriptions in list mode and that rule has already silently swallowed two entire sources here.
+
+### The differentiator, live on the page
+`getEmployerBoardStats` (`lib/postingLiveness.ts`) renders on job detail:
+
+> "We track this employer's board directly — 40 roles open (26 closed since we started watching)"
+
+No job board can say this about its own listings: they receive postings by syndication, and those feeds announce new roles reliably and closed ones unreliably — which is where ghost jobs come from. We poll the employer's board directly and mark `is_active=false` when a posting stops appearing.
+
+Per-job liveness also works but stays silent far more often, because it requires an exact title match on both sides and aggregator titles rarely equal board titles ("SUN LIFE FINANCIAL ADVISOR - Ontario" vs the board's "Advisor"). Measured after crawling: 14 of 59 employers tracked, 1 exact title match, 1 VERIFIED OPEN. The employer-level signal needs no title match, so it works for all 14.
+
+**Shown only when we genuinely crawl that employer** — verified both ways: renders on Sun Life, correctly silent on Scotiabank, whom we do not crawl. A "we don't know" badge would be worse than none.
+
+### hiringSignal closed with a negative answer
+`signals.applyCount` is null even in Indeed's `rich` mode, so **no source gives applicant counts** without LinkedIn's `fetchDetails` path (~17s/job, blows Apify's 300s ceiling). Indeed rich DOES give `employerResponsive`, `isNew` and `hiringTags`, and costs nothing in wall-clock terms — 100 jobs in 9.6s against LinkedIn's ~43s, run concurrently. Now carried through `NormalizedJob.hiringSignals`; measured 89 of 168 jobs carrying signals. `employerResponsive` is arguably the better signal anyway.
+
+### Bugs found by verifying, not assuming
+1. **Auto full-evaluation had never run.** Phase 45 moved it to fire on job open, but the page calls it inside `after()` and both `requireUser()` and `createInsforgeServer()` read `cookies()`, which Next.js refuses there. The page still returned 200 and the callback swallowed the throw, so `about_role`, responsibilities, requirements, benefits, the jd_decoder and the whole 10-dimension rubric stayed empty on every opened job. Fixed with a cookie-free `requestFullJobEvaluationForUser`.
+2. **Personio returned 0 from a feed holding 317 jobs.** The tag regex is built from a TEMPLATE LITERAL, which consumes backslashes before RegExp sees them, so `[\s\S]` became the class `[sS]` — matching only the letters s and S. Use `[^]`.
+3. **The crawl re-fetched the same board.** 639 boards are reachable under two company keys. Deduped on platform+slug, deliberately NOT on company stem: sunlife / sunlifecampus / sunlifeexperienced share a stem but are three separate Workday boards. Skipped rows still get `last_crawled_at` bumped or they starve the queue.
+4. **`company_key` was a non-leading index column**, so the liveness lookup could not use the composite index and hit the statement timeout. Added a dedicated index.
+
+### Correction to Phase 46
+Phase 46 recorded "the dev server renders every authenticated page as an empty shell, pre-existing". **That was wrong.** The page renders ~165k of HTML and always did; `innerText` returns nothing when the tab is treated as hidden — the same tooling artifact recorded in Phases 24/28/29. A measurement artifact was diagnosed as a product bug and repeated several times before being caught.
+
+### Environment
+Both dev servers now run under a single session with `autoPort: false` in `.claude/launch.json` — 3001 and 8288 are both port-specific (Inngest's SDK defaults to 8288; its config points at `http://localhost:3001/api/inngest`). Restarting 3001 is what surfaced the `cookies()`-inside-`after()` bug, which was only ever visible in the server log.
+
+### Next session, start here
+1. **Cache-first serving** — the ~43s LinkedIn wait is still the dominant latency, and the cache is now 637k postings deep. The lookup already runs concurrently with the providers; what remains is returning cache results before the providers finish, which needs the results UI to accept jobs arriving after first paint.
+2. **Let the crawl drain** — 17,374 companies awaiting a first crawl. Employer-board coverage (14/59 on the last measurement) rises on its own as it does, and the liveness signal gets more valuable with it.
+3. **Adzuna's logo-display obligation** — unverified claim from agy, worth checking before Adzuna is ever re-enabled.
+4. **paycom (5,135 companies)** is the largest remaining platform; its slugs are opaque hashes with no public board found. Would need real research.
+5. Nothing pushed to origin — 12 commits held local per standing preference.
 
 ## Phase 46 (2026-09-04) — source set cut to LinkedIn + Indeed + our own ATS, four silent-discard bugs fixed, and a free "free" option rejected on identity grounds
 
