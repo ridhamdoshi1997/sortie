@@ -39,18 +39,50 @@ export function needsFullDescription(description: string | null | undefined): bo
   return text.endsWith("…") || text.length < MIN_USEFUL_DESCRIPTION_CHARS;
 }
 
+// Converts posting HTML to text while PRESERVING structure, which an
+// earlier version destroyed (2026-09-04, direct user report that fetched
+// descriptions rendered as one undifferentiated wall of text). The old
+// version ended with `.replace(/\s+/g, " ")`, collapsing every newline —
+// and lib/jobDescriptionFormatter.ts, which turns a posting into headings,
+// paragraphs and bullet lists for JobDescription.tsx, detects those blocks
+// from exactly the line breaks and bullet characters that were being erased.
+// So the formatter received a single line, found no structure, and fell back
+// to rendering the raw string.
+//
+// Block-level tags therefore become newlines and list items keep a real
+// bullet character, so the existing formatter can do its job. Only
+// horizontal whitespace is collapsed; runs of blank lines are capped at one.
+const BLOCK_LEVEL_TAGS = /<\/?(p|div|section|article|header|footer|tr|table|h[1-6]|ul|ol|blockquote)[^>]*>/gi;
+
 function htmlToText(html: string): string {
   return html
+    // Angle brackets are decoded FIRST, before any tag handling. Sources
+    // differ on whether their markup arrives raw or escaped — LinkedIn's
+    // JSON-LD description carries "&lt;br&gt;&lt;li&gt;" rather than real
+    // tags — and decoding at the end (as this did originally) meant escaped
+    // markup was never recognised as markup at all: every block boundary was
+    // missed and the whole posting collapsed into one paragraph. The
+    // Greenhouse branch already did this decode inline for the same reason;
+    // doing it here fixes every source at once.
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    // A real bullet, not just a newline: the formatter's own list detection
+    // keys off bullet characters as well as bare line breaks.
+    .replace(/<li[^>]*>/gi, "\n• ")
+    .replace(BLOCK_LEVEL_TAGS, "\n")
     .replace(/<[^>]+>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")
-    .replace(/&rsquo;|&#39;|&apos;/g, "'")
-    .replace(/&quot;/g, '"')
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/\s+/g, " ")
+    .replace(/&rsquo;|&lsquo;|&#39;|&apos;/g, "'")
+    .replace(/&ldquo;|&rdquo;|&quot;/g, '"')
+    .replace(/&ndash;|&mdash;/g, "-")
+    // Horizontal whitespace only — newlines are load-bearing here.
+    .replace(/[ 	]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
     .trim();
 }
 
@@ -63,7 +95,7 @@ async function fromGreenhouse(applyUrl: string): Promise<string | null> {
     if (!res.ok) return null;
     const data: { content?: string } = await res.json();
     // Greenhouse returns HTML-escaped markup in `content`.
-    return data.content ? htmlToText(data.content.replace(/&lt;/g, "<").replace(/&gt;/g, ">")) : null;
+    return data.content ? htmlToText(data.content) : null;
   } catch {
     return null;
   }
