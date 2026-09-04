@@ -629,7 +629,11 @@ ${jobs.map((job) => buildJobTextLite(job, corrections)).join("\n\n---\n\n")}`;
       systemPrompt: LITE_SYSTEM_PROMPT,
       userPrompt,
       temperature: 0.3,
-      maxTokens: 3000,
+      // 6000, up from 3000: chunks carry 10 jobs rather than 5 (see
+      // evaluateJobsAsync). An incomplete batch is retried once and then
+      // falls back to unscored, so under-budgeting here would quietly cost
+      // real scores rather than fail loudly.
+      maxTokens: 6000,
       jsonResponse: true,
     });
 

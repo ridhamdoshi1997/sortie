@@ -62,6 +62,12 @@ type Props = {
   params: Promise<{ id: string }>;
 };
 
+// Bounds the one blocking description fetch below. Generous enough for the
+// slowest real source measured (Jina Reader on a bot-protected page), short
+// enough that a dead employer site degrades to the previous behaviour — an
+// empty description that fills in on the next view — rather than hanging.
+const BLOCKING_DESCRIPTION_TIMEOUT_MS = 5000;
+
 export default async function JobDetailsPage({ params }: Props) {
   const user = await requireUser();
   const { id } = await params;
@@ -136,10 +142,23 @@ export default async function JobDetailsPage({ params }: Props) {
   // fire-and-forget after() shape as the apply-link rescue above, and gated
   // by description_fetched_at so a posting whose source can't be fetched is
   // attempted once rather than on every view.
+  // Split by whether there is anything to render AT ALL (2026-09-04, direct
+  // user report: "I clicked on one of the jobs and the detail page is
+  // completely empty"). after() runs once the response has already been sent,
+  // so a job with no stored description — every LinkedIn result, since that
+  // actor omits descriptions by design — rendered an empty page and only
+  // filled in on a manual refresh. Fire-and-forget is right for TOPPING UP a
+  // truncated preview and wrong when it is the entire page content.
+  //
+  // So: block only when the description is genuinely empty, and bound the
+  // wait so one slow employer site cannot hang the page. Measured, this is
+  // cheap for the case that matters — LinkedIn's JSON-LD returns in ~0.9s.
+  // A short-but-present description still tops up in the background exactly
+  // as before, since the reader has something to read meanwhile.
+  const hasNoDescription = !(job.description ?? "").trim();
   if (!job.description_fetched_at && needsFullDescription(job.description)) {
-    after(async () => {
-      const applyUrl = job.external_apply_url ?? job.source_url;
-      const full = await fetchFullDescription(applyUrl, job.source, null).catch(() => null);
+    const applyUrl = job.external_apply_url ?? job.source_url;
+    const persist = async (full: string | null) => {
       await insforge.database
         .from("jobs")
         .update({
@@ -147,7 +166,19 @@ export default async function JobDetailsPage({ params }: Props) {
           ...(full ? { description: full } : {}),
         })
         .eq("id", job.id);
-    });
+    };
+
+    if (hasNoDescription) {
+      const full = await Promise.race([
+        fetchFullDescription(applyUrl, job.source, null).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), BLOCKING_DESCRIPTION_TIMEOUT_MS)),
+      ]);
+      // Render what we just fetched rather than the stale empty row.
+      if (full) job.description = full;
+      after(() => persist(full));
+    } else {
+      after(async () => persist(await fetchFullDescription(applyUrl, job.source, null).catch(() => null)));
+    }
   }
 
   const company = job.company ?? "this company";

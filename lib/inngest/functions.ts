@@ -217,7 +217,16 @@ export const evaluateJobsAsync = inngest.createFunction(
         // 24000-token budget — not a truncation issue, the model just stops
         // completing the full batch). Chunk size 5 passed 3/3 live test runs
         // with zero fallbacks; size 8 already failed the same way size 10 did.
-        const jobChunks = chunkArray(rawJobs, 5);
+        // 10 per chunk, raised from 5 (2026-09-04) because chunk COUNT is
+        // what scoring latency actually depends on, not job count. Every
+        // chunk is one AI call, and evaluateJobChunk sits behind a global
+        // 12-calls-per-60s throttle shared by all users — so 61 jobs at 5/
+        // chunk needed 13 calls and spilled into a second throttle window,
+        // while at 10/chunk the same search fits in one. Halves calls, halves
+        // shared-throttle pressure, and costs nothing in quality: the lite
+        // pass returns ~8 short fields per job, so ten of them sit well
+        // inside the (also raised) token budget.
+        const jobChunks = chunkArray(rawJobs, 10);
 
         // Chunks are independent (each owns a disjoint slice of jobIds, no
         // shared mutable state) and used to run strictly sequentially with a
