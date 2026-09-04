@@ -490,6 +490,16 @@ export type LiteEvaluationResult = {
   reasoning: string;
   legitimacyGrade: EvaluationGrade;
   legitimacyNote: string;
+  // Extraction, not inference — see the lite prompt's own wording. Added to
+  // the LITE pass 2026-09-04: both fields already existed on the full pass,
+  // but the full pass only runs when a candidate opens a job, so every card
+  // in a results list rendered without them (measured: 0 of 21 populated on
+  // a real run). A competitor comparison showed seniority and required
+  // experience on every card, and they're the two facts that decide whether
+  // a role is even worth opening. Cheap to add here: they're short strings
+  // read from text the model is already being shown.
+  seniorityLevel: string;
+  yearsExperienceRequired: string;
 };
 
 // Real posting text is often thousands of characters of scraped
@@ -531,6 +541,8 @@ const liteEvaluationSchema = z.object({
   reasoning: z.string().min(1),
   legitimacyGrade: gradeSchema,
   legitimacyNote: z.string().min(1),
+  seniorityLevel: z.string().default(""),
+  yearsExperienceRequired: z.string().default(""),
 });
 
 const liteResponseSchema = z.object({
@@ -546,6 +558,8 @@ For each job, produce:
 - reasoning: ONE sentence a candidate would read first, summarizing why this grade — the single most important reason, not a list.
 - legitimacyGrade: real ghost-listing/scam signals ONLY — no identifiable real company or a name that reads fabricated, predatory/scam language (guaranteed huge pay for no experience, "send money to get started," pyramid-scheme phrasing), or content that actively contradicts itself. Grade HARSHLY (D/F) only when the posting shows one of THESE concrete red flags.
 - legitimacyNote: ONE sentence citing the specific signal (or lack of one) behind legitimacyGrade.
+- seniorityLevel: a short normalized label ("Entry-level", "Mid-level", "Senior", "Lead", "Executive") ONLY if the posting states or clearly implies a level (its title, or an explicit seniority field). Extraction, not inference from tone. Empty string if the posting doesn't say.
+- yearsExperienceRequired: the posting's stated experience requirement, short (e.g. "5+ years", "2-4 years"), taken directly from the text. Empty string if not stated — never estimate it from the seniority level or title.
 
 Rules:
 - If an explicit constraint is provided and the job clearly fails to meet it, that must weigh heavily toward a low overallGrade/recommendationScore — never ignore an explicit stated constraint.
@@ -563,7 +577,9 @@ Return ONLY valid JSON matching this exact shape:
       "missingSkills": string[],
       "reasoning": "string — one sentence",
       "legitimacyGrade": "A"|"B"|"C"|"D"|"F",
-      "legitimacyNote": "string — one sentence"
+      "legitimacyNote": "string — one sentence",
+      "seniorityLevel": "string — may be empty",
+      "yearsExperienceRequired": "string — may be empty"
     }
   ]
 }`;
@@ -579,6 +595,8 @@ function fallbackLiteEvaluation(id: string): LiteEvaluationResult {
     reasoning: EVALUATION_FAILED_REASON,
     legitimacyGrade: "C",
     legitimacyNote: "Evaluation unavailable — this job will be re-scored automatically.",
+    seniorityLevel: "",
+    yearsExperienceRequired: "",
   };
 }
 
@@ -665,6 +683,8 @@ ${jobs.map((job) => buildJobTextLite(job, corrections)).join("\n\n---\n\n")}`;
       reasoning: evaluation.reasoning,
       legitimacyGrade: evaluation.legitimacyGrade,
       legitimacyNote: evaluation.legitimacyNote,
+      seniorityLevel: evaluation.seniorityLevel,
+      yearsExperienceRequired: evaluation.yearsExperienceRequired,
     };
   });
 }

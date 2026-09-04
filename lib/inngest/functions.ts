@@ -330,6 +330,16 @@ export const evaluateJobsAsync = inngest.createFunction(
                                 // (job-detail page) is what fills these in
                                 // on demand.
                                 ...(evalResult ? { legitimacy_fail_count: failsLegitimacy ? 1 : 0, legitimacy_checked_at: new Date().toISOString() } : {}),
+                                // Written from the LITE pass as of
+                                // 2026-09-04 so every card in a results list
+                                // carries them, not just jobs someone opened
+                                // (the full pass fills these too, and runs
+                                // later — it can only ever overwrite these
+                                // with equal or better extraction). Empty
+                                // strings are normalised to null so the UI's
+                                // existing truthiness checks keep working.
+                                ...(evalResult?.seniorityLevel ? { seniority_level: evalResult.seniorityLevel } : {}),
+                                ...(evalResult?.yearsExperienceRequired ? { years_experience_required: evalResult.yearsExperienceRequired } : {}),
                             })
                             .eq("id", job.id);
 

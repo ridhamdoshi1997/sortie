@@ -31,6 +31,32 @@ function scoreTierClass(score: number) {
 }
 
 // Real tag pills from actual job fields — never fabricated placeholder tags.
+// Relative posting age for the meta row. Deliberately coarse buckets rather
+// than an exact timestamp: the useful question is "is this fresh enough to be
+// worth applying to", not the precise minute. Anything under a day is
+// highlighted, since that's when a candidate is genuinely an early applicant.
+// Returns null for a missing or unparseable date — no date is not evidence of
+// staleness, the same rule lib/jobPreFilter.ts's isStale already applies, so
+// the row simply omits it rather than guessing.
+function formatPostedAge(postedAt: string | null | undefined): { label: string; isFresh: boolean } | null {
+  if (!postedAt) return null;
+  const ts = Date.parse(postedAt);
+  if (Number.isNaN(ts)) return null;
+
+  const minutes = Math.floor((Date.now() - ts) / 60000);
+  if (minutes < 0) return null; // a future date is bad data, not freshness
+  if (minutes < 60) return { label: minutes <= 1 ? "Just posted" : `${minutes} minutes ago`, isFresh: true };
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return { label: `${hours} hour${hours === 1 ? "" : "s"} ago`, isFresh: true };
+
+  const days = Math.floor(hours / 24);
+  if (days < 30) return { label: `${days} day${days === 1 ? "" : "s"} ago`, isFresh: days <= 2 };
+
+  const months = Math.floor(days / 30);
+  return { label: `${months} month${months === 1 ? "" : "s"} ago`, isFresh: false };
+}
+
 // job_type is deliberately excluded here — it's already shown in the meta
 // row above (job.job_type icon+label), no need to repeat it as a pill too.
 function jobTags(job: Job): string[] {
@@ -85,6 +111,7 @@ export function JobResultCard({
   // match_score being set (evaluation actually finished) so the badge
   // only ever reflects a link that was actually checked and still failed.
   const applyTrust = job.match_score !== null && job.external_apply_url ? classifyApplyHost(job.external_apply_url, job.company) : null;
+  const freshness = formatPostedAge(job.posted_at);
   const isLowQualitySource = applyTrust === "low_quality" || applyTrust === "unverified";
   // Distinct from the warning above, deliberately (2026-09-03): an indirect
   // board (Adzuna — see INDIRECT_AGGREGATOR_HOSTS in lib/applyLinkTrust.ts)
@@ -255,8 +282,23 @@ export function JobResultCard({
               that critique landed on the location-pin/job-type/user-tags
               accent OVERUSE elsewhere on the old card, not this row. Kept
               exactly as before. */}
-          {(job.job_type || job.salary || job.seniority_level || job.years_experience_required) && (
+          {(job.job_type || job.salary || job.seniority_level || job.years_experience_required || freshness) && (
             <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-text-secondary">
+              {/* Freshness leads the row (2026-09-04). posted_at was already
+                  stored on ~90% of results and simply never rendered — a real
+                  gap found by comparing a live competitor's cards against
+                  ours, where "Reposted 4 hours ago" is the most prominent
+                  signal on every listing. It answers the question a candidate
+                  actually has first ("is this still open, or am I applying
+                  into a void?"), which matters more here than elsewhere
+                  because this app's own pipeline already fights ghost
+                  listings. Success-green under a day, plain thereafter, so
+                  recency reads at a glance without shouting on older roles. */}
+              {freshness && (
+                <span className={`flex items-center gap-1.5 ${freshness.isFresh ? "text-success" : ""}`}>
+                  <Clock className={`h-3.5 w-3.5 ${freshness.isFresh ? "text-success" : "text-text-muted"}`} /> {freshness.label}
+                </span>
+              )}
               {job.job_type && (
                 <span className="flex items-center gap-1.5">
                   <BriefcaseBusiness className="h-3.5 w-3.5 text-accent" /> {job.job_type}
