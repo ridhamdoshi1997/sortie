@@ -784,15 +784,25 @@ function getAdzunaCredentials(): { appId: string; appKey: string } | null {
     return appId && appKey ? { appId, appKey } : null;
 }
 
-// 3 pages x 50 = up to 150, roughly matching SerpApi's own ~100-result
-// practical ceiling so a search that falls back to (or is supplemented
-// by) Adzuna isn't artificially thinner than one that didn't. Was a
-// single 25-result page, which capped a real reported case at 23 total
-// results even though Adzuna's own response reported 4,454 matches
-// available for that query. Adzuna's credentials here are free-tier, so
-// the extra pages cost nothing; the loop still exits early the moment a
-// page comes back short, so narrow queries don't pay for empty pages.
-const ADZUNA_PAGES = 3;
+// Raised 3 -> 8 pages and fetched in PARALLEL (2026-09-03), after a user
+// screenshot of a real "Financial Advisor"/Toronto search showed only 21
+// results on screen. The 3-page cap was the single biggest cause: Adzuna
+// reported 317 matches for that query, and paging all the way through them
+// yields 118 genuinely title-relevant jobs — but 3 pages only ever saw 150
+// raw rows, roughly 54 relevant, which then shrank further through dedup,
+// the city filter and canonicalisation.
+//
+// The old cap was chosen to "roughly match SerpApi's ~100-result ceiling",
+// which stopped making sense once SerpApi went to zero and Adzuna became the
+// primary supplier rather than a supplement. These are free-tier credentials
+// and the requests cost nothing.
+//
+// Parallel, not sequential: the old loop awaited each page in turn and
+// early-exited on a short page, so 7 pages meant 7 round-trips end to end.
+// Fetching them concurrently makes the whole set cost about one page's
+// latency. Pages past the end simply return empty and are ignored, which is
+// what replaces the early-exit.
+const ADZUNA_PAGES = 8;
 const ADZUNA_PER_PAGE = 50;
 
 // Adzuna's index genuinely carries long-dead listings alongside fresh
@@ -821,26 +831,36 @@ const adzunaProvider: JobScraperProvider = {
         const creds = getAdzunaCredentials();
         if (!creds) throw new Error("Missing ADZUNA_APP_ID/ADZUNA_APP_KEY");
 
-        const jobs: AdzunaJobResult[] = [];
-        for (let page = 1; page <= ADZUNA_PAGES; page++) {
-            const url = `https://api.adzuna.com/v1/api/jobs/${countryCode.toLowerCase()}/search/${page}?app_id=${creds.appId}&app_key=${creds.appKey}&what=${encodeURIComponent(jobTitle)}&where=${encodeURIComponent(location)}&results_per_page=${ADZUNA_PER_PAGE}&content-type=application/json`;
+        const pageUrl = (page: number) =>
+            `https://api.adzuna.com/v1/api/jobs/${countryCode.toLowerCase()}/search/${page}?app_id=${creds.appId}&app_key=${creds.appKey}&what=${encodeURIComponent(jobTitle)}&where=${encodeURIComponent(location)}&results_per_page=${ADZUNA_PER_PAGE}&content-type=application/json`;
 
-            const response = await fetch(url);
-            if (!response.ok) {
-                // A later page failing shouldn't discard pages already
-                // fetched — only a failure on the very first page is a
-                // real, reportable provider error.
-                if (page === 1) {
-                    const bodyText = await response.text().catch(() => "");
-                    throw new Error(`Adzuna API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-                }
-                break;
-            }
+        // Page 1 is awaited on its own so a genuine credential/quota failure
+        // still surfaces as a real error rather than being swallowed as "no
+        // results" — the same distinction the old sequential loop drew, kept
+        // deliberately. Later pages are best-effort: past the end of the
+        // result set they simply come back empty.
+        const firstResponse = await fetch(pageUrl(1));
+        if (!firstResponse.ok) {
+            const bodyText = await firstResponse.text().catch(() => "");
+            throw new Error(`Adzuna API error (HTTP ${firstResponse.status}): ${bodyText.slice(0, 300)}`);
+        }
+        const firstJson = await firstResponse.json();
+        const firstPage: AdzunaJobResult[] = firstJson.results ?? [];
 
-            const json = await response.json();
-            const pageJobs: AdzunaJobResult[] = json.results ?? [];
-            jobs.push(...pageJobs);
-            if (pageJobs.length < ADZUNA_PER_PAGE) break;
+        const jobs: AdzunaJobResult[] = [...firstPage];
+        // Only bother with the rest when page 1 came back full — a short
+        // first page means there is no page 2, so this keeps narrow queries
+        // at exactly one request.
+        if (firstPage.length >= ADZUNA_PER_PAGE) {
+            const rest = await Promise.all(
+                Array.from({ length: ADZUNA_PAGES - 1 }, (_, i) =>
+                    fetch(pageUrl(i + 2))
+                        .then((res) => (res.ok ? res.json() : null))
+                        .then((json) => (json?.results ?? []) as AdzunaJobResult[])
+                        .catch(() => [] as AdzunaJobResult[]),
+                ),
+            );
+            for (const pageJobs of rest) jobs.push(...pageJobs);
         }
 
         return jobs
