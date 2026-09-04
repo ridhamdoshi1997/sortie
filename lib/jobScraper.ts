@@ -25,6 +25,15 @@ export type NormalizedJob = {
     // changes whether a candidate should bother applying.
     applicantCount?: string;
     experienceLevel?: string;
+    // Board-side hiring signals, currently from Indeed's "rich" search mode.
+    // employerResponsive is the genuinely actionable one: it says whether
+    // this employer actually replies to applicants, which matters more to a
+    // candidate than how many others applied.
+    hiringSignals?: {
+        isNew?: boolean;
+        employerResponsive?: boolean;
+        hiringTags?: string[];
+    };
 };
 
 export interface JobScraperProvider {
@@ -541,6 +550,7 @@ type KaixIndeedJob = {
     dates?: { posted?: string };
     salary?: { text?: string | null };
     classification?: { jobType?: string[] };
+    signals?: { isNew?: boolean | null; employerResponsive?: boolean | null; hiringTags?: string[] | null };
 };
 
 // The actor takes an uppercase ISO country from a fixed enum; this app
@@ -569,7 +579,21 @@ const apifyIndeedProvider: JobScraperProvider = {
                     country: indeedCountryCode(countryCode),
                     maxItems,
                     sort: "relevance",
-                    searchMode: "basic",
+                    // "rich" rather than "basic" (2026-09-04). It adds
+                    // signals.employerResponsive, signals.isNew and
+                    // hiringTags, and measurement showed it costs nothing in
+                    // wall-clock terms: 100 jobs in 9.6s against the LinkedIn
+                    // actor's ~43s, and the two run concurrently, so Indeed
+                    // still finishes comfortably first.
+                    //
+                    // signals.applyCount stays null in rich mode -- Indeed
+                    // does not expose an applicant count here, so the
+                    // long-standing "applicant count on the card" item is
+                    // still not satisfied by this source either.
+                    // employerResponsive is arguably the better signal
+                    // anyway: whether an employer actually replies matters
+                    // more to a candidate than how many others applied.
+                    searchMode: "rich",
                 }),
             },
         );
@@ -598,6 +622,12 @@ const apifyIndeedProvider: JobScraperProvider = {
                 type: job.classification?.jobType?.[0] || undefined,
                 postedAt: job.dates?.posted,
                 source: "Indeed",
+                // Indeed's own hiring signals, carried through for the UI.
+                hiringSignals: {
+                    isNew: job.signals?.isNew ?? undefined,
+                    employerResponsive: job.signals?.employerResponsive ?? undefined,
+                    hiringTags: job.signals?.hiringTags?.length ? job.signals.hiringTags : undefined,
+                },
             }));
     },
 };
