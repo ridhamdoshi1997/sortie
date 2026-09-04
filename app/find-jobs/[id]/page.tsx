@@ -14,6 +14,8 @@ import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdow
 import { RequestFullEvaluationButton } from "@/components/job-details/RequestFullEvaluationButton";
 import { JobProvenance } from "@/components/job-details/JobProvenance";
 import { getJobProvenance } from "@/lib/jobProvenance";
+import { getEmployerBoardStats, getLivenessForJob } from "@/lib/postingLiveness";
+import { createAdminDbClient } from "@/lib/admin/client";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
@@ -244,6 +246,19 @@ export default async function JobDetailsPage({ params }: Props) {
   // error. See lib/jobProvenance.ts for the full justification.
   const { sources: sourceRows, applicantCount, experienceLevel } = await getJobProvenance(job.id, user.id);
 
+  // Both read the proactive crawl's own record of this employer's board.
+  // Concurrent because neither depends on the other, and each is a single
+  // indexed lookup. Failures inside these resolve to null rather than
+  // throwing, so a job page never fails over an additive signal.
+  const [jobLiveness, employerBoard] = await Promise.all([
+    getLivenessForJob(createAdminDbClient() as never, {
+      id: job.id,
+      company: job.company,
+      title: job.title,
+    }).catch(() => null),
+    getEmployerBoardStats(createAdminDbClient() as never, job.company).catch(() => null),
+  ]);
+
   const { data: application } = await insforge.database
     .from("applications")
     .select("resume_pdf_url,cover_letter_pdf_url")
@@ -436,6 +451,8 @@ export default async function JobDetailsPage({ params }: Props) {
                         sources={sourceRows}
                         applicantCount={applicantCount}
                         experienceLevel={experienceLevel}
+                        liveness={jobLiveness}
+                        boardStats={employerBoard}
                       />
                       {/* One shared card, not five identical bordered boxes
                           stacked in a row — see JobDescription.tsx's comment

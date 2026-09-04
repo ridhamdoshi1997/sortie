@@ -1,6 +1,7 @@
-import { Clock, Layers, Users } from "lucide-react";
+import { BadgeCheck, Building2, Clock, Layers, Users } from "lucide-react";
 
 import { formatPostedAge, formatSourceLabel } from "@/lib/jobFreshness";
+import type { EmployerBoardStats, LivenessVerdict } from "@/lib/postingLiveness";
 
 // Real, scraped facts about the LISTING itself — none of it AI-derived, so
 // this card is fully populated the moment a job is found, with or without an
@@ -34,6 +35,10 @@ type Props = {
   applicantCount?: string | null;
   /** LinkedIn's stated seniority band, e.g. "Mid-Senior level". */
   experienceLevel?: string | null;
+  /** Whether this exact posting is still on the employer's own board. */
+  liveness?: LivenessVerdict | null;
+  /** What that employer's board looks like overall. */
+  boardStats?: EmployerBoardStats | null;
 };
 
 // The recency meter's window. 30 days matches formatPostedAge's own switch
@@ -48,7 +53,7 @@ function recencyRatio(postedAt: string): number | null {
   return Math.max(0, Math.min(1, 1 - days / RECENCY_WINDOW_DAYS));
 }
 
-export function JobProvenance({ postedAt, sources, applicantCount, experienceLevel }: Props) {
+export function JobProvenance({ postedAt, sources, applicantCount, experienceLevel, liveness, boardStats }: Props) {
   const age = postedAt ? formatPostedAge(postedAt) : null;
   const ratio = postedAt ? recencyRatio(postedAt) : null;
 
@@ -64,7 +69,9 @@ export function JobProvenance({ postedAt, sources, applicantCount, experienceLev
   // one. Corroboration only becomes information at two or more.
   const corroborated = unique.length > 1;
 
-  if (!age && !corroborated && !applicantCount && !experienceLevel) return null;
+  const hasBoardSignal =
+    liveness?.state === "open" || liveness?.state === "closed" || (boardStats?.openRoles ?? 0) > 0;
+  if (!age && !corroborated && !applicantCount && !experienceLevel && !hasBoardSignal) return null;
 
   return (
     <section className="rounded-2xl border border-border bg-surface p-6 shadow-card">
@@ -105,6 +112,35 @@ export function JobProvenance({ postedAt, sources, applicantCount, experienceLev
             <span>Just posted</span>
             <span>{RECENCY_WINDOW_DAYS}+ days</span>
           </div>
+        </div>
+      )}
+
+      {/* The thing no aggregator can tell you about its own listings.
+          Rendered only when we genuinely crawl this employer's board -- a
+          "we don't know" badge would be worse than no badge, so absence is
+          silence rather than a hedge. */}
+      {(liveness?.state === "open" || liveness?.state === "closed" || (boardStats?.openRoles ?? 0) > 0) && (
+        <div className="mt-5 flex flex-col gap-2 border-t border-border-light pt-4">
+          {liveness?.state === "open" && (
+            <span className="inline-flex items-center gap-2 text-[13px] font-medium leading-6 text-agent-dark">
+              <BadgeCheck className="h-4 w-4 shrink-0" aria-hidden="true" />
+              Still listed on the employer&rsquo;s own careers page
+            </span>
+          )}
+          {liveness?.state === "closed" && (
+            <span className="inline-flex items-center gap-2 text-[13px] font-medium leading-6 text-warning">
+              <Clock className="h-4 w-4 shrink-0" aria-hidden="true" />
+              No longer on the employer&rsquo;s careers page &mdash; this listing may be stale
+            </span>
+          )}
+          {(boardStats?.openRoles ?? 0) > 0 && (
+            <span className="inline-flex items-center gap-2 text-[13px] leading-6 text-text-secondary">
+              <Building2 className="h-4 w-4 shrink-0 text-text-muted" aria-hidden="true" />
+              We track this employer&rsquo;s board directly &mdash;{" "}
+              <span className="font-medium text-text-primary">{boardStats?.openRoles} roles open</span>
+              {(boardStats?.closedRoles ?? 0) > 0 && ` (${boardStats?.closedRoles} closed since we started watching)`}
+            </span>
+          )}
         </div>
       )}
 

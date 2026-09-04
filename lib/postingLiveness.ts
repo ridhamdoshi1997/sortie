@@ -165,3 +165,52 @@ export async function getLivenessForJob(admin: AdminDb, job: LivenessInput): Pro
   const map = await getLivenessForJobs(admin, [job]);
   return map.get(job.id) ?? { state: "unknown" };
 }
+
+export type EmployerBoardStats = {
+  /** Roles currently open on this employer's own careers board. */
+  openRoles: number;
+  /** Roles we watched close there. */
+  closedRoles: number;
+  platform: string | null;
+};
+
+/**
+ * What we know about an EMPLOYER's own board, independent of any one posting.
+ *
+ * Per-job liveness needs an exact title match on both sides, and aggregator
+ * titles rarely equal board titles ("SUN LIFE FINANCIAL ADVISOR - Ontario"
+ * versus the board's "Advisor"), so it stays silent far more often than the
+ * underlying data warrants. Measured on a real search: 14 of 59 employers
+ * were crawled, but only one job matched a title exactly.
+ *
+ * This asks the question that DOES have an answer for all 14: we poll this
+ * company's own careers board, and right now it lists N open roles. No job
+ * board can say that about its own listings, because none of them watch the
+ * employer directly -- and unlike the per-job verdict it needs no title
+ * match, so it works for every employer we crawl.
+ */
+export async function getEmployerBoardStats(
+  admin: AdminDb,
+  company: string | null | undefined,
+): Promise<EmployerBoardStats | null> {
+  const stem = canonicalCompanyKey(toCompanyKey(company ?? ""));
+  if (!stem) return null;
+
+  const { data, error } = await admin.database
+    .from("discovered_postings")
+    .select("is_active,ats_platform")
+    .in("company_stem", [stem]);
+  if (error) {
+    console.error("[postingLiveness] employer board stats failed", error.message);
+    return null;
+  }
+
+  const rows = (data ?? []) as { is_active: boolean; ats_platform: string | null }[];
+  if (rows.length === 0) return null;
+
+  return {
+    openRoles: rows.filter((r) => r.is_active).length,
+    closedRoles: rows.filter((r) => !r.is_active).length,
+    platform: rows.find((r) => r.ats_platform)?.ats_platform ?? null,
+  };
+}
