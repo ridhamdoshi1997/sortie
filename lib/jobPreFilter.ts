@@ -38,7 +38,21 @@ type PreFilterableJob = {
 // fetch the body," never "this posting is thin or fake," so the density
 // heuristic is exempted for them; every other check (staleness, staffing
 // agencies, spam phrasing) still applies.
-const DIRECT_ATS_SOURCES = new Set(["greenhouse", "lever", "ashby", "smartrecruiters", "workday", "icims"]);
+// Every source whose LIST view legitimately returns no description. Adding a
+// new provider without adding it here silently hides all of its results:
+// confirmed twice now, most recently when 57 of 60 LinkedIn jobs from a real
+// user search were hidden for "description too short", leaving 2 on screen.
+// The LinkedIn actor omits descriptions by design (they cost ~17s per job),
+// and lib/fullDescription.ts fetches them from JSON-LD when a job is opened,
+// so an empty description here says nothing about the posting's quality.
+//
+// Keep this in step with lib/jobScraper.ts's provider list and with
+// reresolveApplyLink.ts's own DIRECT_ATS_SOURCES.
+const DIRECT_ATS_SOURCES = new Set([
+  "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "icims",
+  "workable", "bamboohr", "dayforce", "successfactors",
+  "linkedin", "employer ats",
+]);
 
 // Direct user follow-up (2026-09-01) after Adzuna started running on
 // every search: Adzuna's own index carries genuinely old listings

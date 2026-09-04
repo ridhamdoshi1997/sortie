@@ -404,6 +404,77 @@ export async function fetchDayforceJobs(clientNamespace: string, companyName: st
   }
 }
 
+
+// SAP SuccessFactors — added 2026-09-04. It is the single largest ATS this
+// codebase did not cover: 325,820 jobs in the free jobhive index, and the
+// platform behind employers our own registry kept failing to resolve
+// (Scotiabank most visibly, whose advisor roles a live search was missing
+// entirely).
+//
+// No JSON API exists — probed three plausible endpoints live and all returned
+// HTML. But its search page is plain server-rendered markup with one
+// `<tr class="data-row">` per posting and clean column cells (colTitle /
+// colDate / colLocation), so it parses reliably without a browser. Same
+// DOM-scraping tier fetchIcimsJobs already occupies.
+//
+// Tenants are custom domains (jobs.scotiabank.com), not a shared host, so the
+// registry stores the full origin rather than a slug. Location and keyword
+// both filter server-side, which keeps responses small and relevant.
+type SuccessFactorsRow = { href: string; title: string; date: string; location: string };
+
+const SF_ROW_SPLIT = /<tr class="data-row">/i;
+const SF_TITLE = /<a href="(\/job\/[^"]+)" class="jobTitle-link">([^<]+)<\/a>/i;
+const SF_CELL = /<td[^>]*class="col(Date|Location)[^"]*"[^>]*>([\s\S]*?)<\/td>/gi;
+
+function parseSuccessFactorsRow(card: string): SuccessFactorsRow | null {
+  const title = card.match(SF_TITLE);
+  if (!title) return null;
+  const cells: Record<string, string> = {};
+  for (const [, name, raw] of card.matchAll(SF_CELL)) {
+    cells[name.toLowerCase()] = raw.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+  }
+  return { href: title[1], title: title[2].trim(), date: cells.date ?? "", location: cells.location ?? "" };
+}
+
+export async function fetchSuccessFactorsJobs(origin: string, companyName: string, searchTitle: string): Promise<NormalizedJob[]> {
+  // Accepts either a bare host or a full origin, since registry rows arrive
+  // from several sources.
+  const base = origin.startsWith("http") ? origin.replace(/\/$/, "") : `https://${origin}`;
+  try {
+    const url = `${base}/search/?q=${encodeURIComponent(searchTitle)}`;
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (!res.ok) {
+      console.warn(`[atsProviders] SuccessFactors "${base}" returned ${res.status}`);
+      return [];
+    }
+    const html = await res.text();
+    const jobs: NormalizedJob[] = [];
+    for (const card of html.split(SF_ROW_SPLIT).slice(1)) {
+      const row = parseSuccessFactorsRow(card);
+      if (!row) continue;
+      const applyUrl = `${base}${row.href}`;
+      // The trailing path segment is the requisition id — a stable per-posting
+      // key, unlike the title slug which repeats across branch locations.
+      const id = row.href.match(/\/(\d+)\/?$/)?.[1] ?? row.href;
+      jobs.push({
+        id: `successfactors-${id}`,
+        title: row.title,
+        company: companyName,
+        location: row.location,
+        description: "",
+        url: applyUrl,
+        applyUrl,
+        postedAt: row.date ? new Date(row.date).toISOString() : undefined,
+        source: "successfactors",
+      });
+    }
+    return jobs;
+  } catch (error) {
+    console.warn(`[atsProviders] SuccessFactors fetch failed for "${base}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
