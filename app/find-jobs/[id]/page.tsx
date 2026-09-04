@@ -27,7 +27,7 @@ import { TrapDoorPredictor } from "@/components/job-details/TrapDoorPredictor";
 import { InterrogationPlan } from "@/components/job-details/InterrogationPlan";
 import { listInterviewPanel } from "@/actions/interviewPanel";
 import { listJobEventHistory } from "@/actions/careerEvents";
-import { requestFullJobEvaluation } from "@/actions/jobs";
+import { requestFullJobEvaluationForUser } from "@/actions/jobs";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
@@ -171,8 +171,13 @@ export default async function JobDetailsPage({ params }: Props) {
   const needsFullEvaluation =
     job.match_score !== null && (!Array.isArray(job.evaluation) || job.evaluation.length === 0);
   if (needsFullEvaluation) {
+    // Identity is resolved HERE, outside after(), because Next.js refuses
+    // cookies() inside an after() callback — which is exactly why this
+    // silently threw on every job open until 2026-09-04.
+    const evalUserId = user.id;
+    const evalUserEmail = user.email ?? null;
     after(async () => {
-      const result = await requestFullJobEvaluation(job.id).catch((err) => {
+      const result = await requestFullJobEvaluationForUser(job.id, evalUserId, evalUserEmail).catch((err) => {
         console.error("[find-jobs/[id]] auto full-evaluation failed", err);
         return null;
       });

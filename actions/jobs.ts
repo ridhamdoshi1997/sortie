@@ -1624,9 +1624,44 @@ export async function requestJobEvaluation(jobId: string): Promise<RequestJobEva
 // same daily quota, same as requestJobEvaluation.
 export async function requestFullJobEvaluation(jobId: string): Promise<RequestJobEvaluationResult> {
   const user = await requireUser();
+  return runFullJobEvaluationRequest(jobId, user.id, user.email ?? null, await createInsforgeServer());
+}
+
+// Cookie-free variant, for callers that already know who the user is.
+//
+// The job-detail page fires this from inside `after()` when a job is opened
+// (Phase 45's "full evaluation fires on OPEN, not a button"), and Next.js
+// refuses `cookies()` inside an after() callback outright:
+//
+//   Route /find-jobs/[id] used `cookies()` inside `after()`. This is not
+//   supported.
+//
+// requireUser() and createInsforgeServer() BOTH read cookies, so the whole
+// feature was throwing on every job open and silently doing nothing — found
+// 2026-09-04 in the dev server log, not in any test. Resolving the user on
+// the page (where cookies are legal) and passing the identity in is what
+// makes the after() path work at all.
+//
+// user_id is still pinned on the job lookup below, so a service-role client
+// cannot reach another user's row.
+export async function requestFullJobEvaluationForUser(
+  jobId: string,
+  userId: string,
+  userEmail: string | null,
+): Promise<RequestJobEvaluationResult> {
+  const { createAdminDbClient } = await import("@/lib/admin/client");
+  return runFullJobEvaluationRequest(jobId, userId, userEmail, createAdminDbClient() as never);
+}
+
+async function runFullJobEvaluationRequest(
+  jobId: string,
+  userId: string,
+  userEmail: string | null,
+  insforge: Awaited<ReturnType<typeof createInsforgeServer>>,
+): Promise<RequestJobEvaluationResult> {
+  const user = { id: userId, email: userEmail };
 
   try {
-    const insforge = await createInsforgeServer();
 
     const { data: job } = await insforge.database
       .from("jobs")
