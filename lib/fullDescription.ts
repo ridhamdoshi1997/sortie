@@ -135,6 +135,52 @@ async function fromWorkday(applyUrl: string): Promise<string | null> {
   }
 }
 
+// LinkedIn postings arrive from the kaix Apify actor with NO description at
+// all — that field only populates with its `fetchDetails` option, which costs
+// ~17s per job and blows Apify's 300s API ceiling, so it is deliberately off
+// (see lib/jobScraper.ts's apifyLinkedInProvider). That would leave every
+// LinkedIn job opening to an empty detail page.
+//
+// It turns out not to matter: LinkedIn's public job pages are fetchable
+// server-side (confirmed live 2026-09-04 — HTTP 200 with a plain
+// "Mozilla/5.0" agent) AND they embed a schema.org JobPosting block. Parsing
+// that gives a CLEAN description — 5,452 characters for a real Edward Jones
+// posting, with none of the surrounding page chrome a raw HTML strip would
+// include — plus employmentType, skills and experienceRequirements.
+//
+// So the expensive per-job detail fetch is unnecessary: the same information
+// arrives free, in about a second, and only for jobs a candidate actually
+// opens. Same schema.org approach this project's browser extension already
+// uses for LinkedIn/Indeed/Dice/Monster (see extension/content.js's
+// extractFromJsonLd), so it's an established pattern here, not a new one.
+const LINKEDIN_JOB_URL = /linkedin\.com\/jobs\/view\//i;
+const JSON_LD_BLOCK = /<script type="application\/ld\+json">([\s\S]*?)<\/script>/gi;
+
+async function fromLinkedInJsonLd(applyUrl: string): Promise<string | null> {
+  if (!LINKEDIN_JOB_URL.test(applyUrl)) return null;
+  try {
+    const res = await fetch(applyUrl, { headers: { "User-Agent": "Mozilla/5.0" }, redirect: "follow" });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // A page can carry several ld+json blocks (breadcrumbs, org markup);
+    // take the first that is genuinely a JobPosting with a description.
+    for (const [, raw] of html.matchAll(JSON_LD_BLOCK)) {
+      try {
+        const parsed: { "@type"?: string; description?: string } = JSON.parse(raw);
+        if (parsed["@type"] !== "JobPosting" || !parsed.description) continue;
+        const text = htmlToText(parsed.description);
+        if (text.length >= MIN_USEFUL_DESCRIPTION_CHARS) return text;
+      } catch {
+        // One malformed block must not abandon the others.
+      }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 // Two user-agents, short one FIRST, and the order is not cosmetic. iCIMS
 // answers HTTP 405 to a full Chrome UA string and HTTP 200 to a bare
 // "Mozilla/5.0" — verified by isolating the two variables against one real
@@ -174,6 +220,11 @@ export async function fetchFullDescription(
   if (!applyUrl) return null;
 
   const platform = (source ?? "").toLowerCase();
+  // LinkedIn first when the link is one: its JSON-LD is cleaner than
+  // anything the generic HTML path would produce for that page.
+  const viaLinkedIn = await fromLinkedInJsonLd(applyUrl);
+  if (viaLinkedIn) return viaLinkedIn.length > MAX_STORED_DESCRIPTION_CHARS ? viaLinkedIn.slice(0, MAX_STORED_DESCRIPTION_CHARS) : viaLinkedIn;
+
   const viaApi =
     platform === "greenhouse"
       ? await fromGreenhouse(applyUrl)
