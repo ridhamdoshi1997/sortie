@@ -1,4 +1,5 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
+import { canonicalCompanyKey } from "@/lib/companyIdentity";
 import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -222,6 +223,9 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
     jobs.map((job) => ({
       ats_platform: platform,
       company_key: candidate.company_key,
+      // Written by the same function lib/postingLiveness.ts reads with, so
+      // the two can never drift. See the add-company-stem migration.
+      company_stem: canonicalCompanyKey(candidate.company_key),
       company_name: candidate.company_name,
       external_id: job.id,
       title: job.title,
@@ -397,6 +401,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
         const rows = jobs.map((job) => ({
           ats_platform: "workday",
           company_key: candidate.company_key,
+          company_stem: canonicalCompanyKey(candidate.company_key),
           company_name: candidate.company_name,
           external_id: job.id,
           title: job.title,
@@ -500,6 +505,7 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
         const rows = jobs.map((job) => ({
           ats_platform: "icims",
           company_key: candidate.company_key,
+          company_stem: canonicalCompanyKey(candidate.company_key),
           company_name: candidate.company_name,
           external_id: job.id,
           title: job.title,
