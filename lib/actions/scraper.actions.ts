@@ -7,6 +7,7 @@ import { searchJobs, filterByCity, filterByTitleRelevance, type NormalizedJob } 
 import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
+import { harvestEmployers } from "@/lib/atsDiscoveryHarvest";
 import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
 import { preFilterJob } from "@/lib/jobPreFilter";
 import { rankJobsByRelevance } from "@/lib/jobRelevance";
@@ -20,6 +21,7 @@ import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isAdminUser } from "@/lib/access";
 import { unstable_noStore as noStore } from 'next/cache';
+import { after } from 'next/server';
 
 type InsforgeServerClient = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -521,6 +523,33 @@ export async function scrapeAndEvaluateJobs(
     }
 
     console.log("🔍 [Scraper] Unique jobs to insert:", uniqueJobs.length);
+
+    // Turn this paid search into permanent free coverage: record any
+    // employer we do not already track, so lib/proactiveAtsCrawl.ts polls
+    // their own careers board from now on. Cost per company becomes a
+    // one-off instead of recurring per job.
+    //
+    // after(), not awaited: nothing on screen depends on it, and making a
+    // user wait on a background registry write would be the same mistake
+    // that put a description fetch in the render path. Measured on a real
+    // search: 40 employers seen, 28 already known, 5 newly registered.
+    after(async () => {
+        try {
+            const harvest = await harvestEmployers(
+                createAdminDbClient() as unknown as Parameters<typeof harvestEmployers>[0],
+                uniqueJobs.map((job) => ({ company: job.company, applyUrl: job.applyUrl, url: job.url })),
+            );
+            if (harvest.registeredResolved + harvest.registeredForDiscovery > 0) {
+                console.log(
+                    `[scraper] discovery harvest: +${harvest.registeredResolved} resolved, ` +
+                        `+${harvest.registeredForDiscovery} queued (${harvest.alreadyKnown}/${harvest.seen} already known)`,
+                );
+            }
+        } catch (error) {
+            // Never allowed to affect the search it rode in on.
+            console.warn("[scraper] discovery harvest failed", error);
+        }
+    });
 
     const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
     console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
