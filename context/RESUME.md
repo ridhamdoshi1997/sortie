@@ -63,6 +63,59 @@ Full detail in `context/progress-tracker.md`'s Phase 44 entries. Headlines:
 - **Three more bugs surfaced by running things rather than reading them**: the gate discarding links our own rescue had just fixed (abbreviated ATS tenants like `fil` for Fidelity International); stale-marking silently failing on the largest boards (every posting id stuffed into one URL); and `ON CONFLICT ... cannot affect row a second time` when a board returns a duplicate posting id, which killed the whole batch for that company.
 - **Standing lesson, learned by getting it wrong**: Dayforce was declared unreachable on the strength of guessed URL shapes, then shipped after the user pushed back — driving the real portal in a browser and reading its own network calls found the API in minutes. Never conclude a platform has no API from guessed URLs; drive its real client first.
 
+## Phase 45 (2026-09-04) — a free 5.1M-job data source found, LinkedIn added for ~$0.01/search, and SIX filters caught silently discarding good data
+
+**READ THIS FIRST if results look wrong.** The recurring pattern this session, and the reason volume felt stuck for weeks, was almost never missing supply. It was a filter, an ordering, or a dead worker quietly throwing away data that had already arrived. Six separate instances, every one invisible until a real search or a user screenshot exposed it. When something looks thin, **check what is being discarded before adding another source.**
+
+### The headline: a free registry of 5.1M live jobs
+`stapply.ai/jobhive` (from github.com/kalil0321/ats-scrapers, MIT licence, no API key, refreshed hourly) publishes **5,135,831 live jobs across 65 ATS platforms from 80,390 companies**. Verified live, not taken on trust: the manifest was generated the same hour it was read.
+
+This reframes the whole "we can't match JobRight's 8M jobs without funding" conclusion from Phase 44 — which the user correctly rejected. Per-platform coverage includes **SuccessFactors (325,820)** and **Oracle (290,821)**, neither of which this codebase crawls.
+
+**What was ingested, and why only that**: the `companies.csv` registry (3.4MB, 80,390 rows), NOT the 5.1M job rows. Three reasons: the full dump is 16.8GB and could never fit a 500MB Postgres; our own crawler then fetches each board live so postings come from the employer rather than someone else's snapshot (a sampled iCIMS row was already a year old); and direct employer links are this product's differentiator, which only crawling ourselves produces. jobhive says WHICH employers exist; `lib/proactiveAtsCrawl.ts` keeps doing what it already does well. New `lib/jobhiveRegistry.ts` + weekly `jobhiveRegistrySyncAsync` cron. **Registry 24,101 → 37,795 companies in 31s, $0.**
+
+**DuckDB was tested and deliberately not used.** It reads these Parquet files beautifully — 1.7M rows across 5 platforms queried remotely in 23s with predicate pushdown and no download — but ships a ~100MB native binary, a real risk against Vercel's serverless size limit. The registry file is small enough that none of that is needed. Worth remembering if bulk job-row analysis is ever wanted: `@duckdb/node-api` + `read_parquet('https://…')` works, and needs no storage at all.
+
+### Apify: five actors tested live, two conclusions
+| Actor | Result | $/1k | Verdict |
+|---|---|---|---|
+| **kaix/linkedin-jobs-scraper** | 100 jobs / 47s | **$0.10** | **WIRED IN** — cheapest, 51 fields |
+| valig/linkedin-jobs-scraper | 68 / 45s | $0.40 | rejected, 4x price |
+| hirebase/job-search | 9 / 2.5s | $3.00 | rejected — 30x, duplicates our free crawl |
+| truefetch/job-search | 40, aborted | $4.50 | rejected — 45x, slowest, only 3 ATS |
+| fantastic-jobs | not run | $5.00 at OUR tier | rejected |
+
+**LinkedIn was a total blind spot** — its public API is partner-only, so this pipeline had zero coverage of the largest job source. Now ~$0.01/search inside Apify's free $5/month credits (~500 searches free).
+
+**A research correction worth keeping**: Gemini recommended fantastic-jobs at "$1.50/1k". That is its GOLD-tier price; on the FREE tier we actually use it is **$0.005/job = $5.00/1k, 50x kaix**. Its "$150/month" projection would really be $500. Always verify a quoted price against the tier in use.
+
+### The six silent-discard bugs
+1. **Pre-filter hid entire sources.** `jobPreFilter`'s "description too short" rule has a `DIRECT_ATS_SOURCES` exemption listing only the six sources that existed when it was written. Every provider added since was hidden **completely** on arrival. A real user search showed **2 jobs when 60 had been found** — 57 LinkedIn rows hidden. Second time this rule swallowed a whole source. **When adding a provider, add it here.**
+2. **A failed SerpApi call discarded every other source.** `fetchAndMergeFreeSources` awaited `serpApiPromise` unguarded inside `Promise.all`, so SerpApi's rejection (every search — all keys at 0/250) threw away results that had already been fetched and paid for.
+3. **Adzuna capped at 3 pages** while 317 matches / 118 relevant existed — a search saw ~54 of them.
+4. **77% of results were irrelevant** (82 visible, 19 relevant): most sources match on DESCRIPTION as well as title, so a Software Engineer at a wealth-tech firm matched "financial advisor". Adzuna's own `title_only` was tested and rejected (317 → 9). Fixed with a stem-prefix rule applied uniformly, before the trim.
+5. **Detail pages rendered completely empty.** The description fetcher ran via `after()`, which fires after the response is sent.
+6. **Descriptions were one wall of text.** Two layers: newlines collapsed, and — only visible once the user pasted the raw source — entity decoding ran LAST, so LinkedIn's escaped `&lt;br&gt;` markup was never recognised as markup.
+
+### Scoring
+- **Search intent now reaches the evaluator.** It previously saw only the candidate's profile, so a developer searching "Financial Advisor" got every result at 20% with "does not utilize your software engineering expertise" — true and useless. Verified after: **84/84 jobs scored, spread 20–60, average 37**, with reasoning that names the career pivot.
+- **Full evaluation now fires on OPEN**, not a button. Everything that makes the detail page organised — `about_role`, responsibilities, requirements, benefits, the `jd_decoder` skill decoder, the 10-dimension breakdown — comes from the FULL pass only. Opening a job left every section empty until someone pressed a button they had no reason to press.
+- **Chunk size 5 → 10** (lite `maxTokens` 3000 → 6000). Chunk COUNT drives latency: each chunk is one AI call behind a global 12-per-60s throttle, so 61 jobs needed 13 calls and spilled into a second window; at 10 they fit in one.
+
+### CURRENT CONFIGURATION — deliberate and temporary
+`searchJobs` runs **ONLY the two Apify sources** (direct user request, isolation test). SerpApi, Adzuna, JSearch, JobsPipe, RemoteOK, TheirStack and the Apify Indeed actor are all switched off but **NOT deleted** — still defined, tested and credential-gated. ESLint reports them unused; that is expected. Restoring means putting the calls back into `fetchAndMergeFreeSources`. `APIFY_HIREBASE_MAX_ITEMS=0` disables hirebase; `APIFY_LINKEDIN_FETCH_DETAILS=false` is **load-bearing** (see below).
+
+**Env flags that will bite**: `APIFY_LINKEDIN_FETCH_DETAILS=true` costs ~17s per job and blows Apify's 300s sync ceiling — 25 jobs timed out at 301.3s returning NOTHING. It defaults to `false` in code precisely so an unset variable cannot fall into that path. Applicant counts only populate with it on, which is why they are still unavailable.
+
+### Next session, start here
+1. **Local Inngest must be running or nothing scores** — it died mid-session and the UI showed "Scoring 0 of 61" indefinitely with nothing indicating why. Now in `.claude/launch.json` as `inngest_dev`. Jobs queued while it is down **lose their events permanently** and need re-queuing via a `jobs/evaluate` send. On the Vercel preview this is a non-issue: Inngest Cloud calls the deployed endpoint.
+2. **The crawl backlog** — 13,774 newly-registered companies were still draining. Cache contribution to searches should keep climbing on its own.
+3. **Registry duplicates** — `sunlife` (resolved, workday) vs `sunlifeinsuranceinvestments` (platform null, retries forever). Same for RBC. A company-key normalisation pass would fix several banks at once.
+4. **Scotiabank/Edward Jones** are in neither dataset and need domain-based discovery; a **SuccessFactors adapter was added** this session (Scotiabank's platform) but is not yet seeded with companies.
+5. **`hiringSignal`** (`early_applicant`/`actively_hiring`) comes free from LinkedIn and is not on the card yet — the closest free equivalent to JobRight's applicant-count badge.
+6. **13 unused platforms** remain in the latmay dataset (17,205 companies: JOIN, Breezy, Getro, JazzHR, Rippling, Jobvite, Zoho, Pinpoint, Teamtailor, Recruitee, ApplicantPro, Loxo, Paycom) — all free to crawl once adapters exist.
+7. **Nothing pushed to origin** since `f92ec5f`; the Vercel preview runs older code.
+
 ### Deployed to preview (2026-09-03, end of session)
 `feature/supabase-migration` pushed to `origin` and deployed: `jobpilot-experiment-preview-sortie3.vercel.app` now points at `dpl_GUA8wUrpxktXPDzpA8a9mE6XNwsC`, the FIRST deploy of the Supabase-migrated app to any Vercel environment (previously local-dev-only, per Phase 42's own note). Preview env vars were missing entirely for Supabase (`SUPABASE_URL`/`SUPABASE_ANON_KEY`/`SUPABASE_SERVICE_ROLE_KEY`/`NEXT_PUBLIC_SUPABASE_URL`/`NEXT_PUBLIC_SUPABASE_ANON_KEY`) and Stripe (`STRIPE_SECRET_KEY`/`STRIPE_WEBHOOK_SECRET` — the build itself fails without these, since both Stripe clients instantiate at module scope) — added from Doppler, values never echoed to the transcript. `INNGEST_EVENT_KEY`/`INNGEST_SIGNING_KEY` were already present, so Inngest Cloud will invoke `/api/inngest` automatically for both evaluation and the crawl crons now that the deploy is live — no separate step needed.
 
