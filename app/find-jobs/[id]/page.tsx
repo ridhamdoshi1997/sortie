@@ -25,6 +25,7 @@ import { TrapDoorPredictor } from "@/components/job-details/TrapDoorPredictor";
 import { InterrogationPlan } from "@/components/job-details/InterrogationPlan";
 import { listInterviewPanel } from "@/actions/interviewPanel";
 import { listJobEventHistory } from "@/actions/careerEvents";
+import { requestFullJobEvaluation } from "@/actions/jobs";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { ApplyVerdictBadge } from "@/components/job-details/ApplyVerdict";
 import { JobActionBar } from "@/components/job-details/JobActionBar";
@@ -142,6 +143,43 @@ export default async function JobDetailsPage({ params }: Props) {
   // fire-and-forget after() shape as the apply-link rescue above, and gated
   // by description_fetched_at so a posting whose source can't be fetched is
   // attempted once rather than on every view.
+  // Full evaluation now fires on OPEN, not only from a button (2026-09-04,
+  // direct user report: "the AI will automatically organise the whole
+  // overview section, there will be a skill decoder section as well, which
+  // is missing here").
+  //
+  // Everything that makes this page feel organised — about_role's short
+  // summary, responsibilities, requirements, nice_to_have, benefits, the
+  // jd_decoder skill breakdown and the 10-dimension evaluation — comes from
+  // the FULL pass only. The lite pass that scores search results deliberately
+  // extracts none of it. So a freshly-searched job opened to a bare
+  // description plus a "Request full evaluation" button, and every organised
+  // section stayed empty until someone thought to click it.
+  //
+  // That was never the intent: evaluateJobFullAsync's own comment describes
+  // it as "triggered only for a job someone actually opens", which is exactly
+  // this moment. Opening the job IS the request. The button stays for retries
+  // and for the case where this fire-and-forget attempt failed.
+  //
+  // Cost is unchanged in shape — still one full-rubric call per opened job,
+  // never for the other ~150 results in a search — and requestFullJobEvaluation
+  // already enforces the per-user evaluation quota, refuses a job that has no
+  // lite score yet, and refuses one already evaluated, so this cannot
+  // double-spend.
+  const needsFullEvaluation =
+    job.match_score !== null && (!Array.isArray(job.evaluation) || job.evaluation.length === 0);
+  if (needsFullEvaluation) {
+    after(async () => {
+      const result = await requestFullJobEvaluation(job.id).catch((err) => {
+        console.error("[find-jobs/[id]] auto full-evaluation failed", err);
+        return null;
+      });
+      // A quota refusal is a normal outcome, not an error — the button then
+      // surfaces the real reason to the candidate on click.
+      if (result && !result.success) console.log(`[find-jobs/[id]] auto full-evaluation skipped: ${result.error}`);
+    });
+  }
+
   // Split by whether there is anything to render AT ALL (2026-09-04, direct
   // user report: "I clicked on one of the jobs and the detail page is
   // completely empty"). after() runs once the response has already been sent,
