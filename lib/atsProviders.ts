@@ -19,7 +19,8 @@ export type AtsPlatform =
   | "dayforce"
   | "breezy"
   | "recruitee"
-  | "teamtailor";
+  | "teamtailor"
+  | "join";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -656,6 +657,86 @@ export async function fetchTeamtailorJobs(companySlug: string, companyName: stri
   }
 }
 
+
+// join.com — added 2026-09-04, and the largest single platform in the
+// jobhive dataset at 23,547 companies.
+//
+// It has no usable public JSON API: /api/companies/{slug}/jobs answers 401
+// and the other documented-looking shapes 404. What it does have is a
+// Next.js company page that ships its own state in a __NEXT_DATA__ script
+// tag, jobs included. Reading a page's own embedded JSON is ordinary public
+// scraping -- no key, no auth, no impersonation -- which is why this is
+// acceptable where JobSpy's Indeed path (a private API key lifted from
+// their iOS app) was not.
+//
+// The <script> carries a per-response `nonce` attribute, so it is located by
+// index rather than by a fixed-attribute regex; a naive
+// `<script id="__NEXT_DATA__" type="application/json">` match silently finds
+// nothing here.
+//
+// Verified live before wiring: 01informatica and 02100 both return parsed
+// jobs with title, city, country and createdAt.
+type JoinJob = {
+  id?: number;
+  idParam?: string;
+  title?: string;
+  createdAt?: string;
+  workplaceType?: string;
+  city?: { cityName?: string; countryName?: string };
+  employmentType?: { name?: string };
+};
+
+export async function fetchJoinJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://join.com/companies/${slug}`, {
+      headers: { "User-Agent": "Mozilla/5.0" },
+    });
+    if (!res.ok) {
+      console.warn(`[atsProviders] join.com company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const html = await res.text();
+    const marker = html.indexOf("__NEXT_DATA__");
+    if (marker < 0) return [];
+    const start = html.indexOf(">", marker) + 1;
+    const end = html.indexOf("</script>", start);
+    if (start <= 0 || end <= start) return [];
+
+    let items: JoinJob[] = [];
+    try {
+      const parsed = JSON.parse(html.slice(start, end));
+      items = parsed?.props?.pageProps?.initialState?.jobs?.items ?? [];
+    } catch {
+      // A layout change that breaks the embedded JSON must degrade to zero
+      // jobs for this company, never throw the whole crawl batch.
+      console.warn(`[atsProviders] join.com "${slug}" embedded JSON did not parse`);
+      return [];
+    }
+
+    return items
+      .filter((job) => job.id && job.title)
+      .map((job) => {
+        const applyUrl = `https://join.com/companies/${slug}/${job.idParam ?? job.id}`;
+        return {
+          id: `join-${job.id}`,
+          title: job.title as string,
+          company: companyName,
+          location: [job.city?.cityName, job.city?.countryName].filter(Boolean).join(", "),
+          description: "",
+          url: applyUrl,
+          applyUrl,
+          type: job.employmentType?.name || undefined,
+          postedAt: job.createdAt,
+          source: "join",
+        };
+      });
+  } catch (error) {
+    console.warn(`[atsProviders] join.com fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -678,6 +759,8 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchRecruiteeJobs(slug, companyName);
     case "teamtailor":
       return fetchTeamtailorJobs(slug, companyName);
+    case "join":
+      return fetchJoinJobs(slug, companyName);
   }
 }
 

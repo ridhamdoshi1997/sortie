@@ -56,7 +56,7 @@ const DIRECT_ATS_SOURCES = new Set([
   // description in list mode, so without this the "description too short"
   // rule would hide every posting from them on arrival -- the exact failure
   // that has already swallowed two whole sources in this codebase.
-  "breezy", "recruitee", "teamtailor",
+  "breezy", "recruitee", "teamtailor", "join",
 ]);
 
 // Direct user follow-up (2026-09-01) after Adzuna started running on
