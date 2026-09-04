@@ -178,7 +178,40 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
     .in("platform", CRAWLABLE_PLATFORMS)
     .order("last_crawled_at", { ascending: true, nullsFirst: true })
     .limit(CRAWL_BATCH_SIZE);
-  const candidates = (data as CrawlCandidate[] | null) ?? [];
+  const allCandidates = (data as CrawlCandidate[] | null) ?? [];
+
+  // Never fetch the same BOARD twice in one pass. 639 boards in the registry
+  // are reachable under more than one company_key (644 redundant rows,
+  // almost all Workable and Dayforce), so without this a batch spends slots
+  // re-fetching a board it already has -- and every duplicate posting then
+  // has to be deduped downstream anyway.
+  //
+  // Keyed on platform + slug, NOT on the company stem. Those are different
+  // questions and conflating them would LOSE coverage: sunlife,
+  // sunlifecampus and sunlifeexperienced share a stem but are three genuinely
+  // separate Workday boards with different openings on each. Same board is
+  // the only safe definition of redundant here.
+  //
+  // The skipped rows still get their last_crawled_at bumped below, so they
+  // rotate out of the oldest-first window instead of blocking it forever.
+  const seenBoards = new Set<string>();
+  const candidates: CrawlCandidate[] = [];
+  const skippedDuplicateBoards: CrawlCandidate[] = [];
+  for (const candidate of allCandidates) {
+    const slug = candidate.config?.slug;
+    const boardKey = slug ? `${candidate.platform}|${slug}` : null;
+    if (boardKey && seenBoards.has(boardKey)) {
+      skippedDuplicateBoards.push(candidate);
+      continue;
+    }
+    if (boardKey) seenBoards.add(boardKey);
+    candidates.push(candidate);
+  }
+  if (skippedDuplicateBoards.length > 0) {
+    console.log(
+      `[proactiveAtsCrawl] skipped ${skippedDuplicateBoards.length} duplicate board(s) already covered this pass`,
+    );
+  }
 
   if (candidates.length === 0) return { companiesCrawled: 0, postingsUpserted: 0 };
 
@@ -278,7 +311,11 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
   // touched, including skipped/failed ones: this list is ordered
   // oldest-crawled-first, so a row that never gets its cursor bumped would
   // win selection on every future batch forever and starve the queue.
-  const allKeys = candidates.map((c) => c.company_key);
+  // Includes the duplicate-board rows we skipped fetching. They must be
+  // bumped too: selection is oldest-crawled-first, so a row whose cursor is
+  // never touched wins every future batch forever and starves the queue --
+  // the precise failure this block's own comment above warns about.
+  const allKeys = [...candidates, ...skippedDuplicateBoards].map((c) => c.company_key);
   for (let i = 0; i < allKeys.length; i += CURSOR_CHUNK_SIZE) {
     const chunk = allKeys.slice(i, i + CURSOR_CHUNK_SIZE);
     const { error } = await admin.database
