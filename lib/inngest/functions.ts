@@ -16,6 +16,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { createAdminClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
+import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
 import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
@@ -1332,6 +1333,34 @@ export const pruneCrawlCacheAsync = inngest.createFunction(
 // that — a real gap, but a narrow and pre-existing one, not introduced by
 // this migration.
 const LEGITIMACY_RECHECK_BATCH_SIZE = 25;
+
+// Free ATS registry top-up (2026-09-04). jobhive publishes 80,390 companies
+// across 65 ATS platforms as a 3.4MB CSV, refreshed hourly, no API key --
+// against the ~24,000 our registry had reached. Every company it adds becomes
+// a board lib/proactiveAtsCrawl.ts then crawls directly and for free, which
+// is how a query like "Financial Advisor"/Toronto stops returning zero from
+// our own index.
+//
+// Weekly, not every 15 minutes: this is a slow-moving directory of which
+// employers exist, not a job feed. The crawlers already run continuously and
+// are what keep postings fresh. Existing rows are never overwritten (see
+// ingestJobhiveRegistry's ignoreDuplicates note), so this can only ever add.
+export const jobhiveRegistrySyncAsync = inngest.createFunction(
+    { id: "jobhive-registry-sync", name: "Sync Free ATS Company Registry", triggers: [{ cron: "0 5 * * 1" }] },
+    async ({ step }) => {
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const result = await step.run("ingest-registry", () => ingestJobhiveRegistry(admin));
+
+        return {
+            message: `Parsed ${result.parsed} rows, mapped ${result.mapped} to supported platforms, upserted ${result.upserted}.`,
+            byPlatform: result.byPlatform,
+        };
+    },
+);
 
 export const legitimacyRecheckAsync = inngest.createFunction(
     { id: "legitimacy-recheck", name: "Legitimacy Two-Strike Recheck", triggers: [{ cron: "*/30 * * * *" }] },
