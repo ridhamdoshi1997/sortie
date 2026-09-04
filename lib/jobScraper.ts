@@ -1165,10 +1165,20 @@ const apifyLinkedInProvider: JobScraperProvider = {
                     keywords: jobTitle,
                     location,
                     maxJobs,
-                    // Detail enrichment is left OFF deliberately. With it on,
-                    // the same run took 106s for 6 results; off, it returned
-                    // 100 in 47s with the fields that matter already present.
-                    fetchDetails: false,
+                    // Detail enrichment ON (2026-09-04, direct user request).
+                    // This is the ONLY way LinkedIn's applicant count, full
+                    // description, recruiter profile, benefits and structured
+                    // criteria are populated — without it those fields exist
+                    // in the schema but come back empty, which a live run
+                    // confirmed (74 rows, 0 applicant counts).
+                    //
+                    // It is genuinely expensive in TIME, not money: measured
+                    // at roughly 17s per job (6 results in 106s), against
+                    // ~0.5s per job with details off. APIFY_LINKEDIN_MAX_ITEMS
+                    // is therefore the latency dial as much as the cost dial —
+                    // keep it small while details are on, or move this source
+                    // to the background crawl where slowness doesn't matter.
+                    fetchDetails: process.env.APIFY_LINKEDIN_FETCH_DETAILS !== "false",
                     datePosted: "past_month",
                     sortBy: "recent",
                 }),
@@ -1435,6 +1445,20 @@ async function fetchAndMergeFreeSources(
     return merged;
 }
 
+// TEMPORARY, DELIBERATE CONFIGURATION (2026-09-04, direct user request):
+// every legacy provider is switched off and a live search now runs ONLY the
+// two paid Apify sources. This is an isolation test — with Adzuna, SerpApi,
+// JSearch, JobsPipe, RemoteOK, TheirStack and the Apify Indeed actor all out
+// of the way, whatever appears on screen is attributable to LinkedIn +
+// Employer-ATS alone, plus this app's own free ATS crawl (which lives in
+// lib/actions/scraper.actions.ts, not here, and is unaffected).
+//
+// Nothing was deleted to achieve this. Every provider above is still defined,
+// still tested and still wired to its own credential check, so restoring the
+// previous behaviour is a matter of putting the calls back into
+// fetchAndMergeFreeSources — see git history for the exact prior shape.
+// SerpApi's country-code resolution is also skipped, since it needs a working
+// SerpApi key and all three are currently exhausted.
 export async function searchJobs(
     jobTitle: string,
     location: string,
@@ -1442,137 +1466,30 @@ export async function searchJobs(
     provider: "serpapi" = "serpapi",
     datePosted?: string
 ): Promise<NormalizedJob[]> {
+    void provider;
+    void datePosted;
 
-    if (provider === "serpapi") {
-        // Real country code for THIS search's actual target location,
-        // resolved via the free Locations API lookup above — overrides the
-        // caller-supplied `countryCode` (every current call site just
-        // hardcodes "ca", see resolveCountryCodeForLocation's own comment
-        // for the full story) whenever resolution succeeds. Falls back to
-        // the caller's value only when resolution genuinely can't happen
-        // (no SerpApi key configured at all, or an unrecognized location
-        // string) — never a hard failure, since a wrong-but-present
-        // default still lets the search proceed instead of blocking it.
-        const availableKeys = getSerpApiKeyChain();
-        const resolvedCountryCode =
-            availableKeys.length > 0 ? await resolveCountryCodeForLocation(location, availableKeys[0]) : null;
-        const effectiveCountryCode = resolvedCountryCode ?? countryCode;
-        // Chain: SerpApi -> TheirStack -> JSearch -> Apify, each only
-        // reached if every prior tier is genuinely exhausted (quota), never
-        // on a real per-request error (bad location, malformed query,
-        // network blip). Arbeitnow was researched and its code written, but
-        // deliberately NOT wired in here — see the comment above
-        // apifyProvider's definition for why (a real, persistent TLS cert
-        // mismatch on arbeitnow.com found during live verification).
-        //
-        // Real, temporary reorder (2026-09-03, direct user decision, while
-        // all 3 SerpApi accounts sit at 0/250 for the month with no overage
-        // option): on SerpApi exhaustion, Adzuna + JobsPipe + JSearch now
-        // run CONCURRENTLY and merge together as the primary result set,
-        // instead of the old sequential "try TheirStack, then JSearch, then
-        // Apify, first non-empty response wins" chain. That old approach
-        // meant only ONE fallback's real supply ever reached the user even
-        // though several were independently available — the exact same
-        // class of bug this project already fixed once for Adzuna itself
-        // (see the historical comment below). JobsPipe is genuinely
-        // non-redundant with JSearch (Workday + Indeed + Glassdoor + 30 ATS
-        // sources, not the same Google for Jobs index JSearch/SerpApi
-        // share), so merging both plus Adzuna gets real, additive coverage
-        // instead of three near-duplicate attempts. TheirStack and Apify
-        // stay as a last-resort safety net — tried only if this merged
-        // primary set comes back completely empty — since TheirStack burns
-        // paid per-search credits and Apify costs real money per result,
-        // neither is a "run it concurrently every time" source the way
-        // Adzuna/JobsPipe/JSearch are treated here.
-        //
-        // Revert this reorder once SerpApi's monthly quota resets — this is
-        // a deliberate, temporary rebalancing for the current outage, not a
-        // permanent architecture decision.
-        // RemoteOK joins this fallback the same way it joins the primary
-        // merge above — free/keyless, no reason to exclude it just because
-        // SerpApi happens to be the tier that's currently down. Kept OUT of
-        // the shared `attempts`/filterByCity pipeline and merged in
-        // separately, unfiltered — the same reason fetchAndMergeFreeSources
-        // excludes it from filterByCity: every RemoteOK result is
-        // inherently remote by construction, and running it through a city
-        // filter would wrongly drop genuinely-remote postings whose title
-        // doesn't happen to literally say "remote."
-        async function fetchMergedExhaustionFallback(): Promise<NormalizedJob[]> {
-            const attempts: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
-            if (getAdzunaCredentials()) {
-                attempts.push({ name: "Adzuna", promise: adzunaProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
-            }
-            if (getJobsPipeApiKey()) {
-                attempts.push({ name: "JobsPipe", promise: jobsPipeProvider.search(jobTitle, location, effectiveCountryCode, datePosted) });
-            }
-            if (getOpenWebNinjaApiKey()) {
-                // Real, repeatedly-observed failure mode (2026-09-03,
-                // direct user pushback prompted re-checking this): JSearch's
-                // own API timed out with a real HTTP 504 in live testing,
-                // contributing 0 results while SerpApi was down — the exact
-                // moment this fallback tier matters most. Same one-retry
-                // treatment as Adzuna above, since this looks like the same
-                // class of transient-failure-swallowed-as-empty problem.
-                attempts.push({
-                    name: "JSearch",
-                    promise: jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted).catch(async (err) => {
-                        console.warn("[jobScraper] JSearch failed, retrying once", err);
-                        await new Promise((resolve) => setTimeout(resolve, 1500));
-                        return jsearchProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
-                    }),
-                });
-            }
-
-            const [settled, remoteOkResult] = await Promise.all([
-                Promise.all(
-                    attempts.map(({ name, promise }) =>
-                        promise.catch((err) => {
-                            console.error(`[jobScraper] ${name} failed during exhaustion-fallback merge`, err);
-                            return [] as NormalizedJob[];
-                        }),
-                    ),
-                ),
-                remoteOkProvider.search(jobTitle, location, effectiveCountryCode).catch((err) => {
-                    console.error("[jobScraper] RemoteOK failed during exhaustion-fallback merge", err);
-                    return [] as NormalizedJob[];
-                }),
-            ]);
-
-            settled.forEach((jobs, i) => console.warn(`SerpApi exhausted — ${attempts[i].name} contributed ${jobs.length} result(s).`));
-            if (remoteOkResult.length > 0) console.warn(`SerpApi exhausted — RemoteOK contributed ${remoteOkResult.length} result(s).`);
-
-            const cityFiltered = filterByCity(dedupeJobs(settled.flat()), location);
-            return dedupeJobs([...cityFiltered, ...remoteOkResult]);
-        }
-
-        try {
-            const serpApiPromise = serpApiProvider.search(jobTitle, location, effectiveCountryCode, datePosted);
-            return await fetchAndMergeFreeSources(serpApiPromise, jobTitle, location, effectiveCountryCode);
-        } catch (err) {
-            if (!isQuotaExhaustedError(err)) throw err;
-
-            const merged = await fetchMergedExhaustionFallback();
-            if (merged.length > 0) return merged;
-
-            console.warn("Merged exhaustion fallback (Adzuna/JobsPipe/JSearch/RemoteOK) returned nothing — trying TheirStack/Apify as a last resort.");
-            const lastResortTiers: Array<{ name: string; hasCreds: () => boolean; run: () => Promise<NormalizedJob[]> }> = [
-                { name: "TheirStack", hasCreds: () => Boolean(getTheirStackApiKey()), run: () => theirstackProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
-                { name: "Apify", hasCreds: () => Boolean(getApifyToken()), run: () => apifyProvider.search(jobTitle, location, effectiveCountryCode, datePosted) },
-            ];
-            let lastErr: unknown = err;
-            for (const tier of lastResortTiers) {
-                if (!tier.hasCreds()) continue;
-                try {
-                    return await tier.run();
-                } catch (tierErr) {
-                    if (!isQuotaExhaustedError(tierErr)) throw tierErr;
-                    lastErr = tierErr;
-                    console.warn(`${tier.name} also exhausted — trying next.`);
-                }
-            }
-            throw lastErr;
-        }
+    if (!getApifyToken()) {
+        throw new Error("Missing APIFY_API_TOKEN — the current search configuration requires it.");
     }
 
-    throw new Error("Invalid scraper provider selected.");
+    const sources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [
+        { name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) },
+        {
+            name: "Employer ATS",
+            promise: apifyHirebaseProvider.search(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
+        },
+    ];
+
+    const settled = await Promise.all(
+        sources.map(({ name, promise }) =>
+            promise.catch((err) => {
+                console.error(`[jobScraper] ${name} failed`, err);
+                return [] as NormalizedJob[];
+            }),
+        ),
+    );
+
+    settled.forEach((jobs, i) => console.warn(`[jobScraper] ${sources[i].name} contributed ${jobs.length} result(s).`));
+    return dedupeJobs(settled.flat());
 }
