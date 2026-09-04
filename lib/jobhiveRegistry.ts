@@ -42,6 +42,12 @@ const JOBHIVE_ATS_TO_PLATFORM: Record<string, string> = {
   workday: "workday",
   icims: "icims",
   dayforce: "dayforce",
+  // Added 2026-09-04 once real adapters existed. Keeping this map limited to
+  // fetchable platforms is what makes a new jobhive platform harmless until
+  // then -- see this map's own comment above.
+  breezy: "breezy",
+  recruitee: "recruitee",
+  teamtailor: "teamtailor",
 };
 
 // Same normalisation ats_registry already uses for company_key, duplicated

@@ -398,6 +398,29 @@ export async function scrapeAndEvaluateJobs(
     // names like "Greater Toronto Area"), token-based pagination, and the
     // geographic relevance filter all live in lib/jobScraper.ts — this is
     // the single scraping entry point, not a second copy of that logic.
+    // Started BEFORE the paid providers, not after them.
+    //
+    // This lookup needs only the title and location -- it has never had any
+    // dependency on the aggregator results -- yet it sat third in a
+    // strictly sequential chain (providers -> enrichment -> cache), so its
+    // seconds were added to a wait already dominated by the ~43s LinkedIn
+    // actor. Kicking it off here overlaps it entirely with that wait.
+    //
+    // Not awaited here on purpose: an early await would simply move the
+    // blocking, not remove it. The promise is consumed further down, by
+    // which point it has almost always already resolved. Rejections are
+    // caught at the consumption site, and a floating rejection cannot
+    // escape because .catch is attached immediately below.
+    const cachedJobsPromise = (async () => {
+        try {
+            const admin = createAdminDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
+            return await queryProactiveCrawlCache(admin, title, location);
+        } catch (error) {
+            console.warn("[scraper.actions] proactive-crawl cache lookup failed", error);
+            return [] as NormalizedJob[];
+        }
+    })();
+
     let rawJobs;
     try {
         rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
@@ -438,8 +461,8 @@ export async function scrapeAndEvaluateJobs(
     // deduped below same as every other source; a failure here (RLS/DB
     // hiccup) must never fail a search that already has real results.
     try {
-        const admin = createAdminDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
-        const cached = await queryProactiveCrawlCache(admin, title, location);
+        // Already in flight since before the provider fetch above.
+        const cached = await cachedJobsPromise;
         if (cached.length > 0) {
             console.log(`Proactive-crawl cache supplied ${cached.length} additional job(s).`);
             rawJobs = [...rawJobs, ...cached];

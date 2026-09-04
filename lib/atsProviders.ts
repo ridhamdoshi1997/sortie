@@ -9,7 +9,17 @@ import type { NormalizedJob } from "@/lib/jobScraper";
 // greenhouse, Lever's own demo board, ramp/ashby) — see this session's
 // transcript / the approved plan for the raw responses.
 
-export type AtsPlatform = "greenhouse" | "lever" | "ashby" | "smartrecruiters" | "workable" | "bamboohr" | "dayforce";
+export type AtsPlatform =
+  | "greenhouse"
+  | "lever"
+  | "ashby"
+  | "smartrecruiters"
+  | "workable"
+  | "bamboohr"
+  | "dayforce"
+  | "breezy"
+  | "recruitee"
+  | "teamtailor";
 
 function normalizeSlug(slug: string): string {
   return slug.trim().toLowerCase();
@@ -504,6 +514,148 @@ export async function fetchSuccessFactorsJobs(origin: string, companyName: strin
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Breezy / Recruitee / Teamtailor — added 2026-09-04.
+//
+// All three publish a public, keyless board endpoint, verified live against
+// real slugs from the jobhive dataset before any of this was written:
+//   breezy     https://{slug}.breezy.hr/json          200, 23 and 237 jobs
+//   recruitee  https://{slug}.recruitee.com/api/offers/  200, 15 jobs
+//   teamtailor https://{slug}.teamtailor.com/jobs.json   200, 5 jobs
+//
+// Between them the dataset holds ~4,000 companies we could not crawl at all
+// before. join.com is the far bigger prize (23,547 companies) but its public
+// endpoint returned 422 to the shape guessed here, so it is deliberately NOT
+// added on a guess — it needs its real API researched first, the same bar
+// Careerjet and Arbeitnow were held to.
+//
+// None of them return a usable description in list mode, which is fine: the
+// crawl cache stores what the board gives and lib/jobPreFilter.ts already
+// exempts direct-ATS sources from its short-description rule.
+// ---------------------------------------------------------------------------
+
+type BreezyJob = {
+  id?: string;
+  name?: string;
+  url?: string;
+  published_date?: string;
+  type?: { name?: string };
+  location?: { name?: string };
+};
+
+export async function fetchBreezyJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.breezy.hr/json`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] Breezy company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: BreezyJob[] = await res.json();
+    if (!Array.isArray(data)) return [];
+    return data
+      .filter((job) => job.id && job.name)
+      .map((job) => ({
+        id: `breezy-${job.id}`,
+        title: job.name as string,
+        company: companyName,
+        location: job.location?.name ?? "",
+        description: "",
+        url: job.url ?? `https://${slug}.breezy.hr/`,
+        applyUrl: job.url ?? `https://${slug}.breezy.hr/`,
+        type: job.type?.name || undefined,
+        postedAt: job.published_date,
+        source: "breezy",
+      }));
+  } catch (error) {
+    console.warn(`[atsProviders] Breezy fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
+type RecruiteeOffer = {
+  id?: number;
+  title?: string;
+  location?: string;
+  careers_url?: string;
+  created_at?: string;
+  employment_type?: string;
+  salary?: { min?: string; max?: string; currency?: string; period?: string };
+};
+
+export async function fetchRecruiteeJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.recruitee.com/api/offers/`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] Recruitee company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: { offers?: RecruiteeOffer[] } = await res.json();
+    return (data.offers ?? [])
+      .filter((offer) => offer.id && offer.title)
+      .map((offer) => {
+        const salary =
+          offer.salary?.min && offer.salary?.max
+            ? `${offer.salary.min}-${offer.salary.max} ${offer.salary.currency ?? ""} / ${offer.salary.period ?? ""}`.trim()
+            : undefined;
+        const applyUrl = offer.careers_url ?? `https://${slug}.recruitee.com/`;
+        return {
+          id: `recruitee-${offer.id}`,
+          title: offer.title as string,
+          company: companyName,
+          location: offer.location ?? "",
+          description: "",
+          url: applyUrl,
+          applyUrl,
+          salary,
+          type: offer.employment_type || undefined,
+          // "2026-07-30 06:51:18 UTC" is not ISO; normalise so downstream
+          // date parsing (lib/jobCanonicalization.ts's parsePostedAt) gets a
+          // value it can actually read.
+          postedAt: offer.created_at ? new Date(offer.created_at.replace(" UTC", "Z").replace(" ", "T")).toISOString() : undefined,
+          source: "recruitee",
+        };
+      });
+  } catch (error) {
+    console.warn(`[atsProviders] Recruitee fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
+// Teamtailor publishes JSON Feed (jsonfeed.org), so the jobs live under
+// `items` rather than at the top level.
+type TeamtailorItem = { id?: string; title?: string; url?: string; date_published?: string };
+
+export async function fetchTeamtailorJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
+  const slug = normalizeSlug(companySlug);
+  try {
+    const res = await fetch(`https://${slug}.teamtailor.com/jobs.json`);
+    if (!res.ok) {
+      console.warn(`[atsProviders] Teamtailor company "${slug}" returned ${res.status}`);
+      return [];
+    }
+    const data: { items?: TeamtailorItem[] } = await res.json();
+    return (data.items ?? [])
+      .filter((item) => item.id && item.title)
+      .map((item) => ({
+        id: `teamtailor-${item.id}`,
+        title: item.title as string,
+        company: companyName,
+        location: "",
+        description: "",
+        url: item.url ?? `https://${slug}.teamtailor.com/jobs`,
+        applyUrl: item.url ?? `https://${slug}.teamtailor.com/jobs`,
+        postedAt: item.date_published,
+        source: "teamtailor",
+      }));
+  } catch (error) {
+    console.warn(`[atsProviders] Teamtailor fetch failed for "${slug}"`, error);
+    return [];
+  }
+}
+
 export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyName: string): Promise<NormalizedJob[]> {
   switch (platform) {
     case "greenhouse":
@@ -520,6 +672,12 @@ export async function fetchAtsJobs(platform: AtsPlatform, slug: string, companyN
       return fetchBambooHrJobs(slug, companyName);
     case "dayforce":
       return fetchDayforceJobs(slug, companyName);
+    case "breezy":
+      return fetchBreezyJobs(slug, companyName);
+    case "recruitee":
+      return fetchRecruiteeJobs(slug, companyName);
+    case "teamtailor":
+      return fetchTeamtailorJobs(slug, companyName);
   }
 }
 

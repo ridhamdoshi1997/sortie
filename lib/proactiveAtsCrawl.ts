@@ -33,7 +33,11 @@ import { type NormalizedJob } from "@/lib/jobScraper";
 //
 // Verified live against 10 real registry slugs before enabling: 6 returned
 // jobs, 166 postings total, ~500ms per board.
-const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr", "dayforce"];
+const CRAWLABLE_PLATFORMS: AtsPlatform[] = [
+  "greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr", "dayforce",
+  // Added 2026-09-04, all keyless and verified live before enabling.
+  "breezy", "recruitee", "teamtailor",
+];
 
 // Same posture as lib/atsRegistry.ts's own AdminDb — structurally typed so
 // this module stays free of a runtime SDK import; every real caller

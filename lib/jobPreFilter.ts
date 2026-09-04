@@ -52,6 +52,11 @@ const DIRECT_ATS_SOURCES = new Set([
   "greenhouse", "lever", "ashby", "smartrecruiters", "workday", "icims",
   "workable", "bamboohr", "dayforce", "successfactors",
   "linkedin", "employer ats",
+  // Added 2026-09-04 with their adapters. All three return an empty
+  // description in list mode, so without this the "description too short"
+  // rule would hide every posting from them on arrival -- the exact failure
+  // that has already swallowed two whole sources in this codebase.
+  "breezy", "recruitee", "teamtailor",
 ]);
 
 // Direct user follow-up (2026-09-01) after Adzuna started running on
