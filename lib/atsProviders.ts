@@ -135,15 +135,44 @@ type SmartRecruitersJob = {
   location?: { city?: string; region?: string; country?: string; remote?: boolean };
 };
 
+// Paginated (2026-09-04). This used to request a single `limit=50` page,
+// and a live test of 10 real registry slugs had THREE return exactly 50 --
+// i.e. silently truncated boards, with the remainder never entering the
+// crawl cache at all. SmartRecruiters caps `limit` at 100, so this walks
+// offsets until a short page arrives.
+//
+// MAX_PAGES bounds the walk: a handful of enterprise boards run to
+// thousands of postings, and one company must not be able to monopolise a
+// crawl batch. 5 pages = 500 postings, comfortably above every board seen
+// in testing while keeping the worst case predictable.
+const SMARTRECRUITERS_PAGE_SIZE = 100;
+const SMARTRECRUITERS_MAX_PAGES = 5;
+
 export async function fetchSmartRecruitersJobs(companySlug: string, companyName: string): Promise<NormalizedJob[]> {
   const slug = normalizeSlug(companySlug);
   try {
-    const res = await fetch(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=50`);
-    if (!res.ok) {
-      console.warn(`[atsProviders] SmartRecruiters company "${slug}" returned ${res.status}`);
-      return [];
+    const collected: SmartRecruitersJob[] = [];
+    for (let page = 0; page < SMARTRECRUITERS_MAX_PAGES; page++) {
+      const offset = page * SMARTRECRUITERS_PAGE_SIZE;
+      const res = await fetch(
+        `https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=${SMARTRECRUITERS_PAGE_SIZE}&offset=${offset}`,
+      );
+      if (!res.ok) {
+        // A later page failing is not a reason to discard the pages that
+        // already succeeded — returning them is strictly better than zero.
+        if (page === 0) {
+          console.warn(`[atsProviders] SmartRecruiters company "${slug}" returned ${res.status}`);
+          return [];
+        }
+        break;
+      }
+      const body: { content?: SmartRecruitersJob[] } = await res.json();
+      const batch = body.content ?? [];
+      collected.push(...batch);
+      // A short page is the last page.
+      if (batch.length < SMARTRECRUITERS_PAGE_SIZE) break;
     }
-    const data: { content?: SmartRecruitersJob[] } = await res.json();
+    const data: { content?: SmartRecruitersJob[] } = { content: collected };
     return (data.content ?? []).map((job) => {
       const applyUrl = `https://jobs.smartrecruiters.com/${slug}/${job.id}`;
       const loc = job.location;

@@ -24,7 +24,16 @@ import { type NormalizedJob } from "@/lib/jobScraper";
 // guessable/discoverable the same way but stays excluded until a real
 // SmartRecruiters-specific gap is observed live, matching the original
 // scope decision rather than widening on speculation.
-const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "workable", "bamboohr", "dayforce"];
+// smartrecruiters added 2026-09-04. It was registered (1,841 companies),
+// fully implemented in lib/atsProviders.ts, and reachable through
+// fetchAtsJobs' switch -- but absent from THIS list, so the crawl never
+// selected it and those companies had zero postings in the cache. Workday
+// and iCIMS are legitimately absent (they have their own dedicated crons
+// below); SmartRecruiters had neither, so it was simply orphaned.
+//
+// Verified live against 10 real registry slugs before enabling: 6 returned
+// jobs, 166 postings total, ~500ms per board.
+const CRAWLABLE_PLATFORMS: AtsPlatform[] = ["greenhouse", "lever", "ashby", "smartrecruiters", "workable", "bamboohr", "dayforce"];
 
 // Same posture as lib/atsRegistry.ts's own AdminDb — structurally typed so
 // this module stays free of a runtime SDK import; every real caller
