@@ -1178,7 +1178,15 @@ const apifyLinkedInProvider: JobScraperProvider = {
                     // is therefore the latency dial as much as the cost dial —
                     // keep it small while details are on, or move this source
                     // to the background crawl where slowness doesn't matter.
-                    fetchDetails: process.env.APIFY_LINKEDIN_FETCH_DETAILS !== "false",
+                    // Defaults to FALSE, and that default is load-bearing.
+                    // An earlier version defaulted to true, so any
+                    // environment missing this variable silently took the
+                    // ~17s-per-job path and blew the 300s API ceiling —
+                    // returning ZERO results after a 300s wait. Caught when a
+                    // Doppler-injected run (which has no .env) timed out
+                    // exactly that way. The expensive path must be opted
+                    // into explicitly, never fallen into by omission.
+                    fetchDetails: process.env.APIFY_LINKEDIN_FETCH_DETAILS === "true",
                     datePosted: "past_month",
                     sortBy: "recent",
                 }),
@@ -1473,12 +1481,17 @@ export async function searchJobs(
         throw new Error("Missing APIFY_API_TOKEN — the current search configuration requires it.");
     }
 
+    // hirebase deliberately NOT called here (2026-09-04). Two independent
+    // research passes reached the same conclusion, and it matches what we
+    // measured: at $3.00/1k it is ~30x the LinkedIn per-result price, and it
+    // largely duplicates what lib/proactiveAtsCrawl.ts already collects for
+    // free — 386,751 cached postings across 8 ATS platforms, which is also
+    // where this product's best link authenticity already comes from. Its
+    // genuine additions (SuccessFactors/Oracle coverage, parsed salary and
+    // visa flags) are not worth 30x while a free equivalent exists. The
+    // provider stays defined and tested for the day that changes.
     const sources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [
         { name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) },
-        {
-            name: "Employer ATS",
-            promise: apifyHirebaseProvider.search(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
-        },
     ];
 
     const settled = await Promise.all(
