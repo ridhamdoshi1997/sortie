@@ -1,25 +1,3 @@
-import { pickBestApplyLink } from "@/lib/applyLinkTrust";
-
-// Shape of a single entry in SerpApi's Google Jobs `jobs_results` array.
-// Only the fields this file actually reads — SerpApi returns many more.
-type SerpApiJobResult = {
-    job_id: string;
-    title?: string;
-    company_name?: string;
-    location?: string;
-    description?: string;
-    share_link?: string;
-    apply_options?: Array<{ link?: string }>;
-    detected_extensions?: {
-        salary?: string;
-        schedule_type?: string;
-        posted_at?: string;
-    };
-    // Google Jobs' own resolved employer logo, when it has one — real data
-    // from the API we already call, not a guess. Absent for some listings.
-    thumbnail?: string;
-};
-
 export type NormalizedJob = {
     id: string;
     title: string;
@@ -28,7 +6,8 @@ export type NormalizedJob = {
     description: string;
     url: string;
     applyUrl?: string;
-    // The full candidate list pickApplyUrl chose from — persisted so a
+    // The full candidate list the apply-link picker chose from — persisted
+    // so a
     // future classifier improvement (lib/applyLinkTrust.ts) can be
     // reapplied via a backfill against data already on hand, with zero new
     // API cost. Never discard this again (see the add-raw-apply-options
@@ -47,21 +26,6 @@ export type NormalizedJob = {
     applicantCount?: string;
     experienceLevel?: string;
 };
-
-// Google Jobs listings via SerpApi carry a `share_link` (a google.com/search
-// deep link back into the Google Jobs UI, not a real application page) plus
-// an `apply_options` array of real destinations — the employer's own ATS
-// posting when one exists, plus third-party boards and, frequently, low-
-// quality job-board mirrors or SEO-farm scrapers. Selection logic lives in
-// lib/applyLinkTrust.ts (see its own comment for the full rationale — a
-// naive "not on a 5-host blocklist" pick previously let sites like
-// workopolis.com and bebee.com through as if they were the employer's own
-// page, confirmed live against ~23% of this app's real scraped dataset).
-function pickApplyUrl(applyOptions: Array<{ link?: string }> | undefined, company: string | undefined): string | undefined {
-    if (!applyOptions || applyOptions.length === 0) return undefined;
-    const links = applyOptions.map((option) => option.link).filter((link): link is string => Boolean(link));
-    return pickBestApplyLink(links, company);
-}
 
 export interface JobScraperProvider {
     search(jobTitle: string, location: string, countryCode: string, datePosted?: string): Promise<NormalizedJob[]>;
@@ -121,214 +85,11 @@ export async function resolveCanonicalLocation(
     return null;
 }
 
-// Real, structural bug found live (2026-09-01, direct user question — "I
-// need the same as SerpApi and others who cover the global market but not
-// limited to Canada and USA"): every call site of searchJobs() hardcoded
-// countryCode to "ca", regardless of what location the candidate actually
-// typed — meaning a search for "London, UK" or "Berlin, Germany" was
-// silently told to search CANADA (SerpApi's `gl` param AND, worse,
-// Adzuna's own per-country endpoint literally becomes
-// api.adzuna.com/v1/api/jobs/ca/search/..., the Canada-only Adzuna
-// database, for every search regardless of the real target country). This
-// isn't a missing-provider gap — SerpApi's google_jobs engine and Adzuna
-// both already support dozens of countries; the pipeline just never told
-// them which one. Resolved here via the SAME SerpApi Locations API
-// resolveCanonicalLocation already uses, which returns a real
-// `country_code` per result (confirmed live: "London" correctly resolves
-// to GB/CA/US depending on which London) — and confirmed live that this
-// endpoint does NOT consume search quota (it returned real data even
-// against a key already at 0/250 for the month), so this costs nothing
-// beyond one extra fetch per search.
-async function resolveCountryCodeForLocation(rawLocation: string, apiKey: string): Promise<string | null> {
-    const primaryCity = rawLocation.split(",")[0].trim();
-    if (!primaryCity) return null;
-    try {
-        const params = new URLSearchParams({ q: primaryCity, limit: "1", api_key: apiKey });
-        const response = await fetch(`https://serpapi.com/locations.json?${params.toString()}`);
-        const results = await response.json();
-        if (Array.isArray(results) && typeof results[0]?.country_code === "string") {
-            return (results[0].country_code as string).toLowerCase();
-        }
-    } catch (err) {
-        console.warn(`[jobScraper] country-code resolution failed for "${rawLocation}"`, err);
-    }
-    return null;
-}
 
-// SerpApi returns HTTP 200 + a `data.error` string for both "out of
-// searches this month" and unrelated issues (bad location, etc) — there's
-// no distinct status code to key off, so detect quota exhaustion by the
-// error text itself. Only this class of failure should burn a fallback
-// key; a real "no results for this query" shouldn't retry on a second key.
-function isQuotaExhaustedError(err: unknown): boolean {
-    const message = err instanceof Error ? err.message : String(err);
-    // Broadened 2026-09-01 for JSearch/OpenWeb Ninja's own real error
-    // phrasing (confirmed live: "You are not subscribed to this API",
-    // HTTP 403, before the user activated the API on their dashboard —
-    // and the same phrasing would recur if PAYG billing itself lapses).
-    // Folding "not subscribed"/402/403 into the SAME "treat as exhausted,
-    // try the next fallback tier" path is the safe choice either way: a
-    // genuinely mis-configured tier degrading gracefully to the next one
-    // is strictly better than it crashing the whole search.
-    return /run out of searches|out of searches|monthly limit|plan.*limit|not subscribed|quota|insufficient credit|429|402|403/i.test(message);
-}
 
-// SerpApi reports a genuine zero-match query as a `data.error` string
-// rather than an empty jobs_results array — that's a real, legitimate
-// search outcome (see agy research, Phase 11), not a failure. Only this
-// specific phrasing should collapse to an empty result set; any other
-// error (auth, network, malformed request) still needs to surface as one.
-function isNoResultsError(err: unknown): boolean {
-    const message = err instanceof Error ? err.message : String(err);
-    return /hasn't returned any results/i.test(message);
-}
 
-// SerpApi's google_jobs engine takes recency as a `chips` value rather than
-// a separate parameter — passing it here narrows the search itself instead
-// of fetching everything and discarding stale postings client-side (Phase 11
-// filter-bar rebuild, agy research: "highly recommended to pass Date Posted
-// to SerpApi directly to avoid fetching stale jobs just to filter them
-// down").
-const DATE_POSTED_CHIPS: Record<string, string> = {
-    today: "date_posted:today",
-    "3days": "date_posted:3days",
-    week: "date_posted:week",
-    month: "date_posted:month",
-};
 
-async function fetchSerpApiPages(
-    jobTitle: string,
-    location: string,
-    countryCode: string,
-    apiKey: string,
-    datePosted?: string
-) {
-    const allJobs = [];
-    let nextPageToken: string | undefined;
 
-    // Direct user report (2026-08-28): a broad "software developer"/Canada
-    // search returned only ~30 results — traced to this loop being capped
-    // at 3 pages, and Google Jobs returns exactly 10 results/page. Raised
-    // to 10 (researched via agy): Google Jobs itself has a hard ceiling
-    // around 100-200 total results per query regardless of page count (it's
-    // a consumer aggregator, not a comprehensive job database — real
-    // portals like LinkedIn/Indeed get their volume from their own indexed
-    // DB + direct ATS feeds, a fundamentally different architecture than
-    // this app's), so 10 pages (100 results) is close to that real ceiling
-    // without paying for pages beyond it. Real cost: up to 10 SerpApi
-    // credits per broad search instead of 3 — narrower searches still break
-    // out of this loop early via the `if (!nextPageToken) break` below.
-    for (let page = 0; page < 10; page++) {
-        const params = new URLSearchParams({
-            engine: "google_jobs",
-            q: jobTitle,
-            location,
-            gl: countryCode,
-            hl: "en",
-            api_key: apiKey,
-        });
-        if (datePosted && DATE_POSTED_CHIPS[datePosted]) {
-            params.set("chips", DATE_POSTED_CHIPS[datePosted]);
-        }
-        if (nextPageToken) params.set("next_page_token", nextPageToken);
-
-        const response = await fetch(`https://serpapi.com/search.json?${params.toString()}`);
-        const data = await response.json();
-
-        if (data.error) {
-            // A real bug found live testing lib/reresolveApplyLink.ts against
-            // a narrow, specific-title query (few total matching results):
-            // Google/SerpApi can return a `data.error` on PAGE 2+ meaning
-            // simply "no more results to paginate" (e.g. the same
-            // "hasn't returned any results" text isNoResultsError already
-            // treats as a legitimate empty search on page 1) — not a real
-            // failure. Throwing unconditionally here discarded the
-            // perfectly good page-1 results already collected in `allJobs`
-            // for the WHOLE multi-page fetch. Only the first page's error
-            // (or a quota-exhaustion error on any page, which must still
-            // propagate so the caller can fail over to the next key) is a
-            // genuine failure; a later page erroring just means pagination
-            // is done.
-            const err = new Error(`${data.error}${!response.ok ? ` (HTTP ${response.status})` : ""}`);
-            if (page === 0 || isQuotaExhaustedError(err)) throw err;
-            break;
-        }
-
-        const jobs = data.jobs_results || [];
-        if (jobs.length === 0) break;
-
-        allJobs.push(
-            ...jobs.map((job: SerpApiJobResult) => ({
-                id: job.job_id,
-                title: job.title,
-                company: job.company_name,
-                location: job.location,
-                description: job.description,
-                url: job.share_link,
-                applyUrl: pickApplyUrl(job.apply_options, job.company_name),
-                rawApplyOptions: job.apply_options,
-                salary: job.detected_extensions?.salary,
-                type: job.detected_extensions?.schedule_type,
-                postedAt: job.detected_extensions?.posted_at,
-                source: "SerpApi",
-                logoUrl: job.thumbnail
-            }))
-        );
-
-        // Google Jobs via SerpApi paginates with a next_page_token, not
-        // a `start` offset — a `start` offset returns the same page.
-        nextPageToken = data.serpapi_pagination?.next_page_token;
-        if (!nextPageToken) break;
-    }
-
-    return allJobs;
-}
-
-async function searchWithSerpApiKey(
-    jobTitle: string,
-    location: string,
-    countryCode: string,
-    apiKey: string,
-    datePosted?: string
-) {
-    const normalizedLocation = normalizeLocationForSerpApi(location);
-    let allJobs;
-    let resolvedLocation = normalizedLocation;
-    try {
-        allJobs = await fetchSerpApiPages(jobTitle, normalizedLocation, countryCode, apiKey, datePosted);
-    } catch (err) {
-        // A quota-exhausted key will fail the location-resolution retry
-        // too (it's the same dead key) — let it propagate immediately so
-        // the caller can fail over to a different key instead of wasting
-        // a second doomed call.
-        if (isQuotaExhaustedError(err)) throw err;
-
-        // Informal/regional names ("Greater Toronto Area") have no
-        // direct canonical entry — resolve one via the Locations API
-        // and retry once before giving up.
-        const resolved = await resolveCanonicalLocation(location, apiKey);
-        if (!resolved || resolved === normalizedLocation) {
-            // A genuine zero-match query is a real search outcome, not a
-            // failure — return an empty set so the UI renders its normal
-            // empty state instead of an error banner.
-            if (isNoResultsError(err)) return [];
-            throw new Error(`Job search failed for location "${location}": ${(err as Error).message}`);
-        }
-        resolvedLocation = resolved;
-        try {
-            allJobs = await fetchSerpApiPages(jobTitle, resolved, countryCode, apiKey, datePosted);
-        } catch (retryErr) {
-            if (isNoResultsError(retryErr)) return [];
-            throw retryErr;
-        }
-    }
-
-    // Google Jobs broadens its geographic radius the deeper you
-    // paginate — keep a job only if its location matches the (possibly
-    // resolved) searched city, is unbound ("Anywhere"), or is
-    // explicitly titled remote.
-    return filterByCity(allJobs, resolvedLocation);
-}
 
 // Extracted 2026-08-31, real user-reported bug: this filter only ever ran
 // on SerpApi's own raw results — direct-ATS enrichment (scraper.actions.ts)
@@ -445,326 +206,19 @@ export function filterByCity<T extends { location?: string; title?: string }>(jo
     });
 }
 
-// Ordered chain of SerpApi accounts to try — SERPAPI_KEY is the primary,
-// SERPAPI_KEY_FALLBACK/SERPAPI_KEY_FALLBACK_2 are separate accounts kept
-// specifically so a monthly-quota exhaustion on one doesn't take job
-// search down (Phase 11). Only a quota-exhausted error advances to the
-// next key — any other failure (bad location, network) surfaces
-// immediately rather than silently burning every account's quota on the
-// same doomed request.
-function getSerpApiKeyChain(): string[] {
-    return [process.env.SERPAPI_KEY, process.env.SERPAPI_KEY_FALLBACK, process.env.SERPAPI_KEY_FALLBACK_2].filter(
-        (key): key is string => Boolean(key)
-    );
-}
 
-const serpApiProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode, datePosted) {
-        const keys = getSerpApiKeyChain();
-        if (keys.length === 0) throw new Error("Missing SERPAPI_KEY");
 
-        for (let i = 0; i < keys.length; i++) {
-            try {
-                return await searchWithSerpApiKey(jobTitle, location, countryCode, keys[i], datePosted);
-            } catch (err) {
-                const isLastKey = i === keys.length - 1;
-                if (isLastKey || !isQuotaExhaustedError(err)) throw err;
-                console.warn(`SerpApi key ${i + 1}/${keys.length} exhausted — retrying with the next account.`);
-            }
-        }
 
-        // Unreachable (the loop above always returns or throws), but keeps
-        // TypeScript's control-flow analysis happy about a return on every path.
-        throw new Error("All configured SerpApi keys were exhausted.");
-    }
-};
 
-// TheirStack Job Search API — https://theirstack.com, real structured job
-// data across 100+ countries (not scraped Google Jobs results). Used ONLY
-// as an overflow fallback: SerpApi's own 3-key chain (getSerpApiKeyChain
-// above) is the primary path and already absorbs normal monthly-quota
-// exhaustion on any single account; TheirStack only gets called — and only
-// then spends real credits (1 per job returned) — when EVERY configured
-// SerpApi key is exhausted at once. Direct user decision (2026-08-28):
-// Serper.dev was considered too but dropped entirely — confirmed via its
-// own docs it has no "jobs" search type at all (search/news/places/images/
-// videos/shopping/scholar/patents only), so it can't serve this role.
-type TheirStackJobResult = {
-    id: number | string;
-    job_title?: string;
-    company?: string;
-    description?: string;
-    url?: string;
-    source_url?: string;
-    final_url?: string;
-    date_posted?: string;
-    location?: string;
-    short_location?: string;
-    cities?: string[];
-    remote?: boolean;
-    employment_statuses?: string[];
-    salary_string?: string;
-    company_object?: { logo?: string };
-};
 
-// TheirStack's date filter is "days old, inclusive of today" (posted_at_max_age_days:
-// 0 = today only, 1 = today+yesterday) — same underlying concept as SerpApi's
-// DATE_POSTED_CHIPS above, just a different shape, so reuse that mapping
-// rather than inventing a second one.
-const THEIRSTACK_MAX_AGE_DAYS: Record<string, number> = {
-    today: 0,
-    "3days": 2,
-    week: 6,
-    month: 29,
-};
 
-function getTheirStackApiKey(): string | null {
-    return process.env.THEIRSTACK_API_KEY || null;
-}
 
-const theirstackProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode, datePosted) {
-        const apiKey = getTheirStackApiKey();
-        if (!apiKey) throw new Error("Missing THEIRSTACK_API_KEY");
 
-        const maxAgeDays = (datePosted && THEIRSTACK_MAX_AGE_DAYS[datePosted]) ?? 30;
 
-        const response = await fetch("https://api.theirstack.com/v1/jobs/search", {
-            method: "POST",
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                job_title_or: [jobTitle],
-                job_country_code_or: [countryCode.toUpperCase()],
-                posted_at_max_age_days: maxAgeDays,
-                limit: 25,
-            }),
-        });
 
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`TheirStack API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
 
-        const json = await response.json();
-        const jobs: TheirStackJobResult[] = Array.isArray(json) ? json : (json.data ?? []);
 
-        // Same "keep only what actually matches the searched city, or is
-        // explicitly unbound/remote" filter SerpApi's own provider applies
-        // at the end of searchWithSerpApiKey — TheirStack's location fields
-        // differ in shape (short_location/cities/remote vs a single
-        // location string) but the filtering intent is identical.
-        const searchCity = location.split(",")[0].trim().toLowerCase();
-        const filtered = jobs.filter((job) => {
-            if (job.remote) return true;
-            const candidates = [job.short_location, job.location, ...(job.cities ?? [])]
-                .filter((v): v is string => Boolean(v))
-                .map((v) => v.toLowerCase());
-            return candidates.some((c) => c.includes(searchCity));
-        });
 
-        return filtered.map((job) => ({
-            id: String(job.id),
-            title: job.job_title ?? "",
-            company: job.company ?? "",
-            location: job.short_location || job.location || (job.remote ? "Remote" : ""),
-            description: job.description ?? "",
-            url: job.source_url || job.url || job.final_url || "",
-            applyUrl: job.final_url || job.url,
-            salary: job.salary_string,
-            type: job.employment_statuses?.[0],
-            postedAt: job.date_posted,
-            source: "TheirStack",
-            logoUrl: job.company_object?.logo,
-        }));
-    },
-};
-
-// OpenWeb Ninja's JSearch API — a second, independent wrapper around the
-// SAME Google for Jobs index SerpApi's own google_jobs engine scrapes (its
-// own product page says so directly: "in Real-Time from Google for Jobs").
-// NOT run concurrently with SerpApi on every search (that would mean
-// paying its per-use PAYG cost on every healthy search for near-duplicate
-// data) — only reached as a fallback tier, same as TheirStack/Apify,
-// specifically so a SerpApi quota exhaustion (the real incident this
-// project hit live, 2026-09-01 — all 3 SerpApi accounts hit 0/250 for the
-// month) doesn't block search entirely until the monthly reset. Confirmed
-// live (2026-09-01, real test calls against a real trial key): genuine
-// global coverage (tested Toronto AND Berlin, correctly localized results
-// in each), and a real apply-link mix comparable to SerpApi/Adzuna's own
-// (several direct employer career-site links alongside trusted-aggregator
-// and known-low-quality-mirror links) — handled by the SAME
-// classifyApplyHost/rescue pipeline every other source already goes
-// through, no special-casing needed here.
-type JSearchJobResult = {
-    job_id: string;
-    job_title?: string;
-    employer_name?: string;
-    employer_logo?: string;
-    employer_website?: string;
-    job_description?: string;
-    job_apply_link?: string;
-    job_apply_is_direct?: boolean;
-    job_employment_type?: string;
-    job_city?: string;
-    job_state?: string;
-    job_country?: string;
-    job_is_remote?: boolean;
-    job_posted_at_datetime_utc?: string;
-    job_min_salary?: number;
-    job_max_salary?: number;
-    job_salary_currency?: string;
-};
-
-function getOpenWebNinjaApiKey(): string | null {
-    return process.env.OPENWEBNINJA_API_KEY || null;
-}
-
-// JobsPipe — real, non-redundant structured job data (Workday + Indeed +
-// Glassdoor + 30 ATS sources per their own docs, NOT the same Google for
-// Jobs index SerpApi/JSearch already share). Confirmed live (2026-09-02,
-// real test calls against a real trial key): correct results, real
-// apply-link mix (direct ATS + trusted aggregators, no low-quality mirrors
-// in the sample tested), and — notably — every record already carries
-// server-side freshness fields (status/closed_at/verified_at) this app
-// would otherwise have to build itself. Billed per job record returned
-// (trial: 1,000/month), not per request.
-type JobsPipeJobResult = {
-    id: string;
-    job_title: string;
-    company: string;
-    url?: string;
-    final_url?: string | null;
-    source_url?: string;
-    location?: string;
-    short_location?: string;
-    remote?: boolean;
-    employment_statuses?: string[];
-    salary_string?: string | null;
-    date_posted?: string;
-    status?: string;
-};
-
-function getJobsPipeApiKey(): string | null {
-    return process.env.JOBSPIPE_API_KEY || null;
-}
-
-const jobsPipeProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode) {
-        const apiKey = getJobsPipeApiKey();
-        if (!apiKey) throw new Error("Missing JOBSPIPE_API_KEY");
-
-        const response = await fetch("https://api.jobspipe.dev/v1/jobs/search", {
-            method: "POST",
-            headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-            body: JSON.stringify({
-                job_title_or: [jobTitle],
-                job_country_code_or: [countryCode.toUpperCase()],
-                limit: 25,
-            }),
-        });
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`JobsPipe API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const json = await response.json();
-        const jobs: JobsPipeJobResult[] = json.data ?? [];
-
-        // Only postings JobsPipe itself still marks active — same intent as
-        // this project's own is_active tracking on discovered_postings, no
-        // reason to surface something they've already flagged closed.
-        const active = jobs.filter((job) => !job.status || job.status === "active");
-        const filtered = filterByCity(
-            active.map((job) => ({ ...job, location: job.short_location || job.location || "" })),
-            location,
-        );
-
-        return filtered.map((job) => ({
-            id: `jobspipe-${job.id}`,
-            title: job.job_title ?? "",
-            company: job.company ?? "",
-            location: job.remote ? "Remote" : job.short_location || job.location || "",
-            description: "",
-            url: job.source_url || job.url || "",
-            applyUrl: job.final_url || job.url || job.source_url,
-            salary: job.salary_string ?? undefined,
-            type: job.employment_statuses?.[0],
-            postedAt: job.date_posted,
-            source: "JobsPipe",
-        }));
-    },
-};
-
-function formatJSearchLocation(job: JSearchJobResult): string {
-    if (job.job_is_remote) return "Remote";
-    return [job.job_city, job.job_state].filter(Boolean).join(", ") || job.job_country || "";
-}
-
-function formatJSearchSalary(job: JSearchJobResult): string | undefined {
-    if (!job.job_min_salary && !job.job_max_salary) return undefined;
-    const currency = job.job_salary_currency ?? "";
-    if (job.job_min_salary && job.job_max_salary) {
-        return `${currency}${Math.round(job.job_min_salary)} - ${currency}${Math.round(job.job_max_salary)}`;
-    }
-    return `${currency}${Math.round(job.job_min_salary ?? job.job_max_salary ?? 0)}`;
-}
-
-const jsearchProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode) {
-        const apiKey = getOpenWebNinjaApiKey();
-        if (!apiKey) throw new Error("Missing OPENWEBNINJA_API_KEY");
-
-        const params = new URLSearchParams({
-            query: `${jobTitle} in ${location}`,
-            country: countryCode.toLowerCase(),
-            num_pages: "1",
-        });
-
-        const response = await fetch(`https://api.openwebninja.com/jsearch/search-v2?${params.toString()}`, {
-            headers: { "x-api-key": apiKey },
-        });
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`JSearch API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const json = await response.json();
-        if (json.status !== "OK") {
-            throw new Error(`JSearch API error: ${json.error?.message ?? "unknown error"}`);
-        }
-
-        const jobs: JSearchJobResult[] = json.data?.jobs ?? [];
-
-        // Same "keep only what actually matches the searched city, or is
-        // explicitly unbound/remote" filter every other provider applies.
-        const searchCity = location.split(",")[0].trim().toLowerCase();
-        const filtered = jobs.filter((job) => {
-            if (job.job_is_remote) return true;
-            const candidates = [job.job_city, job.job_state, job.job_country].filter((v): v is string => Boolean(v)).map((v) => v.toLowerCase());
-            return candidates.some((c) => c.includes(searchCity));
-        });
-
-        return filtered.map((job) => ({
-            id: `jsearch-${job.job_id}`,
-            title: job.job_title ?? "",
-            company: job.employer_name ?? "",
-            location: formatJSearchLocation(job),
-            description: job.job_description ?? "",
-            url: job.job_apply_link ?? "",
-            applyUrl: job.job_apply_link,
-            salary: formatJSearchSalary(job),
-            type: job.job_employment_type,
-            postedAt: job.job_posted_at_datetime_utc,
-            source: "JSearch",
-            logoUrl: job.employer_logo,
-        }));
-    },
-};
 
 // Adzuna's own structured job-board API — real, direct listings (not a
 // Google Jobs scrape), confirmed live 2026-08-30 against the exact
@@ -907,116 +361,9 @@ const adzunaProvider: JobScraperProvider = {
 // just a docs read) if this is ever revisited once a real Publisher key
 // exists.
 
-// RemoteOK's description is full rich-text HTML (Careerjet's own <b>-tagged
-// snippets would have needed the same treatment), unlike SerpApi/Adzuna's
-// already-plain-text descriptions. Deliberately minimal (strip tags, decode
-// the handful of entities actually observed live in real responses,
-// collapse whitespace) rather than a full HTML-entity table — this only
-// needs to produce readable plain text for the evaluator/UI, not a
-// lossless conversion.
-function stripHtml(html: string): string {
-    return html
-        .replace(/<[^>]+>/g, " ")
-        .replace(/&nbsp;/g, " ")
-        .replace(/&amp;/g, "&")
-        .replace(/&#39;|&apos;/g, "'")
-        .replace(/&quot;/g, '"')
-        .replace(/\s+/g, " ")
-        .trim();
-}
 
-// RemoteOK's public JSON feed — confirmed live 2026-09-03, keyless, no
-// registration (https://remoteok.com/api, real HTTP 200, real postings).
-// Unlike every other provider here, this is a flat, unfiltered feed of
-// RemoteOK's current ~100 most recent listings site-wide, not a per-query
-// search endpoint — so relevance filtering happens client-side, the same
-// title-word-overlap approach lib/atsProviders.ts's fetchIcimsJobs already
-// uses for the same "server can't filter, so we must" situation. Every
-// result is inherently remote by construction (that's RemoteOK's entire
-// premise), so this is deliberately NOT run through filterByCity in
-// fetchAndMergeFreeSources below — a candidate searching from any city can
-// apply to a genuinely remote role regardless of what city they searched.
-// RemoteOK's own API terms (in its own response body) ask for attribution
-// back to remoteok.com — satisfied by this app's existing "source" badge
-// convention (source: "RemoteOK", same pattern as "Indeed (via Apify)") and
-// by applyUrl pointing at RemoteOK's own real listing page, never rewritten.
-//
-// Real data-quality caveat found live, not assumed clean: a sample of the
-// feed showed several genuinely non-tech postings (e.g. "Kitchen
-// Technician", "Janitor") carrying nonsensical tag arrays that included
-// "engineer"/"dev" alongside "legal"/"medical" — RemoteOK's own auto-tagger
-// evidently mis-tags some non-tech listings it also carries. Confirmed live
-// this actually breaks search relevance: an "Engineer" query matched
-// "Kitchen Technician" (Four Seasons) and "Joiner" (City of York Council)
-// purely off their noise tags before this was caught — see
-// remoteOkProvider's own filter comment for the fix (match job.position
-// only, tags array not used for relevance at all).
-type RemoteOkJobResult = {
-    id?: string;
-    company?: string;
-    position?: string;
-    tags?: string[];
-    location?: string;
-    description?: string;
-    date?: string;
-    salary_min?: number;
-    salary_max?: number;
-    apply_url?: string;
-    url?: string;
-};
 
-function titleWordsMatch(searchTitle: string, haystack: string): boolean {
-    const words = searchTitle
-        .toLowerCase()
-        .split(/[^a-z0-9]+/)
-        .filter((w) => w.length > 2);
-    if (words.length === 0) return true;
-    const lowerHaystack = haystack.toLowerCase();
-    return words.every((w) => lowerHaystack.includes(w));
-}
 
-const remoteOkProvider: JobScraperProvider = {
-    async search(jobTitle) {
-        const response = await fetch("https://remoteok.com/api", {
-            // A generic browser UA — RemoteOK's own API has been observed
-            // to reject requests with no User-Agent at all.
-            headers: { "User-Agent": "Mozilla/5.0" },
-        });
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`RemoteOK API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const json: RemoteOkJobResult[] = await response.json();
-        // The feed's own first entry is a legal/terms notice, not a job
-        // (confirmed live: no `position` field) — filtered out by the
-        // `.position` check below rather than assumed to always be index 0.
-        //
-        // Matches against job.position ONLY, deliberately excluding tags —
-        // a real bug found live testing this exact change (2026-09-03): a
-        // "Engineer" search matched "Kitchen Technician" (Four Seasons) and
-        // "Joiner" (City of York Council), both non-tech postings whose
-        // tags array nonsensically included "engineer" (see the
-        // RemoteOkJobResult comment above for the wider mis-tagging
-        // pattern). The job's own position title is unambiguous; the tags
-        // array on this feed is not reliable enough to search against.
-        return json
-            .filter((job) => job.position && titleWordsMatch(jobTitle, job.position))
-            .map((job) => ({
-                id: `remoteok-${job.id}`,
-                title: job.position ?? "",
-                company: job.company ?? "",
-                location: "Remote",
-                description: stripHtml(job.description ?? ""),
-                url: job.url ?? job.apply_url ?? "",
-                applyUrl: job.apply_url ?? job.url,
-                salary: job.salary_min && job.salary_max ? `$${job.salary_min} - $${job.salary_max}` : undefined,
-                postedAt: job.date,
-                source: "RemoteOK",
-            }));
-    },
-};
 
 // Arbeitnow was researched and its real API/field shape confirmed via
 // WebFetch (2026-08-30, keyless/public, title/company_name/location/url/
@@ -1056,6 +403,13 @@ function getApifyToken(): string | null {
     return process.env.APIFY_API_TOKEN || null;
 }
 
+// DORMANT, not deleted (2026-09-04, direct user decision: "we are not
+// using them for now"). Kept defined, tested and credential-gated so
+// re-enabling is a one-line push into searchJobs's sources array rather
+// than a rewrite. The disable is deliberate: an unused-warning left
+// standing forever trains everyone to ignore this file's lint output,
+// which is how the SerpApi providers sat dead here unnoticed.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const apifyProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
         const token = getApifyToken();
@@ -1149,6 +503,105 @@ type KaixLinkedInJob = {
     companyLogoUrl?: string;
 };
 
+// kaix/indeed-scraper (2026-09-04). Chosen after surveying ~60 job actors
+// across the Apify store plus an independent agy pass over the pricing
+// models the store listings do not expose (compute-unit and monthly-rental
+// actors, which work out at $0.20-$0.75/1k once residential proxy bandwidth
+// is counted). Nothing came close.
+//
+//   kaix/indeed      $0.00005/job = $0.05 per 1,000   <- this
+//   kaix/linkedin    $0.0001/job  = $0.10 per 1,000
+//   next cheapest    $0.0007/job  = $0.70 per 1,000
+//   multi-board      $0.00225/job = $2.25 per 1,000
+//
+// Two things measured live on a real "Financial Advisor"/Toronto run before
+// wiring this in, both of which matter more than the price:
+//
+// 1. DESCRIPTIONS ARE FULL. min 3,727 / median 5,145 / max 8,452 chars,
+//    0 of 30 under 150. So Indeed needs NO jobPreFilter exemption -- unlike
+//    LinkedIn, where 78 of 82 rows fall under that bar and survive only
+//    because "linkedin" is on the exemption list. Checking this BEFORE
+//    shipping is deliberate: that one rule has now silently swallowed two
+//    entire sources on arrival.
+// 2. APPLY LINKS POINT AT THE EMPLOYER. urls.external / apply.url resolve to
+//    the company's own ATS (e.g. careers.southwire.com), not an Indeed
+//    redirect -- which is the whole basis of this product's link quality.
+//
+// searchMode "basic" is deliberate: 30 jobs in 3.7s. "rich" adds
+// signals.applyCount (Indeed's applicant count) but caps at ~450 results and
+// is slower; revisit only if that badge is wanted on the card.
+type KaixIndeedJob = {
+    id?: string;
+    title?: { text?: string };
+    urls?: { indeed?: string; external?: string; apply?: string };
+    apply?: { url?: string };
+    description?: { text?: string; html?: string };
+    company?: { name?: string };
+    location?: { formatted?: string };
+    dates?: { posted?: string };
+    salary?: { text?: string | null };
+    classification?: { jobType?: string[] };
+};
+
+// The actor takes an uppercase ISO country from a fixed enum; this app
+// passes lowercase codes around. "gb" is the one that does not round-trip --
+// Indeed's enum calls it UK.
+function indeedCountryCode(countryCode: string): string {
+    const upper = (countryCode || "ca").toUpperCase();
+    return upper === "GB" ? "UK" : upper;
+}
+
+const apifyIndeedProvider: JobScraperProvider = {
+    async search(jobTitle, location, countryCode) {
+        const token = getApifyToken();
+        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        const maxItems = apifyItemCap("APIFY_INDEED_MAX_ITEMS", 100);
+        if (maxItems === 0) return [];
+
+        const response = await fetch(
+            `https://api.apify.com/v2/acts/kaix~indeed-scraper/run-sync-get-dataset-items?token=${token}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    keyword: jobTitle,
+                    location,
+                    country: indeedCountryCode(countryCode),
+                    maxItems,
+                    sort: "relevance",
+                    searchMode: "basic",
+                }),
+            },
+        );
+
+        if (!response.ok) {
+            const bodyText = await response.text().catch(() => "");
+            throw new Error(`Apify Indeed error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
+        }
+
+        const jobs: KaixIndeedJob[] = await response.json();
+        return jobs
+            .filter((job) => job.id && job.title?.text)
+            .map((job) => ({
+                id: `indeed-${job.id}`,
+                title: job.title?.text ?? "",
+                company: job.company?.name ?? "",
+                location: job.location?.formatted ?? "",
+                description: job.description?.text ?? "",
+                url: job.urls?.indeed ?? "",
+                // Employer ATS link first, Indeed's own page only as a last
+                // resort -- pickBestApplyLink/classifyApplyHost downstream
+                // rank a real employer host above an aggregator anyway, but
+                // handing them the good one directly avoids a rescue pass.
+                applyUrl: job.apply?.url || job.urls?.external || job.urls?.indeed,
+                salary: job.salary?.text || undefined,
+                type: job.classification?.jobType?.[0] || undefined,
+                postedAt: job.dates?.posted,
+                source: "Indeed",
+            }));
+    },
+};
+
 const apifyLinkedInProvider: JobScraperProvider = {
     async search(jobTitle, location) {
         const token = getApifyToken();
@@ -1239,6 +692,13 @@ type HirebaseJob = {
     salaryRange?: { min?: number; max?: number; currency?: string };
 };
 
+// DORMANT, not deleted (2026-09-04, direct user decision: "we are not
+// using them for now"). Kept defined, tested and credential-gated so
+// re-enabling is a one-line push into searchJobs's sources array rather
+// than a rewrite. The disable is deliberate: an unused-warning left
+// standing forever trains everyone to ignore this file's lint output,
+// which is how the SerpApi providers sat dead here unnoticed.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const apifyHirebaseProvider: JobScraperProvider = {
     async search(jobTitle, location) {
         const token = getApifyToken();
@@ -1346,6 +806,10 @@ function dedupeJobs(jobs: NormalizedJob[]): NormalizedJob[] {
 // short pause, before finally giving up and returning SerpApi's results
 // alone — same "retry once, then fall back" shape lib/evaluator.ts's own
 // lite-evaluation JSON-parse retry already uses.
+// DORMANT while Adzuna is paused (see searchJobs). Kept with its retry
+// behaviour intact -- a transient Adzuna error used to drop straight to an
+// empty result for the whole search, and that fix should survive the pause.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function searchAdzunaWithRetry(jobTitle: string, location: string, countryCode: string): Promise<NormalizedJob[]> {
     try {
         return await adzunaProvider.search(jobTitle, location, countryCode);
@@ -1367,106 +831,24 @@ async function searchAdzunaWithRetry(jobTitle: string, location: string, country
 // account is genuinely required). RemoteOK's own results skip filterByCity
 // entirely (see remoteOkProvider's own comment — every result is inherently
 // remote by construction).
-async function fetchAndMergeFreeSources(
-    serpApiPromise: Promise<NormalizedJob[]>,
-    jobTitle: string,
-    location: string,
-    countryCode: string,
-): Promise<NormalizedJob[]> {
-    const extraSources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
-
-    if (getAdzunaCredentials()) {
-        extraSources.push({
-            name: "Adzuna",
-            // filterByCity as a defensive second layer, not the primary
-            // control — Adzuna's own `where=` param already does real
-            // server-side filtering (verified live: Toronto/Vancouver/
-            // Halifax return sensibly different counts), but this keeps
-            // exactly one function deciding city relevance rather than
-            // trusting each provider's own filtering to be equally strict.
-            promise: searchAdzunaWithRetry(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
-        });
-    }
-    extraSources.push({ name: "RemoteOK", promise: remoteOkProvider.search(jobTitle, location, countryCode) });
-
-    // The two PAID Apify sources (2026-09-04) — see their definitions above
-    // for the measurements behind choosing them. Run on every search rather
-    // than as an exhaustion fallback, because their whole point is closing a
-    // volume/quality gap that exists whether or not SerpApi is healthy:
-    // LinkedIn was a total blind spot, and hirebase is the only source here
-    // returning direct employer ATS links with real salary ranges.
-    //
-    // Both are gated on APIFY_API_TOKEN and on their own item caps, so a
-    // deployment without the token (or with the caps set to 0) simply
-    // behaves as it did before. filterByCity applies to hirebase because it
-    // returns whole-country matches; LinkedIn results are already
-    // location-scoped by the actor's own `location` input.
-    if (getApifyToken()) {
-        extraSources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
-        extraSources.push({
-            name: "Employer ATS",
-            promise: apifyHirebaseProvider.search(jobTitle, location, countryCode).then((jobs) => filterByCity(jobs, location)),
-        });
-    }
-
-    // Real bug found by running a live search (2026-09-04): this used to
-    // await serpApiPromise UNGUARDED inside Promise.all, so the moment
-    // SerpApi rejected — which it does on every search right now, all three
-    // keys sitting at 0/250 — the whole merge rejected and every other
-    // source's results were thrown away. Those sources had already been
-    // started, so the work (and, for the paid ones, the spend) happened and
-    // was then discarded. The caller's catch then re-ran a narrower set via
-    // fetchMergedExhaustionFallback, which is why a search returned only
-    // Adzuna/JobsPipe/JSearch and zero LinkedIn or Employer-ATS results.
-    //
-    // SerpApi is now caught like every other source. One dead provider must
-    // never be able to discard the others; whether it failed is reported
-    // back so the caller can still decide about its own last-resort tiers.
-    let serpApiFailure: unknown = null;
-    const guardedSerpApi = serpApiPromise.catch((err) => {
-        serpApiFailure = err;
-        return [] as NormalizedJob[];
-    });
-
-    const [primary, ...settled] = await Promise.all([
-        guardedSerpApi,
-        ...extraSources.map(({ name, promise }) =>
-            // Merging is a best-effort improvement, never a reason to fail a
-            // search that already has real results from elsewhere — Adzuna's
-            // own entry above has already had its one real retry by now.
-            promise.catch((err) => {
-                console.error(`[jobScraper] ${name} merge failed`, err);
-                return [] as NormalizedJob[];
-            }),
-        ),
-    ]);
-
-    const merged = dedupeJobs([primary, ...settled].flat());
-    settled.forEach((jobs, i) => {
-        if (jobs.length > 0) console.warn(`[jobScraper] ${extraSources[i].name} contributed ${jobs.length} result(s) alongside SerpApi's ${primary.length}.`);
-    });
-
-    // Only escalate to the paid last-resort tiers when SerpApi genuinely
-    // failed AND nothing else produced anything — not merely because SerpApi
-    // is out, which is now the normal state rather than an emergency.
-    if (merged.length === 0 && serpApiFailure) throw serpApiFailure;
-    return merged;
-}
-
-// TEMPORARY, DELIBERATE CONFIGURATION (2026-09-04, direct user request):
-// every legacy provider is switched off and a live search now runs ONLY the
-// two paid Apify sources. This is an isolation test — with Adzuna, SerpApi,
-// JSearch, JobsPipe, RemoteOK, TheirStack and the Apify Indeed actor all out
-// of the way, whatever appears on screen is attributable to LinkedIn +
-// Employer-ATS alone, plus this app's own free ATS crawl (which lives in
-// lib/actions/scraper.actions.ts, not here, and is unaffected).
+// SOURCE SET (2026-09-04, direct user decision): Adzuna + Apify LinkedIn +
+// this app's own ATS layer. SerpApi, JSearch, JobsPipe, RemoteOK and
+// TheirStack are no longer part of the product -- not switched off pending a
+// quota reset, dropped.
 //
-// Nothing was deleted to achieve this. Every provider above is still defined,
-// still tested and still wired to its own credential check, so restoring the
-// previous behaviour is a matter of putting the calls back into
-// fetchAndMergeFreeSources — see git history for the exact prior shape.
-// SerpApi's country-code resolution is also skipped, since it needs a working
-// SerpApi key and all three are currently exhausted.
+// The third leg is not in this file: reactive direct-ATS enrichment and the
+// proactive crawl cache both live in lib/actions/scraper.actions.ts and run
+// after searchJobs returns. They are the largest source by volume (386,751
+// cached postings across 8 ATS platforms) and the origin of this product's
+// best apply-link authenticity, so "two sources" here understates the real
+// pipeline considerably.
+//
+// Every source is a PEER. There is deliberately no primary. The previous
+// shape treated SerpApi as primary and merged the rest into it, which is
+// exactly how a single provider's rejection discarded every other source's
+// already-fetched (and, for the paid ones, already-billed) results. Each
+// entry below is caught independently; one dead source can never take the
+// others down with it.
 export async function searchJobs(
     jobTitle: string,
     location: string,
@@ -1477,9 +859,10 @@ export async function searchJobs(
     void provider;
     void datePosted;
 
-    if (!getApifyToken()) {
-        throw new Error("Missing APIFY_API_TOKEN — the current search configuration requires it.");
-    }
+    // Credential-gated per source, and NOT a hard failure: with more than
+    // one source configured, a single missing or rotated key must degrade
+    // the search, never abort it. Only a total absence of configured
+    // sources is a real error worth throwing on.
 
     // hirebase deliberately NOT called here (2026-09-04). Two independent
     // research passes reached the same conclusion, and it matches what we
@@ -1490,9 +873,36 @@ export async function searchJobs(
     // genuine additions (SuccessFactors/Oracle coverage, parsed salary and
     // visa flags) are not worth 30x while a free equivalent exists. The
     // provider stays defined and tested for the day that changes.
-    const sources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [
-        { name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) },
-    ];
+    const sources: Array<{ name: string; promise: Promise<NormalizedJob[]> }> = [];
+
+    if (getApifyToken()) {
+        // LinkedIn results are already location-scoped by the actor's own
+        // `location` input, so no filterByCity pass here.
+        sources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
+        // Indeed is scoped by its own location + radius inputs, same as
+        // LinkedIn, so it needs no filterByCity pass either. Verified live:
+        // a Toronto search returned Toronto-area rows only.
+        sources.push({ name: "Indeed", promise: apifyIndeedProvider.search(jobTitle, location, countryCode) });
+    }
+
+    // Adzuna PAUSED (2026-09-04, direct user decision: "for now pause the
+    // adzuna as well"), dormant rather than deleted, same posture as the two
+    // Apify providers above.
+    //
+    // Measured on a real "Financial Advisor"/Toronto run immediately before
+    // this: Adzuna contributed 219 of 289 unique results -- the larger source
+    // by volume. Pausing it is a deliberate trade of breadth for speed, and
+    // the saving is mostly DOWNSTREAM rather than in the fetch: those 219
+    // extra rows each cost an apply-link verification round trip, a
+    // canonicalization upsert, and a share of the evaluation chunks.
+    //
+    // Re-enabling is one push into `sources` with the filterByCity wrapper
+    // that used to be here (Adzuna's own `where=` filters server-side, but
+    // this app keeps exactly one function deciding city relevance).
+
+    if (sources.length === 0) {
+        throw new Error("No job source is configured — set APIFY_API_TOKEN and/or ADZUNA_APP_ID/ADZUNA_APP_KEY.");
+    }
 
     const settled = await Promise.all(
         sources.map(({ name, promise }) =>

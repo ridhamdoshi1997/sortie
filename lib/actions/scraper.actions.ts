@@ -61,19 +61,27 @@ const ATS_FETCH_TIMEOUT_MS = 6000;
 // aren't on any ATS platform we cover.
 //
 // Sized against what the cap actually costs, which is TIME more than money.
-// Scoring runs in chunks of 5 jobs per AI call (evaluateJobsAsync) behind a
-// global 12-calls-per-60s throttle shared by every user, so:
-//     80 jobs  = 16 calls ≈ 80s to finish scoring
-//    150 jobs  = 30 calls ≈ 150s
-// Jobs are VISIBLE immediately either way — only the scores stream in
-// progressively — and lib/jobRelevance.ts already orders evaluation so the
+// Scoring runs in chunks of 10 jobs per AI call (evaluateJobsAsync) behind a
+// GLOBAL 12-calls-per-60s throttle shared by every user. Because the
+// throttle is a per-window gate, cost is a step function, not a slope --
+// what matters is how many 60s windows the call count spans:
+//    120 jobs = 12 calls = exactly ONE window
+//    150 jobs = 15 calls = spills into a SECOND window (+60s)
+//
+// 120, down from 150 (2026-09-04). The 150 was set while chunk size was
+// still 5 (the comment here computed 30 calls, and was never updated when
+// Phase 45 raised chunks 5 -> 10 specifically to halve call count). Those
+// two changes silently cancelled: call count went 8 -> 15 and landed back
+// over the window boundary, re-adding the ~60s the chunk-size fix had just
+// removed. 120 keeps the whole search inside one window.
+//
+// Jobs are VISIBLE immediately either way -- only the scores stream in
+// progressively -- and lib/jobRelevance.ts already orders evaluation so the
 // most relevant jobs are scored first, which matters more at this size.
-// This is the knob to turn back down if scoring latency or shared-throttle
-// contention becomes the complaint; it scales linearly and predictably.
 //
 // Deliberately NOT unbounded: the throttle is global, so one large search
 // consumes capacity every other user's search is waiting on.
-const MAX_EVALUATED_JOBS = 150;
+const MAX_EVALUATED_JOBS = 120;
 
 // Matches the research-settled "top 15-20" figure for a relevance
 // pre-filter — see rankJobsByRelevance's own use site comment. Only

@@ -142,7 +142,12 @@ function DimensionRow({
                         {dim.grade} · {style.label}
                     </span>
                 </div>
-                <p className="text-xs leading-5 text-text-muted">{dim.note}</p>
+                {/* text-secondary, not text-muted: measured live at 4.30:1 against
+                    --color-surface in dark mode, under the 4.5:1 AA floor for
+                    body text. Also keeps this identical to PendingEvaluation
+                    row copy, so nothing shifts colour when the real grades
+                    replace the pending state. */}
+                <p className="text-xs leading-5 text-text-secondary">{dim.note}</p>
             </div>
             <ChevronRight className="mt-1 h-4 w-4 shrink-0 -translate-x-1 text-text-muted opacity-0 transition-all duration-200 group-hover:translate-x-0 group-hover:opacity-100" />
         </button>

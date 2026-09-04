@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, ExternalLink, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
+import { formatPostedAge } from "@/lib/jobFreshness";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { markJobUnavailable, setApplicationStatus, toggleHideJob, toggleSaveJob } from "@/actions/jobs";
@@ -38,24 +39,6 @@ function scoreTierClass(score: number) {
 // Returns null for a missing or unparseable date — no date is not evidence of
 // staleness, the same rule lib/jobPreFilter.ts's isStale already applies, so
 // the row simply omits it rather than guessing.
-function formatPostedAge(postedAt: string | null | undefined): { label: string; isFresh: boolean } | null {
-  if (!postedAt) return null;
-  const ts = Date.parse(postedAt);
-  if (Number.isNaN(ts)) return null;
-
-  const minutes = Math.floor((Date.now() - ts) / 60000);
-  if (minutes < 0) return null; // a future date is bad data, not freshness
-  if (minutes < 60) return { label: minutes <= 1 ? "Just posted" : `${minutes} minutes ago`, isFresh: true };
-
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return { label: `${hours} hour${hours === 1 ? "" : "s"} ago`, isFresh: true };
-
-  const days = Math.floor(hours / 24);
-  if (days < 30) return { label: `${days} day${days === 1 ? "" : "s"} ago`, isFresh: days <= 2 };
-
-  const months = Math.floor(days / 30);
-  return { label: `${months} month${months === 1 ? "" : "s"} ago`, isFresh: false };
-}
 
 // job_type is deliberately excluded here — it's already shown in the meta
 // row above (job.job_type icon+label), no need to repeat it as a pill too.

@@ -26,8 +26,28 @@ type AdminDb = {
 // "or" broadens this to "matches ANY of the candidate's real skills/
 // desired titles" — the right behavior for a relevance RANKING (more
 // matched terms should rank higher), not a strict pass/fail filter.
-function buildRelevanceQuery(profile: Pick<Profile, "skills" | "job_titles_seeking">): string | null {
-  const terms = [...(profile.skills ?? []), ...(profile.job_titles_seeking ?? [])]
+function buildRelevanceQuery(
+  profile: Pick<Profile, "skills" | "job_titles_seeking">,
+  searchedTitle?: string | null,
+): string | null {
+  // The SEARCHED title leads, when there is one.
+  //
+  // Ranking against the profile alone is the wrong yardstick the moment a
+  // candidate searches outside their own history -- a deliberate career
+  // pivot. Measured live: a .NET/C#/Angular profile against a real set of
+  // 85 Financial Advisor listings produces zero overlap on every row, so a
+  // profile-only ranking has no signal at all in exactly the case a user is
+  // most deliberately expressing intent.
+  //
+  // Both together is better than either alone: every result already matches
+  // the searched title (filterByTitleRelevance ran upstream), so the title
+  // terms rank within that set while the profile terms lift the ones that
+  // also touch what the candidate actually knows.
+  const terms = [
+    ...(searchedTitle ? [searchedTitle] : []),
+    ...(profile.skills ?? []),
+    ...(profile.job_titles_seeking ?? []),
+  ]
     .map((t) => t.trim())
     .filter(Boolean);
   if (terms.length === 0) return null;
@@ -45,10 +65,12 @@ export async function rankJobsByRelevance(
   admin: AdminDb,
   jobIds: string[],
   profile: Pick<Profile, "skills" | "job_titles_seeking">,
+  /** The title the user actually searched, when the caller knows it. */
+  searchedTitle?: string | null,
 ): Promise<string[]> {
   if (jobIds.length === 0) return [];
 
-  const query = buildRelevanceQuery(profile);
+  const query = buildRelevanceQuery(profile, searchedTitle);
   if (!query) return jobIds; // no profile signal to rank against — leave order unchanged
 
   const { data, error } = await admin.database.rpc("rank_jobs_by_relevance", {
@@ -61,6 +83,21 @@ export async function rankJobsByRelevance(
     return jobIds;
   }
 
-  const ranked = (data as RankedJobId[]).sort((a, b) => b.rank - a.rank);
+  const rows = data as RankedJobId[];
+
+  // No signal at all -- every job scored exactly 0 -- means the candidate's
+  // terms overlap nothing in this result set. That is the NORMAL case for a
+  // deliberate career pivot (a .NET profile searching "Financial Advisor"),
+  // not an error.
+  //
+  // Return the caller's own order untouched when that happens. Sorting an
+  // all-zero list is a sort on equal keys, so the output would be whatever
+  // order Postgres happened to return rows in -- unordered by definition,
+  // since the RPC has no ORDER BY. Adopting that would silently REPLACE a
+  // caller's meaningful order (found_at on the results page) with an
+  // arbitrary one, which is a regression dressed up as a ranking.
+  if (rows.length === 0 || rows.every((r) => !(Number(r.rank) > 0))) return jobIds;
+
+  const ranked = [...rows].sort((a, b) => b.rank - a.rank);
   return ranked.map((r) => r.id);
 }

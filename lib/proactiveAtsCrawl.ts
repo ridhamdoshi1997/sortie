@@ -584,6 +584,11 @@ export async function pruneStaleDiscoveredPostings(admin: AdminDb): Promise<{ pr
 // single source of truth for city relevance, and it implements the same
 // first-segment-before-the-comma rule filterByCity does, so this cannot
 // reintroduce the wrong-city bug that pass was originally added for.
+// Below this many rows, a title match is considered too thin to be the whole
+// answer and the widened second pass is worth its cost. Half the requested
+// limit: a query returning most of what it asked for does not need widening.
+const THIN_RESULT_THRESHOLD = 15;
+
 export async function queryProactiveCrawlCache(
   admin: AdminDb,
   searchTitle: string,
@@ -596,12 +601,59 @@ export async function queryProactiveCrawlCache(
   // cache contributed ~0 jobs to real searches despite holding 98,000+
   // postings. See migrations/20260903180000_fix-discovered-postings-location-
   // filter.sql for the full measurement.
+  //
+  // TWO-STAGE title match (2026-09-04). websearch_to_tsquery joins bare words
+  // with AND, so "Financial Advisor" compiled to 'financi' & 'advisor' and
+  // only matched titles carrying BOTH words. Every "Associate Advisor",
+  // "Business Advisor" and "Investment Advisor" in the cache failed the
+  // predicate despite being exactly what the searcher wanted.
+  //
+  // Measured live against the real 463,705-row table:
+  //   'Financial Advisor' / Toronto  ->  4 rows, only 1 actually in Toronto
+  //   'Registered Nurse'  / Toronto  ->  8 rows, only 1 actually in Toronto
+  //   'Software Engineer' / Toronto  -> 30 rows, all 30 in Toronto
+  // So AND only starves MULTI-WORD NICHE titles; common ones are fine.
+  //
+  // Deliberately fixed HERE rather than in the RPC. Rewriting the SQL to OR
+  // semantics was tried first and reverted twice: it lifted Financial Advisor
+  // to 30 genuine Toronto rows, but 'Software Engineer' then matched ~72,000
+  // rows ("engineer" alone) and ts_rank had to score all of them, which
+  // exceeded the statement timeout outright. A pg_trgm index on location and
+  // a MATERIALIZED location-first CTE were both tried and neither made the
+  // common case safe. A widening that breaks the most common query is not a
+  // fix, so the fast, known-good SQL is left exactly as it was.
+  //
+  // Instead: run the precise query first, and only widen when it comes back
+  // thin. Common queries never pay for the widening at all, and the fallback
+  // is best-effort -- if it times out or errors, the precise results still
+  // stand. Same " or " expansion lib/jobRelevance.ts's buildRelevanceQuery
+  // already uses for the other full-text path in this codebase.
   const { data, error } = await admin.database.rpc("search_discovered_postings", {
     p_query: searchTitle,
     p_limit: limit,
     p_location: searchLocation || null,
   });
-  if (error || !data) return [];
+  if (error) return [];
+
+  let rows_ = (data ?? []) as unknown[];
+
+  const words = searchTitle.trim().split(/\s+/).filter(Boolean);
+  if (rows_.length < THIN_RESULT_THRESHOLD && words.length > 1) {
+    try {
+      const { data: widened, error: widenError } = await admin.database.rpc("search_discovered_postings", {
+        p_query: words.join(" or "),
+        p_limit: limit,
+        p_location: searchLocation || null,
+      });
+      if (!widenError && Array.isArray(widened) && widened.length > rows_.length) {
+        rows_ = widened as unknown[];
+      }
+    } catch {
+      // Best-effort only: keep the precise results rather than failing the
+      // whole cache lookup because the widened query was expensive.
+    }
+  }
+  if (!rows_) return [];
 
   type DiscoveredPostingRow = {
     external_id: string;
@@ -616,7 +668,7 @@ export async function queryProactiveCrawlCache(
     posted_at: string | null;
   };
 
-  const rows = data as DiscoveredPostingRow[];
+  const rows = rows_ as DiscoveredPostingRow[];
   const normalized: NormalizedJob[] = rows
     .filter((row) => row.title && row.apply_url)
     .map((row) => ({

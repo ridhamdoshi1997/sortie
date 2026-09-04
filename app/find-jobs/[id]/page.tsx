@@ -12,6 +12,8 @@ import { DocumentGenerator } from "@/components/job-details/DocumentGenerator";
 import { EmailDrafts } from "@/components/job-details/EmailDrafts";
 import { EvaluationBreakdown } from "@/components/job-details/EvaluationBreakdown";
 import { RequestFullEvaluationButton } from "@/components/job-details/RequestFullEvaluationButton";
+import { JobProvenance } from "@/components/job-details/JobProvenance";
+import { getJobProvenance } from "@/lib/jobProvenance";
 import { HiringProcess } from "@/components/job-details/HiringProcess";
 import { InsiderConnections } from "@/components/job-details/InsiderConnections";
 import { LeverageSynthesizer } from "@/components/job-details/LeverageSynthesizer";
@@ -231,6 +233,12 @@ export default async function JobDetailsPage({ params }: Props) {
   // not a claim of precision we don't have.
   const isRemote = /\bremote\b/i.test(`${job.title ?? ""} ${job.location ?? ""}`);
 
+  // Provenance for JobProvenance. Read through a scoped server helper, not
+  // the session client — job_sources is service-role-only (RLS on, zero
+  // client policies), so a session read returns an empty array with no
+  // error. See lib/jobProvenance.ts for the full justification.
+  const { sources: sourceRows, applicantCount, experienceLevel } = await getJobProvenance(job.id, user.id);
+
   const { data: application } = await insforge.database
     .from("applications")
     .select("resume_pdf_url,cover_letter_pdf_url")
@@ -285,6 +293,12 @@ export default async function JobDetailsPage({ params }: Props) {
     .select("id", { count: "exact", head: true })
     .eq("user_id", user.id)
     .eq("role_family", roleFamily);
+
+  // Does the Fit section have anything real to show? A lite score alone is
+  // enough (MatchScore renders from match_score/match_reason); the full
+  // 10-dimension array is not required.
+  const hasFitContent =
+    job.match_score !== null || (Array.isArray(job.evaluation) && job.evaluation.length > 0);
 
   const applyVerdict = computeApplyVerdict(job);
 
@@ -369,6 +383,16 @@ export default async function JobDetailsPage({ params }: Props) {
                   // headers already show was pure decoration on top of
                   // real content, not real navigation value.
                   <div className="flex flex-col gap-8">
+                    {/* The whole Fit group is conditional now. It used to
+                        render its SectionHeader unconditionally above
+                        MatchScore + EvaluationBreakdown, both of which
+                        no-op when nothing has been scored — so a job whose
+                        evaluation had not run (or could not, on an
+                        exhausted quota) showed a titled section containing
+                        literally nothing. With no score, the page now opens
+                        on The Role, which is real scraped content and needs
+                        no AI at all. */}
+                    {hasFitContent && (
                     <div className="flex flex-col gap-6">
                       <SectionHeader icon={Target} label="Fit & Evaluation" />
                       <MatchScore
@@ -395,9 +419,19 @@ export default async function JobDetailsPage({ params }: Props) {
                         <RequestFullEvaluationButton jobId={job.id} />
                       )}
                     </div>
+                    )}
 
                     <div className="flex flex-col gap-6">
                       <SectionHeader icon={FileText} label="The Role" />
+                      {/* Real scraped facts — populated with or without an
+                          evaluation, so this is the part of the page that is
+                          always complete. */}
+                      <JobProvenance
+                        postedAt={job.posted_at}
+                        sources={sourceRows}
+                        applicantCount={applicantCount}
+                        experienceLevel={experienceLevel}
+                      />
                       {/* One shared card, not five identical bordered boxes
                           stacked in a row — see JobDescription.tsx's comment
                           for the reasoning. Each pane below draws its own

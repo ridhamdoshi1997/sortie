@@ -4,7 +4,7 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-09-03, Phase 44. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
+Last updated: 2026-09-04, Phase 46. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
 
@@ -62,6 +62,57 @@ Full detail in `context/progress-tracker.md`'s Phase 44 entries. Headlines:
 - **Four platforms added**: iCIMS (1,617 — the adapter had existed unused since the original ATS work, contributing nothing), Workable (6,499), BambooHR (2,457), Dayforce (692). Registry now **24,059 companies across 8 platforms, 98,549 active cached postings**.
 - **Three more bugs surfaced by running things rather than reading them**: the gate discarding links our own rescue had just fixed (abbreviated ATS tenants like `fil` for Fidelity International); stale-marking silently failing on the largest boards (every posting id stuffed into one URL); and `ON CONFLICT ... cannot affect row a second time` when a board returns a duplicate posting id, which killed the whole batch for that company.
 - **Standing lesson, learned by getting it wrong**: Dayforce was declared unreachable on the strength of guessed URL shapes, then shipped after the user pushed back — driving the real portal in a browser and reading its own network calls found the API in minutes. Never conclude a platform has no API from guessed URLs; drive its real client first.
+
+## Phase 46 (2026-09-04) — source set cut to LinkedIn + Indeed + our own ATS, four silent-discard bugs fixed, and a free "free" option rejected on identity grounds
+
+### SOURCE SET, by direct user decision
+`searchJobs` now runs **LinkedIn + Indeed (both Apify/kaix)**. Our own ATS layer (reactive enrichment + the proactive crawl cache) runs after it in `scraper.actions.ts` and is the largest source by volume.
+
+**Dropped and DELETED**: SerpApi, JSearch, JobsPipe, RemoteOK, TheirStack — providers plus every orphaned helper/type/constant. `lib/jobScraper.ts` went ~1,500 -> ~1,000 lines. **Dormant, not deleted** (user: "not using them for now"): `apifyProvider`, `apifyHirebaseProvider`, and Adzuna — kept defined with a documented eslint-disable, so a standing unused-warning does not train everyone to ignore this file's lint output, which is how the dead SerpApi providers sat here unnoticed.
+
+`fetchAndMergeFreeSources` was DELETED — it had zero callers. RESUME previously said restoring sources meant "putting the calls back into" it; that was wrong. Its SerpApi-primary shape also caused Phase 45's bug where one rejection discarded every other source's already-billed results. Every source is now a PEER, individually caught; a missing credential degrades the search instead of throwing.
+
+### Indeed: measured BEFORE wiring, not after
+`kaix/indeed-scraper`, $0.00005/job = **$0.05 per 1,000** — cheaper per job than the LinkedIn actor already in use. Chosen after surveying ~60 actors across 8 keyword angles plus deeper pagination, and an agy pass over the pricing models store listings do not expose (compute-unit / monthly-rental actors work out at $0.20-$0.75 per 1,000 once residential proxy bandwidth counts). Nothing came close. Apify retires monthly rentals entirely on 2026-10-01.
+
+Live "Financial Advisor"/Toronto, both sources, 129 unique in 44.5s:
+
+| source | unique | under 150ch | hidden by preFilter | employer-host applyUrl |
+|---|---|---|---|---|
+| LinkedIn | 76 | **76** | 76 (survives ONLY via its exemption) | **0** |
+| Indeed | 53 | **0** | **0** | **50 of 53** |
+
+Indeed descriptions: min 3,727 / median 5,145 / max 8,452 chars. It needs **no** `jobPreFilter` exemption, and its apply links resolve to the employer's own ATS. Adds ~no latency (3.7s alone; LinkedIn's ~43s dominates, run concurrently).
+
+### JobSpy researched and REJECTED — free, fast, not shippable
+`python-jobspy` scrapes Indeed in **1.2s for 100 jobs with full descriptions, $0**. Tested live in a venv. Rejected anyway: its Indeed path calls `apis.indeed.com/graphql` with a **hardcoded `indeed-api-key` lifted from Indeed's iOS app**, spoofing that app's user-agent and `indeed-app-info`. That is not public scraping — it presents credentials that are not ours, the same class of thing Careerjet was rejected for in Phase 44 ("only works by presenting a fake referrer identity"). Also fragile: one shared key for every JobSpy user worldwide. Its LinkedIn path returns zero descriptions; Glassdoor/ZipRecruiter/Google return nothing without proxies (ZipRecruiter hard-403s on Cloudflare).
+
+**Standing rule set by the user this session**: when a source gets blocked, research and find a replacement rather than leaving it broken.
+
+### Four more silent-discard bugs
+1. **Crawl cache AND-semantics.** `websearch_to_tsquery` on "Financial Advisor" compiles to `financi & advisor`, so "Associate/Business/Investment Advisor" never matched. Measured: 4 rows (3 of them Remote) against 37 genuinely present. Fixed in `queryProactiveCrawlCache` as a TWO-STAGE lookup — precise query first, widened `" or "` query only when it returns fewer than 15 rows. **1 -> 30 genuine Toronto results.** Fixed in the app layer deliberately: rewriting the RPC to OR semantics was tried and REVERTED TWICE (it fixed Financial Advisor but made "Software Engineer" — 72,000 rows on "engineer" — exceed the statement timeout; a pg_trgm index and a MATERIALIZED location-first CTE both failed to make the common case safe). The SQL function is byte-identical to before.
+2. **Results ordered by `found_at`** (scrape arrival order), never by relevance or score — a 90% match could sit below a 20% one. Now ordered via `rankJobsByRelevance`.
+3. **That ranking used the PROFILE only**, the wrong yardstick on a deliberate career pivot. Measured: a .NET profile against 85 Financial Advisor rows produced **0** signal; ranking on the searched title produced **44**. Now ranks searched title + profile.
+4. **`MAX_EVALUATED_JOBS` 150 -> 120.** The 150 was set while chunk size was 5; Phase 45 raised chunks 5->10 to halve call count and the two silently cancelled — 8 calls became 15, back over the 12-per-60s throttle window. 120 = 12 calls = exactly one window.
+
+Also: `rankJobsByRelevance` now returns the caller's order untouched when every rank is 0 — sorting an all-zero list is a sort on equal keys, so it would otherwise replace meaningful `found_at` order with whatever Postgres happened to return.
+
+### Job detail page: real scraped facts, no AI needed
+New `JobProvenance` ("Listing facts") — posting recency as a determinate meter from real `posted_at`, plus source-corroboration chips when 2+ sources carry a listing. The Overview tab's "Fit & Evaluation" header no longer renders when nothing is scored (it used to sit above two components that both no-op). `formatPostedAge` extracted to `lib/jobFreshness.ts` — the search CARD showed a job's posting age while the DETAIL page for that same job showed nothing.
+
+Three bugs found only by checking the live DB rather than the schema file: `job_sources.discovered_at` (not `created_at`, which would have 400'd the whole page); `job_sources` is service-role-only with ZERO client policies, so a session read returns empty **silently** (now via `lib/jobProvenance.ts`, which pins user_id from the session); and `source_type` is literally "LinkedIn", which a title-case fallback rendered "Linkedin".
+
+**Not browser-verified**: the dev server on :3001 renders every authenticated page as an empty navbar-only shell — pre-existing, confirmed on untouched routes (`/dashboard`, `/find-jobs`). Needs a restart.
+
+### Admin access fixed
+`profiles.email` was **NULL** for the owner account — a Supabase-migration gap. `app/api/agent/research/route.ts:169` passes `profile.email` (not the session email) to `isAdminUser()`, so the admin bypass silently failed and company research hit the Recon paywall. Backfilled from `auth.users`. `admin_users` was also completely empty post-migration; an `owner` row was added. There is still **no `user_subscriptions` row** for that account.
+
+### Next session, start here
+1. **Company-name normalisation** — free, on the punch list, blocking more than it looks: `sunlife` vs `sunlifeinsuranceinvestments` fragments the registry AND made a LinkedIn-vs-registry overlap measurement unreliable this session.
+2. **Aggregators as DISCOVERY, not content** (agy's recommendation): harvest employer domains from LinkedIn/Indeed results, diff against `ats_registry`, run `discoverAtsForRegistry()` on new ones. Pay once per company, crawl free forever. Machinery exists at `lib/atsProviders.ts:577`; nothing is wired to it.
+3. **Cache-first serving** — the ~43s LinkedIn wait is the dominant latency, and the cache now returns 30 real Toronto results where it returned 1.
+4. Adzuna's free API reportedly REQUIRES displaying Adzuna logos on-site (agy, unverified) — check before re-enabling.
+5. Skip Glassdoor/ZipRecruiter/Monster: closed APIs, heavy re-syndication, worse apply links.
 
 ## Phase 45 (2026-09-04) — a free 5.1M-job data source found, LinkedIn added for ~$0.01/search, and SIX filters caught silently discarding good data
 

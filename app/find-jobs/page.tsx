@@ -7,6 +7,7 @@ import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
 import { RecentlyViewed } from "@/components/find-jobs/RecentlyViewed";
 import { Navbar } from "@/components/layout/Navbar";
 import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
+import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Job, Profile } from "@/types";
 
 // Phase 1 of the 3-phase redesign (2026-09-01) made scrapeAndEvaluateJobs
@@ -112,6 +113,51 @@ export default async function FindJobsPage() {
             .order("found_at", { ascending: false })
             .limit(100);
         initialJobs = fallbackJobs ?? [];
+    }
+
+    // Order the list by the relevance rank we ALREADY compute, instead of
+    // by found_at (scrape arrival order, which is arbitrary).
+    //
+    // This is the split JobRight runs, confirmed by reading their own
+    // response payload: the number a card SHOWS and the order the list is
+    // SORTED by are two different values. Their list is not sorted by its
+    // own displayScore — a 98 sat below an 85 — because ordering comes from
+    // a deterministic rank while the score is a separate, slower signal.
+    //
+    // Sorting by match_score instead was considered and rejected: scores
+    // arrive progressively over the polling window, so a score-sorted list
+    // reshuffles under the reader while they are trying to read it. A
+    // relevance rank is fixed at render and stays put; the scores then fill
+    // in place. Unscored jobs stop being ordered arbitrarily, and nothing
+    // fabricates a number to sort by.
+    //
+    // rank_jobs_by_relevance ranks jobs.search_vector against the
+    // candidate's own skills + desired titles — real profile data that
+    // exists before any evaluation, so this works on a completely unscored
+    // list. A job with zero term overlap still comes back (rank 0) rather
+    // than being dropped; this only ever reorders.
+    if (initialJobs.length > 1) {
+        const { data: profileForRelevance } = await insforge.database
+            .from("profiles")
+            .select("skills,job_titles_seeking")
+            .eq("id", user.id)
+            .maybeSingle<Pick<Profile, "skills" | "job_titles_seeking">>();
+
+        if (profileForRelevance) {
+            const rankedIds = await rankJobsByRelevance(
+                insforge,
+                initialJobs.map((job) => job.id),
+                profileForRelevance,
+                // What the user actually searched -- the right yardstick on a
+                // pivot search, where profile overlap is legitimately zero.
+                lastRun?.job_title_searched ?? initialTitle ?? null,
+            );
+            const byId = new Map(initialJobs.map((job) => [job.id, job]));
+            const reordered = rankedIds.map((id) => byId.get(id)).filter((job): job is Job => Boolean(job));
+            // Never let a ranking failure silently drop rows: only adopt the
+            // new order if it still contains every job we started with.
+            if (reordered.length === initialJobs.length) initialJobs = reordered;
+        }
     }
 
     // Reappearing Requisition Signal — needs the user's FULL job history
