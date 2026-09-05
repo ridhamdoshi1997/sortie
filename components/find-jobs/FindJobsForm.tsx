@@ -36,6 +36,15 @@ export function FindJobsForm({
     const [title, setTitle] = useState(initialTitle ?? "");
     const [location, setLocation] = useState(initialLocation ?? "");
     const [loading, setLoading] = useState(false);
+    // Separate from `loading` on purpose (2026-09-05, direct user requirement:
+    // "results within a second, or a loader for 2 to 3 seconds, that's it").
+    // `loading` now means only "the blocking loader is on screen", and ends
+    // the moment there is something real to show. `searchInFlight` means "the
+    // server action has not resolved yet" and is what keeps the result poll
+    // running and the Search button disabled, so results can keep streaming in
+    // for the ~50s the paid providers take without the user staring at a
+    // spinner for it.
+    const [searchInFlight, setSearchInFlight] = useState(false);
     // Job detail drawer / split view (build-plan.md §H) — fast browsing
     // without a full navigation. Find & Evaluate is deliberately the one
     // page this is wired into (job cards elsewhere — Missions, Career — are
@@ -229,13 +238,20 @@ export function FindJobsForm({
     // results stay put until real new ones arrive, which is the behavior
     // this list already had while loading.
     useEffect(() => {
-        if (!loading) return;
+        if (!searchInFlight) return;
 
         let cancelled = false;
-        const interval = setInterval(async () => {
+
+        const tick = async () => {
             try {
                 const partial = await getInFlightSearchJobs(userId);
                 if (cancelled || partial.length === 0) return;
+
+                // First real results are on screen — take the blocking loader
+                // down now rather than at the end of the whole pipeline. The
+                // poll keeps running (searchInFlight, not loading) so the
+                // provider results still stream in behind these.
+                setLoading(false);
 
                 setJobs((prev) => {
                     const byId = new Map(prev.map((job) => [job.id, job]));
@@ -257,16 +273,26 @@ export function FindJobsForm({
                 // result is still coming. Never surface this to the user.
                 console.error("Cache-first poll failed:", error);
             }
-        }, 2500);
+        };
+
+        // Fire immediately, THEN on an interval. setInterval alone waits a
+        // full period before its first call, which put a hard floor under
+        // time-to-first-result equal to the poll period — the exact thing
+        // this poll exists to shorten. 1s after that: the cache upsert lands
+        // ~1-2s in, so a shorter period only adds round-trips that find
+        // nothing.
+        void tick();
+        const interval = setInterval(() => void tick(), 1000);
 
         return () => {
             cancelled = true;
             clearInterval(interval);
         };
-    }, [loading, userId]);
+    }, [searchInFlight, userId]);
 
     const runSearch = async () => {
         setLoading(true);
+        setSearchInFlight(true);
         setSearchError(null);
 
         // The AI evaluator still gets visa/remote as free-text context (score
@@ -317,6 +343,7 @@ export function FindJobsForm({
             setSearchError(toUserMessage(error, "Search failed. Please try again."));
         } finally {
             setLoading(false);
+            setSearchInFlight(false);
         }
     };
 
@@ -423,10 +450,10 @@ export function FindJobsForm({
                     </div>
                     <Button
                         type="submit"
-                        disabled={loading}
+                        disabled={searchInFlight}
                         className="btn-signal h-12 rounded-lg px-8 text-md font-semibold text-accent-foreground"
                     >
-                        {loading ? (
+                        {searchInFlight ? (
                             <>
                                 <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Scanning...
                             </>
@@ -438,6 +465,17 @@ export function FindJobsForm({
                     </Button>
                 </form>
                 {searchError && <p className="mt-3 text-sm text-error">{searchError}</p>}
+                {/* Results now appear as soon as our own cache answers (~1s),
+                    while the paid providers keep running for ~50s behind them.
+                    Without this line that reads as "the search finished and
+                    found only these" — the honest version says more is coming
+                    rather than leaving a silently-growing list unexplained. */}
+                {searchInFlight && jobs.length > 0 && (
+                    <p className="mt-3 flex items-center text-sm text-muted-foreground">
+                        <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                        Showing results from our own employer index — still searching LinkedIn and Indeed…
+                    </p>
+                )}
                 {limitModal && (
                     <LimitReachedModal
                         reason={limitModal.reason}

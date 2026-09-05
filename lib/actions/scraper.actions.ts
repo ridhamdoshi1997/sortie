@@ -663,13 +663,35 @@ export async function scrapeAndEvaluateJobs(
     // genuine-link bar afterward is hidden and excluded from evaluation
     // entirely, never spending AI quota on a job that's never going to be
     // shown regardless of how well it scores.
+    // Direct product decision (2026-09-05): LinkedIn and Indeed jobs are NOT
+    // link-verified during a live search.
+    //
+    // needsLinkResolution deliberately includes trusted-aggregator links,
+    // because "an indirect board link is a floor, not a resting state" — every
+    // pass tries to upgrade one to the employer's own posting. That is a good
+    // ambition and a terrible thing to make a candidate wait on: LinkedIn and
+    // Indeed are the two highest-VOLUME sources, so they dominated the set,
+    // and their links already CLEAR the genuine-link bar (classifyApplyHost
+    // rates them "aggregator", which meetsGenuineLinkBar passes). The pass was
+    // therefore spending most of a search's wall-clock trying to improve links
+    // that were already acceptable to show.
+    //
+    // They still get upgraded — by the hourly repairApplyLinksAsync cron and
+    // the per-view lazy resolver, neither of which a candidate waits on. What
+    // stays synchronous here is the set where verification decides whether a
+    // job is genuine ENOUGH TO SHOW AT ALL, which is the real purpose.
+    const SKIP_LIVE_VERIFICATION_SOURCES = new Set(["linkedin", "indeed"]);
+    const jobsNeedingVerification = savedJobs.filter(
+        (job) => !SKIP_LIVE_VERIFICATION_SOURCES.has((job.source ?? "").trim().toLowerCase()),
+    );
+
     const tVerify = Date.now();
-    const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, savedJobs);
+    const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, jobsNeedingVerification);
     phase.linkVerification = Date.now() - tVerify;
     console.log(
         `[scraper:timing] TOTAL ${Date.now() - tStart}ms for "${title}"/"${location}" — ` +
         `providers ${phase.providers ?? 0}ms, ats-enrichment ${phase.atsEnrichment ?? 0}ms, ` +
-        `upsert ${phase.upsert ?? 0}ms (${savedJobs.length} jobs), link-verify ${phase.linkVerification}ms`,
+        `upsert ${phase.upsert ?? 0}ms (${savedJobs.length} jobs), link-verify ${phase.linkVerification}ms (${jobsNeedingVerification.length}/${savedJobs.length} jobs)`,
     );
     const linkVerifiedJobs =
         linkHiddenIds.length > 0 ? savedJobs.filter((job) => !linkHiddenIds.includes(job.id)) : savedJobs;

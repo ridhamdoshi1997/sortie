@@ -1,4 +1,3 @@
-import { searchJobs } from "@/lib/jobScraper";
 import { classifyApplyHost, extractLikelyLogoDomain, pickBestApplyLink } from "@/lib/applyLinkTrust";
 import { fetchAtsJobs, fetchDiscoveredAtsJobs, guessCompanySlugs, type AtsPlatform } from "@/lib/atsProviders";
 import { fetchJobsForCompany, isRegistryVerifiedLink } from "@/lib/atsRegistry";
@@ -53,19 +52,7 @@ function applyLinkSourcePriority(applyUrl: string, company: string | null | unde
 // retrying on every subsequent view would just burn real SerpApi quota for
 // nothing (this app currently runs on 3 free-tier accounts shared with
 // live search).
-function normalizeCompanyName(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/\b(inc|llc|ltd|corp|co|company|group|holdings|canada|ulc)\b\.?/g, "")
-    .replace(/[^a-z0-9]/g, "");
-}
 
-function companiesMatch(a: string, b: string): boolean {
-  const na = normalizeCompanyName(a);
-  const nb = normalizeCompanyName(b);
-  if (na.length < 2 || nb.length < 2) return false;
-  return na === nb || na.includes(nb) || nb.includes(na);
-}
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
@@ -388,36 +375,37 @@ export async function reresolveApplyLinkForJob(
     // and block a real, full attempt later.
     if (options?.freeOnly) return;
 
-    // Real gap found live (2026-09-01, direct investigation after a
-    // "Financial Advisor"/Toronto search stayed low-volume even with the
-    // paid rescue running): this used to search by TITLE ALONE — the exact
-    // same query shape the original search already ran, so a company whose
-    // posting didn't surface in THAT batch was quite likely to be absent
-    // from an identical re-run too. Folding the company name into the
-    // query text (same free-text `q` param a real person would type into
-    // Google Jobs, e.g. "software engineer RBC") biases the re-search
-    // toward the SPECIFIC posting this job needs, not just more of the
-    // same generic results.
-    const results = await searchJobs(`${job.title} ${job.company}`, job.location ?? "", "ca");
-    const match = results.find((r) => companiesMatch(r.company, job.company as string));
-
-    if (
-      match?.applyUrl &&
-      classifyApplyHost(match.applyUrl, job.company) !== "low_quality" &&
-      looksLikeSpecificJobPosting(match.applyUrl)
-    ) {
-      const { error } = await insforge.database
-        .from("jobs")
-        .update({
-          external_apply_url: match.applyUrl,
-          raw_apply_options: match.rawApplyOptions ?? null,
-          apply_link_resolved_at: new Date().toISOString(),
-          source_priority: applyLinkSourcePriority(match.applyUrl, job.company),
-        })
-        .eq("id", job.id);
-      if (error) console.error("[reresolveApplyLink] update (resolved)", job.id, error);
-      return;
-    }
+    // REMOVED 2026-09-05 -- this tier called searchJobs() once per rescued
+    // job, and that became catastrophically wrong when Phase 46 changed what
+    // searchJobs IS.
+    //
+    // It was written when searchJobs meant a single SerpApi call: cheap,
+    // ~1-2s, entirely reasonable to spend recovering one job's apply link.
+    // Phase 46 deleted SerpApi and rebuilt searchJobs on the Apify LinkedIn +
+    // Indeed ACTORS. This call site was never revisited, so a "paid-tier link
+    // rescue" silently became "launch two full job-scraper actors, per job,
+    // inside the user's own search request".
+    //
+    // Measured live on a real "Financial Advisor"/Toronto search
+    // (2026-09-05), which is what exposed it:
+    //   * link verification took 81,482ms of a 145,159ms search -- more than
+    //     the real providers (51,577ms) and everything else combined;
+    //   * PAID_RESCUE_CAP is 5, so this fired up to 10 extra actor runs while
+    //     this project's Apify plan allows FIVE CONCURRENT RUNS TOTAL. Every
+    //     one returned HTTP 402 concurrent-runs-limit-exceeded;
+    //   * worse, those runs competed with the search's OWN LinkedIn and Indeed
+    //     calls for the same five slots, so the rescue was actively breaking
+    //     the search it existed to improve -- both providers also failed with
+    //     402 on that run.
+    // It cost real money, cost ~80s of a user's wait, returned nothing, and
+    // degraded the search. No version of that trade is worth keeping.
+    //
+    // Jobs reaching here still get every free tier above, the hourly
+    // repairApplyLinksAsync cron, and the per-view lazy resolver -- the same
+    // fallback verifyApplyLinksBeforeReveal already documents for jobs beyond
+    // PAID_RESCUE_CAP. A targeted paid rescue could come back, but it needs an
+    // endpoint scoped to ONE posting, not a whole-board scrape, and it must
+    // not run inside a live search.
 
     const apifyMatch = await tryApifySearch(job);
     if (apifyMatch) {
