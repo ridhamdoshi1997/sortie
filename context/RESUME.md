@@ -4,7 +4,7 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-09-04, Phase 47. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
+Last updated: 2026-09-04, Phase 48. **START HERE — two parallel tracks are now in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work (Phase 44 just closed out most of the remaining Part A punch list — see "## Phase 44" below). InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost. SerpApi is STILL exhausted as of Phase 44 (re-confirmed live, again: all 3 keys at `0/250`) — real-world testing continues to happen under that exact condition, not a healthy-SerpApi baseline.
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
 
@@ -62,6 +62,46 @@ Full detail in `context/progress-tracker.md`'s Phase 44 entries. Headlines:
 - **Four platforms added**: iCIMS (1,617 — the adapter had existed unused since the original ATS work, contributing nothing), Workable (6,499), BambooHR (2,457), Dayforce (692). Registry now **24,059 companies across 8 platforms, 98,549 active cached postings**.
 - **Three more bugs surfaced by running things rather than reading them**: the gate discarding links our own rescue had just fixed (abbreviated ATS tenants like `fil` for Fidelity International); stale-marking silently failing on the largest boards (every posting id stuffed into one URL); and `ON CONFLICT ... cannot affect row a second time` when a board returns a duplicate posting id, which killed the whole batch for that company.
 - **Standing lesson, learned by getting it wrong**: Dayforce was declared unreachable on the strength of guessed URL shapes, then shipped after the user pushed back — driving the real portal in a browser and reading its own network calls found the API in minutes. Never conclude a platform has no API from guessed URLs; drive its real client first.
+
+## Phase 48 (2026-09-04) — cache-first serving shipped, and the cache query was silently timing out the whole time
+
+Session named "Phase 37" by the user; logged as 48 to keep this file's sequence intact. Committed locally, NOT pushed.
+
+### Cache-first serving (Phase 47's item 1)
+`scrapeAndEvaluateJobs` now upserts the proactive-crawl cache result against the run's `run_id` **as soon as it resolves**, without waiting for the providers. A new `getInFlightSearchJobs` action reads the most recent still-running run (started < 5 min ago, `is_hidden=false`), and `FindJobsForm` polls it every 2.5s while `loading`, merging additively. The list already rendered outside the `loading` gate, so no results-UI rework was needed — the "accept jobs arriving after first paint" requirement was already satisfied.
+
+Deliberately NOT a second server action for the search itself: one quota consumption, one `agent_runs` row, no forgeable skip-usage flag. The early upsert is filtered and capped exactly as the main path filters and caps, so an early row is never one the full pass would have rejected. It is not pre-filtered (`preFilterJob` runs later), so a row the pre-filter later hides can show for a few seconds; the poll re-reads `is_hidden` each cycle and self-corrects. The main upsert awaits the early one so the two never race into `merge_job_source`.
+
+**Measured end to end against the real database** (30 cache jobs → 26 canonical rows → 26 read back): **~5.7s to first results vs the ~43s LinkedIn actor.**
+
+### The bug underneath it: the cache query was timing out and reporting "empty"
+The premise "the cache answers fast" was wrong, and only surfaced because the lookup was timed directly instead of trusted. Live, through the app's own client:
+- `'Software Engineer'/Toronto` → 30 rows in 7127ms on one call, then **0 rows in 8267ms** on the next (cancelled, `57014`)
+- `'Engineer'/Toronto` → cancelled outright at 8420ms
+
+PostgREST's roles run under an **8s `statement_timeout`** (`authenticator`/`authenticated` = 8s, `anon` = 3s — confirmed from `pg_roles`), and the query sat right on it. `queryProactiveCrawlCache` did `if (error) return []`, so a cancellation was indistinguishable from an empty cache: a search silently lost the entire 612k-posting contribution and said nothing. Same silent-discard shape Phases 45/46 kept finding. **Now logged**, with `57014` called out explicitly as "too slow", not "no data".
+
+### The cause, and the fix
+`EXPLAIN (ANALYZE, BUFFERS)`: the location predicate ORs a city match with a remote-marker regex, which the planner satisfies via a `BitmapOr` of two trigram scans. The remote branch alone matches **29,796 rows on every query regardless of city**, and both branches must be fully materialised and ANDed against the title bitmap before one row comes back. The plan was never wrong; its constant factor was. The `discovered_postings_location_trgm_idx` from Phase 47 *was* applied and *is* being used — it was not the missing piece.
+
+`migrations/20260904210000_split-discovered-postings-location-or.sql` (**applied live**) splits the OR into two separately-limited `UNION ALL` branches, each getting a tight `BitmapAnd`, with tier ordering preserved explicitly rather than left to evaluation order. Row counts are **identical** in every case tested:
+
+| query | before | after |
+|---|---|---|
+| `Engineer` / Toronto | 3608ms | **121ms** |
+| `Data Analyst` / Toronto | 1869ms | **109ms** |
+| `Registered Nurse` / Toronto | 1523ms | **108ms** |
+| `Software Engineer` / Toronto | 1110ms | **98ms** |
+
+`'Financial Advisor'/Toronto` also went **4 → 30 rows**: its widened second pass used to be the thing blowing the timeout, and now completes.
+
+### Still open, and it is NOT the SQL
+`'Engineer'/Toronto` **still times out through PostgREST** (8.3s, 2 of 3 passes) even though the same function call runs in **118ms** by `EXPLAIN ANALYZE` and 280-903ms over a direct `pg` connection. So the remaining cost is in the PostgREST/serialization layer, not the query — most likely a generic plan for the parameterised call. **Start here**: compare the PostgREST-issued statement's plan against the direct one before touching the SQL again, which is now measurably fast.
+
+Not harmful in the meantime: the early upsert is non-blocking and its failure is tolerated and logged, so a slow cache no longer delays or fails a search — it just contributes nothing to that one.
+
+### Not verified
+The **client half is not live-verified**. Exercising it needs a real authenticated search, which spends real money on the paid Apify LinkedIn/Indeed actors — not spent without asking. The server and database halves are verified end to end against real data.
 
 ## Phase 47 (2026-09-04, same day as 46) — ATS coverage nearly doubled, eight adapters added, and the first thing on this product no job board can do
 

@@ -11,7 +11,7 @@ import { harvestEmployers } from "@/lib/atsDiscoveryHarvest";
 import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
 import { preFilterJob } from "@/lib/jobPreFilter";
 import { rankJobsByRelevance } from "@/lib/jobRelevance";
-import type { Profile } from "@/types";
+import type { Job, Profile } from "@/types";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
 import { looksLikeSpecificJobPosting, verifyApplyLinksBeforeReveal } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient } from "@/lib/admin/client";
@@ -421,6 +421,38 @@ export async function scrapeAndEvaluateJobs(
         }
     })();
 
+    // Cache-first serving (2026-09-04). Overlapping the lookup with the
+    // providers (above) removed its seconds from the total, but the user
+    // still saw nothing until the whole chain finished — a wait dominated
+    // by the ~43s LinkedIn actor. These jobs are already in our own
+    // database and cost nothing to serve, so there is no reason to hold
+    // them behind a paid provider that has not answered yet.
+    //
+    // Upserting here, against the run_id created above, is what makes them
+    // visible early: getInFlightSearchJobs (below) polls this run while
+    // this action is still executing, so rows land on screen seconds in
+    // rather than at the end. Not awaited — awaiting would reintroduce
+    // exactly the blocking this removes — but the main upsert below DOES
+    // await it, so the two never race into merge_job_source together.
+    //
+    // Filtered and capped the same way the main path filters and caps, so
+    // an early row is never one the full pass would have rejected. It is
+    // NOT pre-filtered (preFilterJob runs later, inside evaluateWithinQuota)
+    // — an early row that the pre-filter later hides can therefore show for
+    // a few seconds before disappearing. Accepted: the poll re-reads
+    // is_hidden every cycle, so it self-corrects without a page load.
+    const earlyCacheUpsert = cachedJobsPromise
+        .then(async (cached) => {
+            if (cached.length === 0) return;
+            const relevant = filterByTitleRelevance(cached, title).slice(0, MAX_EVALUATED_JOBS);
+            if (relevant.length === 0) return;
+            await upsertScrapedJobs(userId, relevant, runId);
+            console.log(`[scraper] cache-first: ${relevant.length} job(s) on screen before providers finished`);
+        })
+        .catch((error) => {
+            console.warn("[scraper.actions] cache-first early upsert failed", error);
+        });
+
     let rawJobs;
     try {
         rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
@@ -534,6 +566,12 @@ export async function scrapeAndEvaluateJobs(
     // an error" principle already applied to SerpApi's own no-results case
     // in lib/jobScraper.ts.
     if (uniqueJobs.length === 0) {
+        // Reaching here means the cache contributed nothing relevant either
+        // (its rows are merged into rawJobs above and pass the same title
+        // filter), so the early upsert has nothing in flight — awaited
+        // anyway so this path can never return while a write is still
+        // running against the run it is about to mark completed.
+        await earlyCacheUpsert;
         if (runId) {
             await insforge.database.rpc("update_agent_run", {
                 p_run_id: runId,
@@ -573,6 +611,16 @@ export async function scrapeAndEvaluateJobs(
             console.warn("[scraper] discovery harvest failed", error);
         }
     });
+
+    // Settle the cache-first upsert before starting this one. Both write
+    // the same rows through merge_job_source, and while that RPC handles a
+    // genuine conflict, letting the two overlap would mean the early pass
+    // could still be mid-write when this one reads — the authoritative
+    // result would then be built from a half-written set. It has almost
+    // always resolved long before here anyway; this costs nothing when it
+    // has, and is never allowed to reject (its own .catch is attached at
+    // creation, so this await cannot throw).
+    await earlyCacheUpsert;
 
     const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
     console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
@@ -787,6 +835,59 @@ export async function getJobsByIds(ids: string[]) {
 
     if (error) throw error;
     return data;
+}
+
+// Cache-first serving's read side (2026-09-04). Returns whatever the
+// currently-running search has already written, so the client can paint
+// crawl-cache results seconds in instead of waiting out the whole provider
+// chain. Deliberately keyed on the run rather than on title/location:
+// getUserJobs' ilike match would also return jobs from every PREVIOUS
+// search of the same title, which is exactly the "results reset to
+// something older" class of bug the find-jobs page has already been fixed
+// for twice.
+//
+// Scoped to the caller's own session, not to the userId argument — every
+// value a Server Action receives is client-controlled, and the sibling
+// getUserJobs taking a caller-supplied userId at face value is a pattern
+// worth not extending to a new function.
+export async function getInFlightSearchJobs(userId: string): Promise<Job[]> {
+    noStore();
+
+    const user = await getCurrentUser();
+    if (!user || user.id !== userId) return [];
+
+    const admin = createAdminDbClient();
+
+    const { data: run } = await admin.database
+        .from("agent_runs")
+        .select("id,started_at")
+        .eq("user_id", userId)
+        .order("started_at", { ascending: false })
+        .limit(1)
+        .maybeSingle<{ id: string; started_at: string }>();
+
+    if (!run) return [];
+
+    // Only ever serve a genuinely in-flight run. Without this, landing on
+    // the page and starting a search would briefly paint the last search's
+    // completed rows before this one wrote anything — the same stale-result
+    // flash, just sourced differently. Five minutes is well past any real
+    // search (the route's own maxDuration is 60s) and well short of "an
+    // hour ago".
+    if (Date.now() - new Date(run.started_at).getTime() > 5 * 60_000) return [];
+
+    const { data, error } = await admin.database
+        .from("jobs")
+        .select("*")
+        .eq("user_id", userId)
+        .eq("run_id", run.id)
+        .eq("is_hidden", false);
+
+    if (error) {
+        console.warn("[scraper.actions] in-flight search read failed", error);
+        return [];
+    }
+    return (data ?? []) as Job[];
 }
 
 // Update this function to accept the title and location filters

@@ -689,7 +689,22 @@ export async function queryProactiveCrawlCache(
     p_limit: limit,
     p_location: searchLocation || null,
   });
-  if (error) return [];
+  // Logged, not swallowed (2026-09-04). This returned a bare [] on error,
+  // which made a real failure indistinguishable from a genuinely empty
+  // cache — and it WAS failing: the query sat on the 8s statement timeout
+  // PostgREST's `authenticated` role runs under, so a search intermittently
+  // lost the entire 612k-posting contribution and said nothing. Code 57014
+  // is that cancellation specifically, called out because it means "too
+  // slow", not "no data", and should be read as a performance regression
+  // rather than an empty result. See migration
+  // 20260904210000_split-discovered-postings-location-or.sql.
+  if (error) {
+    console.warn(
+      `[proactiveAtsCrawl] cache lookup failed for "${searchTitle}"/"${searchLocation}"`,
+      (error as { code?: string }).code === "57014" ? `STATEMENT TIMEOUT (57014) — ${error.message}` : error,
+    );
+    return [];
+  }
 
   let rows_ = (data ?? []) as unknown[];
 

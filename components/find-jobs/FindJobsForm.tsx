@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
-import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
+import { scrapeAndEvaluateJobs, getJobsByIds, getInFlightSearchJobs } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
@@ -173,6 +173,57 @@ export function FindJobsForm({
         return () => clearInterval(interval);
     }, [jobIds]);
     // ----------------------------------
+
+    // Cache-first serving (2026-09-04). A search's wall-clock time is
+    // dominated by the ~43s LinkedIn actor, but our own proactive-crawl
+    // cache (637k postings) answers in about a second and is written
+    // against the run before the providers are even called. This polls for
+    // those rows while scrapeAndEvaluateJobs is still running, so results
+    // appear seconds in instead of at the end.
+    //
+    // Additive only — it never removes a job. The authoritative set is
+    // whatever the action itself returns; runSearch replaces the list
+    // wholesale when its promise resolves, and anything on screen that the
+    // full pass rejected (relevance trim, pre-filter) goes away then.
+    // Merging rather than replacing also means the previous search's
+    // results stay put until real new ones arrive, which is the behavior
+    // this list already had while loading.
+    useEffect(() => {
+        if (!loading) return;
+
+        let cancelled = false;
+        const interval = setInterval(async () => {
+            try {
+                const partial = await getInFlightSearchJobs(userId);
+                if (cancelled || partial.length === 0) return;
+
+                setJobs((prev) => {
+                    const byId = new Map(prev.map((job) => [job.id, job]));
+                    let added = false;
+                    for (const job of partial) {
+                        if (!byId.has(job.id)) {
+                            byId.set(job.id, job);
+                            added = true;
+                        }
+                    }
+                    // Returning prev unchanged when nothing is new keeps
+                    // this from re-rendering the whole list every 2.5s
+                    // while the providers are still working.
+                    return added ? Array.from(byId.values()) : prev;
+                });
+                setHasSearched(true);
+            } catch (error) {
+                // A failed poll is not a failed search — the action's own
+                // result is still coming. Never surface this to the user.
+                console.error("Cache-first poll failed:", error);
+            }
+        }, 2500);
+
+        return () => {
+            cancelled = true;
+            clearInterval(interval);
+        };
+    }, [loading, userId]);
 
     const runSearch = async () => {
         setLoading(true);
