@@ -95,10 +95,24 @@ PostgREST's roles run under an **8s `statement_timeout`** (`authenticator`/`auth
 
 `'Financial Advisor'/Toronto` also went **4 → 30 rows**: its widened second pass used to be the thing blowing the timeout, and now completes.
 
-### Still open, and it is NOT the SQL
-`'Engineer'/Toronto` **still times out through PostgREST** (8.3s, 2 of 3 passes) even though the same function call runs in **118ms** by `EXPLAIN ANALYZE` and 280-903ms over a direct `pg` connection. So the remaining cost is in the PostgREST/serialization layer, not the query — most likely a generic plan for the parameterised call. **Start here**: compare the PostgREST-issued statement's plan against the direct one before touching the SQL again, which is now measurably fast.
+### The second half: PostgREST's prepared statements got a generic plan
+Splitting the OR fixed the SQL but NOT the symptom — `'Engineer'/Toronto` still timed out at 8.3s through PostgREST while the same function ran in 118ms by `EXPLAIN ANALYZE`. Cause: **PostgREST issues every RPC as a prepared statement**, and Postgres switches to a generic plan after five executions. With the parameters unknown at plan time it can estimate neither the tsquery's selectivity nor the ILIKE pattern's — and the entire point of the split query is that each branch stops early on a tight, well-estimated index scan. Measured on the same session, same query, four consecutive executions each:
 
-Not harmful in the meantime: the early upsert is non-blocking and its failure is tolerated and logged, so a slow cache no longer delays or fails a search — it just contributes nothing to that one.
+| | executions |
+|---|---|
+| `force_custom_plan` | 2872ms, **209ms, 202ms, 277ms** |
+| `force_generic_plan` | **19003ms, 14030ms, 8497ms**, 2773ms |
+
+Up to **90x slower**, and comfortably past the 8s timeout — the production symptom exactly. `migrations/20260904220000_force-custom-plan-discovered-postings-search.sql` (**applied live**) pins this one function to custom planning. Scoped to the function, not the `authenticator` role, which would change planning for every PostgREST query in the project to fix one. Re-planning costs ~1-3ms against a query that was taking seconds.
+
+**A DROP discards this setting**, so the `ALTER` is repeated idempotently at the end of 20260904210000 too — re-running that migration alone would otherwise bring the timeouts back with nothing to point at.
+
+Through the app's own client afterwards, three passes, zero timeouts: Software Engineer 609/514/513ms · Registered Nurse 908/333/290ms · Financial Advisor 1660/569/541ms · Data Analyst 284/215/192ms · Engineer 4944/1199/1287ms. Baseline round-trip for this client is ~150ms, so these are near the floor for a network call.
+
+### What genuinely remains: cold buffer cache, and it is benign
+A fresh process still pays for the first `'Engineer'/Toronto` call. Five consecutive calls: **8242ms → 2708 → 872 → 605 → 590ms.** That decay is Postgres warming its shared buffers on a 642k-row table, not planning — it converges to ~590ms and stays there. `Engineer` is the worst case because its title matches the largest row set.
+
+**Not worth chasing, and deliberately left**: the early cache upsert is non-blocking, so a cold lookup no longer delays or fails a search — the coldest search of a quiet period simply gets no cache contribution, and every search after it is fast. Buying that back would mean pinning index pages warm on a shared instance, which is real infrastructure work for one query's cold start.
 
 ### Not verified
 The **client half is not live-verified**. Exercising it needs a real authenticated search, which spends real money on the paid Apify LinkedIn/Indeed actors — not spent without asking. The server and database halves are verified end to end against real data.

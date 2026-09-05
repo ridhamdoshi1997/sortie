@@ -91,3 +91,15 @@ AS $$
   ORDER BY s.tier, s.seen DESC
   LIMIT p_limit
 $$;
+
+-- Appended after 20260904220000 found the OTHER half of the timeout: PostgREST
+-- prepares this call, and the GENERIC plan Postgres switches to after five
+-- executions is up to 90x slower than the custom one (19003ms vs 209ms
+-- measured on 'Engineer'/Toronto) -- past the 8s statement_timeout, i.e. the
+-- production symptom. Repeated here, idempotently, because the DROP above
+-- would otherwise silently discard the setting whenever this migration is
+-- re-run, and the timeouts would come back with nothing to point at. See
+-- 20260904220000_force-custom-plan-discovered-postings-search.sql for the
+-- full measurements.
+ALTER FUNCTION public.search_discovered_postings(text, int, text)
+  SET plan_cache_mode = force_custom_plan;

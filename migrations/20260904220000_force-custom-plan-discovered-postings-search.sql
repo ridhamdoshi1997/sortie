@@ -1,0 +1,45 @@
+-- The other half of the cache-lookup timeout, and the half that was NOT the
+-- SQL. After 20260904210000 split the location OR, the function ran in 118ms
+-- by EXPLAIN ANALYZE and ~200ms over a direct psql connection -- yet the same
+-- call through PostgREST still took 8.3s and was cancelled (57014) two runs
+-- out of three for 'Engineer'/Toronto.
+--
+-- CAUSE: PostgREST issues every RPC as a PREPARED statement. Postgres builds
+-- a custom plan for the first five executions and then, if the generic plan
+-- looks no worse by its own estimate, switches to the generic one and reuses
+-- it. Here the generic plan is dramatically worse, because with the
+-- parameters unknown at plan time it can estimate neither the tsquery's
+-- selectivity nor the ILIKE pattern's, and the whole point of the split query
+-- is that each branch stops early on a tight, well-estimated index scan.
+--
+-- Measured directly, same session, same query ('Engineer'/Toronto), four
+-- consecutive executions each:
+--   SET plan_cache_mode = force_custom_plan  -> 2872ms, 209ms, 202ms, 277ms
+--   SET plan_cache_mode = force_generic_plan -> 19003ms, 14030ms, 8497ms, 2773ms
+-- The generic plan is up to 90x slower and comfortably past the 8s
+-- statement_timeout PostgREST's roles run under, which is exactly the
+-- production symptom.
+--
+-- FIX: pin this one function to custom planning. Scoped to the function
+-- rather than set on the `authenticator` role, which would change planning
+-- for every PostgREST query in the project to fix one of them. The cost of a
+-- custom plan is re-planning on each call -- ~1-3ms here against a query that
+-- was taking seconds -- so this is a strictly good trade for this function.
+--
+-- Measured after, through the app's own client (lib/proactiveAtsCrawl.ts's
+-- queryProactiveCrawlCache), three passes, no timeouts at all:
+--   Software Engineer / Toronto   609ms  514ms  513ms
+--   Registered Nurse  / Toronto   908ms  333ms  290ms
+--   Financial Advisor / Toronto  1660ms  569ms  541ms
+--   Data Analyst      / Toronto   284ms  215ms  192ms
+--   Engineer          / Toronto  4944ms 1199ms 1287ms   (was: cancelled at 8.3s)
+-- Baseline round-trip overhead for this client is ~150ms, so the steady-state
+-- numbers are close to the floor for a network call.
+--
+-- NOTE for anyone re-running 20260904210000 or otherwise recreating this
+-- function: a DROP removes this setting with it. Re-apply this statement
+-- after any CREATE OR REPLACE / DROP+CREATE of search_discovered_postings, or
+-- the timeouts come back silently.
+
+ALTER FUNCTION public.search_discovered_postings(text, int, text)
+  SET plan_cache_mode = force_custom_plan;
