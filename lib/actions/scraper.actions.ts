@@ -453,9 +453,20 @@ export async function scrapeAndEvaluateJobs(
             console.warn("[scraper.actions] cache-first early upsert failed", error);
         });
 
+    // Phase timing (2026-09-05, direct user report that a search "takes like
+    // a minute"). Every number a latency decision gets made on should come
+    // from a real search rather than a bench harness, so each phase logs its
+    // own wall-clock and the end logs the breakdown. Cheap enough to leave
+    // in: five Date.now() calls and one line per search.
+    const tStart = Date.now();
+    const phase: Record<string, number> = {};
+
     let rawJobs;
     try {
+        const tProviders = Date.now();
         rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
+        phase.providers = Date.now() - tProviders;
+        console.log(`[scraper:timing] providers ${phase.providers}ms -> ${rawJobs.length} jobs`);
     } catch (err) {
         if (runId) {
             await insforge.database.rpc("update_agent_run", {
@@ -478,7 +489,10 @@ export async function scrapeAndEvaluateJobs(
     // and lib/atsRegistry.ts caches which ATS each one uses globally, so
     // the discovery cost is paid once per company ever (measured: ~2s
     // first time, ~100ms cached) rather than once per search.
+    const tEnrich = Date.now();
     rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
+    phase.atsEnrichment = Date.now() - tEnrich;
+    console.log(`[scraper:timing] direct-ATS enrichment ${phase.atsEnrichment}ms -> ${rawJobs.length} jobs`);
 
     // Proactive-crawl cache supplement (2026-09-01) — the volume-gap fix
     // RESUME.md's redesign flagged as the actual lever, not just "add more
@@ -622,7 +636,9 @@ export async function scrapeAndEvaluateJobs(
     // creation, so this await cannot throw).
     await earlyCacheUpsert;
 
+    const tUpsert = Date.now();
     const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
+    phase.upsert = Date.now() - tUpsert;
     console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
 
     if (!savedJobs || savedJobs.length === 0) {
@@ -647,7 +663,14 @@ export async function scrapeAndEvaluateJobs(
     // genuine-link bar afterward is hidden and excluded from evaluation
     // entirely, never spending AI quota on a job that's never going to be
     // shown regardless of how well it scores.
+    const tVerify = Date.now();
     const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, savedJobs);
+    phase.linkVerification = Date.now() - tVerify;
+    console.log(
+        `[scraper:timing] TOTAL ${Date.now() - tStart}ms for "${title}"/"${location}" — ` +
+        `providers ${phase.providers ?? 0}ms, ats-enrichment ${phase.atsEnrichment ?? 0}ms, ` +
+        `upsert ${phase.upsert ?? 0}ms (${savedJobs.length} jobs), link-verify ${phase.linkVerification}ms`,
+    );
     const linkVerifiedJobs =
         linkHiddenIds.length > 0 ? savedJobs.filter((job) => !linkHiddenIds.includes(job.id)) : savedJobs;
 
