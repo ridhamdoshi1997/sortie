@@ -124,6 +124,10 @@ export function FindJobsForm({
     }, [searchFilters]);
     const [showSavedOnly, setShowSavedOnly] = useState(false);
 
+    // 3s per tick, so 200 ticks is 10 minutes. See the give-up branch in the
+    // polling effect below for why an absolute ceiling is needed at all.
+    const MAX_SCORE_POLL_TICKS = 200;
+
     // --- AUTO-REFRESH POLLING LOGIC ---
     // Polls by the exact set of job ids this search returned, not by
     // re-matching title/location text — a text re-match silently drops
@@ -134,11 +138,25 @@ export function FindJobsForm({
         let interval: NodeJS.Timeout;
 
         if (jobIds.length > 0) {
+            let ticks = 0;
             interval = setInterval(async () => {
                 try {
+                    ticks += 1;
                     const updatedJobs = await getJobsByIds(jobIds);
 
-                    if (updatedJobs && updatedJobs.length > 0) {
+                    // Nothing left to watch — every polled job was deleted
+                    // or is no longer readable. Found live 2026-09-05 in the
+                    // dev server log: after this account's search data was
+                    // cleared, an open tab kept requesting the same 40 dead
+                    // ids every 3s indefinitely, because the only exit below
+                    // sits INSIDE the `length > 0` branch and an empty
+                    // response could never reach it.
+                    if (!updatedJobs || updatedJobs.length === 0) {
+                        clearInterval(interval);
+                        return;
+                    }
+
+                    {
                         // Merge into the full list rather than replacing it —
                         // getJobsByIds only returns the polled (still-unscored)
                         // subset, and setJobs(updatedJobs) was wiping out every
@@ -161,6 +179,28 @@ export function FindJobsForm({
 
                         // Stop polling once every job we're watching has a score.
                         if (updatedJobs.every((job) => job.match_score !== null)) {
+                            clearInterval(interval);
+                            return;
+                        }
+
+                        // Absolute ceiling, because "every job eventually
+                        // gets a score" is NOT guaranteed and the exit above
+                        // silently assumes it. Two real ways a job stays
+                        // unscored forever: the evaluation quota runs out
+                        // mid-search (evaluateWithinQuota saves those jobs
+                        // and deliberately leaves them unevaluated until the
+                        // cap resets), and the Inngest dev server not running
+                        // at all — the documented local gotcha, and confirmed
+                        // as the cause this session. In both cases this
+                        // interval used to poll every 3s for the life of the
+                        // tab. Ten minutes is far past any real evaluation
+                        // (one throttle window is 60s) while still ending.
+                        if (ticks >= MAX_SCORE_POLL_TICKS) {
+                            console.warn(
+                                `[FindJobsForm] giving up score polling after ${ticks} ticks — ` +
+                                `${updatedJobs.filter((job) => job.match_score === null).length} job(s) still unscored. ` +
+                                `Evaluation quota exhausted, or the Inngest worker isn't running.`,
+                            );
                             clearInterval(interval);
                         }
                     }
