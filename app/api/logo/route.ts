@@ -31,7 +31,21 @@ import { NextRequest, NextResponse } from "next/server";
 // directly, returns a normal 200 image with no such block — PlatformLogo.tsx
 // hardcodes the exact target URL itself (not client-supplied), so this
 // isn't opening the proxy to arbitrary Indeed paths.
-const ALLOWED_HOSTS = ["unavatar.io", "www.indeed.com"];
+// icons.duckduckgo.com added 2026-09-05, as a SECOND tier behind unavatar.
+// Measured live, because unavatar was assumed to be working and was not: it
+// 404s for most real employer domains this app actually encounters --
+// scotiabank.com, deloitte.ca, kpmg.ca, pwc.com, cibc.com and bmo.com ALL
+// return 404, while tdbank.com returns 200. That, not the domain guessing and
+// not a missing company_logo_url column, is why so many cards fall back to the
+// building icon.
+//
+// DuckDuckGo returns a real icon for every one of those (scotiabank 7.4KB,
+// deloitte 33KB, cibc 8.6KB, pwc 4.4KB) AND a genuine 404 for a domain that
+// does not exist -- verified with a deliberately fake domain. That last part
+// is the requirement Google's favicon service failed twice: it always answers
+// 200 with a generic globe, so onError never fires and a wrong logo shows
+// instead of the icon fallback. This service does not have that problem.
+const ALLOWED_HOSTS = ["unavatar.io", "icons.duckduckgo.com", "www.indeed.com"];
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
   const target = request.nextUrl.searchParams.get("url");

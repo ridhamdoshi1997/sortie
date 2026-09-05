@@ -76,9 +76,17 @@ export function CompanyLogo({ company, logoUrl, applyUrl, size = "md" }: Props) 
   // onError reliably regardless of the upstream's own failure mode. The
   // real SerpApi thumbnail (when logoUrl is already set) is left direct —
   // it's Google's own image CDN, unaffected by any of this.
+  // Third tier added 2026-09-05: unavatar 404s for most real employer domains
+  // (scotiabank.com, deloitte.ca, kpmg.ca, pwc.com, cibc.com, bmo.com all
+  // measured 404; tdbank.com 200), so the chain used to end at the building
+  // icon for exactly the large employers a candidate is most likely to be
+  // looking at. DuckDuckGo serves all of those and still 404s for a domain
+  // that does not exist, so onError keeps working and a bad guess still falls
+  // through to the icon rather than showing something wrong.
   const candidates = [
     logoUrl,
     domainGuess ? `/api/logo?url=${encodeURIComponent(`https://unavatar.io/${domainGuess}?fallback=false`)}` : null,
+    domainGuess ? `/api/logo?url=${encodeURIComponent(`https://icons.duckduckgo.com/ip3/${domainGuess}.ico`)}` : null,
   ].filter((url): url is string => Boolean(url));
 
   const [candidateIndex, setCandidateIndex] = useState(0);
