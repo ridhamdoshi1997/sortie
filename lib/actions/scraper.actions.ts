@@ -462,9 +462,44 @@ export async function scrapeAndEvaluateJobs(
     const phase: Record<string, number> = {};
 
     let rawJobs;
+    // Declared out here, not inside the try: the authoritative upsert below
+    // has to await these before it starts writing the same rows.
+    const streamedUpserts: Promise<void>[] = [];
     try {
         const tProviders = Date.now();
-        rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted);
+        // Each provider's results are written against this run the moment
+        // THAT provider finishes, rather than all of them after the slowest
+        // one. Measured: providers take ~46s together because LinkedIn does,
+        // while Indeed answers in roughly ten — so Indeed's results used to
+        // sit fetched-and-idle for ~35s waiting on a source they do not
+        // depend on.
+        //
+        // This replaces the crawl cache as the thing that makes a search feel
+        // instant. Cache-first still runs and is still faster when it hits,
+        // but it only hits when our own crawl happens to hold matching
+        // postings — on a real "Financial Advisor"/Toronto run it contributed
+        // nothing, and the whole fast path silently degraded to "wait for
+        // everything". Provider streaming has no such dependency: whatever
+        // the search actually found shows up as soon as it exists.
+        rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted, (sourceName, jobs) => {
+            streamedUpserts.push(
+                (async () => {
+                    try {
+                        const relevant = filterByTitleRelevance(jobs, title).slice(0, MAX_EVALUATED_JOBS);
+                        if (relevant.length === 0) return;
+                        await upsertScrapedJobs(userId, relevant, runId);
+                        console.log(
+                            `[scraper] streamed ${relevant.length} ${sourceName} job(s) on screen at ` +
+                            `${Date.now() - tStart}ms, before the search finished`,
+                        );
+                    } catch (error) {
+                        // Streaming is an accelerant, never a dependency: the
+                        // authoritative upsert below writes these same jobs.
+                        console.warn(`[scraper] streamed upsert for ${sourceName} failed`, error);
+                    }
+                })(),
+            );
+        });
         phase.providers = Date.now() - tProviders;
         console.log(`[scraper:timing] providers ${phase.providers}ms -> ${rawJobs.length} jobs`);
     } catch (err) {
@@ -635,6 +670,10 @@ export async function scrapeAndEvaluateJobs(
     // has, and is never allowed to reject (its own .catch is attached at
     // creation, so this await cannot throw).
     await earlyCacheUpsert;
+    // Same reason the cache upsert is awaited here: these write the same rows
+    // through merge_job_source, so the authoritative pass must not start while
+    // one is still in flight. Each already swallows its own errors.
+    await Promise.all(streamedUpserts);
 
     const tUpsert = Date.now();
     const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);

@@ -884,7 +884,15 @@ export async function searchJobs(
     location: string,
     countryCode: string = "ca",
     provider: "serpapi" = "serpapi",
-    datePosted?: string
+    datePosted?: string,
+    // Fires as each source resolves, BEFORE the slowest one finishes
+    // (2026-09-05). Providers run concurrently but were only ever reported
+    // together, so a search's visible latency was the slowest provider's --
+    // Indeed answers in ~10s and then sat unused while LinkedIn took ~45s.
+    // The caller uses this to put each source's results on screen as they
+    // land. Never allowed to affect the search: it is called inside a
+    // try/catch and its return value is ignored.
+    onSourceResults?: (sourceName: string, jobs: NormalizedJob[]) => void,
 ): Promise<NormalizedJob[]> {
     void provider;
     void datePosted;
@@ -936,10 +944,22 @@ export async function searchJobs(
 
     const settled = await Promise.all(
         sources.map(({ name, promise }) =>
-            promise.catch((err) => {
-                console.error(`[jobScraper] ${name} failed`, err);
-                return [] as NormalizedJob[];
-            }),
+            promise
+                .then((jobs) => {
+                    if (onSourceResults && jobs.length > 0) {
+                        try {
+                            onSourceResults(name, jobs);
+                        } catch (err) {
+                            // A reporting failure must never fail the search.
+                            console.error(`[jobScraper] onSourceResults(${name}) threw`, err);
+                        }
+                    }
+                    return jobs;
+                })
+                .catch((err) => {
+                    console.error(`[jobScraper] ${name} failed`, err);
+                    return [] as NormalizedJob[];
+                }),
         ),
     );
 
