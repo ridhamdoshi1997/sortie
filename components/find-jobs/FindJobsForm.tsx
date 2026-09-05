@@ -107,8 +107,18 @@ export function FindJobsForm({
     const [lastInitialJobs, setLastInitialJobs] = useState(initialJobs);
     if (initialJobs !== lastInitialJobs) {
         setLastInitialJobs(initialJobs);
-        setJobs(initialJobs);
-        setJobIds(initialJobs.filter((job) => job.match_score === null).map((job) => job.id));
+        // An EMPTY server list never clobbers results already on screen
+        // (2026-09-05). The page is now empty by default, which means the
+        // popstate -> router.refresh() path — the thing that exists so
+        // pressing Back from a job's detail page shows fresh data — started
+        // handing back [] and wiping the very results the user was coming
+        // back to. Coming back from a job must show the same list you left;
+        // a fresh visit starts empty because this component mounts with an
+        // empty initialJobs, not because an empty prop arrives later.
+        if (initialJobs.length > 0 || jobs.length === 0) {
+            setJobs(initialJobs);
+            setJobIds(initialJobs.filter((job) => job.match_score === null).map((job) => job.id));
+        }
     }
 
     const urlSearchParams = useSearchParams();

@@ -20,6 +20,21 @@ import type { Job, Profile } from "@/types";
 // without guessing at an exact number no live measurement has confirmed yet.
 export const maxDuration = 60;
 
+// Module scope, not inline in the component: react-hooks flags a bare
+// Date.now() during render as impure, and it is right to for a Client
+// Component that can re-render at any moment. This page is a Server Component
+// rendered once per request, where "what time is it now" is exactly the
+// question being asked — so the check lives here, named, rather than being
+// silenced at the call site.
+const RECENT_RUN_WINDOW_MS = 30 * 60 * 1000;
+
+function isWithinRecentRunWindow(createdAt: string | null | undefined): boolean {
+    if (!createdAt) return false;
+    const startedAt = new Date(createdAt).getTime();
+    if (Number.isNaN(startedAt)) return false;
+    return Date.now() - startedAt < RECENT_RUN_WINDOW_MS;
+}
+
 export default async function FindJobsPage() {
     // 1. Fetch the user server-side
     const user = await requireUser();
@@ -61,7 +76,7 @@ export default async function FindJobsPage() {
     const insforge = await createInsforgeServer();
     const { data: lastRuns } = await insforge.database
         .from("agent_runs")
-        .select("id,job_title_searched,location_searched,updated_at")
+        .select("id,job_title_searched,location_searched,updated_at,created_at")
         .eq("user_id", user.id)
         .order("created_at", { ascending: false })
         .limit(1);
@@ -89,8 +104,26 @@ export default async function FindJobsPage() {
         profileForDefaults?.location ??
         "";
 
+    // Direct product decision (2026-09-05): the list is EMPTY by default.
+    // Opening Find & Evaluate used to show the last search's results, and
+    // failing that a bare 100 most-recent jobs from any past search — so the
+    // page greeted you with a wall of old postings you had not asked for and
+    // could not tell apart from a fresh scan.
+    //
+    // The unrelated-history fallback is gone outright; there is no reading of
+    // it that is not "stale results presented as current".
+    //
+    // The last run's own results are kept for a short window only, because
+    // they are also what makes "Back to Jobs" from a job's detail page return
+    // you to your search instead of a blank screen — a real regression this
+    // page has had fixed twice (see the comments above on run status and
+    // created_at ordering). A window keeps that working while still leaving
+    // the page empty on any normal later visit. Deliberately short: this is
+    // "you were just here", not "here is your history".
+    const lastRunIsRecent = isWithinRecentRunWindow(lastRun?.created_at);
+
     let initialJobs: Job[] = [];
-    if (lastRun) {
+    if (lastRun && lastRunIsRecent) {
         const { data: scopedJobs } = await insforge.database
             .from("jobs")
             .select("*")
@@ -101,19 +134,11 @@ export default async function FindJobsPage() {
         initialJobs = scopedJobs ?? [];
     }
 
-    // Fallback for jobs saved before `run_id` was tracked on insert, or a
-    // brand new user with no completed run yet — show recent history
-    // instead of an empty page.
-    if (initialJobs.length === 0) {
-        const { data: fallbackJobs } = await insforge.database
-            .from("jobs")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("is_hidden", false)
-            .order("found_at", { ascending: false })
-            .limit(100);
-        initialJobs = fallbackJobs ?? [];
-    }
+    // The 100-most-recent-jobs fallback that used to be here is removed, per
+    // the decision above. It existed for jobs saved before run_id was tracked
+    // on insert and for brand-new users with no completed run — but "show a
+    // hundred unrelated old postings" was never the right answer to either,
+    // and for a new user it showed nothing anyway.
 
     // Order the list by the relevance rank we ALREADY compute, instead of
     // by found_at (scrape arrival order, which is arbitrary).
