@@ -932,6 +932,14 @@ export async function getInFlightSearchJobs(userId: string): Promise<Job[]> {
         console.warn("[scraper.actions] in-flight search read failed", error);
         return [];
     }
+    // Logged because the count is the ONE fact that separates "cache-first is
+    // working and the UI isn't showing it" from "cache-first delivered
+    // nothing" — indistinguishable from the request log alone, both being a
+    // fast 200.
+    console.log(
+        `[scraper:poll] in-flight run ${run.id.slice(0, 8)} -> ${(data ?? []).length} job(s), ` +
+        `${Math.round((Date.now() - new Date(run.started_at).getTime()) / 1000)}s into the search`,
+    );
     return (data ?? []) as Job[];
 }
 
