@@ -58,12 +58,18 @@ export function CommandPalette() {
   // "Jobs" group. 250ms debounce plus a stale-response guard (the closure's
   // own `query` at fire time, checked against the query at resolve time) so
   // a fast typist's earlier request can't overwrite a later one's results.
+  //
+  // The "query too short" case is DERIVED (visibleJobResults below) rather
+  // than written back into state from here. Clearing state synchronously in
+  // an effect body is what react-hooks/set-state-in-effect flags, and the
+  // clear was never real state to begin with — "show nothing under two
+  // characters" is a function of the query, so deriving it is both the
+  // smaller change and the honest one. Stale results are still held in
+  // state while the query is short, which costs nothing: the debounce
+  // refetches on the way back up, guarded by the same stale-response check.
   useEffect(() => {
     const trimmed = query.trim();
-    if (trimmed.length < 2) {
-      setJobResults([]);
-      return;
-    }
+    if (trimmed.length < 2) return;
     const timer = setTimeout(() => {
       quickSearchJobs(trimmed).then((results) => {
         setJobResults((prev) => (query.trim() === trimmed ? results : prev));
@@ -135,7 +141,11 @@ export function CommandPalette() {
     },
   ];
 
-  const jobCommands: CommandItem[] = jobResults.map((job) => ({
+  // See the debounce effect above for why the short-query case is derived
+  // here instead of cleared from inside it.
+  const visibleJobResults = query.trim().length < 2 ? [] : jobResults;
+
+  const jobCommands: CommandItem[] = visibleJobResults.map((job) => ({
     id: `job-${job.id}`,
     label: job.company ? `${job.title} · ${job.company}` : job.title,
     group: "Jobs",

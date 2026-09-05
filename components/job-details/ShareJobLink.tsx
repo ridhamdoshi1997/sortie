@@ -1,10 +1,19 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useState, useSyncExternalStore, useTransition } from "react";
 import { Check, Link2, X } from "lucide-react";
 
 import { createShareLink, revokeShareLink } from "@/actions/jobs";
 import { useToast } from "@/components/ui/ToastProvider";
+
+// Module scope, not inline: useSyncExternalStore resubscribes whenever the
+// subscribe function's identity changes, so an inline arrow would tear down
+// and re-establish the subscription on every render. window.location.origin
+// cannot change for the life of the page, so there is genuinely nothing to
+// subscribe to and the returned unsubscribe is a no-op.
+const subscribeToStableValue = () => () => {};
+const getOrigin = (): string | null => window.location.origin;
+const getOriginOnServer = (): string | null => null;
 
 // Shareable public evaluation link (build-plan.md §I) — self-contained,
 // same pattern as AddToCompareButton.tsx. Only the user's own AI evaluation
@@ -20,10 +29,16 @@ export function ShareJobLink({ jobId, initialShareToken }: { jobId: string; init
   // Computing it inline during render diverges between the server pass
   // (window undefined) and client hydration, which React flags as a real
   // hydration error, not just a lint nit.
-  const [origin, setOrigin] = useState<string | null>(null);
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
+  //
+  // useSyncExternalStore rather than the setState-in-an-effect this used to
+  // be: that pattern is exactly what react-hooks/set-state-in-effect flags,
+  // and the usual fix in this codebase (defer the setState in a
+  // setTimeout(..., 0) — see RESUME.md's gotchas) would add a timer and a
+  // second render to read a value that never changes. This is the hook
+  // React provides for precisely this shape: the server snapshot renders
+  // null so SSR and hydration agree, then the client snapshot supplies the
+  // real origin.
+  const origin = useSyncExternalStore(subscribeToStableValue, getOrigin, getOriginOnServer);
 
   const shareUrl = token && origin ? `${origin}/share/${token}` : null;
 
