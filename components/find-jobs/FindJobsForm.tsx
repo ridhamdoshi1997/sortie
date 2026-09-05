@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +48,9 @@ export function FindJobsForm({
     // Bumped on each search to (re)start the result poll. The poll's lifetime
     // is deliberately independent of the request's — see its own comment.
     const [pollGeneration, setPollGeneration] = useState(0);
+    // Tracked on a ref so a second search cancels the previous run's loader
+    // timer instead of letting it fire mid-way through the new one.
+    const loaderTimerRef = useRef<NodeJS.Timeout | null>(null);
     // Job detail drawer / split view (build-plan.md §H) — fast browsing
     // without a full navigation. Find & Evaluate is deliberately the one
     // page this is wired into (job cards elsewhere — Missions, Career — are
@@ -329,6 +332,7 @@ export function FindJobsForm({
     }, [pollGeneration, userId]);
 
     const runSearch = async () => {
+        if (loaderTimerRef.current) clearTimeout(loaderTimerRef.current);
         setLoading(true);
         setSearchInFlight(true);
         setSearchError(null);
@@ -345,6 +349,21 @@ export function FindJobsForm({
         setJobs([]);
         setJobIds([]);
         setPollGeneration((n) => n + 1);
+
+        // The blocking loader is capped at 2s, full stop (2026-09-05, direct
+        // user requirement, stated three times: "the loader takes 1 to 2
+        // seconds and then you can populate the jobs as they come").
+        //
+        // Every previous attempt tied the loader to some piece of real work
+        // finishing — the whole action, then the first cache hit — and each
+        // time the honest answer was "that takes 15 to 50 seconds", so the
+        // loader ran that long. The requirement is not about when work
+        // finishes. It is that a candidate should never sit in front of a
+        // spinner: show the results surface quickly, then fill it. The search
+        // keeps running, the poll keeps adding jobs, and the button reports
+        // progress — none of which needs a spinner covering the page.
+        const loaderTimer = setTimeout(() => setLoading(false), 2000);
+        loaderTimerRef.current = loaderTimer;
 
         // The AI evaluator still gets visa/remote as free-text context (score
         // nuance on jobs that already pass the hard filter below) — same
@@ -528,10 +547,10 @@ export function FindJobsForm({
                     Without this line that reads as "the search finished and
                     found only these" — the honest version says more is coming
                     rather than leaving a silently-growing list unexplained. */}
-                {searchInFlight && jobs.length > 0 && (
+                {searchInFlight && !loading && (
                     <p className="mt-3 flex items-center text-sm text-muted-foreground">
                         <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        Showing results from our own employer index — still searching LinkedIn and Indeed…
+                        {jobs.length > 0 ? `${jobs.length} found so far — ` : ""}still searching LinkedIn and Indeed…
                     </p>
                 )}
                 {limitModal && (
@@ -569,7 +588,12 @@ export function FindJobsForm({
             {/* A completed search with zero matches is a real outcome, not
                 a failure — give it its own quiet empty state instead of
                 just rendering nothing where results would normally appear. */}
-            {hasSearched && !loading && jobs.length === 0 && (
+            {/* !searchInFlight matters now that the loader is capped at 2s:
+                without it, "No listings matched that search" appears two
+                seconds into every search and stays until the first jobs
+                arrive ~13s later — telling the user the search failed while
+                it is still running. */}
+            {hasSearched && !loading && !searchInFlight && jobs.length === 0 && (
                 <div className="border-t border-border pt-6 text-center">
                     <p className="text-sm text-text-secondary">No listings matched that search.</p>
                     <p className="mt-1 text-xs text-text-muted">
