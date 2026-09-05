@@ -45,6 +45,9 @@ export function FindJobsForm({
     // for the ~50s the paid providers take without the user staring at a
     // spinner for it.
     const [searchInFlight, setSearchInFlight] = useState(false);
+    // Bumped on each search to (re)start the result poll. The poll's lifetime
+    // is deliberately independent of the request's — see its own comment.
+    const [pollGeneration, setPollGeneration] = useState(0);
     // Job detail drawer / split view (build-plan.md §H) — fast browsing
     // without a full navigation. Find & Evaluate is deliberately the one
     // page this is wired into (job cards elsewhere — Missions, Career — are
@@ -147,6 +150,11 @@ export function FindJobsForm({
     // polling effect below for why an absolute ceiling is needed at all.
     const MAX_SCORE_POLL_TICKS = 200;
 
+    // 1s per tick. 90 consecutive ticks with no new job means the search has
+    // stopped producing — comfortably longer than the ~40s gap between Indeed
+    // landing and LinkedIn landing.
+    const POLL_IDLE_TICKS_BEFORE_STOP = 90;
+
     // --- AUTO-REFRESH POLLING LOGIC ---
     // Polls by the exact set of job ids this search returned, not by
     // re-matching title/location text — a text re-match silently drops
@@ -248,9 +256,10 @@ export function FindJobsForm({
     // results stay put until real new ones arrive, which is the behavior
     // this list already had while loading.
     useEffect(() => {
-        if (!searchInFlight) return;
+        if (pollGeneration === 0) return;
 
         let cancelled = false;
+        let ticksWithoutNewJobs = 0;
 
         const tick = async () => {
             try {
@@ -275,6 +284,7 @@ export function FindJobsForm({
                     // Returning prev unchanged when nothing is new keeps
                     // this from re-rendering the whole list every 2.5s
                     // while the providers are still working.
+                    if (added) ticksWithoutNewJobs = 0;
                     return added ? Array.from(byId.values()) : prev;
                 });
                 setHasSearched(true);
@@ -292,13 +302,31 @@ export function FindJobsForm({
         // ~1-2s in, so a shorter period only adds round-trips that find
         // nothing.
         void tick();
-        const interval = setInterval(() => void tick(), 1000);
+        const interval = setInterval(() => {
+            // Deliberately NOT tied to the server action finishing
+            // (2026-09-05). It used to stop the moment scrapeAndEvaluateJobs
+            // resolved, which meant the list could only grow while the user
+            // was still being made to wait — the exact opposite of "add jobs
+            // as they come". Now the request and the arrival of results are
+            // independent: jobs keep landing whether or not the action has
+            // returned.
+            //
+            // Ends on its own once nothing new has arrived for a while, so an
+            // idle tab is not polling forever — the failure mode already found
+            // once in this file's score poll.
+            ticksWithoutNewJobs += 1;
+            if (ticksWithoutNewJobs > POLL_IDLE_TICKS_BEFORE_STOP) {
+                clearInterval(interval);
+                return;
+            }
+            void tick();
+        }, 1000);
 
         return () => {
             cancelled = true;
             clearInterval(interval);
         };
-    }, [searchInFlight, userId]);
+    }, [pollGeneration, userId]);
 
     const runSearch = async () => {
         setLoading(true);
@@ -316,6 +344,7 @@ export function FindJobsForm({
         // searching", and it makes arriving jobs actually legible as arrivals.
         setJobs([]);
         setJobIds([]);
+        setPollGeneration((n) => n + 1);
 
         // The AI evaluator still gets visa/remote as free-text context (score
         // nuance on jobs that already pass the hard filter below) — same
@@ -477,7 +506,14 @@ export function FindJobsForm({
                     >
                         {searchInFlight ? (
                             <>
-                                <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Scanning...
+                                {/* Reports what has actually arrived rather
+                                    than a bare spinner. A search keeps running
+                                    ~50s because the LinkedIn actor does, and an
+                                    unqualified "Scanning..." for that long
+                                    reads as "nothing is ready" even while jobs
+                                    are already on screen below. */}
+                                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                                {jobs.length > 0 ? `Scanning — ${jobs.length} found` : "Scanning..."}
                             </>
                         ) : (
                             <>
