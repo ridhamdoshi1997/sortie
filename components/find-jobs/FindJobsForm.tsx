@@ -305,6 +305,18 @@ export function FindJobsForm({
         setSearchInFlight(true);
         setSearchError(null);
 
+        // Clear the previous search's results NOW, not when the new ones
+        // arrive (2026-09-05). This is why a search read as "nothing is
+        // happening" even after results started streaming in at ~1-2s: the
+        // old list stayed on screen for the whole run, new jobs were merged
+        // into the middle of it, and the only visible change was the whole
+        // list being replaced when the server action finally resolved ~60s
+        // later. So every improvement to time-to-first-result was invisible.
+        // An empty list plus a loader is the honest picture of "we are
+        // searching", and it makes arriving jobs actually legible as arrivals.
+        setJobs([]);
+        setJobIds([]);
+
         // The AI evaluator still gets visa/remote as free-text context (score
         // nuance on jobs that already pass the hard filter below) — same
         // signal the old loose text boxes provided, now derived from the

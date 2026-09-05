@@ -7,7 +7,6 @@ import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
 import { RecentlyViewed } from "@/components/find-jobs/RecentlyViewed";
 import { Navbar } from "@/components/layout/Navbar";
 import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
-import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Job, Profile } from "@/types";
 
 // Phase 1 of the 3-phase redesign (2026-09-01) made scrapeAndEvaluateJobs
@@ -19,21 +18,6 @@ import type { Job, Profile } from "@/types";
 // checks for a full ~80-job search can run longer. 60s gives real headroom
 // without guessing at an exact number no live measurement has confirmed yet.
 export const maxDuration = 60;
-
-// Module scope, not inline in the component: react-hooks flags a bare
-// Date.now() during render as impure, and it is right to for a Client
-// Component that can re-render at any moment. This page is a Server Component
-// rendered once per request, where "what time is it now" is exactly the
-// question being asked — so the check lives here, named, rather than being
-// silenced at the call site.
-const RECENT_RUN_WINDOW_MS = 30 * 60 * 1000;
-
-function isWithinRecentRunWindow(createdAt: string | null | undefined): boolean {
-    if (!createdAt) return false;
-    const startedAt = new Date(createdAt).getTime();
-    if (Number.isNaN(startedAt)) return false;
-    return Date.now() - startedAt < RECENT_RUN_WINDOW_MS;
-}
 
 export default async function FindJobsPage() {
     // 1. Fetch the user server-side
@@ -120,20 +104,18 @@ export default async function FindJobsPage() {
     // created_at ordering). A window keeps that working while still leaving
     // the page empty on any normal later visit. Deliberately short: this is
     // "you were just here", not "here is your history".
-    const lastRunIsRecent = isWithinRecentRunWindow(lastRun?.created_at);
-
-    let initialJobs: Job[] = [];
-    if (lastRun && lastRunIsRecent) {
-        const { data: scopedJobs } = await insforge.database
-            .from("jobs")
-            .select("*")
-            .eq("user_id", user.id)
-            .eq("run_id", lastRun.id)
-            .eq("is_hidden", false)
-            .order("found_at", { ascending: false });
-        initialJobs = scopedJobs ?? [];
-    }
-
+    // ALWAYS empty on load (2026-09-05, direct user requirement, after a
+    // 30-minute "you were just here" window was tried and rejected: a hard
+    // refresh still showed the previous search's results, which is precisely
+    // what the requirement was against).
+    //
+    // Returning from a job's detail page still shows the same list, and does
+    // NOT depend on this: back/forward reuses the client render, and
+    // FindJobsForm additionally refuses to let an empty server list clobber
+    // results already on screen (see its own comment). So the list survives
+    // the round trip through client state, while any genuine page load —
+    // including a hard refresh — starts empty.
+    const initialJobs: Job[] = [];
     // The 100-most-recent-jobs fallback that used to be here is removed, per
     // the decision above. It existed for jobs saved before run_id was tracked
     // on insert and for brand-new users with no completed run — but "show a
@@ -161,29 +143,12 @@ export default async function FindJobsPage() {
     // exists before any evaluation, so this works on a completely unscored
     // list. A job with zero term overlap still comes back (rank 0) rather
     // than being dropped; this only ever reorders.
-    if (initialJobs.length > 1) {
-        const { data: profileForRelevance } = await insforge.database
-            .from("profiles")
-            .select("skills,job_titles_seeking")
-            .eq("id", user.id)
-            .maybeSingle<Pick<Profile, "skills" | "job_titles_seeking">>();
-
-        if (profileForRelevance) {
-            const rankedIds = await rankJobsByRelevance(
-                insforge,
-                initialJobs.map((job) => job.id),
-                profileForRelevance,
-                // What the user actually searched -- the right yardstick on a
-                // pivot search, where profile overlap is legitimately zero.
-                lastRun?.job_title_searched ?? initialTitle ?? null,
-            );
-            const byId = new Map(initialJobs.map((job) => [job.id, job]));
-            const reordered = rankedIds.map((id) => byId.get(id)).filter((job): job is Job => Boolean(job));
-            // Never let a ranking failure silently drop rows: only adopt the
-            // new order if it still contains every job we started with.
-            if (reordered.length === initialJobs.length) initialJobs = reordered;
-        }
-    }
+    // The relevance re-ordering that used to run here is removed with the
+    // hydration above: it ranked initialJobs, which is now always empty, so it
+    // was a profile fetch plus a rank_jobs_by_relevance call on every page
+    // load to reorder nothing. Search results are still relevance-ordered --
+    // scrapeAndEvaluateJobs does that on the way in (see rankJobsByRelevance
+    // in lib/actions/scraper.actions.ts).
 
     // Reappearing Requisition Signal — needs the user's FULL job history
     // (not just this page's scoped/limited initialJobs) to detect a role
