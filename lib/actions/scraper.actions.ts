@@ -14,7 +14,7 @@ import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Job, Profile } from "@/types";
 import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust";
 import { looksLikeSpecificJobPosting, verifyApplyLinksBeforeReveal } from "@/lib/reresolveApplyLink";
-import { createAdminDbClient } from "@/lib/admin/client";
+import { createAdminDbClient, createCacheDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { checkJobEvaluationLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
@@ -413,8 +413,12 @@ export async function scrapeAndEvaluateJobs(
     // escape because .catch is attached immediately below.
     const cachedJobsPromise = (async () => {
         try {
-            const admin = createAdminDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
-            return await queryProactiveCrawlCache(admin, title, location);
+            // The cache lives in its own Supabase project -- see
+            // createCacheDbClient. Falls back to the main project when
+            // CACHE_SUPABASE_* is unset, so this keeps working unchanged on a
+            // checkout without those secrets.
+            const cacheDb = createCacheDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
+            return await queryProactiveCrawlCache(cacheDb, title, location);
         } catch (error) {
             console.warn("[scraper.actions] proactive-crawl cache lookup failed", error);
             return [] as NormalizedJob[];

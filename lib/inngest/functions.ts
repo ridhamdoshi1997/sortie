@@ -13,7 +13,7 @@ import {
 import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
-import { createAdminClient } from '@/lib/admin/client';
+import { createAdminClient, createCacheDbClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
@@ -1243,7 +1243,7 @@ export const proactiveAtsCrawlAsync = inngest.createFunction(
             apiKey: process.env.INSFORGE_API_KEY!,
         });
 
-        const result = await step.run("crawl-batch", () => crawlKnownAtsCompanies(admin));
+        const result = await step.run("crawl-batch", () => crawlKnownAtsCompanies(admin, createCacheDbClient()));
 
         return {
             message: `Crawled ${result.companiesCrawled} compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
@@ -1266,7 +1266,7 @@ export const proactiveWorkdayCrawlAsync = inngest.createFunction(
             apiKey: process.env.INSFORGE_API_KEY!,
         });
 
-        const result = await step.run("crawl-workday-batch", () => crawlKnownWorkdayCompanies(admin));
+        const result = await step.run("crawl-workday-batch", () => crawlKnownWorkdayCompanies(admin, createCacheDbClient()));
 
         return {
             message: `Crawled ${result.companiesCrawled} Workday compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
@@ -1288,7 +1288,7 @@ export const proactiveIcimsCrawlAsync = inngest.createFunction(
             apiKey: process.env.INSFORGE_API_KEY!,
         });
 
-        const result = await step.run("crawl-icims-batch", () => crawlKnownIcimsCompanies(admin));
+        const result = await step.run("crawl-icims-batch", () => crawlKnownIcimsCompanies(admin, createCacheDbClient()));
 
         return {
             message: `Crawled ${result.companiesCrawled} iCIMS compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
@@ -1305,12 +1305,9 @@ export const proactiveIcimsCrawlAsync = inngest.createFunction(
 export const pruneCrawlCacheAsync = inngest.createFunction(
     { id: "prune-crawl-cache", name: "Prune Stale Crawl Cache", triggers: [{ cron: "30 3 * * *" }] },
     async ({ step }) => {
-        const admin = createAdminClient({
-            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
-            apiKey: process.env.INSFORGE_API_KEY!,
-        });
-
-        const result = await step.run("prune", () => pruneStaleDiscoveredPostings(admin));
+        // No main-project client here: pruning touches discovered_postings
+        // only, which now lives in the cache project.
+        const result = await step.run("prune", () => pruneStaleDiscoveredPostings(createCacheDbClient()));
 
         return { message: `Pruned ${result.pruned} long-inactive cached posting(s).` };
     },

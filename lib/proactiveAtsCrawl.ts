@@ -147,14 +147,14 @@ const STALE_RPC_CHUNK_SIZE = 100;
 // they're genuinely rare: a first crawl has nothing to deactivate, and a
 // re-crawl usually finds only a handful of companies with removals.
 async function markMissingPostingsInactiveBatch(
-  admin: AdminDb,
+  cacheDb: AdminDb,
   entries: { platform: string; companyKey: string; companyName: string; currentIds: string[] }[],
 ): Promise<void> {
   // Sent in chunks purely to bound request BODY size; the response is a
   // single integer either way.
   for (let i = 0; i < entries.length; i += STALE_RPC_CHUNK_SIZE) {
     const chunk = entries.slice(i, i + STALE_RPC_CHUNK_SIZE);
-    const { error } = await admin.database.rpc("mark_missing_postings_inactive", {
+    const { error } = await cacheDb.database.rpc("mark_missing_postings_inactive", {
       p_entries: chunk.map((e) => ({
         platform: e.platform,
         company_key: e.companyKey,
@@ -170,16 +170,23 @@ async function markMissingPostingsInactiveBatch(
 // identical bandwidth and correctness properties without duplicating the
 // call shape.
 async function markMissingPostingsInactive(
-  admin: AdminDb,
+  cacheDb: AdminDb,
   platform: string,
   companyKey: string,
   currentIds: string[],
   companyName: string,
 ): Promise<void> {
-  await markMissingPostingsInactiveBatch(admin, [{ platform, companyKey, companyName, currentIds }]);
+  await markMissingPostingsInactiveBatch(cacheDb, [{ platform, companyKey, companyName, currentIds }]);
 }
 
-export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
+// Two clients, not one (2026-09-06). ats_registry lives in the MAIN Supabase
+// project alongside user data; discovered_postings lives in its own project,
+// because at 614 MB it was the entire reason the main database blew its 500 MB
+// plan limit. A crawl pass reads the registry and writes postings, so it needs
+// both. `cacheDb` defaults to `admin`, which keeps every existing caller and a
+// local checkout without CACHE_SUPABASE_* working exactly as before -- the
+// split is opt-in by configuration, not a hard requirement.
+export async function crawlKnownAtsCompanies(admin: AdminDb, cacheDb: AdminDb = admin): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   // Plain cast, not .returns<T>() — this module's AdminDb is a loosely
   // (structurally) typed stand-in, unlike the real SDK client's own
   // generic-aware query builder every other .returns<T>() call site in
@@ -294,7 +301,7 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
   const deduped = dedupePostingRows(allRows);
   for (let i = 0; i < deduped.length; i += UPSERT_CHUNK_SIZE) {
     const chunk = deduped.slice(i, i + UPSERT_CHUNK_SIZE);
-    const { error } = await admin.database
+    const { error } = await cacheDb.database
       .from("discovered_postings")
       .upsert(chunk, { onConflict: "ats_platform,company_key,external_id" });
     if (error) console.warn(`[proactiveAtsCrawl] batched upsert failed (${chunk.length} rows)`, error.message);
@@ -311,7 +318,7 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
   const succeeded = fetched.filter((f) => f.fetchSucceeded && !f.skipped);
   if (succeeded.length > 0) {
     await markMissingPostingsInactiveBatch(
-      admin,
+      cacheDb,
       succeeded.map((f) => ({
         platform: f.platform,
         companyKey: f.candidate.company_key,
@@ -383,7 +390,7 @@ type WorkdayCrawlCandidate = {
   failed_attempts: number | null;
 };
 
-export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
+export async function crawlKnownWorkdayCompanies(admin: AdminDb, cacheDb: AdminDb = admin): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   const { data } = await admin.database
     .from("ats_registry")
     .select("company_key,company_name,company_domain,config,failed_attempts")
@@ -465,7 +472,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
           is_active: true,
         }));
 
-        const { error } = await admin.database
+        const { error } = await cacheDb.database
           .from("discovered_postings")
           .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] Workday upsert failed for ${candidate.company_name}`, error.message);
@@ -474,7 +481,7 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
 
       if (fetchSucceeded) {
         await markMissingPostingsInactive(
-          admin,
+          cacheDb,
           "workday",
           candidate.company_key,
           jobs.map((job) => job.id),
@@ -513,7 +520,7 @@ type IcimsCrawlCandidate = {
   config: { tenant?: string } | null;
 };
 
-export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
+export async function crawlKnownIcimsCompanies(admin: AdminDb, cacheDb: AdminDb = admin): Promise<{ companiesCrawled: number; postingsUpserted: number }> {
   const { data } = await admin.database
     .from("ats_registry")
     .select("company_key,company_name,config")
@@ -568,7 +575,7 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
           is_active: true,
         }));
 
-        const { error } = await admin.database
+        const { error } = await cacheDb.database
           .from("discovered_postings")
           .upsert(dedupePostingRows(rows), { onConflict: "ats_platform,company_key,external_id" });
         if (error) console.warn(`[proactiveAtsCrawl] iCIMS upsert failed for ${candidate.company_name}`, error.message);
@@ -577,7 +584,7 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
 
       if (fetchSucceeded) {
         await markMissingPostingsInactive(
-          admin,
+          cacheDb,
           "icims",
           candidate.company_key,
           jobs.map((job) => job.id),
@@ -602,12 +609,12 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
 // last_seen_at, which the crawl already maintains.
 const INACTIVE_RETENTION_DAYS = 30;
 
-export async function pruneStaleDiscoveredPostings(admin: AdminDb): Promise<{ pruned: number }> {
+export async function pruneStaleDiscoveredPostings(cacheDb: AdminDb): Promise<{ pruned: number }> {
   const cutoff = new Date(Date.now() - INACTIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
   // head+count so the deleted rows are never shipped back — the point of
   // this function is to protect the storage budget, not to spend egress
   // describing what it removed.
-  const { count, error } = await admin.database
+  const { count, error } = await cacheDb.database
     .from("discovered_postings")
     .delete({ count: "exact", head: true })
     .eq("is_active", false)
@@ -645,7 +652,7 @@ export async function pruneStaleDiscoveredPostings(admin: AdminDb): Promise<{ pr
 const THIN_RESULT_THRESHOLD = 15;
 
 export async function queryProactiveCrawlCache(
-  admin: AdminDb,
+  cacheDb: AdminDb,
   searchTitle: string,
   searchLocation: string,
   limit = 30,
@@ -683,7 +690,7 @@ export async function queryProactiveCrawlCache(
   // is best-effort -- if it times out or errors, the precise results still
   // stand. Same " or " expansion lib/jobRelevance.ts's buildRelevanceQuery
   // already uses for the other full-text path in this codebase.
-  const { data, error } = await admin.database.rpc("search_discovered_postings", {
+  const { data, error } = await cacheDb.database.rpc("search_discovered_postings", {
     p_query: searchTitle,
     p_limit: limit,
     p_location: searchLocation || null,
@@ -710,7 +717,7 @@ export async function queryProactiveCrawlCache(
   const words = searchTitle.trim().split(/\s+/).filter(Boolean);
   if (rows_.length < THIN_RESULT_THRESHOLD && words.length > 1) {
     try {
-      const { data: widened, error: widenError } = await admin.database.rpc("search_discovered_postings", {
+      const { data: widened, error: widenError } = await cacheDb.database.rpc("search_discovered_postings", {
         p_query: words.join(" or "),
         p_limit: limit,
         p_location: searchLocation || null,
