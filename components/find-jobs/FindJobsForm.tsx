@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
-import { scrapeAndEvaluateJobs, getJobsByIds, getInFlightSearchJobs } from "@/lib/actions/scraper.actions";
+import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
@@ -276,7 +276,15 @@ export function FindJobsForm({
 
         const tick = async () => {
             try {
-                const partial = await getInFlightSearchJobs(userId);
+                // fetch() to a route handler, NOT the getInFlightSearchJobs
+                // Server Action this used to call. Next.js runs a client's
+                // Server Actions one at a time, so every poll queued behind
+                // the ~50s search action and only ran after it had finished —
+                // which is why results appeared all at once at the end no
+                // matter how early they were written to the database.
+                const response = await fetch("/api/search-progress", { cache: "no-store" });
+                if (!response.ok) return;
+                const partial = ((await response.json()) as { jobs: Job[] }).jobs ?? [];
                 if (cancelled || partial.length === 0) return;
 
                 // First real results are on screen — take the blocking loader
