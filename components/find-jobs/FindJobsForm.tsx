@@ -16,6 +16,22 @@ import { applyClientFilters, filtersToSearchParams, searchParamsToFilters } from
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 
+// Survives client-side navigation, and ONLY that (2026-09-05).
+//
+// Making the page empty by default broke going back: leaving for a job's
+// detail page unmounts this component, so its state is gone, and the server
+// now deliberately returns no jobs — so Back landed on an empty list. The
+// earlier guard against an empty server list clobbering on-screen results does
+// not help, because by then there are no on-screen results left to protect.
+//
+// A module-level variable is exactly the right lifetime here, and sessionStorage
+// is not: this is wiped by any real document load (hard refresh, a new tab,
+// opening the URL directly), which must stay empty, but it survives Next's
+// client-side router navigations, which is precisely the Back case. No
+// navigation-type sniffing needed — the distinction falls out of where the
+// value lives.
+let lastResultsCache: { userId: string; jobs: Job[]; jobIds: string[] } | null = null;
+
 type Props = {
     userId: string;
     initialJobs?: Job[];
@@ -61,12 +77,16 @@ export function FindJobsForm({
     // Distinguishes "haven't run a search this session yet" from "ran one,
     // got zero matches" — the latter needs its own empty state, not silence.
     const [hasSearched, setHasSearched] = useState(false);
-    const [jobs, setJobs] = useState<Job[]>(initialJobs);
+    const [jobs, setJobs] = useState<Job[]>(() => {
+        if (initialJobs.length > 0) return initialJobs;
+        return lastResultsCache?.userId === userId ? lastResultsCache.jobs : [];
+    });
     // Only poll for jobs that haven't been scored yet — a page load with
     // already-scored history shouldn't start an indefinite refresh loop.
-    const [jobIds, setJobIds] = useState<string[]>(
-        initialJobs.filter((job) => job.match_score === null).map((job) => job.id)
-    );
+    const [jobIds, setJobIds] = useState<string[]>(() => {
+        if (initialJobs.length > 0) return initialJobs.filter((job) => job.match_score === null).map((job) => job.id);
+        return lastResultsCache?.userId === userId ? lastResultsCache.jobIds : [];
+    });
     // Same hydration-mismatch fix as JobActionBar.tsx's foundAtLabel —
     // formatTimeAgo(lastRunAt) computed inline in JSX renders a different
     // string at SSR-time than at client-hydration-time whenever real time
@@ -77,6 +97,13 @@ export function FindJobsForm({
         const timer = setTimeout(() => setLastRunLabel(formatTimeAgo(lastRunAt)), 0);
         return () => clearTimeout(timer);
     }, [lastRunAt]);
+
+    // Mirrors the visible list into the module cache so a later mount (Back
+    // from a job's detail page) can restore it. Writing to an external store,
+    // not setState, so this cannot loop.
+    useEffect(() => {
+        lastResultsCache = { userId, jobs, jobIds };
+    }, [userId, jobs, jobIds]);
 
     const router = useRouter();
 
