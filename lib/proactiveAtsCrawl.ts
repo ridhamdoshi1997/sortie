@@ -105,33 +105,35 @@ const UPSERT_CHUNK_SIZE = 500;
 const CURSOR_CHUNK_SIZE = 200;
 const STALE_RPC_CHUNK_SIZE = 100;
 
-// Hard storage guard (2026-09-03). This project's Supabase plan caps the
-// database at 500 MB, and that budget has to cover real user data — profiles,
-// applications, résumés — not just a cache of other people's job ads.
+// Storage guard history, kept because it is the reason the column is gone.
 //
-// Measured, because the risk was not obvious: most platforms return no
-// description at all in list mode (Greenhouse/Ashby/Workday/BambooHR all
-// average 0 chars), but the two adapters added today are the opposite —
-// Dayforce averages 3,719 chars per posting and Workable 2,209. Only 131 of
-// 692 Dayforce and 3 of 6,499 Workable companies had been crawled at the
-// time of measuring, so those averages had barely begun to land. Extrapolated
-// across their full registries they would have added roughly 300-400 MB of
-// description text by themselves and blown the entire quota.
+// 2026-09-03 capped cached descriptions at 500 chars: most platforms return no
+// description in list mode (Greenhouse/Ashby/Workday/BambooHR average 0), but
+// Dayforce averaged 3,719 chars per posting and Workable 2,209, and only 131 of
+// 692 Dayforce and 3 of 6,499 Workable companies had been crawled at the time.
+// Extrapolated across their registries that was 300-400 MB of description text
+// alone.
 //
-// 500 chars keeps a genuinely useful preview — enough to tell roles apart in
-// a list and to give the evaluator real signal — while cutting the storage
-// those two platforms need by roughly 85%. Nothing downstream needs more
-// from the CACHE specifically: the pre-filter's short-description rule
-// already exempts direct-ATS sources (lib/jobPreFilter.ts), and a posting a
-// candidate actually opens goes through the on-demand full evaluation path,
-// which reads the employer's own live page rather than this table.
-const CACHED_DESCRIPTION_MAX_CHARS = 500;
+// 2026-09-06 removed the column outright. The cap slowed the growth but the
+// table still reached 614 MB of a 671 MB database against a 500 MB plan limit,
+// with description text 65 MB of the heap. Dropping it costs nothing
+// downstream, for the reason the cap's own note already gave: the pre-filter
+// exempts direct-ATS sources (lib/jobPreFilter.ts), and a posting a candidate
+// opens is evaluated from the employer's own live page, not from this table.
 
-function truncateDescription(description: string | undefined): string | null {
-  const trimmed = (description ?? "").trim();
-  if (!trimmed) return null;
-  return trimmed.length > CACHED_DESCRIPTION_MAX_CHARS ? `${trimmed.slice(0, CACHED_DESCRIPTION_MAX_CHARS)}…` : trimmed;
-}
+// truncateDescription removed 2026-09-06 along with the column itself. The
+// cache stopped storing descriptions when the database hit 671 MB against a
+// 500 MB plan limit: discovered_postings was 614 MB of that, and description
+// text was 65 MB of the heap.
+//
+// It is the right thing to drop first because nothing downstream needs it.
+// The pre-filter's short-description rule already exempts direct-ATS sources
+// (lib/jobPreFilter.ts), and a posting a candidate actually opens goes through
+// the on-demand full evaluation path, which reads the employer's own live page
+// rather than this table. The 500-char cap this helper enforced was itself
+// added to stop Dayforce and Workable (3,719 and 2,209 chars per posting) from
+// blowing the same quota -- this finishes that job rather than starting a new
+// argument.
 
 // Batched form of markMissingPostingsInactive: one read covering every
 // company in the crawl batch, rather than one read per company. Introduced
@@ -276,7 +278,6 @@ export async function crawlKnownAtsCompanies(admin: AdminDb): Promise<{ companie
       external_id: job.id,
       title: job.title,
       location: job.location || null,
-      description: truncateDescription(job.description),
       salary: job.salary || null,
       job_type: job.type || null,
       apply_url: job.applyUrl ?? job.url,
@@ -456,7 +457,6 @@ export async function crawlKnownWorkdayCompanies(admin: AdminDb): Promise<{ comp
           external_id: job.id,
           title: job.title,
           location: job.location || null,
-          description: truncateDescription(job.description),
           salary: job.salary || null,
           job_type: job.type || null,
           apply_url: job.applyUrl ?? job.url,
@@ -560,7 +560,6 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb): Promise<{ compan
           external_id: job.id,
           title: job.title,
           location: job.location || null,
-          description: truncateDescription(job.description),
           salary: job.salary || null,
           job_type: job.type || null,
           apply_url: job.applyUrl ?? job.url,
@@ -732,7 +731,6 @@ export async function queryProactiveCrawlCache(
     company_name: string;
     title: string | null;
     location: string | null;
-    description: string | null;
     salary: string | null;
     job_type: string | null;
     apply_url: string | null;
@@ -747,7 +745,7 @@ export async function queryProactiveCrawlCache(
       title: row.title as string,
       company: row.company_name,
       location: row.location ?? "",
-      description: row.description ?? "",
+      description: "",
       url: row.apply_url as string,
       applyUrl: row.apply_url as string,
       salary: row.salary ?? undefined,
