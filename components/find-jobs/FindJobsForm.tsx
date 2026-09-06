@@ -144,7 +144,17 @@ export function FindJobsForm({
     useEffect(() => {
         const params = filtersToSearchParams(searchFilters);
         const query = params.toString();
-        router.replace(query ? `?${query}` : "?", { scroll: false });
+        const next = query ? `?${query}` : "?";
+        // Skip the navigation when the URL already says this (2026-09-05).
+        // This effect runs on mount too, and searchFilters is initialised FROM
+        // the URL, so the first run always replaced the URL with what it
+        // already was — a real router navigation for no change. Every
+        // navigation to this route can surface app/find-jobs/loading.tsx,
+        // which is a full-page skeleton, so a no-op navigation is not free:
+        // it can blank the page the user is already looking at.
+        const current = window.location.search || "?";
+        if (current === next) return;
+        router.replace(next, { scroll: false });
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [searchFilters]);
     const [showSavedOnly, setShowSavedOnly] = useState(false);

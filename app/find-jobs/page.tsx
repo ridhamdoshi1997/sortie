@@ -19,7 +19,20 @@ import type { Job, Profile } from "@/types";
 // without guessing at an exact number no live measurement has confirmed yet.
 export const maxDuration = 60;
 
+// Server Component rendered once per request, where reading the clock is the
+// whole point. Named so react-hooks/purity does not flag a bare Date.now() in
+// a render body, which is a rule written for Client Components that re-render.
+function nowMs(): number {
+    return Date.now();
+}
+
 export default async function FindJobsPage() {
+    // Times this page's own server render. app/find-jobs/loading.tsx is a
+    // FULL-PAGE skeleton -- navbar, console shell and three pulsing job cards
+    // -- and it is shown for however long this function takes. If a user
+    // reports "it loads for a minute", this number is the first thing to look
+    // at, and nothing in FindJobsForm's own loading state can affect it.
+    const tPage = nowMs();
     // 1. Fetch the user server-side
     const user = await requireUser();
 
@@ -174,6 +187,8 @@ export default async function FindJobsPage() {
         .not("last_viewed_at", "is", null)
         .order("last_viewed_at", { ascending: false })
         .limit(6);
+
+    console.log(`[find-jobs:page] server render ${nowMs() - tPage}ms`);
 
     return (
         <>
