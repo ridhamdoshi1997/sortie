@@ -17,7 +17,7 @@ import { createAdminClient, createCacheDbClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
-import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget } from "@/lib/proactiveAtsCrawl";
+import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget, backfillCompanyDomains } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1245,8 +1245,17 @@ export const proactiveAtsCrawlAsync = inngest.createFunction(
 
         const result = await step.run("crawl-batch", () => crawlKnownAtsCompanies(admin, createCacheDbClient()));
 
+        // Resolve employer domains for company logos on the same schedule.
+        // Its own step so a failure here cannot fail the crawl, and so the
+        // 200-company batch is retried independently. At 200 per run, four
+        // runs an hour, the 68,404-company registry backfills in a few days --
+        // and every company is paid for once, ever.
+        const domains = await step.run("backfill-company-domains", () => backfillCompanyDomains(admin));
+
         return {
-            message: `Crawled ${result.companiesCrawled} compan${result.companiesCrawled === 1 ? "y" : "ies"}, upserted ${result.postingsUpserted} posting(s).`,
+            message:
+                `Crawled ${result.companiesCrawled} compan${result.companiesCrawled === 1 ? "y" : "ies"}, ` +
+                `upserted ${result.postingsUpserted} posting(s), resolved ${domains.resolved} logo domain(s).`,
         };
     },
 );

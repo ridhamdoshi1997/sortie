@@ -1,5 +1,6 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { canonicalCompanyKey } from "@/lib/companyIdentity";
+import { resolveCompanyDomain } from "@/lib/companyDomain";
 import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -668,6 +669,63 @@ export async function pruneStaleDiscoveredPostings(cacheDb: AdminDb): Promise<{ 
   return { pruned: count ?? 0 };
 }
 
+// Fills in ats_registry.company_domain, which is what makes an employer's logo
+// resolvable (2026-09-06).
+//
+// Crawl-cache jobs showed a blank building icon because their apply link points
+// at the ATS host, so no employer domain can be read from it, and CompanyLogo's
+// fallback guess from the company NAME gets the big employers wrong -- "Royal
+// Bank of Canada" guesses royalbankofcanada.com, not rbc.com. The registry
+// column meant to hold the answer had 17 of 68,404 rows populated, because it
+// is only written during reactive discovery while almost every company arrived
+// through the jobhive CSV bulk import.
+//
+// Resolution happens HERE, on the crawl's schedule, and never on a search:
+// it is one network call per company, paid once ever and persisted. Measured
+// 16/22 on real companies drawn from live search results, and a miss stores
+// nothing rather than a wrong domain.
+const DOMAIN_BACKFILL_PER_RUN = 200;
+
+export async function backfillCompanyDomains(admin: AdminDb): Promise<{ resolved: number; attempted: number }> {
+  // Ordered by how many cached postings each company has, so the employers a
+  // candidate actually sees are resolved first. A plain
+  // "company_domain IS NULL LIMIT 200" is effectively alphabetical and spent
+  // its first runs on _nology and 1000heads while BMO and TD stayed blank --
+  // with 68,404 companies to work through, that ordering is the difference
+  // between logos appearing this week and next month. See
+  // migrations/20260907120000_prioritise-domain-backfill.sql.
+  const { data, error } = await admin.database.rpc("companies_needing_logo_domain", {
+    p_limit: DOMAIN_BACKFILL_PER_RUN,
+  });
+
+  // An error must NOT look like an empty queue. It did: this returned the same
+  // {resolved:0, attempted:0} either way, so when the RPC was being cancelled
+  // by the 8s statement timeout the backfill silently reported "nothing left to
+  // do" while 19,000 companies still had no logo. Same silent-discard shape
+  // this file's cache lookup already had once.
+  if (error) {
+    console.error("[proactiveAtsCrawl] domain backfill query FAILED (not an empty queue)", error.message);
+    return { resolved: 0, attempted: 0 };
+  }
+  if (!data) return { resolved: 0, attempted: 0 };
+  const rows = data as { company_key: string; company_name: string }[];
+  if (rows.length === 0) return { resolved: 0, attempted: 0 };
+
+  let resolved = 0;
+  for (const row of rows) {
+    const domain = await resolveCompanyDomain(row.company_name);
+    if (!domain) continue;
+    const { error: updateError } = await admin.database
+      .from("ats_registry")
+      .update({ company_domain: domain })
+      .eq("company_key", row.company_key);
+    if (!updateError) resolved += 1;
+  }
+
+  if (resolved > 0) console.log(`[proactiveAtsCrawl] resolved ${resolved}/${rows.length} company domain(s) for logos`);
+  return { resolved, attempted: rows.length };
+}
+
 // Read side, called from a live search (lib/actions/scraper.actions.ts) —
 // the free, instant supplement to that search's own reactive enrichment.
 // Full-text title match against the crawl cache, with the city constraint
@@ -775,6 +833,7 @@ export async function queryProactiveCrawlCache(
 
   type DiscoveredPostingRow = {
     external_id: string;
+    company_key: string;
     ats_platform: string;
     company_name: string;
     title: string | null;
@@ -786,6 +845,28 @@ export async function queryProactiveCrawlCache(
   };
 
   const rows = rows_ as DiscoveredPostingRow[];
+
+  // Attach each employer's real domain so the card can show a real logo. The
+  // join is on company_key -- the SAME key the crawl wrote these postings
+  // under -- so it matches by construction rather than by normalising a
+  // display name and hoping. backfillCompanyDomains populates the column.
+  const companyKeys = [...new Set(rows.map((r) => r.company_key).filter(Boolean))];
+  const domainByKey = new Map<string, string>();
+  if (companyKeys.length > 0) {
+    try {
+      const { data: registryRows } = await cacheDb.database
+        .from("ats_registry")
+        .select("company_key,company_domain")
+        .in("company_key", companyKeys);
+      for (const r of (registryRows ?? []) as { company_key: string; company_domain: string | null }[]) {
+        if (r.company_domain) domainByKey.set(r.company_key, r.company_domain);
+      }
+    } catch (error) {
+      // Cosmetic only: a failure here costs a logo, never a result.
+      console.warn("[proactiveAtsCrawl] logo-domain lookup failed", error);
+    }
+  }
+
   const normalized: NormalizedJob[] = rows
     .filter((row) => row.title && row.apply_url)
     .map((row) => ({
@@ -800,6 +881,12 @@ export async function queryProactiveCrawlCache(
       type: row.job_type ?? undefined,
       postedAt: row.posted_at ?? undefined,
       source: row.ats_platform,
+      // Same proxied shape CompanyLogo builds for its own guesses, so an
+      // unresolvable domain still returns a real error and falls through to the
+      // icon rather than showing something wrong.
+      logoUrl: domainByKey.has(row.company_key)
+        ? `/api/logo?url=${encodeURIComponent(`https://icons.duckduckgo.com/ip3/${domainByKey.get(row.company_key)}.ico`)}`
+        : undefined,
     }));
 
   return normalized;
