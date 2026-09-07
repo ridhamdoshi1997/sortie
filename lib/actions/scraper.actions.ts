@@ -362,6 +362,217 @@ export type ScrapeBlockedResult = {
 // OTHER failure mode below still throws as before (genuinely unexpected —
 // network/DB errors — where the existing generic catch-and-toUserMessage
 // handling in FindJobsForm.tsx is the right behavior).
+// Persist a batch of jobs against a run, verify their apply links, and queue
+// evaluation. Extracted 2026-09-07 so the SAME path runs whether jobs came from
+// the index on the request, or from the paid providers in the background job --
+// duplicating it would mean two places to keep the link gate, the pre-filter and
+// the evaluation budget in step.
+async function persistAndEvaluate(
+    insforge: InsforgeServerClient,
+    userId: string,
+    userEmail: string | undefined,
+    uniqueJobs: NormalizedJob[],
+    filters: Record<string, string>,
+    runId: string | null,
+    title: string,
+    location: string,
+    phase: Record<string, number> = {},
+): Promise<Job[]> {
+    const tUpsert = Date.now();
+    const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
+    phase.upsert = Date.now() - tUpsert;
+    console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
+
+    if (!savedJobs || savedJobs.length === 0) {
+        if (runId) {
+            await insforge.database.rpc("update_agent_run", {
+                p_run_id: runId,
+                p_status: "failed",
+                p_is_successful: false,
+                p_error_message: "Insforge upsert did not return any saved jobs.",
+            });
+        }
+        throw new Error("Insforge upsert did not return any saved jobs.");
+    }
+
+    // Phase 1 of the 3-phase redesign (2026-09-01, see
+    // context/RESUME.md's "Next session, start here"): resolve/verify every
+    // job's apply link — free tier for everything, paid-tier rescue
+    // (bounded, not score-gated — see verifyApplyLinksBeforeReveal's own
+    // comment for why authenticity must never depend on match score) for
+    // whatever the free tier can't fix — BEFORE anything is evaluated or
+    // revealed. Runs synchronously here so a job that still fails the
+    // genuine-link bar afterward is hidden and excluded from evaluation
+    // entirely, never spending AI quota on a job that's never going to be
+    // shown regardless of how well it scores.
+    // Direct product decision (2026-09-05): LinkedIn and Indeed jobs are NOT
+    // link-verified during a live search.
+    //
+    // needsLinkResolution deliberately includes trusted-aggregator links,
+    // because "an indirect board link is a floor, not a resting state" — every
+    // pass tries to upgrade one to the employer's own posting. That is a good
+    // ambition and a terrible thing to make a candidate wait on: LinkedIn and
+    // Indeed are the two highest-VOLUME sources, so they dominated the set,
+    // and their links already CLEAR the genuine-link bar (classifyApplyHost
+    // rates them "aggregator", which meetsGenuineLinkBar passes). The pass was
+    // therefore spending most of a search's wall-clock trying to improve links
+    // that were already acceptable to show.
+    //
+    // They still get upgraded — by the hourly repairApplyLinksAsync cron and
+    // the per-view lazy resolver, neither of which a candidate waits on. What
+    // stays synchronous here is the set where verification decides whether a
+    // job is genuine ENOUGH TO SHOW AT ALL, which is the real purpose.
+    const SKIP_LIVE_VERIFICATION_SOURCES = new Set(["linkedin", "indeed"]);
+    const jobsNeedingVerification = savedJobs.filter(
+        (job) => !SKIP_LIVE_VERIFICATION_SOURCES.has((job.source ?? "").trim().toLowerCase()),
+    );
+
+    const tVerify = Date.now();
+    const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, jobsNeedingVerification);
+    phase.linkVerification = Date.now() - tVerify;
+    console.log(
+        `[scraper:timing] persisted ${savedJobs.length} job(s) for "${title}"/"${location}" — ` +
+        `providers ${phase.providers ?? 0}ms, ats-enrichment ${phase.atsEnrichment ?? 0}ms, ` +
+        `link-verify ${phase.linkVerification}ms (${jobsNeedingVerification.length}/${savedJobs.length} jobs)`,
+    );
+    const linkVerifiedJobs =
+        linkHiddenIds.length > 0 ? savedJobs.filter((job) => !linkHiddenIds.includes(job.id)) : savedJobs;
+
+    if (runId) {
+        await insforge.database.rpc("update_agent_run", {
+            p_run_id: runId,
+            p_jobs_found: savedJobs.length,
+        });
+        // Status stays "running" — evaluateJobsAsync marks it
+        // completed/failed once the Inngest evaluation actually finishes.
+    }
+
+    // "Not in the list anymore" detection — cheap and precise, no extra
+    // scraping: find this user's PRIOR runs of this exact same (title,
+    // location) search (agent_runs.job_title_searched/location_searched are
+    // exact strings, not fuzzy-matched, avoiding the "Software Engineer" vs
+    // "Software Developer" mismatch problem noted below for jobsToInsert).
+    // Any job tied to one of those older runs that isn't in THIS run's
+    // result set was returned before and stopped being returned — Google
+    // Jobs itself dropped it, the strongest signal this app can get without
+    // re-fetching the source site (see lib/jobStatus.ts).
+    if (runId) {
+        const { data: previousRuns } = await insforge.database
+            .from("agent_runs")
+            .select("id")
+            .eq("user_id", userId)
+            .eq("job_title_searched", title)
+            .eq("location_searched", location)
+            .neq("id", runId)
+            .returns<{ id: string }[]>();
+
+        const previousRunIds = (previousRuns ?? []).map((r) => r.id);
+        if (previousRunIds.length > 0) {
+            const currentJobIds = new Set(savedJobs.map((j) => j.id));
+            const { data: previousJobs } = await insforge.database
+                .from("jobs")
+                .select("id")
+                .eq("user_id", userId)
+                .in("run_id", previousRunIds)
+                .is("marked_unavailable_at", null)
+                .is("dropped_from_search_at", null)
+                .returns<{ id: string }[]>();
+
+            const droppedIds = (previousJobs ?? [])
+                .map((j) => j.id)
+                .filter((id) => !currentJobIds.has(id));
+
+            if (droppedIds.length > 0) {
+                await insforge.database
+                    .from("jobs")
+                    .update({ dropped_from_search_at: new Date().toISOString() })
+                    .in("id", droppedIds);
+            }
+        }
+    }
+
+    // The searched title/location travel WITH the evaluation (2026-09-04).
+    // Without them the evaluator only ever saw the candidate's stored profile
+    // and judged every result against their current career — so a developer
+    // deliberately searching "Financial Advisor" got a wall of 20% scores
+    // reading "does not utilize your software engineering expertise". That is
+    // technically true and completely useless: they asked for advisor roles.
+    // A deliberate search is a stated intent, and the evaluator has to know
+    // it was made, otherwise it is answering a question nobody asked.
+    const evaluationFilters = { ...filters, searched_title: title, searched_location: location };
+    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, userEmail, linkVerifiedJobs, evaluationFilters, runId);
+
+    // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
+    // the caller can track exactly this search's batch by id, rather than
+    // re-matching by title/location text (which drops jobs whose title or
+    // location is phrased differently than the search box, e.g. "Software
+    // Engineer" vs "Software Developer", or "Markham, ON" vs "Toronto, ON").
+    // Excludes anything Phase 1's link gate or the Phase 2 pre-filter just
+    // hid — this search's own immediate response should already match what
+    // a fresh page load would show, not include a job that's about to be
+    // filtered out anyway.
+    return linkVerifiedJobs.filter((job) => !hiddenIds.includes(job.id));
+}
+
+
+// The paid half of a search, run OUTSIDE the request.
+//
+// Called by fetchPaidSourcesAsync (lib/inngest/functions.ts). Fetches LinkedIn
+// and Indeed, enriches with direct-ATS boards, and persists against the same
+// runId the request created -- so FindJobsForm's poll surfaces these alongside
+// the index results already on screen, with no extra client work.
+//
+// Lives here rather than in the Inngest file because it shares
+// persistAndEvaluate, enrichWithDirectAtsJobs and the relevance pass with the
+// request path. Two copies of that chain would drift.
+export async function fetchPaidSourcesForRun(params: {
+    userId: string;
+    runId: string | null;
+    title: string;
+    location: string;
+    country: string;
+    filters: Record<string, string>;
+    userEmail?: string | null;
+}): Promise<{ persisted: number; providerJobs: number }> {
+    const { userId, runId, title, location, country, filters, userEmail } = params;
+    const insforge = await createInsforgeServer();
+    const phase: Record<string, number> = {};
+
+    let rawJobs: NormalizedJob[];
+    try {
+        const t = Date.now();
+        rawJobs = await searchJobs(title, location, country, "serpapi", filters.date_posted);
+        phase.providers = Date.now() - t;
+        console.log(`[paid-sources] providers ${phase.providers}ms -> ${rawJobs.length} jobs for "${title}"/"${location}" (${country})`);
+    } catch (error) {
+        console.error("[paid-sources] providers failed", error);
+        return { persisted: 0, providerJobs: 0 };
+    }
+    if (rawJobs.length === 0) return { persisted: 0, providerJobs: 0 };
+
+    const tEnrich = Date.now();
+    rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
+    phase.atsEnrichment = Date.now() - tEnrich;
+
+    const byId = new Map<string, NormalizedJob>();
+    rawJobs.forEach((job) => byId.set(job.id, job));
+    let uniqueJobs = [...byId.values()];
+
+    const relevance = await filterByOccupation(
+        createAdminDbClient() as unknown as Parameters<typeof filterByOccupation>[0],
+        uniqueJobs,
+        title,
+    );
+    uniqueJobs = relevance.kept.slice(0, MAX_EVALUATED_JOBS);
+    if (uniqueJobs.length === 0) return { persisted: 0, providerJobs: rawJobs.length };
+
+    const persisted = await persistAndEvaluate(
+        insforge, userId, userEmail ?? undefined, uniqueJobs, filters, runId, title, location, phase,
+    );
+    console.log(`[paid-sources] persisted ${persisted.length} of ${rawJobs.length} provider job(s)`);
+    return { persisted: persisted.length, providerJobs: rawJobs.length };
+}
+
 export async function scrapeAndEvaluateJobs(
     title: string,
     location: string,
@@ -479,107 +690,47 @@ export async function scrapeAndEvaluateJobs(
     // from a real search rather than a bench harness, so each phase logs its
     // own wall-clock and the end logs the breakdown. Cheap enough to leave
     // in: five Date.now() calls and one line per search.
-    const tStart = Date.now();
     const phase: Record<string, number> = {};
 
-    let rawJobs;
-    // Declared out here, not inside the try: the authoritative upsert below
-    // has to await these before it starts writing the same rows.
-    const streamedUpserts: Promise<void>[] = [];
+    // INDEX-FIRST (2026-09-07). The paid providers no longer run inside this
+    // request.
+    //
+    // Two reasons, one of them a live bug. Measured, the providers take 45-73s
+    // while our own index answers the same query in 274-577ms -- and no job
+    // platform scrapes live on a user's search; they all query a pre-ingested
+    // index and ingest in the background. The bug: this route declares
+    // maxDuration = 60, and a cap-200 search measured ~80s, so on Vercel it was
+    // already over the ceiling and would have been killed mid-search.
+    //
+    // So: serve what the index has now, and hand LinkedIn and Indeed to
+    // fetchPaidSourcesAsync, which runs under Inngest's own budget rather than
+    // this route's. Its results land against the same runId, and the poll in
+    // FindJobsForm surfaces them as they arrive -- the mechanism already built
+    // for streaming.
+    const cachedJobs = await cachedJobsPromise;
+    const rawJobs: NormalizedJob[] = [...cachedJobs];
+    console.log(`[scraper] index returned ${cachedJobs.length} job(s) for "${title}"/"${location}"`);
+
+    // Never awaited and never allowed to fail the search: a dead Inngest worker
+    // must degrade to "index results only", not to a failed search. That exact
+    // failure already happened once here (2026-08-27) when an unreachable
+    // Inngest dev server threw and took down a search whose jobs had already
+    // saved.
     try {
-        const tProviders = Date.now();
-        // Each provider's results are written against this run the moment
-        // THAT provider finishes, rather than all of them after the slowest
-        // one. Measured: providers take ~46s together because LinkedIn does,
-        // while Indeed answers in roughly ten — so Indeed's results used to
-        // sit fetched-and-idle for ~35s waiting on a source they do not
-        // depend on.
-        //
-        // This replaces the crawl cache as the thing that makes a search feel
-        // instant. Cache-first still runs and is still faster when it hits,
-        // but it only hits when our own crawl happens to hold matching
-        // postings — on a real "Financial Advisor"/Toronto run it contributed
-        // nothing, and the whole fast path silently degraded to "wait for
-        // everything". Provider streaming has no such dependency: whatever
-        // the search actually found shows up as soon as it exists.
-        // Country derived from what the candidate typed, not hard-coded.
-        // Indeed's actor takes a country enum, so every search used to query
-        // Indeed's CANADIAN index -- a "New York, NY" search returned whatever
-        // Canadian rows loosely matched. LinkedIn takes a free location string
-        // and already worked anywhere.
-        const searchCountry = resolveSearchCountry(location);
-        console.log(`[scraper] country for "${location}" -> ${searchCountry}`);
-        rawJobs = await searchJobs(title, location, searchCountry, "serpapi", filters.date_posted, (sourceName, jobs) => {
-            streamedUpserts.push(
-                (async () => {
-                    try {
-                        const relevant = filterByTitleRelevance(jobs, title).slice(0, MAX_EVALUATED_JOBS);
-                        if (relevant.length === 0) return;
-                        await upsertScrapedJobs(userId, relevant, runId);
-                        console.log(
-                            `[scraper] streamed ${relevant.length} ${sourceName} job(s) on screen at ` +
-                            `${Date.now() - tStart}ms, before the search finished`,
-                        );
-                    } catch (error) {
-                        // Streaming is an accelerant, never a dependency: the
-                        // authoritative upsert below writes these same jobs.
-                        console.warn(`[scraper] streamed upsert for ${sourceName} failed`, error);
-                    }
-                })(),
-            );
+        await inngest.send({
+            name: "jobs/fetch-paid-sources",
+            data: {
+                userId,
+                runId,
+                title,
+                location,
+                country: resolveSearchCountry(location),
+                filters,
+                userEmail: user?.email ?? null,
+            },
         });
-        phase.providers = Date.now() - tProviders;
-        console.log(`[scraper:timing] providers ${phase.providers}ms -> ${rawJobs.length} jobs`);
-    } catch (err) {
-        if (runId) {
-            await insforge.database.rpc("update_agent_run", {
-                p_run_id: runId,
-                p_status: "failed",
-                p_is_successful: false,
-                p_error_message: (err as Error).message,
-            });
-        }
-        throw err;
-    }
-
-    // Direct-from-employer enrichment (2026-08-31). The cost-effective
-    // route to competitor-grade link quality: an employer's own ATS board
-    // is ground truth (a legitimate, specific link by construction, always
-    // current) and its public endpoints are FREE and unlimited — unlike
-    // every paid aggregator, and unlike TheirStack, which is on a finite
-    // 200-credit allowance here and stays reserved for real emergencies.
-    // The companies to poll come from the search results we already have,
-    // and lib/atsRegistry.ts caches which ATS each one uses globally, so
-    // the discovery cost is paid once per company ever (measured: ~2s
-    // first time, ~100ms cached) rather than once per search.
-    const tEnrich = Date.now();
-    if (!APIFY_ONLY_SEARCH) {
-        rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
-    }
-    phase.atsEnrichment = Date.now() - tEnrich;
-    console.log(`[scraper:timing] direct-ATS enrichment ${phase.atsEnrichment}ms -> ${rawJobs.length} jobs${APIFY_ONLY_SEARCH ? " (SKIPPED — SEARCH_APIFY_ONLY=1)" : ""}`);
-
-    // Proactive-crawl cache supplement (2026-09-01) — the volume-gap fix
-    // RESUME.md's redesign flagged as the actual lever, not just "add more
-    // real-time aggregators": enrichWithDirectAtsJobs above can only poll a
-    // company THIS search's own SerpApi/Adzuna results already surfaced.
-    // This instead pulls whatever the background proactive crawl
-    // (lib/proactiveAtsCrawl.ts, lib/inngest/functions.ts's
-    // proactiveAtsCrawlAsync) has ALREADY cached for ANY company matching
-    // this search's title, regardless of whether it showed up in this
-    // particular aggregator batch. Free (no live HTTP call, no paid API) —
-    // the crawl already paid for it on its own schedule. Additive only,
-    // deduped below same as every other source; a failure here (RLS/DB
-    // hiccup) must never fail a search that already has real results.
-    try {
-        // Already in flight since before the provider fetch above.
-        const cached = await cachedJobsPromise;
-        if (cached.length > 0) {
-            console.log(`Proactive-crawl cache supplied ${cached.length} additional job(s).`);
-            rawJobs = [...rawJobs, ...cached];
-        }
     } catch (error) {
-        console.warn("[scraper.actions] proactive-crawl cache lookup failed", error);
+        console.error("[scraper.actions] could not queue the paid-source fetch — index results only", error);
     }
 
     const uniqueJobsMap = new Map();
@@ -720,146 +871,18 @@ export async function scrapeAndEvaluateJobs(
     // has, and is never allowed to reject (its own .catch is attached at
     // creation, so this await cannot throw).
     await earlyCacheUpsert;
-    // Same reason the cache upsert is awaited here: these write the same rows
-    // through merge_job_source, so the authoritative pass must not start while
-    // one is still in flight. Each already swallows its own errors.
-    await Promise.all(streamedUpserts);
+    // The streamed per-provider upserts that used to be awaited here are gone
+    // with the providers themselves -- fetchPaidSourcesAsync now writes those
+    // rows against the same run, from the background.
 
     const tUpsert = Date.now();
-    const savedJobs = await upsertScrapedJobs(userId, uniqueJobs, runId);
+    const persisted = await persistAndEvaluate(
+        insforge, userId, user?.email, uniqueJobs, filters, runId, title, location, phase,
+    );
     phase.upsert = Date.now() - tUpsert;
-    console.log("🔍 [Scraper] Database returned savedJobs:", savedJobs?.length);
-
-    if (!savedJobs || savedJobs.length === 0) {
-        if (runId) {
-            await insforge.database.rpc("update_agent_run", {
-                p_run_id: runId,
-                p_status: "failed",
-                p_is_successful: false,
-                p_error_message: "Insforge upsert did not return any saved jobs.",
-            });
-        }
-        throw new Error("Insforge upsert did not return any saved jobs.");
-    }
-
-    // Phase 1 of the 3-phase redesign (2026-09-01, see
-    // context/RESUME.md's "Next session, start here"): resolve/verify every
-    // job's apply link — free tier for everything, paid-tier rescue
-    // (bounded, not score-gated — see verifyApplyLinksBeforeReveal's own
-    // comment for why authenticity must never depend on match score) for
-    // whatever the free tier can't fix — BEFORE anything is evaluated or
-    // revealed. Runs synchronously here so a job that still fails the
-    // genuine-link bar afterward is hidden and excluded from evaluation
-    // entirely, never spending AI quota on a job that's never going to be
-    // shown regardless of how well it scores.
-    // Direct product decision (2026-09-05): LinkedIn and Indeed jobs are NOT
-    // link-verified during a live search.
-    //
-    // needsLinkResolution deliberately includes trusted-aggregator links,
-    // because "an indirect board link is a floor, not a resting state" — every
-    // pass tries to upgrade one to the employer's own posting. That is a good
-    // ambition and a terrible thing to make a candidate wait on: LinkedIn and
-    // Indeed are the two highest-VOLUME sources, so they dominated the set,
-    // and their links already CLEAR the genuine-link bar (classifyApplyHost
-    // rates them "aggregator", which meetsGenuineLinkBar passes). The pass was
-    // therefore spending most of a search's wall-clock trying to improve links
-    // that were already acceptable to show.
-    //
-    // They still get upgraded — by the hourly repairApplyLinksAsync cron and
-    // the per-view lazy resolver, neither of which a candidate waits on. What
-    // stays synchronous here is the set where verification decides whether a
-    // job is genuine ENOUGH TO SHOW AT ALL, which is the real purpose.
-    const SKIP_LIVE_VERIFICATION_SOURCES = new Set(["linkedin", "indeed"]);
-    const jobsNeedingVerification = savedJobs.filter(
-        (job) => !SKIP_LIVE_VERIFICATION_SOURCES.has((job.source ?? "").trim().toLowerCase()),
-    );
-
-    const tVerify = Date.now();
-    const { hiddenIds: linkHiddenIds } = await verifyApplyLinksBeforeReveal(insforge, jobsNeedingVerification);
-    phase.linkVerification = Date.now() - tVerify;
-    console.log(
-        `[scraper:timing] TOTAL ${Date.now() - tStart}ms for "${title}"/"${location}" — ` +
-        `providers ${phase.providers ?? 0}ms, ats-enrichment ${phase.atsEnrichment ?? 0}ms, ` +
-        `upsert ${phase.upsert ?? 0}ms (${savedJobs.length} jobs), link-verify ${phase.linkVerification}ms (${jobsNeedingVerification.length}/${savedJobs.length} jobs)`,
-    );
-    const linkVerifiedJobs =
-        linkHiddenIds.length > 0 ? savedJobs.filter((job) => !linkHiddenIds.includes(job.id)) : savedJobs;
-
-    if (runId) {
-        await insforge.database.rpc("update_agent_run", {
-            p_run_id: runId,
-            p_jobs_found: savedJobs.length,
-        });
-        // Status stays "running" — evaluateJobsAsync marks it
-        // completed/failed once the Inngest evaluation actually finishes.
-    }
-
-    // "Not in the list anymore" detection — cheap and precise, no extra
-    // scraping: find this user's PRIOR runs of this exact same (title,
-    // location) search (agent_runs.job_title_searched/location_searched are
-    // exact strings, not fuzzy-matched, avoiding the "Software Engineer" vs
-    // "Software Developer" mismatch problem noted below for jobsToInsert).
-    // Any job tied to one of those older runs that isn't in THIS run's
-    // result set was returned before and stopped being returned — Google
-    // Jobs itself dropped it, the strongest signal this app can get without
-    // re-fetching the source site (see lib/jobStatus.ts).
-    if (runId) {
-        const { data: previousRuns } = await insforge.database
-            .from("agent_runs")
-            .select("id")
-            .eq("user_id", userId)
-            .eq("job_title_searched", title)
-            .eq("location_searched", location)
-            .neq("id", runId)
-            .returns<{ id: string }[]>();
-
-        const previousRunIds = (previousRuns ?? []).map((r) => r.id);
-        if (previousRunIds.length > 0) {
-            const currentJobIds = new Set(savedJobs.map((j) => j.id));
-            const { data: previousJobs } = await insforge.database
-                .from("jobs")
-                .select("id")
-                .eq("user_id", userId)
-                .in("run_id", previousRunIds)
-                .is("marked_unavailable_at", null)
-                .is("dropped_from_search_at", null)
-                .returns<{ id: string }[]>();
-
-            const droppedIds = (previousJobs ?? [])
-                .map((j) => j.id)
-                .filter((id) => !currentJobIds.has(id));
-
-            if (droppedIds.length > 0) {
-                await insforge.database
-                    .from("jobs")
-                    .update({ dropped_from_search_at: new Date().toISOString() })
-                    .in("id", droppedIds);
-            }
-        }
-    }
-
-    // The searched title/location travel WITH the evaluation (2026-09-04).
-    // Without them the evaluator only ever saw the candidate's stored profile
-    // and judged every result against their current career — so a developer
-    // deliberately searching "Financial Advisor" got a wall of 20% scores
-    // reading "does not utilize your software engineering expertise". That is
-    // technically true and completely useless: they asked for advisor roles.
-    // A deliberate search is a stated intent, and the evaluator has to know
-    // it was made, otherwise it is answering a question nobody asked.
-    const evaluationFilters = { ...filters, searched_title: title, searched_location: location };
-    const { hiddenIds } = await evaluateWithinQuota(insforge, userId, user?.email, linkVerifiedJobs, evaluationFilters, runId);
-
-    // Return the actual saved DB rows (real `id`, not SerpApi's raw id) so
-    // the caller can track exactly this search's batch by id, rather than
-    // re-matching by title/location text (which drops jobs whose title or
-    // location is phrased differently than the search box, e.g. "Software
-    // Engineer" vs "Software Developer", or "Markham, ON" vs "Toronto, ON").
-    // Excludes anything Phase 1's link gate or the Phase 2 pre-filter just
-    // hid — this search's own immediate response should already match what
-    // a fresh page load would show, not include a job that's about to be
-    // filtered out anyway.
-    return linkVerifiedJobs.filter((job) => !hiddenIds.includes(job.id));
+    return persisted;
 }
+
 
 export type TargetCompanyRow = {
     id: string;

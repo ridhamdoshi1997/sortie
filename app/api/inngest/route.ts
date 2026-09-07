@@ -1,6 +1,6 @@
 import { serve } from "inngest/next";
 import { inngest } from "../../../lib/inngest/client";
-import { evaluateJobsAsync, evaluateJobChunk, evaluateJobFullAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync, resetLifetimePlanUsagePeriodsAsync, archiveStaleInboxJobsAsync, reconcileStuckAgentRunsAsync, syncNewsItemsAsync, repairApplyLinksAsync, proactiveAtsCrawlAsync, proactiveWorkdayCrawlAsync, proactiveIcimsCrawlAsync, pruneCrawlCacheAsync, legitimacyRecheckAsync, jobhiveRegistrySyncAsync } from "../../../lib/inngest/functions";
+import { evaluateJobsAsync, evaluateJobChunk, evaluateJobFullAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync, resetLifetimePlanUsagePeriodsAsync, archiveStaleInboxJobsAsync, reconcileStuckAgentRunsAsync, syncNewsItemsAsync, repairApplyLinksAsync, proactiveAtsCrawlAsync, proactiveWorkdayCrawlAsync, proactiveIcimsCrawlAsync, pruneCrawlCacheAsync, legitimacyRecheckAsync, jobhiveRegistrySyncAsync, fetchPaidSourcesAsync } from "../../../lib/inngest/functions";
 
 // Explicit, and load-bearing (added 2026-09-03). Next.js route handlers on
 // Vercel default to a 10-15s timeout, and the proactive crawl's own steps
@@ -15,5 +15,5 @@ export const maxDuration = 60;
 
 export const { GET, POST, PUT } = serve({
     client: inngest,
-    functions: [evaluateJobsAsync, evaluateJobChunk, evaluateJobFullAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync, resetLifetimePlanUsagePeriodsAsync, archiveStaleInboxJobsAsync, reconcileStuckAgentRunsAsync, syncNewsItemsAsync, repairApplyLinksAsync, proactiveAtsCrawlAsync, proactiveWorkdayCrawlAsync, proactiveIcimsCrawlAsync, pruneCrawlCacheAsync, legitimacyRecheckAsync, jobhiveRegistrySyncAsync],
+    functions: [evaluateJobsAsync, evaluateJobChunk, evaluateJobFullAsync, generateResumeSuggestionAsync, sendMarketingBroadcastAsync, sendPushBroadcastAsync, generateGeoContentAsync, generateSuccessStoryAsync, sendFollowUpNudgesAsync, generateWeeklyBriefingsAsync, resetLifetimePlanUsagePeriodsAsync, archiveStaleInboxJobsAsync, reconcileStuckAgentRunsAsync, syncNewsItemsAsync, repairApplyLinksAsync, proactiveAtsCrawlAsync, proactiveWorkdayCrawlAsync, proactiveIcimsCrawlAsync, pruneCrawlCacheAsync, legitimacyRecheckAsync, jobhiveRegistrySyncAsync, fetchPaidSourcesAsync],
 });

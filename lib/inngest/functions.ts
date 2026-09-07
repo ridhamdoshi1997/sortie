@@ -17,6 +17,7 @@ import { createAdminClient, createCacheDbClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
+import { fetchPaidSourcesForRun } from "@/lib/actions/scraper.actions";
 import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget, backfillCompanyDomains } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
@@ -1505,6 +1506,43 @@ export const syncNewsItemsAsync = inngest.createFunction(
 
         return {
             message: `Hiring & Layoffs: +${hiringLayoffs.inserted} (${hiringLayoffs.skipped} skipped). AI & Future of Work: +${aiFutureOfWork.inserted} (${aiFutureOfWork.skipped} skipped).`,
+        };
+    },
+);
+
+// The paid half of a search, moved off the request (2026-09-07).
+//
+// scrapeAndEvaluateJobs returns as soon as our own index has answered
+// (~500ms). LinkedIn and Indeed take 45-73s between them, which is both a poor
+// experience and, on Vercel, over the /find-jobs route's 60s maxDuration -- a
+// cap-200 search measured ~80s and would have been killed. Here it runs under
+// Inngest's budget instead, writes against the same runId, and the client poll
+// surfaces the results as they land.
+//
+// concurrency is capped at 2: this project's Apify plan allows FIVE concurrent
+// actor runs in total, and each search launches two (LinkedIn + Indeed). A
+// third simultaneous search would exceed the limit and every actor would fail
+// with HTTP 402 -- which already happened when the link-rescue path was firing
+// its own searches (see reresolveApplyLink's removed tier).
+export const fetchPaidSourcesAsync = inngest.createFunction(
+    {
+        id: "fetch-paid-sources",
+        name: "Fetch LinkedIn + Indeed for a search",
+        concurrency: { limit: 2 },
+        retries: 1,
+        triggers: [{ event: "jobs/fetch-paid-sources" }],
+    },
+    async ({ event, step }) => {
+        const data = event.data as {
+            userId: string; runId: string | null; title: string; location: string;
+            country: string; filters: Record<string, string>; userEmail?: string | null;
+        };
+
+        const result = await step.run("fetch-and-persist", () => fetchPaidSourcesForRun(data));
+
+        return {
+            message: `${data.title} / ${data.location} (${data.country}): ` +
+                `${result.providerJobs} from providers, ${result.persisted} persisted.`,
         };
     },
 );
