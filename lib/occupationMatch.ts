@@ -72,6 +72,20 @@ function lookupKeys(title: string): string[] {
   const words = normalized.split(" ");
   const keys = [normalized];
   for (let i = 1; i < Math.min(words.length, 4); i++) keys.push(words.slice(i).join(" "));
+
+  // Plural variants, because O*NET names occupations in the plural
+  // ("Pharmacists", "Marketing Managers") while people search in the singular.
+  // Found live: "marketing manager" and "pharmacist" resolved to NOTHING and
+  // silently fell back to word matching, while "dentist" and "lawyer" worked
+  // only because O*NET happens to also list them as singular lay titles.
+  //
+  // Both directions, since lay titles are singular and canonical names plural.
+  // Cheap: these are extra keys on a lookup that is already batched, and a
+  // variant that does not exist simply misses.
+  for (const key of [...keys]) {
+    if (key.endsWith("s")) keys.push(key.slice(0, -1));
+    else keys.push(`${key}s`);
+  }
   return [...new Set(keys)];
 }
 
@@ -91,6 +105,13 @@ const TITLE_LOOKUP_BATCH_SIZE = 400;
 // advisor. Unresolved falls through to word matching, which is the honest answer
 // for a title that genuinely does not name a profession.
 const MAX_TITLE_AMBIGUITY = 2;
+
+// Ceiling on how many equivalent titles one search expands into. Sized from the
+// real distribution: financial advisor 47, software engineer 74, marketing
+// manager 29, registered nurse 191 -- all real professions sit under this, while
+// the outliers it trims (warehouse associate 895, teacher 732) are the ones
+// whose expansions had stopped being specific.
+const MAX_EXPANSION_TITLES = 250;
 
 async function fetchOccupations(db: Db, titles: string[]): Promise<Map<string, Set<string>>> {
   const byTitle = new Map<string, Set<string>>();
@@ -262,7 +283,14 @@ export async function expandTitleToOccupationTitles(
     .from("occupation_titles")
     .select("title")
     .in("soc_group", [...groups])
-    .lte("occupation_count", MAX_TITLE_AMBIGUITY);
+    .lte("occupation_count", MAX_TITLE_AMBIGUITY)
+    // Most specific titles first, then capped. Some occupations are genuinely
+    // enormous -- "warehouse associate" resolves to one holding 895 lay titles --
+    // and past a point an expansion stops describing a profession and starts
+    // matching everything adjacent to it. Ordering by ambiguity means the cap
+    // drops the vaguest titles rather than an arbitrary alphabetical slice.
+    .order("occupation_count", { ascending: true })
+    .limit(MAX_EXPANSION_TITLES);
   if (titleError || !titleRows) return null;
 
   const titles = [...new Set((titleRows as { title: string }[]).map((r) => r.title))];
