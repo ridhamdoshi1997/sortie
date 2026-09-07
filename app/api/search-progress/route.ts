@@ -60,9 +60,17 @@ export async function GET(): Promise<NextResponse> {
     }
 
     const jobs = (data ?? []) as Job[];
+
+    // Which sources have landed so far. A search runs ~18s for Indeed and up to
+    // ~73s for LinkedIn, so "still searching" alone leaves a candidate unable to
+    // tell a slow source from a finished search that found little. Derived from
+    // the rows themselves rather than tracked separately, so it cannot drift
+    // from what is actually on screen.
+    const sources = [...new Set(jobs.map((j) => (j.source ?? "").trim()).filter(Boolean))].sort();
+
     console.log(
         `[search-progress] run ${run.id.slice(0, 8)} -> ${jobs.length} job(s), ` +
         `${Math.round((Date.now() - new Date(run.started_at).getTime()) / 1000)}s into the search`,
     );
-    return NextResponse.json({ jobs });
+    return NextResponse.json({ jobs, sources });
 }

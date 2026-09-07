@@ -64,6 +64,8 @@ export function FindJobsForm({
     // Bumped on each search to (re)start the result poll. The poll's lifetime
     // is deliberately independent of the request's — see its own comment.
     const [pollGeneration, setPollGeneration] = useState(0);
+    // Which sources have returned so far, for the progress line during a search.
+    const [landedSources, setLandedSources] = useState<string[]>([]);
     // Tracked on a ref so a second search cancels the previous run's loader
     // timer instead of letting it fire mid-way through the new one.
     const loaderTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -311,7 +313,9 @@ export function FindJobsForm({
                 // matter how early they were written to the database.
                 const response = await fetch("/api/search-progress", { cache: "no-store" });
                 if (!response.ok) return;
-                const partial = ((await response.json()) as { jobs: Job[] }).jobs ?? [];
+                const payload = (await response.json()) as { jobs: Job[]; sources?: string[] };
+                const partial = payload.jobs ?? [];
+                if (payload.sources) setLandedSources(payload.sources);
                 if (cancelled || partial.length === 0) return;
 
                 // First real results are on screen — take the blocking loader
@@ -394,6 +398,7 @@ export function FindJobsForm({
         setJobs([]);
         setJobIds([]);
         setPollGeneration((n) => n + 1);
+        setLandedSources([]);
 
         // The blocking loader is capped at 2s, full stop (2026-09-05, direct
         // user requirement, stated three times: "the loader takes 1 to 2
@@ -595,7 +600,9 @@ export function FindJobsForm({
                 {searchInFlight && !loading && (
                     <p className="mt-3 flex items-center text-sm text-muted-foreground">
                         <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                        {jobs.length > 0 ? `${jobs.length} found so far — ` : ""}still searching LinkedIn and Indeed…
+                        {jobs.length > 0 ? `${jobs.length} found so far` : "Searching"}
+                        {landedSources.length > 0 && ` · ${landedSources.join(", ")} done`}
+                        {" · still searching…"}
                     </p>
                 )}
                 {limitModal && (

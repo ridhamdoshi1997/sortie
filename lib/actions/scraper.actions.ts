@@ -10,6 +10,7 @@ import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
 import { harvestEmployers } from "@/lib/atsDiscoveryHarvest";
 import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
 import { filterByOccupation } from "@/lib/occupationMatch";
+import { resolveSearchCountry } from "@/lib/searchCountry";
 import { preFilterJob } from "@/lib/jobPreFilter";
 import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Job, Profile } from "@/types";
@@ -501,7 +502,14 @@ export async function scrapeAndEvaluateJobs(
         // nothing, and the whole fast path silently degraded to "wait for
         // everything". Provider streaming has no such dependency: whatever
         // the search actually found shows up as soon as it exists.
-        rawJobs = await searchJobs(title, location, "ca", "serpapi", filters.date_posted, (sourceName, jobs) => {
+        // Country derived from what the candidate typed, not hard-coded.
+        // Indeed's actor takes a country enum, so every search used to query
+        // Indeed's CANADIAN index -- a "New York, NY" search returned whatever
+        // Canadian rows loosely matched. LinkedIn takes a free location string
+        // and already worked anywhere.
+        const searchCountry = resolveSearchCountry(location);
+        console.log(`[scraper] country for "${location}" -> ${searchCountry}`);
+        rawJobs = await searchJobs(title, location, searchCountry, "serpapi", filters.date_posted, (sourceName, jobs) => {
             streamedUpserts.push(
                 (async () => {
                     try {
