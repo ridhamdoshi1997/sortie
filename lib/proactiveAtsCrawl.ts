@@ -912,6 +912,34 @@ async function normalizePostingRows(cacheDb: AdminDb, rows_: unknown[]): Promise
   return normalized;
 }
 
+
+// Expand a searched city into its whole metro area.
+//
+// The index matched location with ILIKE '%<city>%', so a Toronto search saw only
+// postings literally containing "Toronto" -- 80 rows for the financial-advisor
+// occupation while 112 more sat in Markham, Mississauga, Scarborough and North
+// York. It is also the gap against the old live-scrape path: LinkedIn's and
+// Indeed's actors scope by metro, so a Toronto query returns the whole area.
+//
+// Returns null when the city is not in the table, so the caller keeps the plain
+// single-city behaviour rather than searching for nothing.
+async function expandCityToMetro(cacheDb: AdminDb, location: string): Promise<string[] | null> {
+  const city = location.split(",")[0].trim().toLowerCase();
+  if (!city) return null;
+  try {
+    const { data: metroRow } = await cacheDb.database
+      .from("metro_areas").select("metro").eq("city", city).limit(1).maybeSingle();
+    const metro = (metroRow as { metro?: string } | null)?.metro;
+    if (!metro) return null;
+    const { data: cityRows } = await cacheDb.database
+      .from("metro_areas").select("city").eq("metro", metro);
+    const cities = ((cityRows ?? []) as { city: string }[]).map((r) => r.city);
+    return cities.length > 0 ? cities : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function queryProactiveCrawlCache(
   cacheDb: AdminDb,
   searchTitle: string,
@@ -966,10 +994,14 @@ export async function queryProactiveCrawlCache(
   ).catch(() => null);
 
   if (occupationTitles) {
+    const primaryCity = (searchLocation || "").split(",")[0].trim().toLowerCase();
+    const metroCities = await expandCityToMetro(cacheDb, searchLocation || "");
+
     const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
       p_titles: occupationTitles,
       p_limit: limit,
-      p_location: searchLocation || null,
+      p_cities: metroCities ?? (primaryCity ? [primaryCity] : null),
+      p_primary_city: primaryCity || null,
       // Ranks an exact title match above the rest of the occupation. Both
       // belong in the results -- "Wealth Advisor" IS a financial advisor -- but
       // what the candidate actually typed should lead.
