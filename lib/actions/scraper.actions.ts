@@ -711,12 +711,32 @@ export async function scrapeAndEvaluateJobs(
     const rawJobs: NormalizedJob[] = [...cachedJobs];
     console.log(`[scraper] index returned ${cachedJobs.length} job(s) for "${title}"/"${location}"`);
 
+    // The paid providers only run when the index is THIN (2026-09-07).
+    //
+    // Every LinkedIn + Indeed pair costs about $0.04 against a $5/month Apify
+    // credit -- 125 searches a month across all users -- so firing them on every
+    // search burns the budget on queries the index already answers well. This is
+    // the "query-driven ingestion" trigger: pay only for the gap.
+    //
+    // 25 is deliberately below MAX_EVALUATED_JOBS: a candidate looking at 25+
+    // relevant postings has enough to work with, and the crawl re-polls those
+    // employers' own boards every 15 minutes for free, so they are fresher than
+    // anything a paid scrape would return.
+    const PAID_SOURCE_THRESHOLD = 25;
+    const indexHasEnough = cachedJobs.length >= PAID_SOURCE_THRESHOLD;
+    if (indexHasEnough) {
+        console.log(
+            `[scraper] index returned ${cachedJobs.length} (>= ${PAID_SOURCE_THRESHOLD}) — ` +
+            `skipping the paid providers for "${title}"/"${location}"`,
+        );
+    }
+
     // Never awaited and never allowed to fail the search: a dead Inngest worker
     // must degrade to "index results only", not to a failed search. That exact
     // failure already happened once here (2026-08-27) when an unreachable
     // Inngest dev server threw and took down a search whose jobs had already
     // saved.
-    try {
+    if (!indexHasEnough) try {
         await inngest.send({
             name: "jobs/fetch-paid-sources",
             data: {
