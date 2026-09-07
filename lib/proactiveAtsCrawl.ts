@@ -1,6 +1,7 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { canonicalCompanyKey } from "@/lib/companyIdentity";
 import { resolveCompanyDomain } from "@/lib/companyDomain";
+import { expandTitleToOccupationTitles, normalizeTitle } from "@/lib/occupationMatch";
 import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -846,100 +847,23 @@ export function collapseDuplicatePostings(jobs: NormalizedJob[]): NormalizedJob[
 // limit: a query returning most of what it asked for does not need widening.
 const THIN_RESULT_THRESHOLD = 15;
 
-export async function queryProactiveCrawlCache(
-  cacheDb: AdminDb,
-  searchTitle: string,
-  searchLocation: string,
-  limit = 30,
-): Promise<NormalizedJob[]> {
-  // p_location is load-bearing, not an optimisation (2026-09-03): without it
-  // the RPC returned the 30 most-recent title matches GLOBALLY and
-  // filterByCity below then discarded essentially all of them, so this whole
-  // cache contributed ~0 jobs to real searches despite holding 98,000+
-  // postings. See migrations/20260903180000_fix-discovered-postings-location-
-  // filter.sql for the full measurement.
-  //
-  // TWO-STAGE title match (2026-09-04). websearch_to_tsquery joins bare words
-  // with AND, so "Financial Advisor" compiled to 'financi' & 'advisor' and
-  // only matched titles carrying BOTH words. Every "Associate Advisor",
-  // "Business Advisor" and "Investment Advisor" in the cache failed the
-  // predicate despite being exactly what the searcher wanted.
-  //
-  // Measured live against the real 463,705-row table:
-  //   'Financial Advisor' / Toronto  ->  4 rows, only 1 actually in Toronto
-  //   'Registered Nurse'  / Toronto  ->  8 rows, only 1 actually in Toronto
-  //   'Software Engineer' / Toronto  -> 30 rows, all 30 in Toronto
-  // So AND only starves MULTI-WORD NICHE titles; common ones are fine.
-  //
-  // Deliberately fixed HERE rather than in the RPC. Rewriting the SQL to OR
-  // semantics was tried first and reverted twice: it lifted Financial Advisor
-  // to 30 genuine Toronto rows, but 'Software Engineer' then matched ~72,000
-  // rows ("engineer" alone) and ts_rank had to score all of them, which
-  // exceeded the statement timeout outright. A pg_trgm index on location and
-  // a MATERIALIZED location-first CTE were both tried and neither made the
-  // common case safe. A widening that breaks the most common query is not a
-  // fix, so the fast, known-good SQL is left exactly as it was.
-  //
-  // Instead: run the precise query first, and only widen when it comes back
-  // thin. Common queries never pay for the widening at all, and the fallback
-  // is best-effort -- if it times out or errors, the precise results still
-  // stand. Same " or " expansion lib/jobRelevance.ts's buildRelevanceQuery
-  // already uses for the other full-text path in this codebase.
-  const { data, error } = await cacheDb.database.rpc("search_discovered_postings", {
-    p_query: searchTitle,
-    p_limit: limit,
-    p_location: searchLocation || null,
-  });
-  // Logged, not swallowed (2026-09-04). This returned a bare [] on error,
-  // which made a real failure indistinguishable from a genuinely empty
-  // cache — and it WAS failing: the query sat on the 8s statement timeout
-  // PostgREST's `authenticated` role runs under, so a search intermittently
-  // lost the entire 612k-posting contribution and said nothing. Code 57014
-  // is that cancellation specifically, called out because it means "too
-  // slow", not "no data", and should be read as a performance regression
-  // rather than an empty result. See migration
-  // 20260904210000_split-discovered-postings-location-or.sql.
-  if (error) {
-    console.warn(
-      `[proactiveAtsCrawl] cache lookup failed for "${searchTitle}"/"${searchLocation}"`,
-      (error as { code?: string }).code === "57014" ? `STATEMENT TIMEOUT (57014) — ${error.message}` : error,
-    );
-    return [];
-  }
+type DiscoveredPostingRow = {
+  external_id: string;
+  company_key: string;
+  ats_platform: string;
+  company_name: string;
+  title: string | null;
+  location: string | null;
+  salary: string | null;
+  job_type: string | null;
+  apply_url: string | null;
+  posted_at: string | null;
+};
 
-  let rows_ = (data ?? []) as unknown[];
-
-  const words = searchTitle.trim().split(/\s+/).filter(Boolean);
-  if (rows_.length < THIN_RESULT_THRESHOLD && words.length > 1) {
-    try {
-      const { data: widened, error: widenError } = await cacheDb.database.rpc("search_discovered_postings", {
-        p_query: words.join(" or "),
-        p_limit: limit,
-        p_location: searchLocation || null,
-      });
-      if (!widenError && Array.isArray(widened) && widened.length > rows_.length) {
-        rows_ = widened as unknown[];
-      }
-    } catch {
-      // Best-effort only: keep the precise results rather than failing the
-      // whole cache lookup because the widened query was expensive.
-    }
-  }
-  if (!rows_) return [];
-
-  type DiscoveredPostingRow = {
-    external_id: string;
-    company_key: string;
-    ats_platform: string;
-    company_name: string;
-    title: string | null;
-    location: string | null;
-    salary: string | null;
-    job_type: string | null;
-    apply_url: string | null;
-    posted_at: string | null;
-  };
-
+// Shared by both index search paths (occupation-expanded and word-based), so a
+// change to how a cached posting becomes a NormalizedJob -- the logo domain
+// especially -- cannot apply to one and not the other.
+async function normalizePostingRows(cacheDb: AdminDb, rows_: unknown[]): Promise<NormalizedJob[]> {
   const rows = rows_ as DiscoveredPostingRow[];
 
   // Attach each employer's real domain so the card can show a real logo. The
@@ -987,3 +911,120 @@ export async function queryProactiveCrawlCache(
 
   return normalized;
 }
+
+export async function queryProactiveCrawlCache(
+  cacheDb: AdminDb,
+  searchTitle: string,
+  searchLocation: string,
+  limit = 30,
+): Promise<NormalizedJob[]> {
+  // p_location is load-bearing, not an optimisation (2026-09-03): without it
+  // the RPC returned the 30 most-recent title matches GLOBALLY and
+  // filterByCity below then discarded essentially all of them, so this whole
+  // cache contributed ~0 jobs to real searches despite holding 98,000+
+  // postings. See migrations/20260903180000_fix-discovered-postings-location-
+  // filter.sql for the full measurement.
+  //
+  // TWO-STAGE title match (2026-09-04). websearch_to_tsquery joins bare words
+  // with AND, so "Financial Advisor" compiled to 'financi' & 'advisor' and
+  // only matched titles carrying BOTH words. Every "Associate Advisor",
+  // "Business Advisor" and "Investment Advisor" in the cache failed the
+  // predicate despite being exactly what the searcher wanted.
+  //
+  // Measured live against the real 463,705-row table:
+  //   'Financial Advisor' / Toronto  ->  4 rows, only 1 actually in Toronto
+  //   'Registered Nurse'  / Toronto  ->  8 rows, only 1 actually in Toronto
+  //   'Software Engineer' / Toronto  -> 30 rows, all 30 in Toronto
+  // So AND only starves MULTI-WORD NICHE titles; common ones are fine.
+  //
+  // Deliberately fixed HERE rather than in the RPC. Rewriting the SQL to OR
+  // semantics was tried first and reverted twice: it lifted Financial Advisor
+  // to 30 genuine Toronto rows, but 'Software Engineer' then matched ~72,000
+  // rows ("engineer" alone) and ts_rank had to score all of them, which
+  // exceeded the statement timeout outright. A pg_trgm index on location and
+  // a MATERIALIZED location-first CTE were both tried and neither made the
+  // common case safe. A widening that breaks the most common query is not a
+  // fix, so the fast, known-good SQL is left exactly as it was.
+  //
+  // Instead: run the precise query first, and only widen when it comes back
+  // thin. Common queries never pay for the widening at all, and the fallback
+  // is best-effort -- if it times out or errors, the precise results still
+  // stand. Same " or " expansion lib/jobRelevance.ts's buildRelevanceQuery
+  // already uses for the other full-text path in this codebase.
+  // Occupation-expanded search FIRST (2026-09-07). Matching title words could
+  // only return rows containing the searched words, so a "Financial Advisor"
+  // query never fetched the Financial Planner and Investment Advisor rows sitting
+  // in this same index -- measured, 22 rows reached the relevance filter while
+  // 129 postings were the same occupation. Expanding the title through O*NET and
+  // matching normalized_title returns 102 instead of 22, in ~110ms warm.
+  //
+  // Falls back to the word query whenever the taxonomy does not know the searched
+  // title, so unusual searches behave exactly as before.
+  const occupationTitles = await expandTitleToOccupationTitles(
+    cacheDb as unknown as Parameters<typeof expandTitleToOccupationTitles>[0],
+    searchTitle,
+  ).catch(() => null);
+
+  if (occupationTitles) {
+    const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
+      p_titles: occupationTitles,
+      p_limit: limit,
+      p_location: searchLocation || null,
+      // Ranks an exact title match above the rest of the occupation. Both
+      // belong in the results -- "Wealth Advisor" IS a financial advisor -- but
+      // what the candidate actually typed should lead.
+      p_exact_title: normalizeTitle(searchTitle),
+    });
+    if (!occError && Array.isArray(occData) && occData.length > 0) {
+      return normalizePostingRows(cacheDb, occData as unknown[]);
+    }
+    if (occError) {
+      console.warn(`[proactiveAtsCrawl] occupation search failed, falling back to words: ${occError.message}`);
+    }
+  }
+
+  const { data, error } = await cacheDb.database.rpc("search_discovered_postings", {
+    p_query: searchTitle,
+    p_limit: limit,
+    p_location: searchLocation || null,
+  });
+  // Logged, not swallowed (2026-09-04). This returned a bare [] on error,
+  // which made a real failure indistinguishable from a genuinely empty
+  // cache — and it WAS failing: the query sat on the 8s statement timeout
+  // PostgREST's `authenticated` role runs under, so a search intermittently
+  // lost the entire 612k-posting contribution and said nothing. Code 57014
+  // is that cancellation specifically, called out because it means "too
+  // slow", not "no data", and should be read as a performance regression
+  // rather than an empty result. See migration
+  // 20260904210000_split-discovered-postings-location-or.sql.
+  if (error) {
+    console.warn(
+      `[proactiveAtsCrawl] cache lookup failed for "${searchTitle}"/"${searchLocation}"`,
+      (error as { code?: string }).code === "57014" ? `STATEMENT TIMEOUT (57014) — ${error.message}` : error,
+    );
+    return [];
+  }
+
+  let rows_ = (data ?? []) as unknown[];
+
+  const words = searchTitle.trim().split(/\s+/).filter(Boolean);
+  if (rows_.length < THIN_RESULT_THRESHOLD && words.length > 1) {
+    try {
+      const { data: widened, error: widenError } = await cacheDb.database.rpc("search_discovered_postings", {
+        p_query: words.join(" or "),
+        p_limit: limit,
+        p_location: searchLocation || null,
+      });
+      if (!widenError && Array.isArray(widened) && widened.length > rows_.length) {
+        rows_ = widened as unknown[];
+      }
+    } catch {
+      // Best-effort only: keep the precise results rather than failing the
+      // whole cache lookup because the widened query was expensive.
+    }
+  }
+  if (!rows_) return [];
+  return normalizePostingRows(cacheDb, rows_);
+}
+
+

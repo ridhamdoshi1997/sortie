@@ -172,3 +172,48 @@ export async function filterByOccupation<T extends { title?: string }>(
 
   return { kept, matchedByOccupation, taxonomyCovered: true };
 }
+
+/**
+ * Expands a searched title into every equivalent title in the same occupation.
+ *
+ * This is what makes the INDEX reachable by occupation. filterByOccupation can
+ * only narrow a set SQL already returned, so while the index was queried by
+ * title WORDS, Financial Planner and Investment Advisor rows were never fetched
+ * for it to consider -- measured, 22 rows reached the filter while 129 postings
+ * in the same index were the same occupation.
+ *
+ * Returns null when the title is not in the taxonomy, so the caller keeps its
+ * existing word-based query rather than searching for nothing.
+ */
+export async function expandTitleToOccupationTitles(
+  db: Db,
+  searchTitle: string,
+): Promise<string[] | null> {
+  const keys = lookupKeys(searchTitle);
+  if (keys.length === 0) return null;
+
+  const { data: socRows, error: socError } = await db.database
+    .from("occupation_titles")
+    .select("title,soc_group")
+    .in("title", keys);
+  if (socError || !socRows) return null;
+
+  // Most specific key that resolved, so "senior financial advisor" prefers
+  // "financial advisor" over a shorter, vaguer fallback.
+  const byKey = new Map<string, Set<string>>();
+  for (const row of socRows as { title: string; soc_group: string }[]) {
+    if (!byKey.has(row.title)) byKey.set(row.title, new Set());
+    byKey.get(row.title)!.add(row.soc_group);
+  }
+  const groups = occupationsFor(keys, byKey);
+  if (!groups || groups.size === 0) return null;
+
+  const { data: titleRows, error: titleError } = await db.database
+    .from("occupation_titles")
+    .select("title")
+    .in("soc_group", [...groups]);
+  if (titleError || !titleRows) return null;
+
+  const titles = [...new Set((titleRows as { title: string }[]).map((r) => r.title))];
+  return titles.length > 0 ? titles : null;
+}
