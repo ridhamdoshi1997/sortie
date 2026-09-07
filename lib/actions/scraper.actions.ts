@@ -9,6 +9,7 @@ import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/at
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
 import { harvestEmployers } from "@/lib/atsDiscoveryHarvest";
 import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
+import { filterByOccupation } from "@/lib/occupationMatch";
 import { preFilterJob } from "@/lib/jobPreFilter";
 import { rankJobsByRelevance } from "@/lib/jobRelevance";
 import type { Job, Profile } from "@/types";
@@ -587,10 +588,30 @@ export async function scrapeAndEvaluateJobs(
     // means the cap is spent entirely on jobs that actually match the
     // search. See filterByTitleRelevance in lib/jobScraper.ts for the rule
     // and why Adzuna's own title_only parameter wasn't used instead.
+    // Occupation matching, not word matching (2026-09-07). Both ends of the
+    // string approach failed: matching ANY word returned Health and Safety
+    // Advisors for a "Financial Advisor" search, and requiring EVERY word then
+    // rejected "Financial Planner", the same profession. Measured on one real
+    // search: 333 collected, 286 rejected, and those rejects were mostly
+    // Financial Planners, Investment Advisors and Wealth Advisors.
+    //
+    // filterByOccupation resolves both titles through O*NET and compares
+    // occupations, falling back to the word matcher whenever the taxonomy
+    // cannot answer -- so an unusual title is never dropped for being unknown.
+    // Costs one batched query per search (~770ms measured).
     const beforeRelevance = uniqueJobs.length;
-    uniqueJobs = filterByTitleRelevance(uniqueJobs, title);
+    const relevance = await filterByOccupation(
+        createAdminDbClient() as unknown as Parameters<typeof filterByOccupation>[0],
+        uniqueJobs,
+        title,
+    );
+    uniqueJobs = relevance.kept;
     if (beforeRelevance !== uniqueJobs.length) {
-        console.log(`[scraper] title relevance: ${beforeRelevance} -> ${uniqueJobs.length} for "${title}"`);
+        console.log(
+            `[scraper] relevance: ${beforeRelevance} -> ${uniqueJobs.length} for "${title}" ` +
+            `(${relevance.matchedByOccupation} matched by occupation, taxonomy ` +
+            `${relevance.taxonomyCovered ? "covered" : "did NOT cover"} the search title)`,
+        );
     }
 
     // Real regression found live (2026-08-31, direct user report — a
