@@ -1006,6 +1006,11 @@ export async function queryProactiveCrawlCache(
       // belong in the results -- "Wealth Advisor" IS a financial advisor -- but
       // what the candidate actually typed should lead.
       p_exact_title: normalizeTitle(searchTitle),
+      // Also match a title's first two words, so "Financial Advisor CIRO" and
+      // "Investment Advisor Associate" reach their own occupation. Normalisation
+      // strips leading words but not trailing ones, and those postings were
+      // being missed -- 15 of them for Toronto financial advisors alone.
+      p_match_head: true,
     });
     if (!occError && Array.isArray(occData) && occData.length > 0) {
       return normalizePostingRows(cacheDb, occData as unknown[]);
