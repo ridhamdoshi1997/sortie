@@ -75,23 +75,41 @@ function lookupKeys(title: string): string[] {
   return [...new Set(keys)];
 }
 
+// Chunked because a single .in() carries every value in the URL, and PostgREST
+// rejects a long one. Found live: 3,151 index rows produce ~12,000 candidate
+// keys, the request failed, and this function fell back to word matching --
+// silently doing the exact thing the taxonomy exists to replace, while logging
+// a warning with an empty message. The same URL-length limit already bit this
+// codebase in lib/reresolveApplyLink.ts and lib/inngest/functions.ts, both of
+// which batch for this reason.
+const TITLE_LOOKUP_BATCH_SIZE = 400;
+
 async function fetchOccupations(db: Db, titles: string[]): Promise<Map<string, Set<string>>> {
   const byTitle = new Map<string, Set<string>>();
   if (titles.length === 0) return byTitle;
 
-  // One round trip for every candidate key across every job, not one per job.
-  const { data, error } = await db.database
-    .from("occupation_titles")
-    .select("title,soc_group")
-    .in("title", titles);
+  for (let i = 0; i < titles.length; i += TITLE_LOOKUP_BATCH_SIZE) {
+    const batch = titles.slice(i, i + TITLE_LOOKUP_BATCH_SIZE);
+    const { data, error } = await db.database
+      .from("occupation_titles")
+      .select("title,soc_group")
+      .in("title", batch);
 
-  if (error) {
-    console.warn("[occupationMatch] taxonomy lookup failed — falling back to word matching", error.message);
-    return byTitle;
-  }
-  for (const row of (data ?? []) as { title: string; soc_group: string }[]) {
-    if (!byTitle.has(row.title)) byTitle.set(row.title, new Set());
-    byTitle.get(row.title)!.add(row.soc_group);
+    if (error) {
+      // Partial data is still better than none: every batch that succeeded
+      // contributes, and any title left unresolved falls through to word
+      // matching per job rather than dropping the whole pass.
+      console.warn(
+        `[occupationMatch] taxonomy batch ${i / TITLE_LOOKUP_BATCH_SIZE} of ` +
+        `${Math.ceil(titles.length / TITLE_LOOKUP_BATCH_SIZE)} failed (${batch.length} titles): ` +
+        `${error.message || "no message"}`,
+      );
+      continue;
+    }
+    for (const row of (data ?? []) as { title: string; soc_group: string }[]) {
+      if (!byTitle.has(row.title)) byTitle.set(row.title, new Set());
+      byTitle.get(row.title)!.add(row.soc_group);
+    }
   }
   return byTitle;
 }
