@@ -5,7 +5,7 @@ import { AlertTriangle, Check, Repeat } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
-import { PlatformLogo } from "@/components/shared/PlatformLogo";
+import { IndeedGlyph } from "@/components/shared/IndeedGlyph";
 import { getListingSignal } from "@/lib/jobStatus";
 import { getSourceBadge } from "@/lib/jobSource";
 import { STATUS_CLASSES, STATUS_LABELS } from "@/lib/applicationStatus";
@@ -81,9 +81,9 @@ export function MissionsListRow({
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${sourceBadge.badgeClassName}`}
             >
-              {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-3 w-3" />}
-              {sourceBadge.icon === "indeed" && <PlatformLogo source="indeed" className="h-3 w-3 rounded-[2px]" />}
-              {sourceBadge.label}
+              {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-4 w-4" />}
+              {sourceBadge.icon === "indeed" && <IndeedGlyph className="h-4 w-4" />}
+              {!sourceBadge.iconOnly && sourceBadge.label}
             </span>
           )}
           {signal && (

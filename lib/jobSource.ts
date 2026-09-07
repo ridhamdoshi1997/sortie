@@ -11,8 +11,17 @@
 export type SourceBadge = {
   label: string;
   badgeClassName: string;
-  /** Which platform glyph to render beside the label, if any. */
+  /** Which platform glyph to render, if any. */
   icon?: "linkedin" | "indeed";
+  /**
+   * When true the badge is the LOGO ALONE -- no "via X" text (2026-09-06,
+   * direct product decision). LinkedIn and Indeed are recognised from their
+   * marks and are the two highest-volume sources, so spelling them out spent
+   * the widest part of a job card's metadata row restating what the logo
+   * already says. Every other source keeps its text label: nobody identifies
+   * "Recruitee" or "BambooHR" from a glyph, and those have no glyph anyway.
+   */
+  iconOnly?: boolean;
 };
 
 // 8 more platforms added 2026-08-18 (v1.5, same session) — deliberately
@@ -50,9 +59,9 @@ export function getSourceBadge(source: string | null | undefined): SourceBadge |
   const key = source?.trim().toLowerCase();
   switch (key) {
     case "linkedin":
-      return { label: "via LinkedIn", badgeClassName: "bg-linkedin-light text-linkedin", icon: "linkedin" };
+      return { label: "LinkedIn", badgeClassName: "text-linkedin", icon: "linkedin", iconOnly: true };
     case "indeed":
-      return { label: "via Indeed", badgeClassName: "bg-indeed-light text-indeed", icon: "indeed" };
+      return { label: "Indeed", badgeClassName: "text-indeed", icon: "indeed", iconOnly: true };
     // Portal Scanner (build-plan.md Phase 8) — direct ATS board results.
     // Neutral badge style, same reasoning as the 8 platforms below: a real
     // per-platform brand treatment wasn't part of that pass, easy fast-

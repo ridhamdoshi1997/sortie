@@ -6,7 +6,7 @@ import { Archive, Bookmark, Check, CheckCircle2, Search } from "lucide-react";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
-import { PlatformLogo } from "@/components/shared/PlatformLogo";
+import { IndeedGlyph } from "@/components/shared/IndeedGlyph";
 import { bulkAddTag, bulkHideJobs, bulkShortlistJobs } from "@/actions/jobs";
 import { getListingSignal } from "@/lib/jobStatus";
 import { getSourceBadge } from "@/lib/jobSource";
@@ -221,9 +221,9 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
                     <span
                       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${sourceBadge.badgeClassName}`}
                     >
-                      {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-2.5 w-2.5" />}
-                      {sourceBadge.icon === "indeed" && <PlatformLogo source="indeed" className="h-2.5 w-2.5 rounded-[1.5px]" />}
-                      {sourceBadge.label}
+                      {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-3.5 w-3.5" />}
+                      {sourceBadge.icon === "indeed" && <IndeedGlyph className="h-3.5 w-3.5" />}
+                      {!sourceBadge.iconOnly && sourceBadge.label}
                     </span>
                   )}
                   {signal && <span className="text-warning">{signal.label}</span>}

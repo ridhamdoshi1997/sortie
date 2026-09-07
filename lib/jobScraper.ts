@@ -170,30 +170,48 @@ const TITLE_SYNONYM_GROUPS = [
   ["advisor", "adviser"],
 ];
 
-function titleStems(searchTitle: string): string[] {
+// One group PER SEARCH WORD, each holding that word's stem plus its synonyms
+// (2026-09-06). The shape matters: matching requires EVERY group to be
+// satisfied by ANY member of that group.
+//
+// This used to return one flat list of stems, and matching accepted a job if
+// ANY single stem hit -- so "Financial Advisor" matched anything containing
+// EITHER "financ..." OR "advis...". Reported live: that search returned Health
+// and Safety Advisors, Financial Analysts and Sales Advisors, none of which a
+// financial-advisor candidate wants.
+//
+// A flat AND would have been wrong in the other direction, because synonym
+// expansion puts alternatives in the same list: "Software Engineer" expands to
+// softw + engin + devel + progr, and no real title contains all four, so every
+// result would be rejected. Grouping keeps AND across the words the user typed
+// and OR within each word's synonyms, which is how a person reads the query --
+// "Software Developer" still matches, "Health and Safety Advisor" no longer
+// does.
+function titleStemGroups(searchTitle: string): string[][] {
   const words = searchTitle
     .toLowerCase()
     .split(/[^a-z0-9]+/)
     .filter((w) => w.length > 2 && !TITLE_STOP_WORDS.has(w));
 
-  const expanded = new Set<string>();
-  for (const word of words) {
-    expanded.add(word);
-    for (const group of TITLE_SYNONYM_GROUPS) {
-      if (group.some((member) => word.startsWith(member.slice(0, 5)))) {
-        for (const member of group) expanded.add(member);
+  return words.map((word) => {
+    const group = new Set<string>([word]);
+    for (const synonyms of TITLE_SYNONYM_GROUPS) {
+      if (synonyms.some((member) => word.startsWith(member.slice(0, 5)))) {
+        for (const member of synonyms) group.add(member);
       }
     }
-  }
-  return [...expanded].map((w) => w.slice(0, 5));
+    return [...group].map((w) => w.slice(0, 5));
+  });
 }
 
 export function matchesSearchTitle(searchTitle: string, jobTitle: string | undefined): boolean {
-  const stems = titleStems(searchTitle);
-  if (stems.length === 0) return true;
+  const groups = titleStemGroups(searchTitle);
+  if (groups.length === 0) return true;
   const words = (jobTitle ?? "").toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
   if (words.length === 0) return false;
-  return stems.some((stem) => words.some((word) => word.startsWith(stem)));
+  // EVERY search word must appear (via itself or a synonym); within a group any
+  // member counts.
+  return groups.every((group) => group.some((stem) => words.some((word) => word.startsWith(stem))));
 }
 
 export function filterByTitleRelevance<T extends { title?: string }>(jobs: T[], searchTitle: string): T[] {

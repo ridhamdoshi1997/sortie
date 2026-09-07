@@ -13,7 +13,7 @@ import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { getListingSignal } from "@/lib/jobStatus";
 import { getSourceBadge } from "@/lib/jobSource";
 import { LinkedInGlyph } from "@/components/shared/LinkedInGlyph";
-import { PlatformLogo } from "@/components/shared/PlatformLogo";
+import { IndeedGlyph } from "@/components/shared/IndeedGlyph";
 import type { ReappearanceSignal } from "@/lib/churnSignal";
 import type { Job } from "@/types";
 import { AiReadsCard } from "@/components/shared/AiReadsCard";
@@ -253,9 +253,9 @@ export function JobResultCard({
             )}
             {sourceBadge && (
               <span className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${sourceBadge.badgeClassName}`}>
-                {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-3 w-3" />}
-                {sourceBadge.icon === "indeed" && <PlatformLogo source="indeed" className="h-3 w-3 rounded-[2px]" />}
-                {sourceBadge.label}
+                {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-4 w-4" />}
+                {sourceBadge.icon === "indeed" && <IndeedGlyph className="h-4 w-4" />}
+                {!sourceBadge.iconOnly && sourceBadge.label}
               </span>
             )}
           </p>
