@@ -92,6 +92,20 @@ const MAX_EVALUATED_JOBS = 120;
 // before.
 const RELEVANCE_TOP_N = 20;
 
+// Paid-sources-only switch (2026-09-07, direct product request: "turn off
+// showing all the crawl or in-db jobs other than coming from apify").
+//
+// A search normally merges three things: the Apify providers (LinkedIn and
+// Indeed), reactive direct-ATS enrichment of employers those results mention,
+// and the proactive crawl cache. This turns the last two off, leaving only what
+// the paid providers returned, so the two can be compared honestly on volume
+// and relevance.
+//
+// An env switch rather than deleted code: it is meant to be flipped back, and
+// deleting the crawl integration to answer a question would be a lot to undo.
+// Unset behaves exactly as before.
+const APIFY_ONLY_SEARCH = process.env.SEARCH_APIFY_ONLY === "1";
+
 async function enrichWithDirectAtsJobs(jobs: NormalizedJob[], searchTitle: string, searchLocation: string): Promise<NormalizedJob[]> {
     if (jobs.length === 0) return jobs;
 
@@ -412,6 +426,7 @@ export async function scrapeAndEvaluateJobs(
     // caught at the consumption site, and a floating rejection cannot
     // escape because .catch is attached immediately below.
     const cachedJobsPromise = (async () => {
+        if (APIFY_ONLY_SEARCH) return [] as NormalizedJob[];
         try {
             // The cache lives in its own Supabase project -- see
             // createCacheDbClient. Falls back to the main project when
@@ -529,9 +544,11 @@ export async function scrapeAndEvaluateJobs(
     // the discovery cost is paid once per company ever (measured: ~2s
     // first time, ~100ms cached) rather than once per search.
     const tEnrich = Date.now();
-    rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
+    if (!APIFY_ONLY_SEARCH) {
+        rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
+    }
     phase.atsEnrichment = Date.now() - tEnrich;
-    console.log(`[scraper:timing] direct-ATS enrichment ${phase.atsEnrichment}ms -> ${rawJobs.length} jobs`);
+    console.log(`[scraper:timing] direct-ATS enrichment ${phase.atsEnrichment}ms -> ${rawJobs.length} jobs${APIFY_ONLY_SEARCH ? " (SKIPPED — SEARCH_APIFY_ONLY=1)" : ""}`);
 
     // Proactive-crawl cache supplement (2026-09-01) — the volume-gap fix
     // RESUME.md's redesign flagged as the actual lever, not just "add more
