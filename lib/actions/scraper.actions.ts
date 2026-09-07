@@ -94,6 +94,15 @@ const MAX_EVALUATED_JOBS = 120;
 // before.
 const RELEVANCE_TOP_N = 20;
 
+// How many rows to ask the index for. Was 30 (queryProactiveCrawlCache's own
+// default), which was right when the index merely SUPPLEMENTED 200+ provider
+// results and wrong the moment it became the primary source: measured on
+// "Software Engineer"/Toronto, 30 raw rows left 27 after relevance while 300
+// left 182. Same query, 6x the results, and no slower -- 450-530ms at 300
+// against 2-4s at 30, because the cost is dominated by index warmth rather than
+// row count.
+const INDEX_QUERY_LIMIT = 300;
+
 // Paid-sources-only switch (2026-09-07, direct product request: "turn off
 // showing all the crawl or in-db jobs other than coming from apify").
 //
@@ -646,7 +655,7 @@ export async function scrapeAndEvaluateJobs(
             // CACHE_SUPABASE_* is unset, so this keeps working unchanged on a
             // checkout without those secrets.
             const cacheDb = createCacheDbClient() as unknown as Parameters<typeof queryProactiveCrawlCache>[0];
-            return await queryProactiveCrawlCache(cacheDb, title, location);
+            return await queryProactiveCrawlCache(cacheDb, title, location, INDEX_QUERY_LIMIT);
         } catch (error) {
             console.warn("[scraper.actions] proactive-crawl cache lookup failed", error);
             return [] as NormalizedJob[];
@@ -711,48 +720,6 @@ export async function scrapeAndEvaluateJobs(
     const rawJobs: NormalizedJob[] = [...cachedJobs];
     console.log(`[scraper] index returned ${cachedJobs.length} job(s) for "${title}"/"${location}"`);
 
-    // The paid providers only run when the index is THIN (2026-09-07).
-    //
-    // Every LinkedIn + Indeed pair costs about $0.04 against a $5/month Apify
-    // credit -- 125 searches a month across all users -- so firing them on every
-    // search burns the budget on queries the index already answers well. This is
-    // the "query-driven ingestion" trigger: pay only for the gap.
-    //
-    // 25 is deliberately below MAX_EVALUATED_JOBS: a candidate looking at 25+
-    // relevant postings has enough to work with, and the crawl re-polls those
-    // employers' own boards every 15 minutes for free, so they are fresher than
-    // anything a paid scrape would return.
-    const PAID_SOURCE_THRESHOLD = 25;
-    const indexHasEnough = cachedJobs.length >= PAID_SOURCE_THRESHOLD;
-    if (indexHasEnough) {
-        console.log(
-            `[scraper] index returned ${cachedJobs.length} (>= ${PAID_SOURCE_THRESHOLD}) — ` +
-            `skipping the paid providers for "${title}"/"${location}"`,
-        );
-    }
-
-    // Never awaited and never allowed to fail the search: a dead Inngest worker
-    // must degrade to "index results only", not to a failed search. That exact
-    // failure already happened once here (2026-08-27) when an unreachable
-    // Inngest dev server threw and took down a search whose jobs had already
-    // saved.
-    if (!indexHasEnough) try {
-        await inngest.send({
-            name: "jobs/fetch-paid-sources",
-            data: {
-                userId,
-                runId,
-                title,
-                location,
-                country: resolveSearchCountry(location),
-                filters,
-                userEmail: user?.email ?? null,
-            },
-        });
-    } catch (error) {
-        console.error("[scraper.actions] could not queue the paid-source fetch — index results only", error);
-    }
-
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));
     let uniqueJobs = Array.from(uniqueJobsMap.values());
@@ -785,6 +752,57 @@ export async function scrapeAndEvaluateJobs(
         title,
     );
     uniqueJobs = relevance.kept;
+
+    // The paid providers only run when the index is THIN (2026-09-07).
+    //
+    // Every LinkedIn + Indeed pair costs about $0.04 against a $5/month Apify
+    // credit -- 125 searches a month across all users -- so firing them on every
+    // search burns the budget on queries the index already answers well. This is
+    // the "query-driven ingestion" trigger: pay only for the gap.
+    //
+    // Counted AFTER relevance filtering, not before. Checking the raw index
+    // count was a real bug, shipped and caught within the hour: "Financial
+    // Advisor"/Toronto returned 30 raw rows so the paid providers were skipped
+    // as unnecessary, and relevance filtering then cut those 30 down to ONE.
+    // The user saw a single job and no backfill. Raw volume says nothing about
+    // whether a candidate has anything to look at.
+    //
+    // 25 is deliberately below MAX_EVALUATED_JOBS: a candidate looking at 25+
+    // relevant postings has enough to work with, and the crawl re-polls those
+    // employers' own boards every 15 minutes for free, so they are fresher than
+    // anything a paid scrape would return.
+    const PAID_SOURCE_THRESHOLD = 25;
+    const indexHasEnough = uniqueJobs.length >= PAID_SOURCE_THRESHOLD;
+    if (indexHasEnough) {
+        console.log(
+            `[scraper] index gave ${uniqueJobs.length} RELEVANT (>= ${PAID_SOURCE_THRESHOLD}) — ` +
+            `skipping the paid providers for "${title}"/"${location}"`,
+        );
+    }
+
+    // Never awaited and never allowed to fail the search: a dead Inngest worker
+    // must degrade to "index results only", not to a failed search. That exact
+    // failure already happened once here (2026-08-27) when an unreachable
+    // Inngest dev server threw and took down a search whose jobs had already
+    // saved.
+    if (!indexHasEnough) try {
+        await inngest.send({
+            name: "jobs/fetch-paid-sources",
+            data: {
+                userId,
+                runId,
+                title,
+                location,
+                country: resolveSearchCountry(location),
+                filters,
+                userEmail: user?.email ?? null,
+            },
+        });
+    } catch (error) {
+        console.error("[scraper.actions] could not queue the paid-source fetch — index results only", error);
+    }
+
+
     if (beforeRelevance !== uniqueJobs.length) {
         console.log(
             `[scraper] relevance: ${beforeRelevance} -> ${uniqueJobs.length} for "${title}" ` +
