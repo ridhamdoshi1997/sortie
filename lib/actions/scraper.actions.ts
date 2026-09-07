@@ -544,7 +544,24 @@ export async function fetchPaidSourcesForRun(params: {
     userEmail?: string | null;
 }): Promise<{ persisted: number; providerJobs: number }> {
     const { userId, runId, title, location, country, filters, userEmail } = params;
-    const insforge = await createInsforgeServer();
+
+    // Admin client, NOT createInsforgeServer(). This runs inside an Inngest
+    // function, where there is no request scope, and createInsforgeServer reads
+    // cookies() -- which Next.js refuses outside a request. It threw on the
+    // first line every time and Inngest swallowed it into a retry, so the paid
+    // half of every search silently never ran while the search itself looked
+    // fine.
+    //
+    // This codebase has hit exactly this before: Phase 47 found auto full
+    // evaluation had NEVER run because the page called it inside after(), where
+    // requireUser() and createInsforgeServer() hit the same wall, and the error
+    // was swallowed there too. The fix then was a cookie-free variant; this is
+    // the same fix. Anything called from a cron or a background job must take a
+    // client rather than build one from request state.
+    //
+    // Bypassing RLS is correct here: there is no session to scope to, and the
+    // userId comes from the event this server itself emitted.
+    const insforge = createAdminDbClient() as unknown as InsforgeServerClient;
     const phase: Record<string, number> = {};
 
     let rawJobs: NormalizedJob[];
