@@ -84,6 +84,14 @@ function lookupKeys(title: string): string[] {
 // which batch for this reason.
 const TITLE_LOOKUP_BATCH_SIZE = 400;
 
+// A title belonging to more than this many occupations is treated as unresolved
+// rather than matched, on both the expansion and the matching side. Otherwise a
+// posting titled "Account Manager" -- which O*NET files under five occupations
+// including this one -- would be accepted as the same profession as a financial
+// advisor. Unresolved falls through to word matching, which is the honest answer
+// for a title that genuinely does not name a profession.
+const MAX_TITLE_AMBIGUITY = 2;
+
 async function fetchOccupations(db: Db, titles: string[]): Promise<Map<string, Set<string>>> {
   const byTitle = new Map<string, Set<string>>();
   if (titles.length === 0) return byTitle;
@@ -93,6 +101,12 @@ async function fetchOccupations(db: Db, titles: string[]): Promise<Map<string, S
     const { data, error } = await db.database
       .from("occupation_titles")
       .select("title,soc_group")
+      // Deliberately NOT filtered by occupation_count here. The cutoff belongs
+      // on the EXPANSION -- which titles we go and fetch -- not on reading back
+      // what a title means. Applying it here too cost 101 real results
+      // (176 -> 75) by refusing to resolve any posting whose title happens to
+      // span three occupations, which then fell through to strict word matching
+      // and was dropped.
       .in("title", batch);
 
     if (error) {
@@ -208,10 +222,23 @@ export async function expandTitleToOccupationTitles(
   const groups = occupationsFor(keys, byKey);
   if (!groups || groups.size === 0) return null;
 
+  // Generic titles are excluded from the expansion. O*NET files "account
+  // manager", "sales associate" and "sales representative" under the same
+  // occupations as "financial advisor", so expanding to every title in those
+  // occupations pulled Sales Managers and Account Managers into a
+  // financial-advisor search -- reported live.
+  //
+  // How many OCCUPATIONS a title spans is what separates them: 7 for "sales
+  // associate", 5 for "account manager", 1 for "financial planner",
+  // "investment advisor" and "wealth advisor". A title spanning many
+  // occupations names a level or a function, not a profession, so it cannot
+  // answer "is this the same kind of job". Cutting at 2 keeps every real
+  // synonym and drops the filler: 146 titles becomes 122.
   const { data: titleRows, error: titleError } = await db.database
     .from("occupation_titles")
     .select("title")
-    .in("soc_group", [...groups]);
+    .in("soc_group", [...groups])
+    .lte("occupation_count", MAX_TITLE_AMBIGUITY);
   if (titleError || !titleRows) return null;
 
   const titles = [...new Set((titleRows as { title: string }[]).map((r) => r.title))];
