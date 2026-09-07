@@ -8,7 +8,7 @@ import { fetchAtsJobs } from "@/lib/atsProviders";
 import { fetchJobsForCompany, partitionByKnownAts, toCompanyKey } from "@/lib/atsRegistry";
 import { canonicalizeJobSources } from "@/lib/jobCanonicalization";
 import { harvestEmployers } from "@/lib/atsDiscoveryHarvest";
-import { queryProactiveCrawlCache } from "@/lib/proactiveAtsCrawl";
+import { queryProactiveCrawlCache, storeProviderJobsInIndex, collapseDuplicatePostings } from "@/lib/proactiveAtsCrawl";
 import { filterByOccupation } from "@/lib/occupationMatch";
 import { resolveSearchCountry } from "@/lib/searchCountry";
 import { preFilterJob } from "@/lib/jobPreFilter";
@@ -563,6 +563,16 @@ export async function fetchPaidSourcesForRun(params: {
     rawJobs = await enrichWithDirectAtsJobs(rawJobs, title, location);
     phase.atsEnrichment = Date.now() - tEnrich;
 
+    // Feed the shared index, so this paid fetch is a one-time cost for EVERYONE.
+    // Without it the index only learns from the ATS crawl and every user
+    // searching the same title and city pays $0.04 and waits ~45s for rows the
+    // last user already fetched. Not awaited into the result: the searcher's own
+    // jobs are persisted below regardless of whether this succeeds.
+    void storeProviderJobsInIndex(
+        createCacheDbClient() as unknown as Parameters<typeof storeProviderJobsInIndex>[0],
+        rawJobs,
+    ).catch((error) => console.warn("[paid-sources] indexing provider jobs failed", error));
+
     const byId = new Map<string, NormalizedJob>();
     rawJobs.forEach((job) => byId.set(job.id, job));
     let uniqueJobs = [...byId.values()];
@@ -717,8 +727,14 @@ export async function scrapeAndEvaluateJobs(
     // FindJobsForm surfaces them as they arrive -- the mechanism already built
     // for streaming.
     const cachedJobs = await cachedJobsPromise;
-    const rawJobs: NormalizedJob[] = [...cachedJobs];
+    let rawJobs: NormalizedJob[] = [...cachedJobs];
     console.log(`[scraper] index returned ${cachedJobs.length} job(s) for "${title}"/"${location}"`);
+
+    // Same real job from an ATS board and from LinkedIn/Indeed carries different
+    // external ids, so the id-based dedupe below cannot merge them. Now that
+    // provider results are indexed alongside crawled ones, that collision is
+    // routine rather than theoretical.
+    rawJobs = collapseDuplicatePostings(rawJobs);
 
     const uniqueJobsMap = new Map();
     rawJobs.forEach(job => uniqueJobsMap.set(job.id, job));

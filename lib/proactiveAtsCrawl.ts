@@ -726,6 +726,102 @@ export async function backfillCompanyDomains(admin: AdminDb): Promise<{ resolved
   return { resolved, attempted: rows.length };
 }
 
+
+// Store LinkedIn/Indeed results in the shared index (2026-09-07).
+//
+// Without this the index only ever learns from the ATS crawl, so every user
+// searching "Financial Advisor in Toronto" pays $0.04 and waits 45-73s for the
+// same LinkedIn and Indeed rows the last user already fetched. Writing them here
+// makes a paid search a one-time cost for everyone: the second person to search
+// it is served from the index, free and instant.
+//
+// The rows go in under ats_platform "linkedin"/"indeed", which is what makes
+// them distinguishable at read time -- see collapseDuplicatePostings, which
+// prefers a direct-ATS row over an aggregator row for the same real job.
+//
+// They differ from crawled rows in one important way: the crawl re-polls an
+// employer's own board every 15 minutes, so last_seen_at is a genuine liveness
+// heartbeat. Nothing re-polls LinkedIn for free, so these rows are only as
+// fresh as the last search that found them. The recency cutoff at read time is
+// what stops them becoming ghost jobs.
+export async function storeProviderJobsInIndex(
+  cacheDb: AdminDb,
+  jobs: NormalizedJob[],
+): Promise<{ stored: number }> {
+  if (jobs.length === 0) return { stored: 0 };
+  const now = new Date().toISOString();
+
+  const rows = dedupePostingRows(
+    jobs
+      .filter((job) => job.title && job.company && (job.applyUrl || job.url))
+      .map((job) => {
+        const companyKey = canonicalCompanyKey(job.company);
+        return {
+          ats_platform: (job.source || "unknown").trim().toLowerCase(),
+          company_key: companyKey,
+          company_stem: canonicalCompanyKey(companyKey),
+          company_name: job.company,
+          external_id: job.id,
+          title: job.title,
+          location: job.location || null,
+          salary: job.salary || null,
+          job_type: job.type || null,
+          apply_url: job.applyUrl ?? job.url,
+          posted_at: job.postedAt ?? null,
+          last_seen_at: now,
+          is_active: true,
+        };
+      }),
+  );
+  if (rows.length === 0) return { stored: 0 };
+
+  let stored = 0;
+  for (let i = 0; i < rows.length; i += UPSERT_CHUNK_SIZE) {
+    const chunk = rows.slice(i, i + UPSERT_CHUNK_SIZE);
+    const { error } = await cacheDb.database
+      .from("discovered_postings")
+      .upsert(chunk, { onConflict: "ats_platform,company_key,external_id" });
+    if (error) {
+      // Never fatal: the user's own search results are already saved. This only
+      // decides whether the NEXT search gets them for free.
+      console.warn("[proactiveAtsCrawl] could not index provider jobs", error.message);
+      continue;
+    }
+    stored += chunk.length;
+  }
+  if (stored > 0) console.log(`[proactiveAtsCrawl] indexed ${stored} provider job(s) for future searches`);
+  return { stored };
+}
+
+// Collapse the same real job arriving from more than one source.
+//
+// LinkedIn, Indeed and an employer's own ATS board all list the same opening,
+// and they carry different external ids, so the (platform, company, external_id)
+// conflict key cannot merge them -- it is not meant to. Collapsing here, on
+// company + title, keeps the index honest without a schema constraint that
+// would wrongly reject two genuinely separate openings with the same title.
+//
+// The survivor is the DIRECT-ATS row wherever one exists: it links to the
+// employer's own board rather than an aggregator redirect, and it is the row the
+// crawl re-verifies every 15 minutes.
+const AGGREGATOR_PLATFORMS = new Set(["linkedin", "indeed"]);
+
+export function collapseDuplicatePostings(jobs: NormalizedJob[]): NormalizedJob[] {
+  const bySignature = new Map<string, NormalizedJob>();
+  for (const job of jobs) {
+    const signature = `${canonicalCompanyKey(job.company ?? "")}|${(job.title ?? "").trim().toLowerCase()}`;
+    const existing = bySignature.get(signature);
+    if (!existing) {
+      bySignature.set(signature, job);
+      continue;
+    }
+    const existingIsAggregator = AGGREGATOR_PLATFORMS.has((existing.source ?? "").toLowerCase());
+    const candidateIsAggregator = AGGREGATOR_PLATFORMS.has((job.source ?? "").toLowerCase());
+    if (existingIsAggregator && !candidateIsAggregator) bySignature.set(signature, job);
+  }
+  return [...bySignature.values()];
+}
+
 // Read side, called from a live search (lib/actions/scraper.actions.ts) —
 // the free, instant supplement to that search's own reactive enrichment.
 // Full-text title match against the crawl cache, with the city constraint
