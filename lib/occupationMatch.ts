@@ -208,7 +208,7 @@ export async function expandTitleToOccupationTitles(
 
   const { data: socRows, error: socError } = await db.database
     .from("occupation_titles")
-    .select("title,soc_group")
+    .select("title,soc_group,occupation_name")
     .in("title", keys);
   if (socError || !socRows) return null;
 
@@ -219,8 +219,32 @@ export async function expandTitleToOccupationTitles(
     if (!byKey.has(row.title)) byKey.set(row.title, new Set());
     byKey.get(row.title)!.add(row.soc_group);
   }
-  const groups = occupationsFor(keys, byKey);
-  if (!groups || groups.size === 0) return null;
+  const allGroups = occupationsFor(keys, byKey);
+  if (!allGroups || allGroups.size === 0) return null;
+
+  // When a title belongs to several occupations, keep only the one it actually
+  // NAMES (2026-09-07). "financial advisor" belongs to both "Personal Financial
+  // Advisors" and "Securities, Commodities, and Financial Services Sales
+  // Agents"; expanding into both is what pulled Sales Representatives and
+  // Account Managers into a financial-advisor search, because the sales
+  // occupation legitimately contains those titles.
+  //
+  // Scored by how many of the searched words appear in the occupation's own
+  // canonical name: "Personal Financial Advisors" matches both "financial" and
+  // "advisor", the sales one matches only "financial". Ties keep every tied
+  // occupation, so a genuinely dual-occupation title is not arbitrarily halved.
+  const nameByGroup = new Map<string, string>();
+  for (const row of socRows as { soc_group: string; occupation_name?: string | null }[]) {
+    if (row.occupation_name) nameByGroup.set(row.soc_group, row.occupation_name.toLowerCase());
+  }
+  const searchWords = normalizeTitle(searchTitle).split(" ").filter((w) => w.length > 2);
+  const score = (group: string): number => {
+    const name = nameByGroup.get(group);
+    if (!name) return 0;
+    return searchWords.filter((w) => name.includes(w.slice(0, 5))).length;
+  };
+  const best = Math.max(...[...allGroups].map(score));
+  const groups = new Set([...allGroups].filter((g) => score(g) === best));
 
   // Generic titles are excluded from the expansion. O*NET files "account
   // manager", "sales associate" and "sales representative" under the same
