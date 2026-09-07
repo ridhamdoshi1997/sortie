@@ -293,6 +293,17 @@ export async function expandTitleToOccupationTitles(
     .limit(MAX_EXPANSION_TITLES);
   if (titleError || !titleRows) return null;
 
-  const titles = [...new Set((titleRows as { title: string }[]).map((r) => r.title))];
-  return titles.length > 0 ? titles : null;
+  const titles = new Set((titleRows as { title: string }[]).map((r) => r.title));
+
+  // The searched title itself ALWAYS belongs in its own expansion.
+  //
+  // It is not implied: the expansion returns O*NET's LAY titles for the
+  // occupation, and a title that exists there only as the plural canonical name
+  // is absent from it. Measured live -- 183 index postings normalise to exactly
+  // "pharmacist", the expansion held 20 titles, and "pharmacist" was not one of
+  // them, so a Pharmacist search returned 4 results while 183 sat in the index.
+  // The same trap applies to any occupation named in the plural.
+  for (const key of lookupKeys(searchTitle)) titles.add(key);
+
+  return titles.size > 0 ? [...titles] : null;
 }
