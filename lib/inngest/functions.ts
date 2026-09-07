@@ -17,7 +17,7 @@ import { createAdminClient, createCacheDbClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
-import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings } from "@/lib/proactiveAtsCrawl";
+import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget } from "@/lib/proactiveAtsCrawl";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1302,14 +1302,24 @@ export const proactiveIcimsCrawlAsync = inngest.createFunction(
 // user data; an append-only cache would eventually crowd that out. Daily is
 // deliberate: this is housekeeping, not something worth spending an
 // invocation on every 15 minutes.
+// HOURLY, not daily (2026-09-06). Daily was fine when this only deleted
+// long-inactive rows; it is not fine now that it also enforces the cache's
+// size budget. Measured growth is roughly 150 MB/day, so a daily run would let
+// the database swing ~287 MB -> ~437 MB between passes and drift back toward
+// the 500 MB cap it just went over. Hourly keeps the swing near 6 MB.
 export const pruneCrawlCacheAsync = inngest.createFunction(
-    { id: "prune-crawl-cache", name: "Prune Stale Crawl Cache", triggers: [{ cron: "30 3 * * *" }] },
+    { id: "prune-crawl-cache", name: "Prune Stale Crawl Cache", triggers: [{ cron: "30 * * * *" }] },
     async ({ step }) => {
-        // No main-project client here: pruning touches discovered_postings
-        // only, which now lives in the cache project.
-        const result = await step.run("prune", () => pruneStaleDiscoveredPostings(createCacheDbClient()));
+        // No main-project client here: this touches discovered_postings only.
+        const pruned = await step.run("prune", () => pruneStaleDiscoveredPostings(createCacheDbClient()));
 
-        return { message: `Pruned ${result.pruned} long-inactive cached posting(s).` };
+        // Runs AFTER the stale prune, so anything the prune already removed
+        // does not count against the budget and get double-counted here.
+        const evicted = await step.run("evict-over-budget", () => evictCachedPostingsOverBudget(createCacheDbClient()));
+
+        return {
+            message: `Pruned ${pruned.pruned} long-inactive posting(s); evicted ${evicted.evicted} over the size budget.`,
+        };
     },
 );
 

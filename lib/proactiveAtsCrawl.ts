@@ -607,7 +607,48 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb, cacheDb: AdminDb 
 // reposted the crawl re-inserts it (the upsert reactivates on conflict), so
 // deleting is safe rather than lossy. Kept as a plain age check on
 // last_seen_at, which the crawl already maintains.
+// Hard size budget for the cache (2026-09-06).
+//
+// This table had no limit and the crawl only ever adds: 68,291 companies
+// revisited every 15 minutes, nothing ever removed. It reached 500 MB of a
+// 559 MB database against a 500 MB free-plan cap -- over the line, with writes
+// about to start failing. Moving it to another provider was explored at length
+// and would only have raised the ceiling; an append-only cache reaches any
+// ceiling eventually.
+//
+// Evicting is not data loss. The crawl revisits every company on a 15-minute
+// cycle, so a posting still live on the employer's board is rewritten on the
+// next pass. The ones that do NOT come back are filled, closed or expired --
+// exactly the ghost jobs this product exists not to show.
+//
+// 450,000 holds every market (a market-scoped cache was considered and
+// rejected by the product owner) and lands the whole database near 287 MB,
+// leaving real headroom for user data on the same 500 MB plan.
+const MAX_CACHED_POSTINGS = 450_000;
+
 const INACTIVE_RETENTION_DAYS = 30;
+
+// Keeps the cache inside MAX_CACHED_POSTINGS, newest-seen first.
+//
+// last_seen_at is the ordering key rather than first_seen_at or posted_at: the
+// crawl refreshes it every time a posting is still on its board, so it measures
+// "still real", which is what should survive an eviction.
+export async function evictCachedPostingsOverBudget(cacheDb: AdminDb): Promise<{ evicted: number }> {
+  const { data, error } = await cacheDb.database.rpc("evict_discovered_postings_over_budget", {
+    p_max_rows: MAX_CACHED_POSTINGS,
+  });
+  if (error) {
+    // Never throws: this runs on a cron, and a failed eviction must not fail
+    // the whole maintenance run. It is logged loudly because a cache that
+    // stops evicting is exactly how the storage cap was hit in the first
+    // place, and that failure was silent for days.
+    console.error("[proactiveAtsCrawl] EVICTION FAILED — the cache is now unbounded until this succeeds", error.message);
+    return { evicted: 0 };
+  }
+  const evicted = typeof data === "number" ? data : 0;
+  if (evicted > 0) console.log(`[proactiveAtsCrawl] evicted ${evicted} posting(s) over the ${MAX_CACHED_POSTINGS} budget`);
+  return { evicted };
+}
 
 export async function pruneStaleDiscoveredPostings(cacheDb: AdminDb): Promise<{ pruned: number }> {
   const cutoff = new Date(Date.now() - INACTIVE_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();

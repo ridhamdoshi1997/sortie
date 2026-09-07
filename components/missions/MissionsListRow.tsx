@@ -81,8 +81,8 @@ export function MissionsListRow({
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10.5px] font-medium ${sourceBadge.badgeClassName}`}
             >
-              {job.source === "linkedin" && <LinkedInGlyph className="h-3 w-3" />}
-              {job.source === "indeed" && <PlatformLogo source="indeed" className="h-3 w-3 rounded-[2px]" />}
+              {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-3 w-3" />}
+              {sourceBadge.icon === "indeed" && <PlatformLogo source="indeed" className="h-3 w-3 rounded-[2px]" />}
               {sourceBadge.label}
             </span>
           )}

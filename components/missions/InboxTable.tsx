@@ -221,8 +221,8 @@ export function InboxTable({ jobs }: { jobs: Job[] }) {
                     <span
                       className={`inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium ${sourceBadge.badgeClassName}`}
                     >
-                      {job.source === "linkedin" && <LinkedInGlyph className="h-2.5 w-2.5" />}
-                      {job.source === "indeed" && <PlatformLogo source="indeed" className="h-2.5 w-2.5 rounded-[1.5px]" />}
+                      {sourceBadge.icon === "linkedin" && <LinkedInGlyph className="h-2.5 w-2.5" />}
+                      {sourceBadge.icon === "indeed" && <PlatformLogo source="indeed" className="h-2.5 w-2.5 rounded-[1.5px]" />}
                       {sourceBadge.label}
                     </span>
                   )}

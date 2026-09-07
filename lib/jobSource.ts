@@ -11,6 +11,8 @@
 export type SourceBadge = {
   label: string;
   badgeClassName: string;
+  /** Which platform glyph to render beside the label, if any. */
+  icon?: "linkedin" | "indeed";
 };
 
 // 8 more platforms added 2026-08-18 (v1.5, same session) — deliberately
@@ -32,12 +34,25 @@ const NEUTRAL_PLATFORM_LABELS: Record<string, string> = {
   ziprecruiter: "ZipRecruiter",
 };
 
+// Case-insensitive since 2026-09-06, after a real bug: every case here is
+// lower-case, but the scrapers write "LinkedIn" and "Indeed" capitalised
+// (lib/jobScraper.ts names its sources for display). So this returned null for
+// the two HIGHEST-VOLUME sources in the database -- 144 LinkedIn and 70 Indeed
+// jobs -- and those cards rendered no source badge and no platform icon at all,
+// while the ATS sources (lower-case by construction) worked fine and hid the
+// problem. Normalising here fixes the badge, the brand colours and the icon in
+// one place instead of at four call sites that each repeated the comparison.
+//
+// `icon` is returned rather than left to callers for the same reason: the four
+// components that render this each had their own `job.source === "linkedin"`
+// check, and each was wrong in exactly the same way.
 export function getSourceBadge(source: string | null | undefined): SourceBadge | null {
-  switch (source) {
+  const key = source?.trim().toLowerCase();
+  switch (key) {
     case "linkedin":
-      return { label: "via LinkedIn", badgeClassName: "bg-linkedin-light text-linkedin" };
+      return { label: "via LinkedIn", badgeClassName: "bg-linkedin-light text-linkedin", icon: "linkedin" };
     case "indeed":
-      return { label: "via Indeed", badgeClassName: "bg-indeed-light text-indeed" };
+      return { label: "via Indeed", badgeClassName: "bg-indeed-light text-indeed", icon: "indeed" };
     // Portal Scanner (build-plan.md Phase 8) — direct ATS board results.
     // Neutral badge style, same reasoning as the 8 platforms below: a real
     // per-platform brand treatment wasn't part of that pass, easy fast-
@@ -51,7 +66,7 @@ export function getSourceBadge(source: string | null | undefined): SourceBadge |
     case "url":
       return { label: "Pasted", badgeClassName: "bg-surface-secondary text-text-secondary" };
     default: {
-      const label = source ? NEUTRAL_PLATFORM_LABELS[source] : undefined;
+      const label = key ? NEUTRAL_PLATFORM_LABELS[key] : undefined;
       if (!label) return null; // "SerpApi" (the default/majority case) and anything unrecognized
       return { label: `via ${label}`, badgeClassName: "bg-surface-secondary text-text-secondary" };
     }
