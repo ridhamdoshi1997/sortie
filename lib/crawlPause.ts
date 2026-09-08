@@ -27,9 +27,20 @@
 // paused function completes instantly with no connection and no retry chain,
 // rather than failing and being retried. Crons keep firing; they just no-op.
 //
-// Scope is background writers only. User-facing work — searches, scoring,
-// anything a candidate is waiting on — is never gated by this, so pausing
-// degrades freshness of the index, not the product.
+// Scope is EVERY cron-triggered function that touches the database, not just
+// the crawls. The first version gated only the three crawls and the prune, on
+// the reasoning that the others were lighter. That reasoning is wrong: weight
+// is irrelevant when the failure mode is a 60s function timeout followed by
+// Inngest retries. A small query against a starved database still times out,
+// still gets retried, and still feeds the same loop -- reconcile-stuck-agent-
+// runs alone fires every 15 minutes. Observed after the first pass: crawl
+// traffic went quiet and 504s continued.
+//
+// User-facing work -- searches, scoring, anything a candidate is actively
+// waiting on -- is never gated, so pausing costs background freshness rather
+// than the product. The name stays CRAWL_PAUSED because it is already set in
+// Doppler and all three Vercel environments; renaming it would be a rename
+// with a live incident attached.
 
 export function crawlPaused(): boolean {
     const value = (process.env.CRAWL_PAUSED ?? "").trim().toLowerCase();

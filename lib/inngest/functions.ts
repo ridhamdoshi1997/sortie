@@ -778,6 +778,8 @@ export const generateSuccessStoryAsync = inngest.createFunction(
 export const sendFollowUpNudgesAsync = inngest.createFunction(
     { id: "send-follow-up-nudges", name: "Send Follow-up Timing Nudges", triggers: [{ cron: "0 14 * * 1" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Follow-up nudges");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -863,6 +865,8 @@ export const sendFollowUpNudgesAsync = inngest.createFunction(
 export const generateWeeklyBriefingsAsync = inngest.createFunction(
     { id: "generate-weekly-briefings", name: "Generate Weekly AI Dashboard Briefings", triggers: [{ cron: "0 9 * * 1" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Weekly briefings");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1034,6 +1038,8 @@ const INBOX_ARCHIVE_AFTER_DAYS = 14;
 export const archiveStaleInboxJobsAsync = inngest.createFunction(
     { id: "archive-stale-inbox-jobs", name: "Archive Stale Inbox Jobs", triggers: [{ cron: "0 4 * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Stale inbox archive");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1086,6 +1092,8 @@ export const archiveStaleInboxJobsAsync = inngest.createFunction(
 export const reconcileStuckAgentRunsAsync = inngest.createFunction(
     { id: "reconcile-stuck-agent-runs", name: "Reconcile Stuck Agent Runs", triggers: [{ cron: "*/15 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Stuck-run reconcile");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1385,6 +1393,8 @@ const LEGITIMACY_RECHECK_BATCH_SIZE = 25;
 export const jobhiveRegistrySyncAsync = inngest.createFunction(
     { id: "jobhive-registry-sync", name: "Sync Free ATS Company Registry", triggers: [{ cron: "0 5 * * 1" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("ATS registry sync");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1457,6 +1467,8 @@ export const legitimacyRecheckAsync = inngest.createFunction(
 export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
     { id: "reset-lifetime-plan-usage-periods", name: "Reset Lifetime-Plan Usage Periods", triggers: [{ cron: "0 3 * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Lifetime plan usage reset");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1512,6 +1524,8 @@ export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
 export const syncNewsItemsAsync = inngest.createFunction(
     { id: "sync-news-items", name: "Sync News Items (Career Radar)", triggers: [{ cron: "0 */6 * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("News sync");
+
         const { ingestNewsForCategory } = await import("@/lib/newsIngestion");
 
         const hiringLayoffs = await step.run("ingest-hiring-layoffs", () => ingestNewsForCategory("hiring_layoffs"));
