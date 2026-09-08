@@ -4,6 +4,7 @@ import { getSiteUrl } from "@/lib/siteUrl";
 import { listPublishedPages } from "@/lib/admin/content";
 import { listQuestionBankEntries } from "@/lib/interviewSeo";
 import { listSalaryInsights } from "@/lib/salaryInsightsSeo";
+import { withBuildTimeout } from "@/lib/buildTimeFetch";
 
 // build-plan.md §I — real, generated sitemap covering the genuinely public
 // marketing/content/tool surface, plus every real published blog post
@@ -37,19 +38,28 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     lastModified: new Date(),
   }));
 
-  const pages = await listPublishedPages();
+  // Concurrent, and each one bounded. This route is prerendered, so these
+  // three reads run at build time against a 60s per-route budget -- awaiting
+  // them in sequence spent that budget three times over and failed the build
+  // outright when the database was slow (2026-09-08). Now the route costs the
+  // slowest read, and a read that cannot answer contributes no URLs instead of
+  // taking the deploy down with it.
+  const [pages, questionBankEntries, salaryInsights] = await Promise.all([
+    withBuildTimeout("sitemap:blog", listPublishedPages, [] as Awaited<ReturnType<typeof listPublishedPages>>),
+    withBuildTimeout("sitemap:interview-questions", listQuestionBankEntries, [] as Awaited<ReturnType<typeof listQuestionBankEntries>>),
+    withBuildTimeout("sitemap:salary-insights", listSalaryInsights, [] as Awaited<ReturnType<typeof listSalaryInsights>>),
+  ]);
+
   const pageEntries: MetadataRoute.Sitemap = pages.map((p) => ({
     url: `${siteUrl}/blog/${p.slug}`,
     lastModified: new Date(p.updatedAt),
   }));
 
-  const questionBankEntries = await listQuestionBankEntries();
   const interviewQuestionEntries: MetadataRoute.Sitemap = questionBankEntries.map((e) => ({
     url: `${siteUrl}/interview-questions/${e.slug}`,
     lastModified: new Date(),
   }));
 
-  const salaryInsights = await listSalaryInsights();
   const salaryInsightEntries: MetadataRoute.Sitemap = salaryInsights.map((e) => ({
     url: `${siteUrl}/salary-insights/${e.slug}`,
     lastModified: new Date(e.mostRecentPosting || Date.now()),

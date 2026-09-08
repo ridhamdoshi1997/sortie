@@ -5,6 +5,7 @@ import { DollarSign } from "lucide-react";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { listSalaryInsights } from "@/lib/salaryInsightsSeo";
+import { withBuildTimeout } from "@/lib/buildTimeFetch";
 
 export const metadata: Metadata = {
   title: "Real Salary Ranges by Role & Location | Sortie",
@@ -20,7 +21,13 @@ export const revalidate = 3600;
 // over jobs.company_research (which carries per-candidate personal data
 // and unreliable employer attribution, verified live 2026-08-30).
 export default async function SalaryInsightsHubPage() {
-  const insights = await listSalaryInsights();
+  // Prerendered, so this runs at build time against a 60s budget -- see
+  // lib/buildTimeFetch.ts for why an unbounded read here breaks deploys.
+  const insights = await withBuildTimeout(
+    "salary-insights:page",
+    listSalaryInsights,
+    [] as Awaited<ReturnType<typeof listSalaryInsights>>,
+  );
 
   return (
     <>

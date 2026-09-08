@@ -1,4 +1,5 @@
 import { createAdminDbClient } from "@/lib/admin/client";
+import { withBuildTimeout } from "@/lib/buildTimeFetch";
 
 // Programmatic SEO pages off the real Interview Prep question banks
 // (build-plan.md's Phase 19 homepage research — "Behavioral Interview
@@ -47,47 +48,23 @@ function toEntrySlug(company: string, roleFamily: string, seniority: string | nu
   return parts.join("--");
 }
 
-// This page is statically prerendered, so this query runs at BUILD time, and
-// Next.js gives a page 60 seconds to render before it fails the whole build.
-// That turned a slow database into a broken deploy (2026-09-08): the read has
-// no timeout of its own, so when the database was saturated the prerender hung
-// until Next killed it, and `npm run build` exited 1. Worse, it was exactly the
-// deploy carrying the fix for the saturation -- a database too slow to answer
-// blocked shipping the change that would have let it recover.
-//
-// A marketing page is not worth that. The query is bounded, and any failure
-// degrades to zero entries -- which the page already renders honestly as "No
-// question banks published yet". `revalidate = 3600` means an empty build-time
-// render repairs itself on the next revalidation without a redeploy.
-const ENTRY_FETCH_TIMEOUT_MS = 15_000;
-
+// Prerendered, so this read runs at BUILD time -- see lib/buildTimeFetch.ts
+// for why an unbounded read here takes the whole deploy down rather than just
+// degrading a page.
 async function fetchAllEntries(): Promise<QuestionBankEntry[]> {
-  const client = createAdminDbClient();
-
-  const query = client.database
-    .from("interview_question_banks")
-    .select("company,role_family,seniority,questions")
-    .returns<{ company: string; role_family: string; seniority: string | null; questions: InterviewQuestion[] }[]>();
-
   type Row = { company: string; role_family: string; seniority: string | null; questions: InterviewQuestion[] };
-  let data: Row[] | null = null;
-  try {
-    const settled = await Promise.race([
-      query,
-      new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`timed out after ${ENTRY_FETCH_TIMEOUT_MS}ms`)), ENTRY_FETCH_TIMEOUT_MS),
-      ),
-    ]);
-    // Logged, not swallowed: the error was previously destructured away
-    // entirely, so a failing read was indistinguishable from an empty table.
-    if (settled.error) {
-      console.warn(`[interviewSeo] question bank read failed: ${settled.error.message}`);
-    }
-    data = (settled.data ?? null) as Row[] | null;
-  } catch (error) {
-    console.warn(`[interviewSeo] question bank read unavailable: ${(error as Error).message}`);
-    data = null;
-  }
+
+  const data = await withBuildTimeout<Row[]>("interviewSeo:question-banks", async () => {
+    const client = createAdminDbClient();
+    const { data, error } = await client.database
+      .from("interview_question_banks")
+      .select("company,role_family,seniority,questions")
+      .returns<Row[]>();
+    // Logged, not swallowed: the error used to be destructured away entirely,
+    // so a failing read was indistinguishable from an empty table.
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  }, []);
 
   const seenSlugs = new Map<string, number>();
 
