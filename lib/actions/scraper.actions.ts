@@ -87,6 +87,10 @@ const ATS_FETCH_TIMEOUT_MS = 6000;
 // consumes capacity every other user's search is waiting on.
 const MAX_EVALUATED_JOBS = 120;
 
+// How long a query's LinkedIn/Indeed results stay good enough to serve
+// without paying for them again. See the claim in scrapeAndEvaluateJobs.
+const PROVIDER_REFRESH_TTL_HOURS = 24;
+
 // Matches the research-settled "top 15-20" figure for a relevance
 // pre-filter — see rankJobsByRelevance's own use site comment. Only
 // changes evaluation ORDER when a search has more not-yet-scored jobs
@@ -793,24 +797,50 @@ export async function scrapeAndEvaluateJobs(
     // search burns the budget on queries the index already answers well. This is
     // the "query-driven ingestion" trigger: pay only for the gap.
     //
-    // Counted AFTER relevance filtering, not before. Checking the raw index
-    // count was a real bug, shipped and caught within the hour: "Financial
-    // Advisor"/Toronto returned 30 raw rows so the paid providers were skipped
-    // as unnecessary, and relevance filtering then cut those 30 down to ONE.
-    // The user saw a single job and no backfill. Raw volume says nothing about
-    // whether a candidate has anything to look at.
+    // Fired on DEMAND with a 24h freshness window, not on how thin the index
+    // looks (2026-09-08, direct product decision).
     //
-    // 25 is deliberately below MAX_EVALUATED_JOBS: a candidate looking at 25+
-    // relevant postings has enough to work with, and the crawl re-polls those
-    // employers' own boards every 15 minutes for free, so they are fresher than
-    // anything a paid scrape would return.
-    const PAID_SOURCE_THRESHOLD = 25;
-    const indexHasEnough = uniqueJobs.length >= PAID_SOURCE_THRESHOLD;
-    if (indexHasEnough) {
+    // The previous gate was "index returned >= 25 relevant jobs -> skip the paid
+    // providers". That optimises for cost and gets FRESHNESS wrong in both
+    // directions: a query the index answers well was never refreshed even when
+    // its LinkedIn/Indeed data was weeks old, and a query the index answered
+    // poorly re-fired the providers on EVERY search, paying repeatedly for the
+    // same answer minutes apart.
+    //
+    // The rule now: fetch when a search arrives and this same query has not been
+    // fetched in the last 24 hours. Nothing runs on a schedule -- a query nobody
+    // searches costs nothing, and a query someone does search is never more than
+    // a day stale. Cost scales with real demand rather than with a maintained
+    // list of tracked queries.
+    //
+    // Measured: $0.0100 LinkedIn + $0.0058 Indeed = $0.016 per fire, so ~$0.48 a
+    // month for a query searched daily. The $5 free credit covers roughly ten
+    // distinct queries a day.
+    //
+    // The claim is ONE atomic statement (see the migration): checking freshness
+    // and then recording it separately would let several identical searches
+    // arriving together all read a stale timestamp and all fire, paying N times
+    // for one refresh.
+    let fetchProviders = false;
+    try {
+        const { data: claimed, error: claimError } = await createAdminDbClient()
+            .database.rpc("claim_paid_source_fetch", {
+                p_title: title,
+                p_location: location,
+                p_ttl_hours: PROVIDER_REFRESH_TTL_HOURS,
+            });
+        if (claimError) throw new Error(claimError.message);
+        fetchProviders = claimed === true;
         console.log(
-            `[scraper] index gave ${uniqueJobs.length} RELEVANT (>= ${PAID_SOURCE_THRESHOLD}) — ` +
-            `skipping the paid providers for "${title}"/"${location}"`,
+            fetchProviders
+                ? `[scraper] "${title}"/"${location}" not fetched in ${PROVIDER_REFRESH_TTL_HOURS}h — refreshing LinkedIn + Indeed`
+                : `[scraper] "${title}"/"${location}" fetched within ${PROVIDER_REFRESH_TTL_HOURS}h — serving the index, no paid call`,
         );
+    } catch (error) {
+        // Fails CLOSED. If we cannot tell whether this query was already paid
+        // for, not spending is the safe default -- the search still answers from
+        // the index, and the next search after the window retries.
+        console.error("[scraper.actions] could not claim a paid-source fetch — index results only", error);
     }
 
     // Never awaited and never allowed to fail the search: a dead Inngest worker
@@ -818,7 +848,7 @@ export async function scrapeAndEvaluateJobs(
     // failure already happened once here (2026-08-27) when an unreachable
     // Inngest dev server threw and took down a search whose jobs had already
     // saved.
-    if (!indexHasEnough) try {
+    if (fetchProviders) try {
         await inngest.send({
             name: "jobs/fetch-paid-sources",
             data: {
@@ -834,6 +864,7 @@ export async function scrapeAndEvaluateJobs(
     } catch (error) {
         console.error("[scraper.actions] could not queue the paid-source fetch — index results only", error);
     }
+
 
 
     if (beforeRelevance !== uniqueJobs.length) {
