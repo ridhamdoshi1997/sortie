@@ -594,6 +594,54 @@ export async function fetchPaidSourcesForRun(params: {
         rawJobs,
     ).catch((error) => console.warn("[paid-sources] indexing provider jobs failed", error));
 
+    // Removal detection for provider postings (2026-09-08).
+    //
+    // ATS postings get this from the crawl, which fetches a company's WHOLE
+    // board so absence proves removal. A provider search returns one query's
+    // results and never a complete listing, so absence proved nothing and the
+    // only cleanup was a 21-day timer -- a closed LinkedIn job could sit in the
+    // index for three weeks and a candidate found out by clicking a dead link.
+    //
+    // The 24h refresh makes absence meaningful: re-running the SAME query gives
+    // an enumerable set, exactly like a board. Anything that was in this query's
+    // results before and is missing now has probably closed.
+    //
+    // Two consecutive misses before retiring, not one -- a posting can fall out
+    // of a query's top-N on ranking alone. Scoped per platform so Indeed's
+    // results can never retire a LinkedIn posting. Never awaited and never
+    // fatal: this is hygiene, and the candidate's own results matter more.
+    void (async () => {
+        const queryKey = `${title.trim().toLowerCase()}|${location.trim().toLowerCase()}`;
+        const byPlatform = new Map<string, string[]>();
+        for (const job of rawJobs) {
+            const platform = (job.source || "").trim().toLowerCase();
+            if (platform !== "linkedin" && platform !== "indeed") continue;
+            if (!job.id) continue;
+            const list = byPlatform.get(platform) ?? [];
+            list.push(job.id);
+            byPlatform.set(platform, list);
+        }
+        for (const [platform, ids] of byPlatform) {
+            const { data, error } = await createCacheDbClient()
+                .database.rpc("reconcile_provider_query", {
+                    p_query_key: queryKey,
+                    p_platform: platform,
+                    p_current_ids: ids,
+                });
+            if (error) {
+                console.warn(`[paid-sources] removal detection failed for ${platform}`, error.message);
+                continue;
+            }
+            const row = Array.isArray(data) ? data[0] : data;
+            if (row) {
+                console.log(
+                    `[paid-sources] ${platform} "${queryKey}": ${row.seen} seen, ` +
+                    `${row.missed} missing, ${row.retired} retired after a second miss`,
+                );
+            }
+        }
+    })().catch((error) => console.warn("[paid-sources] removal detection failed", error));
+
     const byId = new Map<string, NormalizedJob>();
     rawJobs.forEach((job) => byId.set(job.id, job));
     let uniqueJobs = [...byId.values()];
