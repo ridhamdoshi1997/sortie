@@ -8,6 +8,41 @@ Last updated: 2026-09-04, Phase 48. **START HERE — two parallel tracks are now
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
 
+## Phase 49 (2026-09-08) — DATABASE OUTAGE, self-inflicted. Read this before touching the crawl crons or running any bulk UPDATE.
+
+**Current state: `CRAWL_PAUSED=1` is set in Doppler and all three Vercel environments. The background crawls are OFF.** They must be turned back on deliberately (see "Turning the crawls back on" below) — this is not a state to leave indefinitely, because the cron that enforces the 500 MB storage budget is one of the paused ones.
+
+### What happened, in causal order
+
+1. Two full-table `UPDATE`s over 486k `discovered_postings` rows (backfilling `normalized_title`, then `normalized_title_head`) rewrote the whole table twice. On a 500 MB free tier — one small shared instance with a **burst IO budget**, not a dedicated box — that exhausted the IO budget and left ~80k dead tuples.
+2. Ordinary queries began hitting the 8s statement timeout. Search returned nothing.
+3. **The crons turned a slow hour into an outage.** Three proactive crawls fire every 15 minutes, plus an hourly prune, on 60s Vercel functions. Against a slow database every step blew that limit — and **Inngest retries a failed step**. Each timeout became several more executions, each opening connections and issuing heavy queries against the instance already too slow to answer them. Vercel logged ~20 consecutive `POST /api/inngest -> 504 Task timed out after 60 seconds` in a nine-minute window.
+4. Meanwhile a manual `VACUUM (ANALYZE)` ran **6 hours 31 minutes**, unthrottled, while the prune cron's concurrent `DELETE` created fresh dead tuples for it to chase.
+
+**This does not drain itself.** The load making the database slow is caused by the database being slow. VACUUM never finishes, autovacuum never gets a turn, the IO budget never refills.
+
+### The trap that made it nearly unrecoverable
+
+`next build` prerenders `/interview-questions`, `/sitemap.xml` and `/salary-insights`, which each read the database at BUILD time against a 60s per-route budget. None of those reads had a timeout. So **a database too slow to answer blocked the deploy carrying the fix for the slowness.** `/sitemap.xml` made it worse by awaiting three reads in sequence, spending the budget three times over.
+
+Fixed by `lib/buildTimeFetch.ts` — every build-time read is bounded and degrades to the honest empty value those pages already render, and sitemap's reads now run concurrently. **Never add an unbounded database read to a prerendered route.**
+
+### Gotchas confirmed the hard way this session
+
+- **Manual `VACUUM` is UNTHROTTLED** (`vacuum_cost_delay` is 0 for it) and will eat a shared free-tier instance whole. Autovacuum does the same work at a throttled rate that leaves IO for queries. On this tier, prefer `ANALYZE` (cheap, samples ~30k rows) and let autovacuum reclaim. Cancelling a VACUUM keeps the heap pages it already finished.
+- **Inngest does NOT auto-sync on deploy here.** This project deploys via `vercel --yes` (CLI), not Vercel's Git integration — `lib/inngest/client.ts` documents this. Inngest keeps calling the LAST SYNCED deployment URL, so a new deployment's env changes have no effect until `PUT /api/inngest` re-registers it. A kill switch that has been deployed but not synced is doing nothing.
+- `pg_stat_activity` taking 30s+ is a symptom of IO starvation, not connection count — there were only 15 backends. `select 1` staying fast (147ms) while catalog reads time out is the tell.
+- Supabase's privileged metrics endpoint (`/customer/v1/privileged/metrics`) times out too when the instance is saturated, so it is no help during exactly the incident you would want it for.
+
+### Turning the crawls back on
+
+Do these IN ORDER, and only once the database is measurably healthy (PostgREST answering a trivial read in under ~2s):
+1. `ANALYZE public.discovered_postings` — statistics were last refreshed **before** both column backfills, so plans are being chosen on stale data.
+2. Run one eviction pass to get under 500 MB (the database was at **524 MB** during this incident, and `prune-crawl-cache` — the cron that enforces the budget — is paused).
+3. Only then unset `CRAWL_PAUSED`, redeploy, and **`PUT /api/inngest` on the new deployment** or the change will not take effect.
+
+**The standing condition that made this an outage rather than a slow hour is unresolved**: three unthrottled crawls every 15 minutes is more write volume (~150 MB/day) than a 500 MB free tier absorbs, which is why the storage budget needs an hourly eviction cron to hold the line at all. The cadence-vs-coverage tradeoff is a product decision and has NOT been made — do not quietly cut crawl coverage to fix it without asking.
+
 ## Session status: Phase 44 — worked through the Phase 43 "next session, start here" punch list step by step: the Workday `/Search`-board fix, the Legitimacy two-strike rule + recheck cron, Adzuna's retry-once fix, and RemoteOK as a new free source (Careerjet researched and rejected). Nothing from this session pushed to `origin` yet, held local by standing preference — commit it, don't push without asking again.
 
 **A real, deliberate destructive action taken this session, direct user request**: every row in `jobs`, `job_sources`, `agent_runs`, `agent_logs`, and `accomplishments` was permanently deleted (`DELETE FROM ...`, not soft-deleted) — explicitly confirmed with the user first ("every user, entire app, permanent delete"), done to get a clean slate for testing after so many schema/logic changes landed same-day. All other tables were confirmed empty or untouched beforehand. If anyone asks "where did my saved jobs go" for anything before 2026-09-01T~03:19 UTC, this is why.
