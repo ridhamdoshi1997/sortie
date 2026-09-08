@@ -47,12 +47,47 @@ function toEntrySlug(company: string, roleFamily: string, seniority: string | nu
   return parts.join("--");
 }
 
+// This page is statically prerendered, so this query runs at BUILD time, and
+// Next.js gives a page 60 seconds to render before it fails the whole build.
+// That turned a slow database into a broken deploy (2026-09-08): the read has
+// no timeout of its own, so when the database was saturated the prerender hung
+// until Next killed it, and `npm run build` exited 1. Worse, it was exactly the
+// deploy carrying the fix for the saturation -- a database too slow to answer
+// blocked shipping the change that would have let it recover.
+//
+// A marketing page is not worth that. The query is bounded, and any failure
+// degrades to zero entries -- which the page already renders honestly as "No
+// question banks published yet". `revalidate = 3600` means an empty build-time
+// render repairs itself on the next revalidation without a redeploy.
+const ENTRY_FETCH_TIMEOUT_MS = 15_000;
+
 async function fetchAllEntries(): Promise<QuestionBankEntry[]> {
   const client = createAdminDbClient();
-  const { data } = await client.database
+
+  const query = client.database
     .from("interview_question_banks")
     .select("company,role_family,seniority,questions")
     .returns<{ company: string; role_family: string; seniority: string | null; questions: InterviewQuestion[] }[]>();
+
+  type Row = { company: string; role_family: string; seniority: string | null; questions: InterviewQuestion[] };
+  let data: Row[] | null = null;
+  try {
+    const settled = await Promise.race([
+      query,
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error(`timed out after ${ENTRY_FETCH_TIMEOUT_MS}ms`)), ENTRY_FETCH_TIMEOUT_MS),
+      ),
+    ]);
+    // Logged, not swallowed: the error was previously destructured away
+    // entirely, so a failing read was indistinguishable from an empty table.
+    if (settled.error) {
+      console.warn(`[interviewSeo] question bank read failed: ${settled.error.message}`);
+    }
+    data = (settled.data ?? null) as Row[] | null;
+  } catch (error) {
+    console.warn(`[interviewSeo] question bank read unavailable: ${(error as Error).message}`);
+    data = null;
+  }
 
   const seenSlugs = new Map<string, number>();
 
