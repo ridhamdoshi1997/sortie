@@ -19,6 +19,7 @@ import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/rer
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
 import { fetchPaidSourcesForRun } from "@/lib/actions/scraper.actions";
 import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget, backfillCompanyDomains } from "@/lib/proactiveAtsCrawl";
+import { crawlPaused, pausedResult } from "@/lib/crawlPause";
 import type { Profile, WorkExperience } from "@/types";
 
 function chunkArray<T>(arr: T[], size: number): T[][] {
@@ -1161,6 +1162,8 @@ const LINK_REPAIR_BATCH_SIZE = 40;
 export const repairApplyLinksAsync = inngest.createFunction(
     { id: "repair-apply-links", name: "Repair Apply Links", triggers: [{ cron: "20 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Apply-link repair");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1239,6 +1242,8 @@ export const repairApplyLinksAsync = inngest.createFunction(
 export const proactiveAtsCrawlAsync = inngest.createFunction(
     { id: "proactive-ats-crawl", name: "Proactive ATS Crawl", triggers: [{ cron: "*/15 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Proactive ATS crawl");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1271,6 +1276,8 @@ export const proactiveAtsCrawlAsync = inngest.createFunction(
 export const proactiveWorkdayCrawlAsync = inngest.createFunction(
     { id: "proactive-workday-crawl", name: "Proactive Workday Crawl", triggers: [{ cron: "*/15 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Proactive Workday crawl");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1293,6 +1300,8 @@ export const proactiveWorkdayCrawlAsync = inngest.createFunction(
 export const proactiveIcimsCrawlAsync = inngest.createFunction(
     { id: "proactive-icims-crawl", name: "Proactive iCIMS Crawl", triggers: [{ cron: "*/15 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Proactive iCIMS crawl");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
@@ -1320,6 +1329,8 @@ export const proactiveIcimsCrawlAsync = inngest.createFunction(
 export const pruneCrawlCacheAsync = inngest.createFunction(
     { id: "prune-crawl-cache", name: "Prune Stale Crawl Cache", triggers: [{ cron: "30 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Crawl-cache prune");
+
         // No main-project client here: this touches discovered_postings only.
         const pruned = await step.run("prune", () => pruneStaleDiscoveredPostings(createCacheDbClient()));
 
@@ -1391,6 +1402,8 @@ export const jobhiveRegistrySyncAsync = inngest.createFunction(
 export const legitimacyRecheckAsync = inngest.createFunction(
     { id: "legitimacy-recheck", name: "Legitimacy Two-Strike Recheck", triggers: [{ cron: "*/30 * * * *" }] },
     async ({ step }) => {
+        if (crawlPaused()) return pausedResult("Legitimacy recheck");
+
         const admin = createAdminClient({
             baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
             apiKey: process.env.INSFORGE_API_KEY!,
