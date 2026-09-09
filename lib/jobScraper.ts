@@ -579,8 +579,20 @@ function indeedCountryCode(countryCode: string): string {
     return upper === "GB" ? "UK" : upper;
 }
 
-const apifyIndeedProvider: JobScraperProvider = {
-    async search(jobTitle, location, countryCode) {
+// Neither actor exposes an offset or a page cursor -- checked against their
+// published input schemas, not assumed -- so "fetch more" cannot mean "fetch
+// page 2". What they DO expose is sort order, and a differently-sorted run of
+// the same query surfaces a genuinely different slice: relevance-ranked and
+// date-ranked results overlap only partially. Running both and taking the union
+// is the pagination available here.
+//
+// This also has to stay inside a 60s Vercel step. Measured: Indeed 200 items in
+// 52s, LinkedIn 185 in 86s. So Indeed can afford its full cap per run while
+// LinkedIn must be SMALLER per run and make up the volume across runs.
+type SortVariant = "primary" | "secondary";
+
+const apifyIndeedProvider = {
+    async search(jobTitle: string, location: string, countryCode: string, variant: SortVariant = "primary"): Promise<NormalizedJob[]> {
         const token = getApifyToken();
         if (!token) throw new Error("Missing APIFY_API_TOKEN");
         const maxItems = apifyItemCap("APIFY_INDEED_MAX_ITEMS", 100);
@@ -596,7 +608,7 @@ const apifyIndeedProvider: JobScraperProvider = {
                     location,
                     country: indeedCountryCode(countryCode),
                     maxItems,
-                    sort: "relevance",
+                    sort: variant === "primary" ? "relevance" : "date",
                     // "rich" rather than "basic" (2026-09-04). It adds
                     // signals.employerResponsive, signals.isNew and
                     // hiringTags, and measurement showed it costs nothing in
@@ -650,11 +662,15 @@ const apifyIndeedProvider: JobScraperProvider = {
     },
 };
 
-const apifyLinkedInProvider: JobScraperProvider = {
-    async search(jobTitle, location) {
+const apifyLinkedInProvider = {
+    async search(jobTitle: string, location: string, _countryCode?: string, variant: SortVariant = "primary"): Promise<NormalizedJob[]> {
         const token = getApifyToken();
         if (!token) throw new Error("Missing APIFY_API_TOKEN");
-        const maxJobs = apifyItemCap("APIFY_LINKEDIN_MAX_ITEMS", 100);
+        // Per-RUN cap, not per-search. LinkedIn measured 185 items in 86s,
+        // which does not fit a 60s Vercel step at all -- the whole fetch was
+        // timing out in production. Half the items is roughly half the time,
+        // and two differently-sorted runs recover the volume across two steps.
+        const maxJobs = Math.ceil(apifyItemCap("APIFY_LINKEDIN_MAX_ITEMS", 100) / 2);
         if (maxJobs === 0) return [];
 
         const response = await fetch(
@@ -689,7 +705,10 @@ const apifyLinkedInProvider: JobScraperProvider = {
                     // into explicitly, never fallen into by omission.
                     fetchDetails: process.env.APIFY_LINKEDIN_FETCH_DETAILS === "true",
                     datePosted: "past_month",
-                    sortBy: "recent",
+                    // The two runs differ only here. "recent" and "relevant" rank the
+                    // same result set differently, so a capped run of each
+                    // returns overlapping but distinct slices.
+                    sortBy: variant === "primary" ? "recent" : "relevant",
                 }),
             },
         );
@@ -920,6 +939,8 @@ export async function searchJobs(
     // results that had already been paid for. Undefined keeps the original
     // behaviour of running every configured source concurrently.
     onlySource?: "linkedin" | "indeed",
+    // Which sort order to ask the actor for. See SortVariant.
+    variant: "primary" | "secondary" = "primary",
 ): Promise<NormalizedJob[]> {
     void provider;
     void datePosted;
@@ -944,13 +965,13 @@ export async function searchJobs(
         // LinkedIn results are already location-scoped by the actor's own
         // `location` input, so no filterByCity pass here.
         if (onlySource !== "indeed") {
-            sources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
+            sources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode, variant) });
         }
         // Indeed is scoped by its own location + radius inputs, same as
         // LinkedIn, so it needs no filterByCity pass either. Verified live:
         // a Toronto search returned Toronto-area rows only.
         if (onlySource !== "linkedin") {
-            sources.push({ name: "Indeed", promise: apifyIndeedProvider.search(jobTitle, location, countryCode) });
+            sources.push({ name: "Indeed", promise: apifyIndeedProvider.search(jobTitle, location, countryCode, variant) });
         }
     }
 

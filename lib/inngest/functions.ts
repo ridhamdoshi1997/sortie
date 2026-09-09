@@ -1580,13 +1580,45 @@ export const fetchPaidSourcesAsync = inngest.createFunction(
         // Ordered rather than concurrent because Inngest steps are sequential;
         // the cost is wall-clock, not correctness, and the candidate is not
         // blocked on any of it -- the index already answered their search.
-        const linkedin = await step.run("fetch-linkedin", () =>
-            searchJobs(data.title, data.location, data.country, "serpapi", data.filters.date_posted, undefined, "linkedin"));
-        const indeed = await step.run("fetch-indeed", () =>
-            searchJobs(data.title, data.location, data.country, "serpapi", data.filters.date_posted, undefined, "indeed"));
+        // FOUR fetch steps, not two. Neither actor exposes an offset or page
+        // cursor -- checked against their published input schemas -- so more
+        // volume cannot come from asking for page 2. What they do expose is
+        // sort order, and a relevance-ranked run and a date-ranked run of the
+        // same query return overlapping but genuinely different slices. Two
+        // runs per provider, unioned and de-duplicated below, is the pagination
+        // actually available.
+        //
+        // It also keeps every step inside its 60s budget, which two steps did
+        // not: LinkedIn measured 185 items in 86s. Its per-run cap is now half
+        // the configured total (see apifyLinkedInProvider), so each run is
+        // ~43s and the pair recovers the volume. Indeed fits its full cap in
+        // ~52s, so it keeps it on both runs and simply gains a second slice.
+        const fetch1 = (source: "linkedin" | "indeed", variant: "primary" | "secondary") =>
+            searchJobs(data.title, data.location, data.country, "serpapi", data.filters.date_posted, undefined, source, variant);
+
+        const liRecent = await step.run("fetch-linkedin-recent", () => fetch1("linkedin", "primary"));
+        const liRelevant = await step.run("fetch-linkedin-relevant", () => fetch1("linkedin", "secondary"));
+        const indRelevance = await step.run("fetch-indeed-relevance", () => fetch1("indeed", "primary"));
+        const indDate = await step.run("fetch-indeed-date", () => fetch1("indeed", "secondary"));
+
+        // De-duplicated by the provider's own id before persistence, so the
+        // overlap between two sort orders is paid for once and stored once.
+        const seen = new Set<string>();
+        const prefetched = [...liRecent, ...liRelevant, ...indRelevance, ...indDate]
+            .filter((job) => {
+                const key = job.id || job.applyUrl || job.url;
+                if (!key || seen.has(key)) return false;
+                seen.add(key);
+                return true;
+            });
+        console.log(
+            `[fetch-paid-sources] "${data.title}"/"${data.location}": ` +
+            `linkedin ${liRecent.length}+${liRelevant.length}, indeed ${indRelevance.length}+${indDate.length} ` +
+            `-> ${prefetched.length} unique`,
+        );
 
         const result = await step.run("persist", () =>
-            fetchPaidSourcesForRun({ ...data, prefetched: [...linkedin, ...indeed] }));
+            fetchPaidSourcesForRun({ ...data, prefetched }));
 
         return {
             message: `${data.title} / ${data.location} (${data.country}): ` +
