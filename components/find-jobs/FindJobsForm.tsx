@@ -192,10 +192,22 @@ export function FindJobsForm({
     // polling effect below for why an absolute ceiling is needed at all.
     const MAX_SCORE_POLL_TICKS = 200;
 
-    // 1s per tick. 90 consecutive ticks with no new job means the search has
-    // stopped producing — comfortably longer than the ~40s gap between Indeed
-    // landing and LinkedIn landing.
-    const POLL_IDLE_TICKS_BEFORE_STOP = 90;
+    // 1s per tick, so this is how long the page keeps watching after the last
+    // new job before deciding the search is finished.
+    //
+    // Raised from 90 to 240 (2026-09-09, measured on a real search). 90 was set
+    // against the ~40s gap between Indeed and LinkedIn landing, but the paid
+    // fetch now runs as a background job and takes LONGER than the whole poll
+    // window: a live "Investment Analyst" search fired its providers at
+    // 17:15:34 and 47 postings (40 LinkedIn, 7 Indeed) were written at 17:17:18
+    // — 104 seconds later. The poll had already given up at 90 seconds, so the
+    // candidate saw 18 results and none of the 47. The jobs were fetched, paid
+    // for, and stored; they were simply never shown.
+    //
+    // 240s covers the measured 106s end-to-end with real margin for a slow
+    // LinkedIn run, and costs nothing when a search finishes early because the
+    // counter resets on every new job and the poll stops on an empty response.
+    const POLL_IDLE_TICKS_BEFORE_STOP = 240;
 
     // --- AUTO-REFRESH POLLING LOGIC ---
     // Polls by the exact set of job ids this search returned, not by
