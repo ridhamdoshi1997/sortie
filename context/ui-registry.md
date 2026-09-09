@@ -274,6 +274,30 @@ File: `lib/applyVerdict.ts` (`computeApplyVerdict`), `components/job-details/App
 Route: job detail page (`/find-jobs/[id]`), first element on the page, above `JobActionBar`
 Last updated: 2026-08-18. Deterministic (no AI call) — synthesizes `overall_grade`/Legitimacy dimension/`title_scope_mismatch`/listing-staleness into one `apply`/`consider`/`long-shot`/`skip`/`unscored` tier. Reuses Match Score Colors tiering: `bg-agent-light text-agent-dark` (apply), `bg-surface-secondary text-text-primary` (consider), `bg-warning/10 text-warning` (long-shot), `bg-error/10 text-error` (skip), `bg-surface-secondary text-text-muted` (unscored). Icon per tier: `CheckCircle2`/`HelpCircle`/`AlertTriangle`/`XCircle`/`HelpCircle`.
 
+### Company logo — initial tile fallback (Phase 50)
+
+File: `components/shared/CompanyLogo.tsx`
+Route: everywhere `CompanyLogo` renders — `JobResultCard`, job detail, `UpcomingInterviews`, Kanban cards
+Last updated: 2026-09-09. Adds a fourth tier below the existing chain (stored `logoUrl` → unavatar → DuckDuckGo): an **initial tile** when nothing resolves. Company initials on a tint chosen deterministically by hashing the name, so an employer keeps the same colour across sessions and devices. Two letters when the name has two real words ("Royal Bank" → RB), one otherwise, skipping articles. Tints come from `TILE_TINTS` — pairs drawn from the app's own semantic tokens (`bg-info-light`, `bg-success-light`, `bg-surface-tertiary`…). **Amber and teal are deliberately excluded**: amber is reserved for user actions and teal for AI content, and a placeholder is neither.
+
+Two fixes ship with it, both load-bearing. `onError` alone could never advance the chain, because a wrong domain 404s **before React hydrates** and the handler is never attached — confirmed live as `complete=true, naturalWidth=0` stuck on candidate 0, which is why so many cards showed an empty grey box rather than any fallback. A mount-time `useEffect` now checks for a loaded-but-broken image and advances. And `extractLikelyLogoDomain` (`lib/applyLinkTrust.ts`) now refuses ATS and aggregator hosts, since reading the domain out of the apply URL gave `myworkdayjobs.com` for every Workday posting and rendered **Workday's own mark** on all of them.
+
+### Job card timing badges (Phase 50)
+
+File: `components/shared/JobResultCard.tsx`
+Route: `/find-jobs` results list
+Last updated: 2026-09-09. A badge row **above** the title, replacing freshness's old place in the attribute row below it — "posted 57 minutes ago" is the fact that decides whether applying is worth the effort, so it leads rather than sitting among job type and seniority. Freshness pill is `border-success/30 bg-success/10 text-success` inside 24h and `border-border bg-surface-secondary text-text-secondary` after. Beside it, `job.applicant_count` renders LinkedIn's own phrasing verbatim ("Be among the first 25 applicants") — amber-tinted when it reads as encouragement, neutral otherwise — falling back to a time-derived "Be an early applicant" only when no count is stored. Amber is correct here: it is a nudge to ACT, which is exactly what this project reserves amber for.
+
+Nothing else on the card changed. It was redesigned twice this session and **reverted at the user's instruction** — do not redesign it again without an explicit ask and a rendered preview.
+
+### Search filter bar — source, role type, industry, stage (Phase 50)
+
+File: `components/find-jobs/FilterBar.tsx`, `lib/jobFilters.ts`
+Route: `/find-jobs`
+Last updated: 2026-09-09. Four filters added, all following the existing `FilterPopover` + `CheckboxOption` pattern. **Source** (LinkedIn / Indeed / Direct from employer) sits first on the bar as the coarsest cut; "direct" is the complement of the two aggregators rather than a list of ATS names, so a new integration needs no change. **Role type** (IC / people manager) is read from the title, and the popover says so — "Lead" counts as a manager, "Principal" does not. **Exclude staffing agencies** is a toggle in the All Filters panel, matched on company name. **Industry** and **company stage** live in that panel too and are written by the AI extraction pass.
+
+The rule worth carrying forward: industry and stage **only render when jobs on screen actually carry the field**, and their options are built from those jobs rather than a fixed list. A control that empties the list because a field is unset — rather than because nothing matched — is worse than no control, which is exactly what the visa-sponsorship filter did until this session (it read `about_role`/`requirements`, present on 13 and 9 of 722 rows).
+
 ### Job source badge (JobResultCard / KanbanCard)
 
 File: `lib/jobSource.ts`'s `getSourceBadge()`, `components/shared/PlatformLogo.tsx` (real fetched Indeed logo)
