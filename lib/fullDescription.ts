@@ -318,7 +318,29 @@ export async function fetchFullDescription(
   // text. Rows crawled before the adapter stopped emitting it still carry it.
   const fetchUrl = applyUrl.replace(/[?&]in_iframe=1/i, "").replace(/\?$/, "");
 
-  const text = viaApi ?? (await fromPageHtml(fetchUrl)) ?? (await fetchViaJinaReader(fetchUrl).then((t) => (t ? htmlToText(t) : null)).catch(() => null));
+  // A junk page-HTML result must FALL THROUGH to Jina, not end the chain
+  // (2026-09-09).
+  //
+  // The escalation was already right in shape — platform API, then page HTML,
+  // then Jina Reader for pages that need JavaScript run. But `??` only falls
+  // through on null, and fromPageHtml "succeeded": it returned 1,210 characters
+  // of Knockout template from an UltiPro board. So the one step that could
+  // actually have read that posting was never reached, and the junk was stored
+  // instead.
+  //
+  // Client-rendered boards are exactly the case Jina exists for. Treating
+  // page-source as a failure rather than a result is what connects them.
+  const viaPage = viaApi ?? (await fromPageHtml(fetchUrl));
+  const usablePage = viaPage && !looksLikePageSource(viaPage) ? viaPage : null;
+  if (viaPage && !usablePage) {
+    console.warn(`[fullDescription] page HTML was template source, escalating to Jina for ${fetchUrl}`);
+  }
+
+  const text =
+    usablePage ??
+    (await fetchViaJinaReader(fetchUrl)
+      .then((t) => (t ? htmlToText(t) : null))
+      .catch(() => null));
 
   if (!text || text.length < MIN_USEFUL_DESCRIPTION_CHARS) return null;
 
