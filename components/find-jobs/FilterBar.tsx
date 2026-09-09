@@ -6,6 +6,7 @@ import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import type {
   DatePosted,
   ExperienceLevel,
+  JobSource,
   JobType,
   RemotePolicy,
   SearchFilters,
@@ -197,6 +198,19 @@ function CheckboxOption({
   );
 }
 
+// Source is a different question from every other filter: those narrow WHAT the
+// job is, this narrows WHERE it came from -- and that changes what a candidate
+// can trust. "Direct from employer" links to a company's own applicant tracking
+// system, so the posting is as live as the board it sits on. LinkedIn and Indeed
+// rows are aggregator copies, only as fresh as the last search that found them.
+//
+// Labelled by what the candidate recognises, not by our internal source values.
+const SOURCE_OPTIONS: { value: JobSource; label: string }[] = [
+  { value: "direct", label: "Direct from employer" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "indeed", label: "Indeed" },
+];
+
 const DATE_POSTED_OPTIONS: { value: DatePosted; label: string }[] = [
   { value: "any", label: "Any time" },
   { value: "today", label: "Past 24 hours" },
@@ -238,6 +252,37 @@ export function FilterBar({ filters, onChange }: Props) {
 
   return (
     <div className="flex flex-wrap items-center gap-2">
+      <FilterPopover
+        label="Source"
+        isActive={filters.source.length > 0}
+        activeLabel={
+          filters.source.length === 1
+            ? SOURCE_OPTIONS.find((o) => o.value === filters.source[0])?.label
+            : `Source (${filters.source.length})`
+        }
+        onClear={() => onChange({ ...filters, source: [] })}
+      >
+        {() => (
+          <div className="flex flex-col gap-0.5">
+            {SOURCE_OPTIONS.map((option) => (
+              <CheckboxOption
+                key={option.value}
+                label={option.label}
+                checked={filters.source.includes(option.value)}
+                onToggle={() =>
+                  onChange({
+                    ...filters,
+                    source: filters.source.includes(option.value)
+                      ? filters.source.filter((v) => v !== option.value)
+                      : [...filters.source, option.value],
+                  })
+                }
+              />
+            ))}
+          </div>
+        )}
+      </FilterPopover>
+
       <FilterPopover
         label="Date posted"
         isActive={filters.datePosted !== "any"}

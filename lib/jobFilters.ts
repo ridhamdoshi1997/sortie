@@ -14,8 +14,19 @@ export type RemotePolicy = "remote" | "hybrid" | "onsite";
 export type JobType = "Full-time" | "Part-time" | "Contract" | "Internship";
 export type ExperienceLevel = "Entry-level" | "Mid-level" | "Senior" | "Lead" | "Executive";
 
+// Which sources a candidate wants to see. Empty means all of them.
+//
+// Added 2026-09-09 on direct request. It is a genuinely different question
+// from the other filters: those narrow WHAT the job is, this narrows WHERE it
+// came from -- and the answer changes what a candidate trusts. An ATS posting
+// links to the employer's own board; a LinkedIn or Indeed row is an aggregator
+// copy that may already be closed. Some people want only the direct ones;
+// others open with the aggregators because that is what they recognise.
+export type JobSource = "linkedin" | "indeed" | "direct";
+
 export type SearchFilters = {
   datePosted: DatePosted;
+  source: JobSource[];
   remotePolicy: RemotePolicy[];
   jobType: JobType[];
   salaryMin: number | null;
@@ -28,6 +39,7 @@ export type SearchFilters = {
 
 export const DEFAULT_FILTERS: SearchFilters = {
   datePosted: "any",
+  source: [],
   remotePolicy: [],
   jobType: [],
   salaryMin: null,
@@ -41,6 +53,7 @@ export const DEFAULT_FILTERS: SearchFilters = {
 export function countActiveFilters(filters: SearchFilters): number {
   let count = 0;
   if (filters.datePosted !== "any") count++;
+  if (filters.source.length > 0) count++;
   if (filters.remotePolicy.length > 0) count++;
   if (filters.jobType.length > 0) count++;
   if (filters.salaryMin !== null) count++;
@@ -154,6 +167,7 @@ function matchesCompany(job: Job, company: string): boolean {
 export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.datePosted !== "any") params.set("datePosted", filters.datePosted);
+  if (filters.source.length > 0) params.set("source", filters.source.join(","));
   if (filters.remotePolicy.length > 0) params.set("remote", filters.remotePolicy.join(","));
   if (filters.jobType.length > 0) params.set("jobType", filters.jobType.join(","));
   if (filters.salaryMin !== null) params.set("salaryMin", String(filters.salaryMin));
@@ -167,6 +181,7 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
 
 export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
   const datePosted = params.get("datePosted");
+  const source = params.get("source");
   const remote = params.get("remote");
   const jobType = params.get("jobType");
   const experience = params.get("experience");
@@ -179,6 +194,9 @@ export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
       : "any",
     remotePolicy: remote ? (remote.split(",").filter(Boolean) as RemotePolicy[]) : [],
     jobType: jobType ? (jobType.split(",").filter(Boolean) as JobType[]) : [],
+    source: source
+      ? (source.split(",").filter((v) => ["linkedin", "indeed", "direct"].includes(v)) as JobSource[])
+      : [],
     salaryMin: salaryMin ? Number(salaryMin) : null,
     experienceLevel: experience ? (experience.split(",").filter(Boolean) as ExperienceLevel[]) : [],
     minMatchScore: minScore ? Number(minScore) : null,
@@ -188,8 +206,19 @@ export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
   };
 }
 
+// Anything that is not LinkedIn or Indeed came from an employer's own applicant
+// tracking system, so "direct" is the complement rather than a list of platform
+// names -- new ATS integrations then need no change here.
+function matchesSource(job: Job, selected: JobSource[]): boolean {
+  if (selected.length === 0) return true;
+  const raw = (job.source ?? "").trim().toLowerCase();
+  const actual: JobSource = raw === "linkedin" ? "linkedin" : raw === "indeed" ? "indeed" : "direct";
+  return selected.includes(actual);
+}
+
 export function applyClientFilters(jobs: Job[], filters: SearchFilters): Job[] {
   return jobs.filter((job) => {
+    if (!matchesSource(job, filters.source)) return false;
     if (!matchesRemotePolicy(job, filters.remotePolicy)) return false;
     if (!matchesJobType(job, filters.jobType)) return false;
     if (!matchesExperienceLevel(job, filters.experienceLevel)) return false;

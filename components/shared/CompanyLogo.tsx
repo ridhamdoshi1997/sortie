@@ -21,10 +21,57 @@ function guessCompanyDomain(company: string): string | null {
 }
 
 const sizeClasses = {
-  sm: { box: "h-9 w-9 rounded-lg", icon: "h-4.5 w-4.5", padding: "p-1" },
-  md: { box: "h-14 w-14 rounded-xl", icon: "h-7 w-7", padding: "p-1.5" },
-  lg: { box: "h-20 w-20 rounded-2xl", icon: "h-9 w-9", padding: "p-2" },
+  sm: { box: "h-9 w-9 rounded-lg", icon: "h-4.5 w-4.5", padding: "p-1", initial: "text-xs" },
+  md: { box: "h-14 w-14 rounded-xl", icon: "h-7 w-7", padding: "p-1.5", initial: "text-lg" },
+  lg: { box: "h-20 w-20 rounded-2xl", icon: "h-9 w-9", padding: "p-2", initial: "text-2xl" },
 } as const;
+
+// A designed placeholder, instead of the same grey building icon on every
+// unresolvable employer (2026-09-09).
+//
+// Logo coverage tops out around 80-85%: the misses are staffing agencies,
+// numbered companies and single-location businesses that no service resolves,
+// because there is nothing on the public web to resolve to. The question is
+// therefore not how to reach 100% real logos -- it is what the remainder should
+// look like. One repeated icon reads as "failed to load", and twenty of them in
+// a list are indistinguishable from each other.
+//
+// An initial on a colour derived from the name reads as intentional, and gives
+// each employer a mark you can scan past. Deterministic, so a company always
+// gets the same colour across sessions and devices.
+//
+// Palette is drawn from the app's own semantic tokens rather than invented
+// hues, so tiles sit inside the existing design language. Amber (--color-accent)
+// is deliberately absent: it is reserved for user actions, and teal
+// (--color-agent) for AI content -- a placeholder is neither.
+const TILE_TINTS = [
+  "bg-info-light text-info-dark",
+  "bg-success-light text-success-dark",
+  "bg-surface-tertiary text-text-dark",
+  "bg-info-lightest text-info-medium",
+  "bg-success-lightest text-success-darker",
+  "bg-surface-muted text-text-darker",
+] as const;
+
+/** Stable across sessions: same name always yields the same tint. */
+function tintFor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) | 0;
+  return TILE_TINTS[Math.abs(hash) % TILE_TINTS.length];
+}
+
+// Two letters where the name has two real words ("Royal Bank" -> RB), one
+// otherwise. Skips leading articles and anything non-alphanumeric so
+// "The Co-operators" reads as "C", not "T".
+function initialsFor(name: string): string {
+  const words = name
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .split(/\s+/)
+    .filter((w) => w && !["the", "a", "an", "of", "and"].includes(w.toLowerCase()));
+  if (words.length === 0) return "?";
+  if (words.length === 1) return words[0].slice(0, 1).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
 
 type Props = {
   company: string | null;
@@ -90,13 +137,24 @@ export function CompanyLogo({ company, logoUrl, applyUrl, size = "md" }: Props) 
   ].filter((url): url is string => Boolean(url));
 
   const [candidateIndex, setCandidateIndex] = useState(0);
-  const { box, icon, padding } = sizeClasses[size];
+  const { box, padding, initial } = sizeClasses[size];
   const src = candidates[candidateIndex];
 
   if (!src) {
+    const name = (company ?? "").trim();
+    if (!name) {
+      return (
+        <div className={`flex ${box} flex-shrink-0 items-center justify-center border border-border bg-surface-secondary`}>
+          <Building2 className={`${sizeClasses[size].icon} text-text-muted`} />
+        </div>
+      );
+    }
     return (
-      <div className={`flex ${box} flex-shrink-0 items-center justify-center border border-border bg-surface-secondary`}>
-        <Building2 className={`${icon} text-text-muted`} />
+      <div
+        aria-hidden="true"
+        className={`flex ${box} ${tintFor(name)} flex-shrink-0 select-none items-center justify-center border border-border-light font-semibold tracking-tight ${initial}`}
+      >
+        {initialsFor(name)}
       </div>
     );
   }
