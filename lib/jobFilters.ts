@@ -238,7 +238,25 @@ export function applyClientFilters(jobs: Job[], filters: SearchFilters): Job[] {
     }
 
     if (filters.visaSponsorshipOnly) {
-      const text = `${job.about_role ?? ""} ${job.requirements.join(" ")} ${job.nice_to_have.join(" ")}`;
+      // Reads the raw description too (2026-09-09).
+      //
+      // This filter was effectively dead: it searched only about_role,
+      // requirements and nice_to_have, which are written by the AI extraction
+      // pass and therefore exist only for jobs someone has already opened.
+      // Measured on real data — 13 of 722 jobs had about_role and 9 had
+      // requirements, so selecting the filter emptied the list regardless of
+      // what the postings actually said.
+      //
+      // description is present on ~890 rows and is where a posting states its
+      // sponsorship position in the first place, so it is the field this should
+      // always have read. The extracted fields stay in the haystack because
+      // they are cleaner when they do exist.
+      const text = [
+        job.description ?? "",
+        job.about_role ?? "",
+        job.requirements.join(" "),
+        job.nice_to_have.join(" "),
+      ].join(" ");
       if (!looksLikeVisaSponsorship(text)) return false;
     }
 

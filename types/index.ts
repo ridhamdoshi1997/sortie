@@ -154,6 +154,10 @@ export interface Job {
   location: string | null;
   salary: string | null;
   job_type: string | null;
+  /** The posting's own text, as fetched from the employer's source. Distinct
+   *  from about_role, which is the AI's summary of it and only exists once a
+   *  job has been opened. */
+  description: string | null;
   about_role: string | null;
   responsibilities: string[];
   requirements: string[];
