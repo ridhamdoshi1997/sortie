@@ -218,14 +218,10 @@ export function JobResultCard({
       // positioned child meant to float outside the row's own bounds —
       // caught live (the menu rendered clipped/wrapped/overlapping
       // adjacent content instead of floating cleanly below the button).
-      // Hover lifts the BORDER, not the fill (2026-09-09 redesign). A
-      // background swap on a card this dense re-tints every chip and pill
-      // inside it at once, which reads as the whole row changing state rather
-      // than as a pointer affordance.
-      className="fade-in-up flex flex-col rounded-xl border border-border bg-surface transition-colors hover:border-text-muted"
+      className="fade-in-up flex flex-col rounded-xl border border-border bg-surface transition-colors hover:bg-surface-secondary"
       style={{ animationDelay }}
     >
-      <div className="flex items-start gap-3.5 px-4 py-4">
+      <div className="flex items-start gap-3 px-4 py-3.5">
         {selectable && (
           <button
             type="button"
@@ -246,15 +242,11 @@ export function JobResultCard({
         <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} />
 
         <div className="min-w-0 flex-1">
-          {/* Title carries the scan (2026-09-09 redesign). It was 14.5px against
-              a 13px company line -- a 1.5px difference that made the two read as
-              one block, so nothing led the card. The employer and location step
-              back to a quieter weight and colour instead of competing. */}
-          <p className="truncate text-[15.5px] font-semibold leading-snug tracking-[-0.01em] text-text-primary">{job.title}</p>
-          <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[12.5px] text-text-secondary">
-            <span className="truncate font-medium text-text-dark">{job.company}</span>
+          <p className="truncate text-[14.5px] font-semibold leading-tight text-text-primary">{job.title}</p>
+          <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-text-secondary">
+            <span className="truncate">{job.company}</span>
             {job.location && (
-              <span className="flex items-center gap-1 truncate">
+              <span className="flex items-center gap-1 truncate text-accent">
                 <span aria-hidden="true" className="text-text-muted">·</span>
                 {job.location}
               </span>
@@ -290,21 +282,9 @@ export function JobResultCard({
                   <Clock className={`h-3.5 w-3.5 ${freshness.isFresh ? "text-success" : "text-text-muted"}`} /> {freshness.label}
                 </span>
               )}
-              {/* Two accents, not four, and never amber (2026-09-09 redesign).
-                  The row originally carried an amber briefcase, a blue level,
-                  a green salary and a grey clock -- four competing colours for
-                  four attributes of one job, with amber breaking this project's
-                  own invariant that amber means a USER ACTION.
-
-                  Flattening all four to grey was the first attempt and was
-                  worse: the row lost its rhythm and became a single unscannable
-                  strip. The rule only ever forbade amber. So colour now marks
-                  the two attributes a candidate actually decides on -- level and
-                  pay -- while job type and experience, which are near-constant
-                  across results, stay quiet. */}
               {job.job_type && (
                 <span className="flex items-center gap-1.5">
-                  <BriefcaseBusiness className="h-3.5 w-3.5 text-text-muted" /> {job.job_type}
+                  <BriefcaseBusiness className="h-3.5 w-3.5 text-accent" /> {job.job_type}
                 </span>
               )}
               {job.seniority_level && (
@@ -313,7 +293,7 @@ export function JobResultCard({
                 </span>
               )}
               {job.salary && (
-                <span className="flex items-center gap-1.5 font-medium text-text-dark">
+                <span className="flex items-center gap-1.5">
                   <DollarSign className="h-3.5 w-3.5 text-success" /> {job.salary}
                 </span>
               )}
@@ -333,11 +313,8 @@ export function JobResultCard({
                   Third-party source
                 </span>
               )}
-              {/* A caution and a descriptive tag are not the same kind of thing,
-                  so they no longer share a treatment. Anything advisory carries
-                  a tinted fill; neutral facts stay as outlined chips. */}
               {isIndirectSource && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-surface-tertiary px-2 py-0.5 text-[10.5px] font-medium text-text-dark">
+                <span className="inline-flex items-center gap-1 rounded-full border border-border px-2 py-0.5 text-[10.5px] font-medium text-text-secondary">
                   <ExternalLink className="h-3 w-3" />
                   Via Adzuna — one more click
                 </span>
