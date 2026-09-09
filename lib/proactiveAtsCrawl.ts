@@ -1,7 +1,7 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { canonicalCompanyKey } from "@/lib/companyIdentity";
 import { resolveCompanyDomain } from "@/lib/companyDomain";
-import { expandTitleToOccupationTitles, narrowToSearchFocus, normalizeTitle } from "@/lib/occupationMatch";
+import { expandTitleToOccupationTitles, normalizeTitle } from "@/lib/occupationMatch";
 import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -647,20 +647,6 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb, cacheDb: AdminDb 
 // rather than on crawl recency.
 const MAX_CACHED_POSTINGS = 650_000;
 
-// How few focused results it takes before the search gives up on precision and
-// widens to the whole occupation.
-//
-// Deliberately LOW. The first version used 25 and measurably defeated its own
-// purpose: "Investment Advisor" had 22 on-topic postings, fell one short of the
-// floor, and widened to 82 results that were 27% relevant -- the exact
-// behaviour being fixed. "Data Analyst" had 24 and widened to 107 at 32%.
-//
-// Twenty-two genuinely relevant results beat eighty-two mostly-irrelevant ones,
-// so this only rescues a search that would otherwise look broken. The tradeoff
-// is deliberate: relevance over volume, which is the whole reason a candidate
-// typed a specific title instead of browsing.
-const FOCUSED_RESULT_FLOOR = 10;
-
 const INACTIVE_RETENTION_DAYS = 30;
 
 // Keeps the cache inside MAX_CACHED_POSTINGS, newest-seen first.
@@ -1030,27 +1016,18 @@ export async function queryProactiveCrawlCache(
     const primaryCity = (searchLocation || "").split(",")[0].trim().toLowerCase();
     const metroCities = await expandCityToMetro(cacheDb, searchLocation || "");
 
-    // FOCUSED first, whole occupation only as a fallback (2026-09-09, user
-    // report). Expanding straight to the occupation answers a different
-    // question than the candidate asked: "Investment Advisor" resolved to
-    // O*NET's "Personal Financial Advisors" and returned 82 postings of which
-    // just 22 mentioned investment, the largest group being 37 plain "financial
-    // advisor" roles. The taxonomy is not wrong -- it groups by labour-market
-    // function -- but someone typing a title means the narrower thing.
+    // RANK by closeness, do not FILTER on it (2026-09-09). Two user reports
+    // pulled opposite ways: "Investment Advisor" returned mostly Financial
+    // Advisor roles (occupation too wide), while "Software Developer" returned
+    // 44 against "Software Engineer"'s 279 (literal words too narrow -- the
+    // same job, and the taxonomy is what knows it).
     //
-    // So the occupation is still what makes synonyms reachable; it just stops
-    // being the FIRST answer. A focused query runs first, and the full
-    // occupation only fills in when focus alone leaves the candidate with too
-    // little to look at.
-    const focusedTitles = narrowToSearchFocus(occupationTitles, searchTitle);
-    const tiers = focusedTitles.length < occupationTitles.length
-      ? [focusedTitles, occupationTitles]
-      : [occupationTitles];
-
-    for (const [tier, titles] of tiers.entries()) {
-      const isLastTier = tier === tiers.length - 1;
-      const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
-      p_titles: titles,
+    // Filtering to focused titles fixes the first and causes the second. So the
+    // query keeps FULL recall and the RPC's ORDER BY puts titles containing
+    // every searched word on top, with the wider occupation beneath. The
+    // client then sorts by match score within that.
+    const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
+      p_titles: occupationTitles,
       p_limit: limit,
       p_cities: metroCities ?? (primaryCity ? [primaryCity] : null),
       p_primary_city: primaryCity || null,
@@ -1063,28 +1040,22 @@ export async function queryProactiveCrawlCache(
       // strips leading words but not trailing ones, and those postings were
       // being missed -- 15 of them for Toronto financial advisors alone.
       p_match_head: true,
-      });
-      if (occError) {
-        console.warn(`[proactiveAtsCrawl] occupation search failed, falling back to words: ${occError.message}`);
-        break;
-      }
-      const rows = Array.isArray(occData) ? occData : [];
-      // Widen only when focus genuinely under-delivers. A candidate with plenty
-      // of on-topic results should never be handed adjacent professions to pad
-      // the count -- that is exactly the complaint this fixes.
-      if (rows.length >= FOCUSED_RESULT_FLOOR || isLastTier) {
-        if (rows.length > 0) {
-          if (tier === 0 && tiers.length > 1) {
-            console.log(`[proactiveAtsCrawl] focused titles answered "${searchTitle}" with ${rows.length} row(s)`);
-          }
-          return normalizePostingRows(cacheDb, rows as unknown[]);
-        }
-        break;
-      }
-      console.log(
-        `[proactiveAtsCrawl] focused titles gave only ${rows.length} row(s) for "${searchTitle}", ` +
-        `widening to the full occupation`,
-      );
+      // Also match any title CONTAINING every word searched, not only the
+      // titles O*NET happens to list. Measured: 45 relevant Investment Advisor
+      // postings existed across the Toronto metro and exact-vocabulary matching
+      // showed 13 -- "investment advisor associate", "wealth & investment
+      // advisor" and "investment advisor assistant" were all in the index and
+      // all invisible. Requiring EVERY word keeps this from loosening into a
+      // plain keyword search.
+      // The raw title. The RPC turns it into an AND-ed tsquery answered from
+      // the existing title_tsv GIN index -- LIKE '%word%' could not use an
+      // index at all and measured 10-16s per search, over the 8s timeout.
+      p_search_text: searchTitle,
+    });
+    if (occError) {
+      console.warn(`[proactiveAtsCrawl] occupation search failed, falling back to words: ${occError.message}`);
+    } else if (Array.isArray(occData) && occData.length > 0) {
+      return normalizePostingRows(cacheDb, occData as unknown[]);
     }
   }
 

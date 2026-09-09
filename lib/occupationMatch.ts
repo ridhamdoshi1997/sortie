@@ -317,6 +317,15 @@ const LEVEL_WORDS = new Set([
 ]);
 
 /**
+ * NOT ON THE SEARCH PATH any more (2026-09-09). The every-word rule this
+ * encodes now lives in search_postings_by_titles as a tsquery, because
+ * FILTERING on it was wrong: it fixed "Investment Advisor" being drowned by
+ * Financial Advisor roles but cut "Software Developer" off from Software
+ * Engineer roles, which are the same job. The SQL ranks on the rule instead.
+ *
+ * Kept because it is still the clearest statement of that rule and is useful
+ * for offline analysis -- but the SQL is authoritative.
+ *
  * Narrows an occupation expansion to the titles that actually contain what the
  * candidate typed.
  *
@@ -336,6 +345,23 @@ const LEVEL_WORDS = new Set([
  * investment advisor" and drops "financial advisor". Level markers are ignored,
  * so "senior financial advisor" still matches "financial advisor".
  */
+// Two title words mean the same thing.
+//
+// Exact match, or a shared five-character prefix when BOTH words are long
+// enough for that to mean anything -- "advisor"/"advisors" and
+// "advisor"/"adviser" agree, without a stemmer.
+//
+// The length guard is load-bearing. A first version compared prefixes in both
+// directions with no minimum, so the word "in" satisfied the content word
+// "investment" ("investment".startsWith("in")) and any title containing "in"
+// counted as an investment role. Measured: Investment Advisor came back 40%
+// on-topic instead of ~100%.
+function wordsAgree(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (a.length < 5 || b.length < 5) return false;
+  return a.slice(0, 5) === b.slice(0, 5);
+}
+
 export function narrowToSearchFocus(titles: string[], searchTitle: string): string[] {
   const content = normalizeTitle(searchTitle)
     .split(" ")
@@ -343,12 +369,24 @@ export function narrowToSearchFocus(titles: string[], searchTitle: string): stri
   if (content.length === 0) return titles;
 
   const focused = titles.filter((t) => {
-    const words = new Set(t.split(" "));
-    // Prefix-compare so "advisor"/"advisors" and "advisor"/"adviser" agree
-    // without a stemmer -- the same 5-character comparison the occupation
-    // scorer above already relies on.
-    return content.every((c) => [...words].some((w) => w.startsWith(c.slice(0, 5)) || c.startsWith(w.slice(0, 5))));
+    const words = t.split(" ");
+    return content.every((c) => words.some((w) => wordsAgree(c, w)));
   });
 
   return focused.length > 0 ? focused : titles;
+}
+
+/**
+ * The content words of a search title -- what a matching posting must contain.
+ *
+ * Same rule narrowToSearchFocus applies to the taxonomy, exposed separately so
+ * the SQL can apply it to raw posting titles too. That is what reaches the
+ * titles O*NET has never heard of: "investment advisor associate", "wealth &
+ * investment advisor", "scotiamcleod lead investment advisor" -- all real, all
+ * relevant, none of them O*NET lay titles, all previously invisible.
+ */
+export function searchContentWords(searchTitle: string): string[] {
+  return normalizeTitle(searchTitle)
+    .split(" ")
+    .filter((w) => w.length > 2 && !LEVEL_WORDS.has(w));
 }
