@@ -242,6 +242,37 @@ export function JobResultCard({
         <CompanyLogo company={job.company} logoUrl={job.company_logo_url} applyUrl={job.external_apply_url} />
 
         <div className="min-w-0 flex-1">
+          {/* Timing badges lead the card (2026-09-09, direct user request with a
+              reference screenshot). Freshness was previously buried in the
+              attribute row below the title, where it read as one more
+              attribute. It is not: "posted 57 minutes ago" is the fact that
+              decides whether applying is worth the effort at all, and a
+              candidate wants it before they read the role.
+
+              "Be an early applicant" is derived, not stored — anything inside
+              the same 24-hour window formatPostedAge already calls fresh. It
+              takes accent amber because it is a nudge to ACT, which is exactly
+              what this project reserves amber for; it is not AI output, so
+              agent teal would be wrong. */}
+          {freshness && (
+            <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+              <span
+                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium ${
+                  freshness.isFresh
+                    ? "border-success/30 bg-success/10 text-success"
+                    : "border-border bg-surface-secondary text-text-secondary"
+                }`}
+              >
+                <Clock className="h-3.5 w-3.5" />
+                Posted {freshness.label}
+              </span>
+              {freshness.isFresh && (
+                <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11.5px] font-medium text-accent">
+                  Be an early applicant
+                </span>
+              )}
+            </div>
+          )}
           <p className="truncate text-[14.5px] font-semibold leading-tight text-text-primary">{job.title}</p>
           <p className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-text-secondary">
             <span className="truncate">{job.company}</span>
@@ -277,11 +308,6 @@ export function JobResultCard({
                   because this app's own pipeline already fights ghost
                   listings. Success-green under a day, plain thereafter, so
                   recency reads at a glance without shouting on older roles. */}
-              {freshness && (
-                <span className={`flex items-center gap-1.5 ${freshness.isFresh ? "text-success" : ""}`}>
-                  <Clock className={`h-3.5 w-3.5 ${freshness.isFresh ? "text-success" : "text-text-muted"}`} /> {freshness.label}
-                </span>
-              )}
               {job.job_type && (
                 <span className="flex items-center gap-1.5">
                   <BriefcaseBusiness className="h-3.5 w-3.5 text-accent" /> {job.job_type}
