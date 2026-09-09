@@ -24,9 +24,16 @@ export type ExperienceLevel = "Entry-level" | "Mid-level" | "Senior" | "Lead" | 
 // others open with the aggregators because that is what they recognise.
 export type JobSource = "linkedin" | "indeed" | "direct";
 
+// Individual contributor vs people manager. Derived from the TITLE rather than
+// stored, because nothing in the pipeline records it and titles say it plainly
+// -- 13% of live jobs carry a manager-shaped title.
+export type RoleType = "ic" | "manager";
+
 export type SearchFilters = {
   datePosted: DatePosted;
   source: JobSource[];
+  roleType: RoleType[];
+  excludeStaffingAgency: boolean;
   remotePolicy: RemotePolicy[];
   jobType: JobType[];
   salaryMin: number | null;
@@ -40,6 +47,8 @@ export type SearchFilters = {
 export const DEFAULT_FILTERS: SearchFilters = {
   datePosted: "any",
   source: [],
+  roleType: [],
+  excludeStaffingAgency: false,
   remotePolicy: [],
   jobType: [],
   salaryMin: null,
@@ -54,6 +63,8 @@ export function countActiveFilters(filters: SearchFilters): number {
   let count = 0;
   if (filters.datePosted !== "any") count++;
   if (filters.source.length > 0) count++;
+  if (filters.roleType.length > 0) count++;
+  if (filters.excludeStaffingAgency) count++;
   if (filters.remotePolicy.length > 0) count++;
   if (filters.jobType.length > 0) count++;
   if (filters.salaryMin !== null) count++;
@@ -168,6 +179,8 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
   const params = new URLSearchParams();
   if (filters.datePosted !== "any") params.set("datePosted", filters.datePosted);
   if (filters.source.length > 0) params.set("source", filters.source.join(","));
+  if (filters.roleType.length > 0) params.set("roleType", filters.roleType.join(","));
+  if (filters.excludeStaffingAgency) params.set("noAgency", "1");
   if (filters.remotePolicy.length > 0) params.set("remote", filters.remotePolicy.join(","));
   if (filters.jobType.length > 0) params.set("jobType", filters.jobType.join(","));
   if (filters.salaryMin !== null) params.set("salaryMin", String(filters.salaryMin));
@@ -182,6 +195,7 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
 export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
   const datePosted = params.get("datePosted");
   const source = params.get("source");
+  const roleType = params.get("roleType");
   const remote = params.get("remote");
   const jobType = params.get("jobType");
   const experience = params.get("experience");
@@ -197,6 +211,10 @@ export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
     source: source
       ? (source.split(",").filter((v) => ["linkedin", "indeed", "direct"].includes(v)) as JobSource[])
       : [],
+    roleType: roleType
+      ? (roleType.split(",").filter((v) => ["ic", "manager"].includes(v)) as RoleType[])
+      : [],
+    excludeStaffingAgency: params.get("noAgency") === "1",
     salaryMin: salaryMin ? Number(salaryMin) : null,
     experienceLevel: experience ? (experience.split(",").filter(Boolean) as ExperienceLevel[]) : [],
     minMatchScore: minScore ? Number(minScore) : null,
@@ -216,9 +234,39 @@ function matchesSource(job: Job, selected: JobSource[]): boolean {
   return selected.includes(actual);
 }
 
+
+// People-manager titles. Deliberately keyword-based on the title, since nothing
+// in the pipeline stores this and a title states it plainly. "Lead" is included
+// because in practice a Lead owns people or a workstream; "Principal" is NOT,
+// because a Principal Engineer is the archetypal senior individual contributor.
+const MANAGER_TITLE = /\b(manager|director|head of|vp|vice president|chief|supervisor|lead)\b/i;
+
+function matchesRoleType(job: Job, selected: RoleType[]): boolean {
+  if (selected.length === 0) return true;
+  const isManager = MANAGER_TITLE.test(job.title ?? "");
+  return selected.includes(isManager ? "manager" : "ic");
+}
+
+// Recruiters and staffing firms listing on a client's behalf. These postings are
+// systematically worse for a candidate: the employer is often undisclosed, the
+// same role appears several times under different agencies, and the apply link
+// leads to a CV-collection form rather than the employer's own process.
+//
+// Matched on the COMPANY NAME because that is all we hold -- there is no
+// employer-type field on a posting. Names are the reliable tell: an agency
+// almost always says so.
+const STAFFING_AGENCY = /(staffing|recruit|recruiters|talent solutions|talent acquisition|search group|search partners|placement|manpower|resourcing|personnel|headhunt|employment agency|staff\s*inc)/i;
+
+function passesAgencyFilter(job: Job, exclude: boolean): boolean {
+  if (!exclude) return true;
+  return !STAFFING_AGENCY.test(job.company ?? "");
+}
+
 export function applyClientFilters(jobs: Job[], filters: SearchFilters): Job[] {
   return jobs.filter((job) => {
     if (!matchesSource(job, filters.source)) return false;
+    if (!matchesRoleType(job, filters.roleType)) return false;
+    if (!passesAgencyFilter(job, filters.excludeStaffingAgency)) return false;
     if (!matchesRemotePolicy(job, filters.remotePolicy)) return false;
     if (!matchesJobType(job, filters.jobType)) return false;
     if (!matchesExperienceLevel(job, filters.experienceLevel)) return false;

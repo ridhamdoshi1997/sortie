@@ -8,6 +8,7 @@ import type {
   ExperienceLevel,
   JobSource,
   JobType,
+  RoleType,
   RemotePolicy,
   SearchFilters,
 } from "@/lib/jobFilters";
@@ -205,6 +206,11 @@ function CheckboxOption({
 // rows are aggregator copies, only as fresh as the last search that found them.
 //
 // Labelled by what the candidate recognises, not by our internal source values.
+const ROLE_TYPE_OPTIONS: { value: RoleType; label: string }[] = [
+  { value: "ic", label: "Individual contributor" },
+  { value: "manager", label: "People manager" },
+];
+
 const SOURCE_OPTIONS: { value: JobSource; label: string }[] = [
   { value: "direct", label: "Direct from employer" },
   { value: "linkedin", label: "LinkedIn" },
@@ -245,6 +251,7 @@ export function FilterBar({ filters, onChange }: Props) {
   const secondaryActiveCount =
     (filters.minMatchScore !== null ? 1 : 0) +
     (filters.visaSponsorshipOnly ? 1 : 0) +
+    (filters.excludeStaffingAgency ? 1 : 0) +
     (filters.hideKeyword.trim() ? 1 : 0) +
     (filters.company.trim() ? 1 : 0);
 
@@ -279,6 +286,40 @@ export function FilterBar({ filters, onChange }: Props) {
                 }
               />
             ))}
+          </div>
+        )}
+      </FilterPopover>
+
+      <FilterPopover
+        label="Role type"
+        isActive={filters.roleType.length > 0}
+        activeLabel={
+          filters.roleType.length === 1
+            ? ROLE_TYPE_OPTIONS.find((o) => o.value === filters.roleType[0])?.label
+            : `Role type (${filters.roleType.length})`
+        }
+        onClear={() => onChange({ ...filters, roleType: [] })}
+      >
+        {() => (
+          <div className="flex flex-col gap-0.5">
+            {ROLE_TYPE_OPTIONS.map((option) => (
+              <CheckboxOption
+                key={option.value}
+                label={option.label}
+                checked={filters.roleType.includes(option.value)}
+                onToggle={() =>
+                  onChange({
+                    ...filters,
+                    roleType: filters.roleType.includes(option.value)
+                      ? filters.roleType.filter((v) => v !== option.value)
+                      : [...filters.roleType, option.value],
+                  })
+                }
+              />
+            ))}
+            {/* Says what it does, since "role type" is our word, not a field on
+                the posting. */}
+            <p className="mt-1 px-2 pb-1 text-[11px] text-text-muted">Read from the job title.</p>
           </div>
         )}
       </FilterPopover>
@@ -447,6 +488,30 @@ export function FilterBar({ filters, onChange }: Props) {
                   ))}
                 </div>
               </div>
+
+              {/* Recruiters listing on a client's behalf. Systematically worse
+                  for a candidate: the employer is often undisclosed, the same
+                  role reappears under several agencies, and the link leads to a
+                  CV-collection form rather than the employer's own process.
+                  Matched on the company name, which is the only signal we hold. */}
+              <label className="flex items-center justify-between gap-2 text-sm text-text-secondary">
+                Exclude staffing agencies
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={filters.excludeStaffingAgency}
+                  onClick={() => onChange({ ...filters, excludeStaffingAgency: !filters.excludeStaffingAgency })}
+                  className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+                    filters.excludeStaffingAgency ? "border-accent bg-accent" : "border-border bg-surface-secondary"
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 left-0.5 h-3.5 w-3.5 rounded-full bg-surface shadow-card ring-1 ring-border/50 transition-transform duration-200 ${
+                      filters.excludeStaffingAgency ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </button>
+              </label>
 
               <label className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                 Visa sponsorship only
