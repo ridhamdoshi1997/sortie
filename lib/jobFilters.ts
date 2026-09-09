@@ -29,10 +29,17 @@ export type JobSource = "linkedin" | "indeed" | "direct";
 // -- 13% of live jobs carry a manager-shaped title.
 export type RoleType = "ic" | "manager";
 
+// Written by the AI extraction pass, per company. Free-text rather than an enum
+// because sectors do not partition cleanly and a fixed list would force every
+// unfamiliar employer into "Other".
+export type CompanyStage = "early" | "growth" | "late" | "public" | "nonprofit" | "government";
+
 export type SearchFilters = {
   datePosted: DatePosted;
   source: JobSource[];
   roleType: RoleType[];
+  industry: string[];
+  companyStage: CompanyStage[];
   excludeStaffingAgency: boolean;
   remotePolicy: RemotePolicy[];
   jobType: JobType[];
@@ -48,6 +55,8 @@ export const DEFAULT_FILTERS: SearchFilters = {
   datePosted: "any",
   source: [],
   roleType: [],
+  industry: [],
+  companyStage: [],
   excludeStaffingAgency: false,
   remotePolicy: [],
   jobType: [],
@@ -64,6 +73,8 @@ export function countActiveFilters(filters: SearchFilters): number {
   if (filters.datePosted !== "any") count++;
   if (filters.source.length > 0) count++;
   if (filters.roleType.length > 0) count++;
+  if (filters.industry.length > 0) count++;
+  if (filters.companyStage.length > 0) count++;
   if (filters.excludeStaffingAgency) count++;
   if (filters.remotePolicy.length > 0) count++;
   if (filters.jobType.length > 0) count++;
@@ -180,6 +191,8 @@ export function filtersToSearchParams(filters: SearchFilters): URLSearchParams {
   if (filters.datePosted !== "any") params.set("datePosted", filters.datePosted);
   if (filters.source.length > 0) params.set("source", filters.source.join(","));
   if (filters.roleType.length > 0) params.set("roleType", filters.roleType.join(","));
+  if (filters.industry.length > 0) params.set("industry", filters.industry.join(","));
+  if (filters.companyStage.length > 0) params.set("stage", filters.companyStage.join(","));
   if (filters.excludeStaffingAgency) params.set("noAgency", "1");
   if (filters.remotePolicy.length > 0) params.set("remote", filters.remotePolicy.join(","));
   if (filters.jobType.length > 0) params.set("jobType", filters.jobType.join(","));
@@ -196,6 +209,8 @@ export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
   const datePosted = params.get("datePosted");
   const source = params.get("source");
   const roleType = params.get("roleType");
+  const industry = params.get("industry");
+  const stage = params.get("stage");
   const remote = params.get("remote");
   const jobType = params.get("jobType");
   const experience = params.get("experience");
@@ -213,6 +228,12 @@ export function searchParamsToFilters(params: URLSearchParams): SearchFilters {
       : [],
     roleType: roleType
       ? (roleType.split(",").filter((v) => ["ic", "manager"].includes(v)) as RoleType[])
+      : [],
+    industry: industry ? industry.split(",").filter(Boolean) : [],
+    companyStage: stage
+      ? (stage.split(",").filter((v) =>
+          ["early", "growth", "late", "public", "nonprofit", "government"].includes(v),
+        ) as CompanyStage[])
       : [],
     excludeStaffingAgency: params.get("noAgency") === "1",
     salaryMin: salaryMin ? Number(salaryMin) : null,
@@ -257,6 +278,23 @@ function matchesRoleType(job: Job, selected: RoleType[]): boolean {
 // almost always says so.
 const STAFFING_AGENCY = /(staffing|recruit|recruiters|talent solutions|talent acquisition|search group|search partners|placement|manpower|resourcing|personnel|headhunt|employment agency|staff\s*inc)/i;
 
+// Both read fields the AI extraction writes, so they only have anything to say
+// about a job someone has opened. The UI hides these controls until enough jobs
+// carry the data -- a filter that empties the list because the field is unset,
+// rather than because nothing matched, is worse than no filter.
+function matchesIndustry(job: Job, selected: string[]): boolean {
+  if (selected.length === 0) return true;
+  const industry = (job.company_industry ?? "").toLowerCase();
+  if (!industry) return false;
+  return selected.some((s) => industry.includes(s.toLowerCase()));
+}
+
+function matchesCompanyStage(job: Job, selected: CompanyStage[]): boolean {
+  if (selected.length === 0) return true;
+  const stage = (job.company_stage ?? "").toLowerCase();
+  return Boolean(stage) && selected.includes(stage as CompanyStage);
+}
+
 function passesAgencyFilter(job: Job, exclude: boolean): boolean {
   if (!exclude) return true;
   return !STAFFING_AGENCY.test(job.company ?? "");
@@ -266,6 +304,8 @@ export function applyClientFilters(jobs: Job[], filters: SearchFilters): Job[] {
   return jobs.filter((job) => {
     if (!matchesSource(job, filters.source)) return false;
     if (!matchesRoleType(job, filters.roleType)) return false;
+    if (!matchesIndustry(job, filters.industry)) return false;
+    if (!matchesCompanyStage(job, filters.companyStage)) return false;
     if (!passesAgencyFilter(job, filters.excludeStaffingAgency)) return false;
     if (!matchesRemotePolicy(job, filters.remotePolicy)) return false;
     if (!matchesJobType(job, filters.jobType)) return false;

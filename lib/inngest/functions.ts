@@ -1728,6 +1728,11 @@ export const extractJobDetailsAsync = inngest.createFunction(
                     // Fallback only — never overwrite a real structured value
                     // the search or the lite pass already established.
                     ...(job.salary ? {} : { salary: extracted.salary || null }),
+                    // Denormalised onto the job so the client-side filter can
+                    // read them without a cross-database join. company_domains
+                    // remains the shared source of truth.
+                    ...(extracted.industry ? { company_industry: extracted.industry } : {}),
+                    ...(extracted.companyStage ? { company_stage: extracted.companyStage } : {}),
                 })
                 .eq("id", jobId);
             if (error) throw new Error(`extract: persist failed for ${jobId}: ${error.message}`);
@@ -1744,6 +1749,11 @@ export const extractJobDetailsAsync = inngest.createFunction(
                             company_key: canonicalCompanyKey(job.company as string),
                             company_name: job.company,
                             domain: extracted.companyDomain,
+                            // Company-level facts, shared the same way the
+                            // domain is: one posting teaches us the employer's
+                            // sector and every other posting from them benefits.
+                            ...(extracted.industry ? { industry: extracted.industry } : {}),
+                            ...(extracted.companyStage ? { company_stage: extracted.companyStage } : {}),
                             resolved_at: new Date().toISOString(),
                         },
                         { onConflict: "company_key", ignoreDuplicates: false },

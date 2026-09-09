@@ -656,7 +656,7 @@ export function FindJobsForm({
                 )}
 
                 <div className="mt-5">
-                    <FilterBar filters={searchFilters} onChange={setSearchFilters} />
+                    <FilterBar filters={searchFilters} onChange={setSearchFilters} jobs={jobs} />
                 </div>
 
                 {/* Date Posted narrows the SerpApi query itself, so it can't

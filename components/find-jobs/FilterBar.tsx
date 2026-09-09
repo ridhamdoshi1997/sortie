@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, SlidersHorizontal, X } from "lucide-react";
 import type {
@@ -8,11 +8,13 @@ import type {
   ExperienceLevel,
   JobSource,
   JobType,
+  CompanyStage,
   RoleType,
   RemotePolicy,
   SearchFilters,
 } from "@/lib/jobFilters";
 import { countActiveFilters, DEFAULT_FILTERS } from "@/lib/jobFilters";
+import type { Job } from "@/types";
 
 // Top filter bar for Find & Evaluate, replacing the old two loose free-text
 // boxes (Phase 11, researched via agy against LinkedIn/Indeed/Wellfound/
@@ -30,6 +32,11 @@ import { countActiveFilters, DEFAULT_FILTERS } from "@/lib/jobFilters";
 type Props = {
   filters: SearchFilters;
   onChange: (next: SearchFilters) => void;
+  /** The jobs currently on screen. Industry and company stage build their
+   *  options from these rather than a fixed list, so the choices always
+   *  describe this result set and the sections stay hidden until the AI
+   *  extraction has actually written the fields. */
+  jobs?: Pick<Job, "company_industry" | "company_stage">[];
 };
 
 type PanelPosition = { top: number; left: number; minWidth: number };
@@ -206,6 +213,15 @@ function CheckboxOption({
 // rows are aggregator copies, only as fresh as the last search that found them.
 //
 // Labelled by what the candidate recognises, not by our internal source values.
+const STAGE_OPTIONS: { value: CompanyStage; label: string }[] = [
+  { value: "early", label: "Early stage" },
+  { value: "growth", label: "Growth stage" },
+  { value: "late", label: "Late stage" },
+  { value: "public", label: "Public company" },
+  { value: "nonprofit", label: "Non-profit" },
+  { value: "government", label: "Government" },
+];
+
 const ROLE_TYPE_OPTIONS: { value: RoleType; label: string }[] = [
   { value: "ic", label: "Individual contributor" },
   { value: "manager", label: "People manager" },
@@ -243,7 +259,15 @@ function toggleInArray<T>(list: T[], value: T): T[] {
   return list.includes(value) ? list.filter((v) => v !== value) : [...list, value];
 }
 
-export function FilterBar({ filters, onChange }: Props) {
+export function FilterBar({ filters, onChange, jobs = [] }: Props) {
+  const industryOptions = useMemo(
+    () => [...new Set(jobs.map((j) => (j.company_industry ?? "").trim()).filter(Boolean))].sort(),
+    [jobs],
+  );
+  const stageOptions = useMemo(
+    () => [...new Set(jobs.map((j) => (j.company_stage ?? "").trim().toLowerCase()).filter(Boolean))],
+    [jobs],
+  );
   const [moreOpen, setMoreOpen] = useState(false);
   const moreTriggerRef = useRef<HTMLButtonElement>(null);
   const [morePosition, setMorePosition] = useState<PanelPosition | null>(null);
@@ -494,6 +518,57 @@ export function FilterBar({ filters, onChange }: Props) {
                   role reappears under several agencies, and the link leads to a
                   CV-collection form rather than the employer's own process.
                   Matched on the company name, which is the only signal we hold. */}
+              {/* Only rendered when jobs on screen actually carry the field.
+                  Both are written by the AI extraction pass, which runs when a
+                  job is opened, so early in a session almost nothing has them --
+                  and a control that empties the list because a field is unset,
+                  rather than because nothing matched, is worse than no control. */}
+              {industryOptions.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-text-secondary">Industry</p>
+                  <div className="flex flex-col gap-0.5">
+                    {industryOptions.map((option: string) => (
+                      <CheckboxOption
+                        key={option}
+                        label={option}
+                        checked={filters.industry.includes(option)}
+                        onToggle={() =>
+                          onChange({
+                            ...filters,
+                            industry: filters.industry.includes(option)
+                              ? filters.industry.filter((v) => v !== option)
+                              : [...filters.industry, option],
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {stageOptions.length > 0 && (
+                <div>
+                  <p className="mb-1.5 text-xs font-semibold text-text-secondary">Company stage</p>
+                  <div className="flex flex-col gap-0.5">
+                    {STAGE_OPTIONS.filter((o) => stageOptions.includes(o.value)).map((option) => (
+                      <CheckboxOption
+                        key={option.value}
+                        label={option.label}
+                        checked={filters.companyStage.includes(option.value)}
+                        onToggle={() =>
+                          onChange({
+                            ...filters,
+                            companyStage: filters.companyStage.includes(option.value)
+                              ? filters.companyStage.filter((v) => v !== option.value)
+                              : [...filters.companyStage, option.value],
+                          })
+                        }
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <label className="flex items-center justify-between gap-2 text-sm text-text-secondary">
                 Exclude staffing agencies
                 <button

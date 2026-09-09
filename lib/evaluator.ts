@@ -832,6 +832,8 @@ const extractionSchema = z.object({
   seniorityLevel: z.string().default(""),
   yearsExperienceRequired: z.string().default(""),
   companyDomain: z.string().default(""),
+  industry: z.string().default(""),
+  companyStage: z.string().default(""),
 });
 
 const extractionResponseSchema = z.object({ extractions: z.array(extractionSchema) });
@@ -848,6 +850,8 @@ Raw posting text is usually a scraped job-board page mixed with boilerplate: sal
 - hiringProcess: the interview stages if the posting describes them, else empty.
 - seniorityLevel / yearsExperienceRequired: short strings read from the text.
 - companyDomain: the bare primary website domain of the company named in this posting (e.g. "bmo.com", "rbc.com"), no protocol, no "www.", no path. Use your real-world knowledge of the actual company, not a literal transformation of its name — Bank of Montreal is bmo.com, not bankofmontreal.com. Only return a domain you are genuinely confident is correct for THIS company; if you don't recognise it or aren't sure, return an empty string. A wrong domain surfaces a completely different company's logo, which is worse than showing none.
+- industry: the company's broad sector in two or three words, e.g. "Financial Services", "Software", "Healthcare", "Retail", "Professional Services", "Government". Describe the COMPANY, not the role — a software engineer at a bank is "Financial Services". Empty string if you do not recognise the company.
+- companyStage: exactly one of "early", "growth", "late", "public", "nonprofit", "government", or an empty string if unsure. "public" means publicly listed and takes precedence over size. Never guess from the company's name alone.
 
 Return ONLY valid JSON:
 {
@@ -863,7 +867,9 @@ Return ONLY valid JSON:
       "hiringProcess": string[],
       "seniorityLevel": "string",
       "yearsExperienceRequired": "string",
-      "companyDomain": "string"
+      "companyDomain": "string",
+      "industry": "string",
+      "companyStage": "string"
     }
   ]
 }`;

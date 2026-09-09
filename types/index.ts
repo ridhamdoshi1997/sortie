@@ -158,6 +158,10 @@ export interface Job {
    *  from about_role, which is the AI's summary of it and only exists once a
    *  job has been opened. */
   description: string | null;
+  /** Company facts written by the AI extraction pass, denormalised here so
+   *  client-side filtering needs no join. company_domains is the shared source. */
+  company_industry?: string | null;
+  company_stage?: string | null;
   about_role: string | null;
   responsibilities: string[];
   requirements: string[];
