@@ -502,7 +502,34 @@ export function FindJobsForm({
     const stillScoringCount = jobs.filter((job) => scoringWatchSet.has(job.id) && job.match_score === null).length;
     const scoredSoFar = totalScoring - stillScoringCount;
     const filteredJobs = useMemo(() => applyClientFilters(jobs, searchFilters), [jobs, searchFilters]);
-    const visibleJobs = showSavedOnly ? filteredJobs.filter((job) => job.is_saved) : filteredJobs;
+    // Best match first, by default (direct user request, 2026-09-09).
+    //
+    // Until now results rendered in whatever arbitrary order the query happened
+    // to return -- there was no sort anywhere in this component. So the whole
+    // point of scoring every job was invisible: an 92-scoring job could sit
+    // thirtieth while a 41 led the list, and a candidate scanning the first
+    // screen saw a random sample rather than the best of what was found.
+    //
+    // Unscored jobs go LAST rather than first. During a search, results stream
+    // in before their scores land, and treating "no score yet" as a high score
+    // would put the least-known jobs at the top and then shuffle them away --
+    // the list would churn most exactly where the candidate is looking.
+    //
+    // Sorted by index within each group, so the order is STABLE: jobs only move
+    // when a real score arrives, never because the array was rebuilt.
+    const rankedJobs = useMemo(() => {
+        const order = new Map(filteredJobs.map((job, i) => [job.id, i]));
+        return [...filteredJobs].sort((a, b) => {
+            const sa = a.match_score;
+            const sb = b.match_score;
+            if (sa === null && sb === null) return order.get(a.id)! - order.get(b.id)!;
+            if (sa === null) return 1;
+            if (sb === null) return -1;
+            if (sb !== sa) return sb - sa;
+            return order.get(a.id)! - order.get(b.id)!;
+        });
+    }, [filteredJobs]);
+    const visibleJobs = showSavedOnly ? rankedJobs.filter((job) => job.is_saved) : rankedJobs;
     // Gated on real jobs being on screen, not on hasSearched — jobs loaded
     // from the server on initial page load (the common case, no client-side
     // search run yet this session) never flip hasSearched, so that gate

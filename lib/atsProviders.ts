@@ -1027,17 +1027,47 @@ async function fetchWorkdayJobs(
 ): Promise<NormalizedJob[]> {
   const { tenant, wdInstance, locale, board } = discovered;
   try {
-    const res = await fetch(`https://${tenant}.${wdInstance}.myworkdayjobs.com/wday/cxs/${tenant}/${board}/jobs`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ appliedFacets: {}, limit: 20, offset: 0, searchText }),
-    });
-    if (!res.ok) {
-      console.warn(`[atsProviders] Workday board "${tenant}/${board}" returned ${res.status}`);
-      return [];
+    // Paginated. This used to send a single `limit: 20, offset: 0` and stop,
+    // which quietly capped every Workday employer at TWENTY postings no matter
+    // how many they actually had (2026-09-09). Measured consequence: TD Bank
+    // contributed 25 rows, BMO 38, CIBC 39, Sun Life 40 -- employers with
+    // thousands of open roles. Across a 592k-row index only 211 advisor-type
+    // postings existed at all and just 4 near Toronto, so a "Financial Advisor"
+    // search returned almost nothing from our own crawl and was carried
+    // entirely by LinkedIn and Indeed. The jobs were never missing from the
+    // query; they were never fetched.
+    //
+    // Workday's own portal pages at 20, and returns `total` on every response,
+    // so the loop is bounded by real data rather than a guess. MAX_PAGES caps a
+    // single company's share of one crawl batch -- a 5,000-posting tenant must
+    // not spend the whole run -- and the next pass picks it up again because
+    // the crawl orders by oldest-crawled-first.
+    const PAGE = 20;
+    const MAX_PAGES = 25;
+    const postings: WorkdayJobPosting[] = [];
+    let total = Infinity;
+
+    for (let page = 0; page < MAX_PAGES && page * PAGE < total; page++) {
+      const res = await fetch(`https://${tenant}.${wdInstance}.myworkdayjobs.com/wday/cxs/${tenant}/${board}/jobs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ appliedFacets: {}, limit: PAGE, offset: page * PAGE, searchText }),
+      });
+      if (!res.ok) {
+        // A later page failing is not the same as the board failing: keep what
+        // earlier pages already returned rather than discarding the company.
+        console.warn(`[atsProviders] Workday board "${tenant}/${board}" page ${page} returned ${res.status}`);
+        break;
+      }
+      const data: { jobPostings?: WorkdayJobPosting[]; total?: number } = await res.json();
+      const batch = data.jobPostings ?? [];
+      postings.push(...batch);
+      if (typeof data.total === "number") total = data.total;
+      // Short page means the end, whatever `total` claimed.
+      if (batch.length < PAGE) break;
     }
-    const data: { jobPostings?: WorkdayJobPosting[] } = await res.json();
-    return (data.jobPostings ?? []).map((job) => {
+
+    return postings.map((job) => {
       const applyUrl = `https://${tenant}.${wdInstance}.myworkdayjobs.com/${locale}/${board}${job.externalPath}`;
       return {
         id: `workday-${job.externalPath}`,
