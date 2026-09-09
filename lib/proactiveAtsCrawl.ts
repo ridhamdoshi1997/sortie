@@ -1110,6 +1110,10 @@ export async function queryProactiveCrawlCache(
       // were being dropped. Anchored in SQL so it cannot widen a Toronto
       // search into a national one.
       p_country: countryNameForLocation(searchLocation || ""),
+      // Lets the SQL recognise "CA-ON-Toronto" as domestic, so a genuinely
+      // multi-site posting survives the foreign-namesake veto while
+      // "US-NJ-Hamilton" does not.
+      p_country_code: resolveSearchCountry(searchLocation || ""),
     };
 
     const wordsOnly = await cacheDb.database.rpc("search_postings_by_titles", {
