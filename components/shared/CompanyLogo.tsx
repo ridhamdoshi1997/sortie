@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Building2 } from "lucide-react";
 
 import { extractLikelyLogoDomain } from "@/lib/applyLinkTrust";
@@ -137,6 +137,26 @@ export function CompanyLogo({ company, logoUrl, applyUrl, size = "md" }: Props) 
   ].filter((url): url is string => Boolean(url));
 
   const [candidateIndex, setCandidateIndex] = useState(0);
+  const imgRef = useRef<HTMLImageElement>(null);
+  const advance = useCallback(() => setCandidateIndex((i) => i + 1), []);
+
+  // Catches an image that already failed BEFORE React hydrated.
+  //
+  // This is why so many cards showed an empty grey box rather than any
+  // fallback (2026-09-09). The server renders the img, the browser requests it
+  // immediately, and for a wrong domain it 404s within milliseconds -- often
+  // before hydration attaches React's onError. The error event has already
+  // fired and gone by the time anything is listening, so candidateIndex never
+  // advances, the chain never reaches DuckDuckGo, and the tile never renders.
+  // The logo was not missing; the fallback was unreachable.
+  //
+  // A loaded-but-broken image is unambiguous: complete with naturalWidth 0.
+  // Checked per candidate, since each one is a fresh element (key={src}).
+  useEffect(() => {
+    const el = imgRef.current;
+    if (el && el.complete && el.naturalWidth === 0) advance();
+  }, [candidateIndex, advance]);
+
   const { box, padding, initial } = sizeClasses[size];
   const src = candidates[candidateIndex];
 
@@ -163,11 +183,12 @@ export function CompanyLogo({ company, logoUrl, applyUrl, size = "md" }: Props) 
     // eslint-disable-next-line @next/next/no-img-element -- external, unpredictable-domain source; next/image's remote-pattern allowlist doesn't fit a runtime-variable host.
     <img
       key={src}
+      ref={imgRef}
       src={src}
       alt=""
       referrerPolicy="no-referrer"
       className={`${box} flex-shrink-0 border border-border bg-surface-secondary object-contain ${padding}`}
-      onError={() => setCandidateIndex((i) => i + 1)}
+      onError={advance}
     />
   );
 }

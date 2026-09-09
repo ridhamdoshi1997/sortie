@@ -15,6 +15,23 @@ export type ApplyLinkTrust = "ats" | "employer" | "aggregator" | "aggregator_ind
 // Applicant Tracking Systems — a match here is almost certainly the
 // employer's own real posting (the company chose to host it there),
 // regardless of what else is in the candidate list. The gold standard.
+// Job boards and aggregators. Separate from ATS_HOSTS because they are a
+// different kind of host -- an ATS is the employer's own hiring system, an
+// aggregator is a third party listing it -- but for logo purposes both are
+// equally not the employer.
+const AGGREGATOR_LOGO_HOSTS = [
+  "linkedin.com",
+  "indeed.com",
+  "glassdoor.com",
+  "ziprecruiter.com",
+  "monster.com",
+  "adzuna.com",
+  "adzuna.ca",
+  "simplyhired.com",
+  "jobbank.gc.ca",
+  "talent.com",
+];
+
 const ATS_HOSTS = [
   "greenhouse.io",
   "lever.co",
@@ -371,6 +388,22 @@ export function extractLikelyLogoDomain(applyUrl: string | null | undefined, com
 
   const host = normalizedHost(applyUrl);
   if (!host) return null;
+
+  // An ATS or aggregator host is never the EMPLOYER's domain (2026-09-09).
+  //
+  // This function reads a logo domain out of the apply link, which is right for
+  // a posting on a company's own careers site and catastrophically wrong for
+  // one hosted elsewhere: cibc.wd3.myworkdayjobs.com yielded
+  // myworkdayjobs.com, and the icon service faithfully returned WORKDAY's mark.
+  // Every Workday posting wore it, every LinkedIn row got LinkedIn's, and
+  // because a guess always existed the real fallback never ran -- the card
+  // rendered an empty grey box instead of the employer's initial.
+  //
+  // Returning null here is what lets CompanyLogo reach its own fallback, and
+  // what makes the stored provider logo and the resolved company domain the
+  // only sources that can win.
+  if (ATS_HOSTS.some((ats) => host === ats || host.endsWith(`.${ats}`))) return null;
+  if (AGGREGATOR_LOGO_HOSTS.some((agg) => host === agg || host.endsWith(`.${agg}`))) return null;
 
   const labels = host.split(".");
   if (labels.length > 2 && JOB_BOARD_SUBDOMAIN_PREFIXES.includes(labels[0])) {

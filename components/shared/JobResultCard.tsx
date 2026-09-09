@@ -290,16 +290,18 @@ export function JobResultCard({
                   <Clock className={`h-3.5 w-3.5 ${freshness.isFresh ? "text-success" : "text-text-muted"}`} /> {freshness.label}
                 </span>
               )}
-              {/* Icons are neutral here (2026-09-09 redesign). This row carried
-                  four different accent colours -- amber briefcase, blue level,
-                  green salary, grey experience -- which read as four competing
-                  signals when they are simply four attributes of the same job.
-                  Amber also breaks the system's own rule that it means a USER
-                  ACTION, and a job-type icon is not one.
+              {/* Two accents, not four, and never amber (2026-09-09 redesign).
+                  The row originally carried an amber briefcase, a blue level,
+                  a green salary and a grey clock -- four competing colours for
+                  four attributes of one job, with amber breaking this project's
+                  own invariant that amber means a USER ACTION.
 
-                  Colour is now spent only where it carries information: a
-                  posting fresh within a day, and a stated salary, which is the
-                  one attribute candidates filter on and most postings omit. */}
+                  Flattening all four to grey was the first attempt and was
+                  worse: the row lost its rhythm and became a single unscannable
+                  strip. The rule only ever forbade amber. So colour now marks
+                  the two attributes a candidate actually decides on -- level and
+                  pay -- while job type and experience, which are near-constant
+                  across results, stay quiet. */}
               {job.job_type && (
                 <span className="flex items-center gap-1.5">
                   <BriefcaseBusiness className="h-3.5 w-3.5 text-text-muted" /> {job.job_type}
@@ -307,7 +309,7 @@ export function JobResultCard({
               )}
               {job.seniority_level && (
                 <span className="flex items-center gap-1.5">
-                  <TrendingUp className="h-3.5 w-3.5 text-text-muted" /> {job.seniority_level}
+                  <TrendingUp className="h-3.5 w-3.5 text-info" /> {job.seniority_level}
                 </span>
               )}
               {job.salary && (
