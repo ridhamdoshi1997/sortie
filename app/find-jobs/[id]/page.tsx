@@ -2,6 +2,7 @@ export const dynamic = "force-dynamic";
 
 import { notFound } from "next/navigation";
 import { after } from "next/server";
+import { inngest } from "@/lib/inngest/client";
 import { FileText, Handshake, Target, Users2 } from "lucide-react";
 
 import { PostHogIdentify } from "@/components/analytics/PostHogIdentify";
@@ -168,6 +169,24 @@ export default async function JobDetailsPage({ params }: Props) {
   // responsibilities, requirements) runs on open while the expensive
   // 10-dimension rubric stays behind the button. Both reports are then
   // satisfied at once, which neither of these two states does.
+
+  // The cheap half runs on open. The 10-dimension rubric does not.
+  //
+  // Extraction is a fact about the POSTING -- what the role involves, what it
+  // requires, what it pays -- so it needs no candidate profile, runs on the
+  // fast tier, and is the same answer for every user who opens this job. The
+  // rubric is a judgement about THIS candidate and stays behind the button.
+  //
+  // Guarded on about_role being empty, and the worker refuses to overwrite
+  // anything already present, so reopening a job costs nothing.
+  if (!job.about_role) {
+    const jobIdForExtraction = job.id;
+    after(async () => {
+      await inngest
+        .send({ name: "jobs/extract-details", data: { jobId: jobIdForExtraction } })
+        .catch((err) => console.error("[find-jobs/[id]] extraction enqueue failed", err));
+    });
+  }
 
   // Split by whether there is anything to render AT ALL (2026-09-04, direct
   // user report: "I clicked on one of the jobs and the detail page is

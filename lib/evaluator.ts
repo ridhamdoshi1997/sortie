@@ -796,3 +796,144 @@ ${jobs.map((job) => buildJobTextLite(job)).join("\n\n---\n\n")}`;
   const byId = new Map(data.evaluations.map((evaluation) => [evaluation.id, evaluation]));
   return jobs.map((job) => byId.get(job.id) ?? fallbackLegitimacyOnly(job.id));
 }
+
+// ---------------------------------------------------------------------------
+// EXTRACTION-ONLY PASS
+// ---------------------------------------------------------------------------
+//
+// Added 2026-09-09 to settle two user reports that had been flipping the same
+// switch back and forth.
+//
+//   "the AI will automatically organise the whole overview section... which is
+//    missing here"  -- so the organised sections must be there on open.
+//   "it should only make a call unless someone press the button for analysis"
+//    -- so the 10-dimension rubric must NOT run on open.
+//
+// Those look contradictory only because both outputs came from one call. They
+// are different kinds of work: extraction is a fact about the POSTING, while
+// the rubric is a judgement about this candidate against it. Splitting them
+// satisfies both, and neither of the two previous states did.
+//
+// Notably this needs NO candidate profile and no constraints, which is what
+// makes it cheap: the prompt carries the posting and nothing else, and the
+// output has no dimensions, grades, scores or reasoning. It is also
+// candidate-independent, so the same extraction is correct for every user who
+// opens that job.
+
+const extractionSchema = z.object({
+  id: z.string(),
+  responsibilities: z.array(z.string()).default([]),
+  requirements: z.array(z.string()).default([]),
+  niceToHave: z.array(z.string()).default([]),
+  benefits: z.array(z.string()).default([]),
+  aboutRole: z.string().default(""),
+  salary: z.string().default(""),
+  hiringProcess: z.array(z.string()).default([]),
+  seniorityLevel: z.string().default(""),
+  yearsExperienceRequired: z.string().default(""),
+  companyDomain: z.string().default(""),
+});
+
+const extractionResponseSchema = z.object({ extractions: z.array(extractionSchema) });
+
+export type JobExtractionResult = z.infer<typeof extractionSchema>;
+
+export const EXTRACTION_SYSTEM_PROMPT = `You extract structured facts from job postings. You do not judge fit, score, or grade anything — another pass does that. Report only what the posting says.
+
+Raw posting text is usually a scraped job-board page mixed with boilerplate: salary-context filler ("Market median for X roles is..."), "Resume Keywords to Include" sections, "Sign up free to auto-tailor your resume" prompts, apply-tracking IDs, and near-identical Equal Opportunity / accommodation / legal disclaimer paragraphs that appear on almost every posting worded almost the same way regardless of employer. Ignore all of it. Extract only from the real posting content underneath.
+
+- aboutRole: a clean 2-4 sentence prose summary of the role and the company. Never include EEO or accommodation boilerplate — it carries no per-job signal.
+- responsibilities / requirements / niceToHave / benefits: short phrases lifted from the posting, not invented. Empty array if the posting genuinely does not say.
+- salary: exactly as stated, or empty string if not stated. Never estimate.
+- hiringProcess: the interview stages if the posting describes them, else empty.
+- seniorityLevel / yearsExperienceRequired: short strings read from the text.
+- companyDomain: the bare primary website domain of the company named in this posting (e.g. "bmo.com", "rbc.com"), no protocol, no "www.", no path. Use your real-world knowledge of the actual company, not a literal transformation of its name — Bank of Montreal is bmo.com, not bankofmontreal.com. Only return a domain you are genuinely confident is correct for THIS company; if you don't recognise it or aren't sure, return an empty string. A wrong domain surfaces a completely different company's logo, which is worse than showing none.
+
+Return ONLY valid JSON:
+{
+  "extractions": [
+    {
+      "id": "string — the job id exactly as given",
+      "responsibilities": string[],
+      "requirements": string[],
+      "niceToHave": string[],
+      "benefits": string[],
+      "aboutRole": "string",
+      "salary": "string",
+      "hiringProcess": string[],
+      "seniorityLevel": "string",
+      "yearsExperienceRequired": "string",
+      "companyDomain": "string"
+    }
+  ]
+}`;
+
+/**
+ * Pulls the organised sections out of a posting, with no fit judgement.
+ *
+ * Returns [] on any failure rather than throwing: this runs when a candidate
+ * opens a job, and a failed extraction should leave the page showing the raw
+ * description, never an error.
+ */
+export async function extractJobDetails(
+  jobs: EvaluationJob[],
+  provider: ModelProvider = "gemini",
+  tier: ModelTier = "fast",
+): Promise<JobExtractionResult[]> {
+  if (jobs.length === 0) return [];
+
+  const userPrompt = `JOB POSTINGS TO EXTRACT:
+${jobs.map((job) => `
+---
+ID: ${job.id}
+Title: ${job.title ?? "Unknown"}
+Company: ${job.company ?? "Unknown"}
+Location: ${job.location ?? "Unknown"}
+Posted salary: ${job.salary ?? "not stated"}
+Description: ${job.about_role ?? job.description ?? "No description available"}
+---`).join("\n")}`;
+
+  let raw: string;
+  try {
+    // "fast" tier on purpose: this is extraction, not judgement, and it sits on
+    // the path of a candidate opening a job. The smart tier is reserved for the
+    // rubric, where the reasoning quality is the product.
+    raw = await complete(await getModel(provider, tier), {
+      systemPrompt: EXTRACTION_SYSTEM_PROMPT,
+      userPrompt,
+      temperature: 0.1,
+      maxTokens: 8000,
+    });
+  } catch (error) {
+    console.error("[lib/evaluator] extraction call failed", error);
+    return [];
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    // The model occasionally wraps JSON in prose or a code fence. One salvage
+    // attempt on the outermost braces, then give up -- a retry would double
+    // real spend for a cosmetic section.
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}");
+    if (start === -1 || end <= start) {
+      console.error("[lib/evaluator] extraction returned no JSON");
+      return [];
+    }
+    try {
+      parsed = JSON.parse(raw.slice(start, end + 1));
+    } catch (error) {
+      console.error("[lib/evaluator] extraction JSON parse failed", error);
+      return [];
+    }
+  }
+
+  const result = extractionResponseSchema.safeParse(parsed);
+  if (!result.success) {
+    console.error("[lib/evaluator] extraction failed schema", result.error.issues.slice(0, 3));
+    return [];
+  }
+  return result.data.extractions;
+}

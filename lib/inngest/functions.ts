@@ -6,6 +6,7 @@ import {
     evaluateLegitimacyOnly,
     type SkillCorrection,
     type EvaluationJob,
+    extractJobDetails,
     type JobEvaluationResult,
     type LiteEvaluationResult,
     type EvaluationGrade,
@@ -19,6 +20,7 @@ import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/rer
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
 import { fetchPaidSourcesForRun } from "@/lib/actions/scraper.actions";
 import { searchJobs } from "@/lib/jobScraper";
+import { canonicalCompanyKey } from "@/lib/companyIdentity";
 import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget, backfillCompanyDomains } from "@/lib/proactiveAtsCrawl";
 import { crawlPaused, pausedResult } from "@/lib/crawlPause";
 import type { Profile, WorkExperience } from "@/types";
@@ -521,6 +523,45 @@ export const evaluateJobFullAsync = inngest.createFunction(
                 .eq("id", jobId);
             if (error) throw new Error(`Full evaluation persist failed for job ${jobId}: ${error.message}`);
         });
+
+        // Share what the model just worked out about this EMPLOYER, not just
+        // this job (2026-09-09, direct user idea: "when we make an AI call why
+        // can't we ask all the details in the same call... and add those
+        // details if we are missing them").
+        //
+        // The model already returns companyDomain, and the prompt is written to
+        // refuse a guess it is not confident in. Until now that answer was
+        // written onto ONE job row, so the same employer's other postings --
+        // often hundreds of them -- stayed logo-less and the next opened job
+        // paid to work it out again.
+        //
+        // Writing it to company_domains makes it permanent and shared. This is
+        // also the cheapest coverage available for the tail Clearbit cannot
+        // resolve: a model recognises "Ontario Teachers' Pension Plan" ->
+        // otpp.com where a name-matching autocomplete does not, and it costs
+        // nothing extra because the call was already made and paid for.
+        //
+        // Never overwrites an existing domain -- a resolver hit is evidence
+        // from the live web, and this is recall.
+        if (evalResult.companyDomain && job.company) {
+            await step.run("share-company-domain", async () => {
+                const key = canonicalCompanyKey(job.company as string);
+                const { error } = await createCacheDbClient()
+                    .database.from("company_domains")
+                    .upsert(
+                        {
+                            company_key: key,
+                            company_name: job.company,
+                            domain: evalResult.companyDomain,
+                            resolved_at: new Date().toISOString(),
+                        },
+                        { onConflict: "company_key", ignoreDuplicates: false },
+                    );
+                // Cosmetic: a failure here costs a logo, never the evaluation.
+                if (error) console.warn(`[evaluate-job-full] company domain share failed: ${error.message}`);
+                else console.log(`[evaluate-job-full] shared ${job.company} -> ${evalResult.companyDomain}`);
+            });
+        }
 
         return { message: `Full evaluation complete for job ${jobId}.` };
     },
@@ -1624,5 +1665,93 @@ export const fetchPaidSourcesAsync = inngest.createFunction(
             message: `${data.title} / ${data.location} (${data.country}): ` +
                 `${result.providerJobs} from providers, ${result.persisted} persisted.`,
         };
+    },
+);
+
+// Extraction on OPEN — the cheap half of the split (2026-09-09).
+//
+// Opening a job used to fire the full 10-dimension rubric, which made every
+// click cost a smart-tier call. Making it button-only fixed the cost and
+// returned the page to opening bare, because the organised sections come from
+// that same pass. Both states had been reported as wrong, at different times,
+// by the same person.
+//
+// This is the resolution: extraction runs on open (cheap, fast tier, no
+// candidate profile needed), the rubric stays behind the button. Fire and
+// forget, never awaited by the page.
+//
+// Idempotent by guard, not by luck: the page only emits this for a job whose
+// about_role is still empty, and the persist below refuses to overwrite
+// anything already present.
+export const extractJobDetailsAsync = inngest.createFunction(
+    {
+        id: "extract-job-details",
+        name: "Extract job details (on open)",
+        // One per job, so a double-click or a quick back-and-forward cannot
+        // pay twice for the same posting.
+        concurrency: { limit: 4 },
+        retries: 1,
+        triggers: [{ event: "jobs/extract-details" }],
+    },
+    async ({ event, step }) => {
+        const { jobId } = event.data as { jobId: string };
+        const admin = createAdminClient({
+            baseUrl: process.env.NEXT_PUBLIC_INSFORGE_URL!,
+            apiKey: process.env.INSFORGE_API_KEY!,
+        });
+
+        const job = await step.run("load-job", async () => {
+            const { data, error } = await admin.database
+                .from("jobs")
+                .select("id,title,company,location,description,about_role,salary,salary_min,salary_max,job_type")
+                .eq("id", jobId)
+                .maybeSingle();
+            if (error) throw new Error(`extract: load failed for ${jobId}: ${error.message}`);
+            return data as EvaluationJob | null;
+        });
+        if (!job) return { message: `job ${jobId} not found` };
+        if (job.about_role) return { message: `job ${jobId} already extracted` };
+
+        const [extracted] = await step.run("extract", () => extractJobDetails([job]));
+        if (!extracted) return { message: `extraction returned nothing for ${jobId}` };
+
+        await step.run("persist", async () => {
+            const { error } = await admin.database
+                .from("jobs")
+                .update({
+                    about_role: extracted.aboutRole || null,
+                    responsibilities: extracted.responsibilities || [],
+                    requirements: extracted.requirements || [],
+                    nice_to_have: extracted.niceToHave || [],
+                    benefits: extracted.benefits || [],
+                    hiring_process: extracted.hiringProcess || [],
+                    // Fallback only — never overwrite a real structured value
+                    // the search or the lite pass already established.
+                    ...(job.salary ? {} : { salary: extracted.salary || null }),
+                })
+                .eq("id", jobId);
+            if (error) throw new Error(`extract: persist failed for ${jobId}: ${error.message}`);
+        });
+
+        // Same employer-level sharing as the full pass: a domain learned here
+        // serves every other posting from this company, for every user.
+        if (extracted.companyDomain && job.company) {
+            await step.run("share-company-domain", async () => {
+                const { error } = await createCacheDbClient()
+                    .database.from("company_domains")
+                    .upsert(
+                        {
+                            company_key: canonicalCompanyKey(job.company as string),
+                            company_name: job.company,
+                            domain: extracted.companyDomain,
+                            resolved_at: new Date().toISOString(),
+                        },
+                        { onConflict: "company_key", ignoreDuplicates: false },
+                    );
+                if (error) console.warn(`[extract-job-details] domain share failed: ${error.message}`);
+            });
+        }
+
+        return { message: `extracted ${jobId}${extracted.companyDomain ? ` (+${extracted.companyDomain})` : ""}` };
     },
 );
