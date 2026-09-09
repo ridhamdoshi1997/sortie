@@ -647,6 +647,15 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb, cacheDb: AdminDb 
 // rather than on crawl recency.
 const MAX_CACHED_POSTINGS = 650_000;
 
+// Below this many literal title matches, a search is treated as too thin to
+// stand on its own and the occupation's synonyms are added.
+//
+// Deliberately small. The whole point is that adjacent professions are NOT part
+// of a normal answer -- reported twice on "Investment Advisor", which returned
+// financial advisors both when the occupation was the primary match and when it
+// merely sorted underneath. This only rescues genuinely unusual titles.
+const WORD_MATCH_FLOOR = 8;
+
 const INACTIVE_RETENTION_DAYS = 30;
 
 // Keeps the cache inside MAX_CACHED_POSTINGS, newest-seen first.
@@ -1016,41 +1025,58 @@ export async function queryProactiveCrawlCache(
     const primaryCity = (searchLocation || "").split(",")[0].trim().toLowerCase();
     const metroCities = await expandCityToMetro(cacheDb, searchLocation || "");
 
-    // RANK by closeness, do not FILTER on it (2026-09-09). Two user reports
-    // pulled opposite ways: "Investment Advisor" returned mostly Financial
-    // Advisor roles (occupation too wide), while "Software Developer" returned
-    // 44 against "Software Engineer"'s 279 (literal words too narrow -- the
-    // same job, and the taxonomy is what knows it).
+    // WORDS FIRST, occupation only as a rescue (2026-09-09, second user
+    // report on the same search).
     //
-    // Filtering to focused titles fixes the first and causes the second. So the
-    // query keeps FULL recall and the RPC's ORDER BY puts titles containing
-    // every searched word on top, with the wider occupation beneath. The
-    // client then sorts by match score within that.
-    const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
-      p_titles: occupationTitles,
+    // A previous version kept the whole occupation in the results and merely
+    // RANKED word matches above it. That still shows the adjacent profession:
+    // "Investment Advisor" led with investment roles and then listed 59
+    // financial advisors underneath, which is what was reported -- "I am seeing
+    // so many financial advisor roles" -- because a candidate scrolls.
+    //
+    // So the occupation stops being part of the normal answer. A search returns
+    // titles containing every word the candidate typed, which is what a
+    // competitor does and what the candidate plainly expects. The taxonomy is
+    // kept only to rescue a search that would otherwise look broken: an unusual
+    // title with almost no literal matches still gets its real synonyms rather
+    // than an empty page.
+    //
+    // Passing an EMPTY p_titles is what expresses "words only" -- the RPC's
+    // `normalized_title = ANY(p_titles)` is false for every row against '{}',
+    // leaving the tsquery as the only way in. No signature change needed.
+    const baseParams = {
       p_limit: limit,
       p_cities: metroCities ?? (primaryCity ? [primaryCity] : null),
       p_primary_city: primaryCity || null,
-      // Ranks an exact title match above the rest of the occupation. Both
-      // belong in the results -- "Wealth Advisor" IS a financial advisor -- but
-      // what the candidate actually typed should lead.
       p_exact_title: normalizeTitle(searchTitle),
-      // Also match a title's first two words, so "Financial Advisor CIRO" and
-      // "Investment Advisor Associate" reach their own occupation. Normalisation
-      // strips leading words but not trailing ones, and those postings were
-      // being missed -- 15 of them for Toronto financial advisors alone.
-      p_match_head: true,
-      // Also match any title CONTAINING every word searched, not only the
-      // titles O*NET happens to list. Measured: 45 relevant Investment Advisor
-      // postings existed across the Toronto metro and exact-vocabulary matching
-      // showed 13 -- "investment advisor associate", "wealth & investment
-      // advisor" and "investment advisor assistant" were all in the index and
-      // all invisible. Requiring EVERY word keeps this from loosening into a
-      // plain keyword search.
       // The raw title. The RPC turns it into an AND-ed tsquery answered from
       // the existing title_tsv GIN index -- LIKE '%word%' could not use an
       // index at all and measured 10-16s per search, over the 8s timeout.
       p_search_text: searchTitle,
+    };
+
+    const wordsOnly = await cacheDb.database.rpc("search_postings_by_titles", {
+      ...baseParams,
+      p_titles: [],
+      p_match_head: false,
+    });
+    if (wordsOnly.error) {
+      console.warn(`[proactiveAtsCrawl] word search failed: ${wordsOnly.error.message}`);
+    } else if (Array.isArray(wordsOnly.data) && wordsOnly.data.length >= WORD_MATCH_FLOOR) {
+      return normalizePostingRows(cacheDb, wordsOnly.data as unknown[]);
+    }
+
+    const wordCount = Array.isArray(wordsOnly.data) ? wordsOnly.data.length : 0;
+    console.log(
+      `[proactiveAtsCrawl] "${searchTitle}" matched ${wordCount} title(s) by words, ` +
+      `below ${WORD_MATCH_FLOOR} -- adding occupation synonyms`,
+    );
+    const { data: occData, error: occError } = await cacheDb.database.rpc("search_postings_by_titles", {
+      ...baseParams,
+      p_titles: occupationTitles,
+      // Matches a title's first two words, so "Financial Advisor CIRO" reaches
+      // its own occupation. Only meaningful on the rescue path.
+      p_match_head: true,
     });
     if (occError) {
       console.warn(`[proactiveAtsCrawl] occupation search failed, falling back to words: ${occError.message}`);
