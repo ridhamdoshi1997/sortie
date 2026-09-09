@@ -623,10 +623,29 @@ export async function crawlKnownIcimsCompanies(admin: AdminDb, cacheDb: AdminDb 
 // next pass. The ones that do NOT come back are filled, closed or expired --
 // exactly the ghost jobs this product exists not to show.
 //
-// 450,000 holds every market (a market-scoped cache was considered and
-// rejected by the product owner) and lands the whole database near 287 MB,
-// leaving real headroom for user data on the same 500 MB plan.
-const MAX_CACHED_POSTINGS = 450_000;
+// 650,000 (raised from 450,000 on 2026-09-09, when the cache moved to its own
+// Supabase project). The old number was sized for a database SHARED with user
+// data, where the index had to leave room for jobs, job_sources and profiles on
+// one 500 MB plan. It no longer shares: discovered_postings has its own project
+// and its own 500 MB, and main dropped to 83 MB.
+//
+// 450,000 was actively destroying inventory. The crawl adds ~8k postings an
+// hour, so the hourly prune deleted ~8k an hour to hold the line -- and it
+// deletes by OLDEST last_seen_at, which is "least recently re-crawled", not
+// "least real". Measured directly: running the eviction cut Software Engineer /
+// Toronto from 221 results to 109, and Data Analyst from 72 to 60. Those were
+// live jobs thrown away to hit a number.
+//
+// 650,000 at the measured 681 bytes a row is roughly 442 MB, leaving ~58 MB for
+// index churn on the cache project's own plan.
+//
+// KNOWN TO BE TEMPORARY. The Workday pagination fix (lib/atsProviders.ts) lifts
+// per-employer coverage from 20 postings to whatever the board actually has --
+// CIBC alone goes 20 -> 459 -- so supply will grow hard against this ceiling
+// again. The durable answer is not a bigger number: it is evicting on something
+// that means something (outside the markets served, or genuinely old posted_at)
+// rather than on crawl recency.
+const MAX_CACHED_POSTINGS = 650_000;
 
 const INACTIVE_RETENTION_DAYS = 30;
 
