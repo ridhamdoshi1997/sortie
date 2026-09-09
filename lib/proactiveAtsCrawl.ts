@@ -962,10 +962,43 @@ async function expandCityToMetro(cacheDb: AdminDb, location: string): Promise<st
     const { data: cityRows } = await cacheDb.database
       .from("metro_areas").select("city").eq("metro", metro);
     const cities = ((cityRows ?? []) as { city: string }[]).map((r) => r.city);
-    return cities.length > 0 ? cities : null;
+    if (cities.length === 0) return null;
+    return [...cities, ...regionTermsFor(location)];
   } catch {
     return null;
   }
+}
+
+// Provinces and states spelled out, so a posting located at the REGION rather
+// than a city is still reachable.
+//
+// The metro list is city names only, and the RPC matches location ILIKE
+// '%city%', so a posting reading "Ontario", "Ontario Province" or "Guelph,
+// Ontario, Canada" matched nothing at all. Measured for Investment Advisor:
+// 51 such postings exist, 28 matched a metro city, and the rest were dropped
+// purely on how the employer wrote the location.
+//
+// Only spelled-out names, never the two-letter code: '%on%' as a substring
+// matches "London", "Toronto" and most of the dictionary.
+const PROVINCE_NAMES: Record<string, string> = {
+  on: "ontario", qc: "quebec", bc: "british columbia", ab: "alberta",
+  mb: "manitoba", sk: "saskatchewan", ns: "nova scotia", nb: "new brunswick",
+  nl: "newfoundland", pe: "prince edward island",
+  ny: "new york", ca: "california", tx: "texas", wa: "washington",
+  ma: "massachusetts", il: "illinois", fl: "florida", ga: "georgia",
+  pa: "pennsylvania", nj: "new jersey", va: "virginia", co: "colorado",
+};
+
+function regionTermsFor(location: string): string[] {
+  const parts = location.split(",").map((p) => p.trim().toLowerCase()).filter(Boolean);
+  const terms = new Set<string>();
+  for (const part of parts.slice(1)) {
+    const spelled = PROVINCE_NAMES[part];
+    if (spelled) terms.add(spelled);
+    // Already spelled out in the input ("Toronto, Ontario").
+    else if (Object.values(PROVINCE_NAMES).includes(part)) terms.add(part);
+  }
+  return [...terms];
 }
 
 export async function queryProactiveCrawlCache(
