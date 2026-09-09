@@ -911,6 +911,15 @@ export async function searchJobs(
     // land. Never allowed to affect the search: it is called inside a
     // try/catch and its return value is ignored.
     onSourceResults?: (sourceName: string, jobs: NormalizedJob[]) => void,
+    // Restricts this call to ONE provider.
+    //
+    // Exists so the background fetch can put LinkedIn and Indeed in separate
+    // Inngest steps (2026-09-09). Every step is its own HTTP invocation with
+    // its own 60s Vercel budget, and running both together measured 106s
+    // end-to-end -- which works on a laptop and fails in production, losing
+    // results that had already been paid for. Undefined keeps the original
+    // behaviour of running every configured source concurrently.
+    onlySource?: "linkedin" | "indeed",
 ): Promise<NormalizedJob[]> {
     void provider;
     void datePosted;
@@ -934,11 +943,15 @@ export async function searchJobs(
     if (getApifyToken()) {
         // LinkedIn results are already location-scoped by the actor's own
         // `location` input, so no filterByCity pass here.
-        sources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
+        if (onlySource !== "indeed") {
+            sources.push({ name: "LinkedIn", promise: apifyLinkedInProvider.search(jobTitle, location, countryCode) });
+        }
         // Indeed is scoped by its own location + radius inputs, same as
         // LinkedIn, so it needs no filterByCity pass either. Verified live:
         // a Toronto search returned Toronto-area rows only.
-        sources.push({ name: "Indeed", promise: apifyIndeedProvider.search(jobTitle, location, countryCode) });
+        if (onlySource !== "linkedin") {
+            sources.push({ name: "Indeed", promise: apifyIndeedProvider.search(jobTitle, location, countryCode) });
+        }
     }
 
     // Adzuna PAUSED (2026-09-04, direct user decision: "for now pause the

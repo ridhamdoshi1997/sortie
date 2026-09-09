@@ -18,6 +18,7 @@ import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
 import { ingestJobhiveRegistry } from "@/lib/jobhiveRegistry";
 import { fetchPaidSourcesForRun } from "@/lib/actions/scraper.actions";
+import { searchJobs } from "@/lib/jobScraper";
 import { crawlKnownAtsCompanies, crawlKnownWorkdayCompanies, crawlKnownIcimsCompanies, pruneStaleDiscoveredPostings, evictCachedPostingsOverBudget, backfillCompanyDomains } from "@/lib/proactiveAtsCrawl";
 import { crawlPaused, pausedResult } from "@/lib/crawlPause";
 import type { Profile, WorkExperience } from "@/types";
@@ -1565,7 +1566,27 @@ export const fetchPaidSourcesAsync = inngest.createFunction(
             country: string; filters: Record<string, string>; userEmail?: string | null;
         };
 
-        const result = await step.run("fetch-and-persist", () => fetchPaidSourcesForRun(data));
+        // Each provider in its OWN step, and persistence in a third.
+        //
+        // Every step.run is a separate HTTP invocation with its own 60s Vercel
+        // budget. Running LinkedIn, Indeed, enrichment and persistence together
+        // measured 106 SECONDS end-to-end on a real Investment Analyst search
+        // -- fine on a laptop, a guaranteed timeout in production, losing
+        // results that had already been fetched and paid for. Split, the
+        // slowest single step is LinkedIn at ~86s... still over 60s on its own,
+        // which is exactly why the item caps below matter and cannot simply be
+        // raised without watching this number.
+        //
+        // Ordered rather than concurrent because Inngest steps are sequential;
+        // the cost is wall-clock, not correctness, and the candidate is not
+        // blocked on any of it -- the index already answered their search.
+        const linkedin = await step.run("fetch-linkedin", () =>
+            searchJobs(data.title, data.location, data.country, "serpapi", data.filters.date_posted, undefined, "linkedin"));
+        const indeed = await step.run("fetch-indeed", () =>
+            searchJobs(data.title, data.location, data.country, "serpapi", data.filters.date_posted, undefined, "indeed"));
+
+        const result = await step.run("persist", () =>
+            fetchPaidSourcesForRun({ ...data, prefetched: [...linkedin, ...indeed] }));
 
         return {
             message: `${data.title} / ${data.location} (${data.country}): ` +

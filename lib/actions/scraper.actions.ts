@@ -546,8 +546,13 @@ export async function fetchPaidSourcesForRun(params: {
     country: string;
     filters: Record<string, string>;
     userEmail?: string | null;
+    // Already-fetched provider results. When present the providers are NOT
+    // called again -- the caller fetched them in earlier Inngest steps, each
+    // with its own 60s Vercel budget, because running both in one step
+    // measured 106s end-to-end and would time out in production.
+    prefetched?: NormalizedJob[];
 }): Promise<{ persisted: number; providerJobs: number }> {
-    const { userId, runId, title, location, country, filters, userEmail } = params;
+    const { userId, runId, title, location, country, filters, userEmail, prefetched } = params;
 
     // Admin client, NOT createInsforgeServer(). This runs inside an Inngest
     // function, where there is no request scope, and createInsforgeServer reads
@@ -571,7 +576,7 @@ export async function fetchPaidSourcesForRun(params: {
     let rawJobs: NormalizedJob[];
     try {
         const t = Date.now();
-        rawJobs = await searchJobs(title, location, country, "serpapi", filters.date_posted);
+        rawJobs = prefetched ?? await searchJobs(title, location, country, "serpapi", filters.date_posted);
         phase.providers = Date.now() - t;
         console.log(`[paid-sources] providers ${phase.providers}ms -> ${rawJobs.length} jobs for "${title}"/"${location}" (${country})`);
     } catch (error) {
