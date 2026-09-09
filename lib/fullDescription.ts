@@ -264,6 +264,29 @@ async function fromPageHtml(applyUrl: string): Promise<string | null> {
 // nav and footer chrome), so it's capped to keep a single stored row sane.
 const MAX_STORED_DESCRIPTION_CHARS = 20000;
 
+// Refuses a "description" that is actually page source.
+//
+// The sanitiser now strips Knockout containerless bindings, but that is a fix
+// for one framework's markup and the next board will have its own. This is the
+// backstop: if what came out still carries code, storing it is worse than
+// storing nothing, because every downstream step then extracts from noise --
+// which is how one posting ended up with an empty responsibilities list and a
+// decoder that had nothing to decode.
+//
+// Deliberately narrow. These markers do not occur in real prose: a job posting
+// does not contain "data-bind", "keyCode" or an arrow-function body. A posting
+// that legitimately mentions JavaScript still reads as "JavaScript", not as
+// "function(){showAllLocations(true)}".
+const CODE_MARKERS = /(data-bind|ko if:|\$\.t\(|keyCode|function\s*\(\s*\)\s*\{|showAllLocations|<!--|-->)/;
+
+function looksLikePageSource(text: string): boolean {
+  if (CODE_MARKERS.test(text)) return true;
+  // A wall of empty bullets is the other signature: template <li> elements
+  // that carried only bindings, leaving the marker and nothing else.
+  const bullets = text.match(/^\s*•\s*$/gm)?.length ?? 0;
+  return bullets >= 3;
+}
+
 export async function fetchFullDescription(
   applyUrl: string | null | undefined,
   source: string | null | undefined,
@@ -298,5 +321,19 @@ export async function fetchFullDescription(
   const text = viaApi ?? (await fromPageHtml(fetchUrl)) ?? (await fetchViaJinaReader(fetchUrl).then((t) => (t ? htmlToText(t) : null)).catch(() => null));
 
   if (!text || text.length < MIN_USEFUL_DESCRIPTION_CHARS) return null;
+
+  // Never store page source. Returning null leaves the row's own description
+  // in place and lets a later attempt try again, which is strictly better than
+  // persisting markup that every downstream extraction will then read as if it
+  // were the posting.
+  //
+  // This bites hardest on Indeed, and for a structural reason: an Indeed apply
+  // link redirects to the EMPLOYER's own ATS, so the page fetched here is
+  // whatever framework that employer runs -- Workday's Knockout templates, in
+  // the case that surfaced this.
+  if (looksLikePageSource(text)) {
+    console.warn(`[fullDescription] discarded page source for ${applyUrl}`);
+    return null;
+  }
   return text.length > MAX_STORED_DESCRIPTION_CHARS ? text.slice(0, MAX_STORED_DESCRIPTION_CHARS) : text;
 }
