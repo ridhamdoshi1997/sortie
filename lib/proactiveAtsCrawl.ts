@@ -810,6 +810,14 @@ export async function storeProviderJobsInIndex(
           job_type: job.type || null,
           apply_url: job.applyUrl ?? job.url,
           posted_at: job.postedAt ?? null,
+          // The employer's REAL logo, supplied by the provider itself.
+          // LinkedIn returns companyLogoUrl and Indeed companyLogo, both
+          // already mapped onto NormalizedJob.logoUrl by lib/jobScraper.ts --
+          // and until now dropped here, because the table had no column for it.
+          // Guessing a domain from the apply URL was the fallback, and for an
+          // ATS-hosted job that guess returns the ATS's own brand, which is why
+          // every Workday posting wore Workday's mark.
+          logo_url: job.logoUrl ?? null,
           last_seen_at: now,
           is_active: true,
         };
