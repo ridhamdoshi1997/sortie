@@ -8,6 +8,50 @@ Last updated: 2026-09-04, Phase 48. **START HERE — two parallel tracks are now
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
 
+## Phase 50 (2026-09-09) — search relevance, the cache split, logos, and filters. 30 commits, NOTHING DEPLOYED.
+
+**Read this before deploying.** Every change below is committed on `feature/supabase-migration` and running only on localhost. The live site still has the old search, the old logos and the 20-per-employer Workday cap.
+
+### The database now lives in two projects
+`discovered_postings` moved to its own Supabase project (`dbvlavcckctcqmohztxm`), which is what `createCacheDbClient()` was always written for -- `CACHE_SUPABASE_URL` had simply never been set. Main went **499 MB -> 83 MB**; the cache holds ~617k postings in 428 MB. `SUPABASE_ACCESS_TOKEN` (an `sbp_` management token) is in Doppler and is how migrations are applied to the cache project, since its `db.*.supabase.co` host is IPv6-only and unreachable from this machine. **Revoke that token when the migration work is finished.**
+
+### Search matching, after four wrong turns
+The rule is now: a search returns titles containing every DOMAIN word typed, where role nouns (advisor, manager, engineer, analyst...) are dropped. "Investment Advisor" requires `investment`, not `advisor`. The O*NET taxonomy is a rescue path only, for searches with almost no literal matches.
+
+Toronto, measured: Investment Analyst 36 -> 100, Investment Advisor 13 -> 107, Financial Advisor 74 -> 187, Software Developer 43 -> 281. Zero off-topic and zero foreign-country results in every case.
+
+**Four things that were each individually wrong, in order, so nobody repeats them:**
+- Matching only O*NET lay titles hid real ones: "investment advisor associate" and "wealth & investment advisor" are not in the taxonomy. 45 relevant postings existed and 13 showed.
+- A correlated `NOT EXISTS(SELECT ... unnest)` per row blew the 8s statement timeout -- Software Engineer went 279 -> 0, killed by 57014 rather than by any matching rule.
+- Rewriting that as `LIKE ALL('%word%')` was correct but unindexable; a leading wildcard forces a sequential scan, measured at 10-16s. The working form uses the `title_tsv` GIN index via `plainto_tsquery`, which ANDs its terms.
+- `filterByOccupation` then discarded 147 of 183 rows the SQL had correctly matched. **When a count looks wrong, trace the whole pipeline before tuning the query** -- three rounds were spent tuning SQL while a post-filter silently threw away 80% of its output.
+
+### Logos
+The fallback chain could never run. `CompanyLogo` advances on the img's `onError`, but a wrong domain 404s before React hydrates, so the handler was never attached and `candidateIndex` never moved. Confirmed in the DOM: `complete=true, naturalWidth=0`, still on candidate 0. A mount-time check now advances it.
+
+Also: `extractLikelyLogoDomain` read the domain out of the apply URL, so `cibc.wd3.myworkdayjobs.com` yielded `myworkdayjobs.com` and every Workday posting wore **Workday's** mark. ATS and aggregator hosts are now refused.
+
+Coverage comes from four tiers: the provider's own logo (LinkedIn and Indeed return one and it was being discarded on write), then `company_domains` (Clearbit bulk run, 22,014 domains for 37,752 companies, 58%), then the AI-extracted domain, then a deterministic initial tile. **~80-85% is the realistic ceiling** -- the misses are staffing agencies and numbered companies that no service resolves.
+
+### Descriptions
+Indeed apply links redirect to the EMPLOYER's own system, so what gets fetched is whatever that employer runs -- UltiPro in the reported case. Its Knockout containerless bindings are HTML COMMENTS carrying JavaScript, which the sanitiser never stripped, and the generic tag strip mangles them. Now stripped; page-source is refused outright; and a junk page-HTML result **escalates to Jina** rather than ending the chain, which is what it was always there for.
+
+### Filters
+All ten were tested against 722 real jobs. Nine worked. Visa sponsorship returned zero always, because it read `about_role`/`requirements` -- fields present on 13 and 9 of 722 rows. It now reads `description` too.
+
+Added: source (LinkedIn/Indeed/Direct), role type (IC/manager, read from the title), exclude staffing agencies, industry, company stage. **Industry and stage only render when jobs on screen carry the field** -- they come from the AI extraction pass, which runs on open.
+
+### Standing decisions
+- **Full rubric is BUTTON-ONLY.** Opening a job runs a cheap extraction pass instead (`jobs/extract-details`). If the detail page looks bare again, do NOT restore auto-rubric -- extend the extraction.
+- The card was redesigned twice and **reverted at the user's instruction**; only the timing badges on top are new. Do not redesign it again without an explicit ask and a rendered preview.
+- `MAX_CACHED_POSTINGS` is 650,000. Eviction deletes by oldest `last_seen_at`, which throws away live jobs to hit a number -- at 450k it cut Software Engineer from 221 to 109. The rule needs replacing, not raising.
+
+### Known-open
+- 30 commits undeployed; Inngest needs a `PUT /api/inngest` after any deploy (CLI deploys do not auto-sync).
+- Apify: ~$0.02 of $5 used. Measured $0.016 per LinkedIn+Indeed pair.
+- LinkedIn's per-run cap must stay at 100 (0.465s/item against a 60s Vercel step). Indeed fits 200 at 0.26s/item. Re-measure before raising either.
+- Software Developer is 281 against a competitor's 852 -- inventory, not matching. The Workday pagination fix (CIBC 20 -> 459) is committed and undeployed.
+
 ## Phase 49 (2026-09-08) — DATABASE OUTAGE, self-inflicted. Read this before touching the crawl crons or running any bulk UPDATE.
 
 **Current state: `CRAWL_PAUSED=1` is set in Doppler and all three Vercel environments. The background crawls are OFF.** They must be turned back on deliberately (see "Turning the crawls back on" below) — this is not a state to leave indefinitely, because the cron that enforces the 500 MB storage budget is one of the paused ones.
