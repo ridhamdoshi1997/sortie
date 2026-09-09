@@ -921,18 +921,28 @@ async function normalizePostingRows(cacheDb: AdminDb, rows_: unknown[]): Promise
   // display name and hoping. backfillCompanyDomains populates the column.
   const companyKeys = [...new Set(rows.map((r) => r.company_key).filter(Boolean))];
   const domainByKey = new Map<string, string>();
+  const logoByKey = new Map<string, string>();
   if (companyKeys.length > 0) {
     try {
-      const { data: registryRows } = await cacheDb.database
-        .from("ats_registry")
-        .select("company_key,company_domain")
-        .in("company_key", companyKeys);
-      for (const r of (registryRows ?? []) as { company_key: string; company_domain: string | null }[]) {
-        if (r.company_domain) domainByKey.set(r.company_key, r.company_domain);
+      // One call resolves BOTH tiers for every company on the page.
+      //
+      // Tier 1 is the logo the provider itself supplied -- LinkedIn's
+      // companyLogoUrl, Indeed's companyLogo -- the employer's real mark,
+      // needing no guess at all. Looked up per COMPANY rather than per posting,
+      // so a company's LinkedIn listing supplies the logo for its Greenhouse
+      // listing too.
+      //
+      // Tier 2 is the Clearbit-resolved domain, covering employers we have only
+      // ever seen through an ATS board.
+      const { data: logoRows } = await cacheDb.database
+        .rpc("logo_for_companies", { p_keys: companyKeys });
+      for (const r of (logoRows ?? []) as { company_key: string; logo_url: string | null; domain: string | null }[]) {
+        if (r.logo_url) logoByKey.set(r.company_key, r.logo_url);
+        if (r.domain) domainByKey.set(r.company_key, r.domain);
       }
     } catch (error) {
       // Cosmetic only: a failure here costs a logo, never a result.
-      console.warn("[proactiveAtsCrawl] logo-domain lookup failed", error);
+      console.warn("[proactiveAtsCrawl] logo lookup failed", error);
     }
   }
 
@@ -953,9 +963,17 @@ async function normalizePostingRows(cacheDb: AdminDb, rows_: unknown[]): Promise
       // Same proxied shape CompanyLogo builds for its own guesses, so an
       // unresolvable domain still returns a real error and falls through to the
       // icon rather than showing something wrong.
-      logoUrl: domainByKey.has(row.company_key)
-        ? `/api/logo?url=${encodeURIComponent(`https://icons.duckduckgo.com/ip3/${domainByKey.get(row.company_key)}.ico`)}`
-        : undefined,
+      // The provider's own logo wins outright: it is the employer's real mark,
+      // not a favicon scraped off a guessed domain. Falls back to the resolved
+      // domain, then to nothing, which renders the neutral icon. It never
+      // derives a domain from the apply URL -- for an ATS-hosted posting that
+      // yields the ATS's brand, which is how every Workday job came to wear
+      // Workday's logo.
+      logoUrl:
+        logoByKey.get(row.company_key) ??
+        (domainByKey.has(row.company_key)
+          ? `/api/logo?url=${encodeURIComponent(`https://icons.duckduckgo.com/ip3/${domainByKey.get(row.company_key)}.ico`)}`
+          : undefined),
     }));
 
   return normalized;
