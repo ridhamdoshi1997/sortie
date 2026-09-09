@@ -182,15 +182,43 @@ export async function filterByOccupation<T extends { title?: string }>(
   if (!searchOccupations) {
     // The searched title is not in the taxonomy at all: no occupation to
     // compare against, so this pass has nothing to add.
+    const domainWords = searchDomainWords(searchTitle);
     return {
-      kept: jobs.filter((job) => matchesSearchTitle(searchTitle, job.title)),
+      kept: jobs.filter((job) => {
+        const normalized = normalizeTitle(job.title ?? "");
+        if (domainWords.length > 0 && normalized && domainWords.every((w) => normalized.includes(w))) return true;
+        return matchesSearchTitle(searchTitle, job.title);
+      }),
       matchedByOccupation: 0,
       taxonomyCovered: false,
     };
   }
 
+  // A title carrying every DOMAIN word the candidate searched is kept
+  // outright, whatever the taxonomy thinks of it (2026-09-09).
+  //
+  // This filter used to overrule that, and it was silently undoing the search.
+  // Measured on "Investment Analyst"/Toronto: the index query returned 206
+  // rows, de-duplication kept 183, and this pass cut them to 36 -- discarding
+  // 147 postings that literally contained "investment" because O*NET either
+  // files their exact title under some other occupation or has never heard of
+  // it. "Investment Banking Associate" and "Investment Policy Analyst" are
+  // exactly the titles it was throwing away, and exactly the ones asked for.
+  //
+  // The taxonomy verdict still does real work for titles that DON'T carry the
+  // searched words -- it is what keeps "Health and Safety Advisor" out of a
+  // Financial Advisor search. It just no longer gets to veto the literal match.
+  const domain = searchDomainWords(searchTitle);
+  const carriesDomainWords = (title: string | undefined): boolean => {
+    if (domain.length === 0) return false;
+    const normalized = normalizeTitle(title ?? "");
+    if (!normalized) return false;
+    return domain.every((w) => normalized.includes(w));
+  };
+
   let matchedByOccupation = 0;
   const kept = jobs.filter((job) => {
+    if (carriesDomainWords(job.title)) return true;
     const occupations = occupationsFor(lookupKeys(job.title ?? ""), table);
     if (!occupations) return matchesSearchTitle(searchTitle, job.title);
     for (const soc of occupations) {
@@ -200,8 +228,9 @@ export async function filterByOccupation<T extends { title?: string }>(
       }
     }
     // The taxonomy knows this title and says it is a DIFFERENT occupation.
-    // That is a real verdict, so it outranks word overlap -- this is what stops
-    // "Health and Safety Advisor" coming back for a Financial Advisor search.
+    // That is a real verdict for a title that shares none of the searched
+    // words -- this is what stops "Health and Safety Advisor" coming back for
+    // a Financial Advisor search.
     return false;
   });
 
@@ -389,4 +418,50 @@ export function searchContentWords(searchTitle: string): string[] {
   return normalizeTitle(searchTitle)
     .split(" ")
     .filter((w) => w.length > 2 && !LEVEL_WORDS.has(w));
+}
+
+
+// Role nouns: what someone DOES, shared across unrelated professions. An
+// "advisor" can advise on investments, finances, insurance or immigration, so
+// the word carries no subject matter of its own.
+//
+// This list is why "Investment Advisor" must not require "advisor": two live
+// reports together pin the rule down. Financial Advisor roles must NOT appear
+// (so the domain word "investment" is required), while Investment Banking
+// Associate and Investment Policy Analyst SHOULD (so "advisor" must not be).
+// The distinctive half of a job title is its DOMAIN, not its role noun.
+//
+// It is also what reconciles the Software Developer complaint: requiring only
+// "software" reaches Software Engineer roles, which are the same job and the
+// volume that was missing.
+//
+// "nurse", "pharmacist", "electrician" and the like are deliberately ABSENT --
+// they name a profession, not a generic function, so "Registered Nurse"
+// correctly keeps both of its words.
+const ROLE_NOUNS = new Set([
+  "advisor", "adviser", "manager", "analyst", "associate", "specialist",
+  "consultant", "representative", "coordinator", "director", "officer",
+  "engineer", "developer", "assistant", "agent", "planner", "counselor",
+  "counsellor", "administrator", "supervisor", "executive", "generalist",
+  "partner", "architect", "designer", "strategist", "expert", "professional",
+]);
+
+/**
+ * The words a matching title MUST contain -- the domain of the job, with
+ * generic role nouns dropped.
+ *
+ *   "Investment Advisor"  -> ["investment"]   (not "advisor")
+ *   "Software Developer"  -> ["software"]     (reaches Software Engineer)
+ *   "Registered Nurse"    -> ["registered", "nurse"]  (nurse is a profession)
+ *   "Pharmacist"          -> ["pharmacist"]
+ *
+ * Falls back to every content word when a title is nothing BUT role nouns
+ * ("Account Manager"), since dropping them all would match the whole index.
+ */
+export function searchDomainWords(searchTitle: string): string[] {
+  const content = normalizeTitle(searchTitle)
+    .split(" ")
+    .filter((w) => w.length > 2 && !LEVEL_WORDS.has(w));
+  const domain = content.filter((w) => !ROLE_NOUNS.has(w));
+  return domain.length > 0 ? domain : content;
 }
