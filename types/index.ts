@@ -170,6 +170,11 @@ export interface Job {
   // 2026-07-27 onward; JobResultCard falls back to a guessed-domain lookup
   // when this is null (external/manually-added jobs, or older ones).
   company_logo_url: string | null;
+  /** LinkedIn's own phrasing, e.g. "Be among the first 25 applicants" or "52
+   *  applicants". Text rather than a number: parsing it would lose the
+   *  distinction between "under 25" and "exactly 25", which is the part that
+   *  actually changes whether applying is worth it. */
+  applicant_count?: string | null;
   about_company: string | null;
   match_score: number | null;
   match_reason: string | null;

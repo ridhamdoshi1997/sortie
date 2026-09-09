@@ -66,8 +66,25 @@ function htmlToText(html: string): string {
     // doing it here fixes every source at once.
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
+    // HTML COMMENTS FIRST, before any tag stripping (2026-09-09).
+    //
+    // Workday and other Knockout.js boards use containerless bindings, which
+    // are comments carrying live JavaScript:
+    //   <!-- ko if: Locations().length > 1 && showAllLocations() == false,
+    //        text: $.t('Opportunity.Opportunities.MoreJobLocations') -->
+    //
+    // The generic tag strip below cannot handle those: it stops at the first
+    // ">" INSIDE the expression, so the tail of the script survives as body
+    // text. A real posting rendered as pages of
+    // "1 && showAllLocations() == false, text: $.t(..." with a stray "0 -->",
+    // and every downstream extraction then had nothing real to read -- which
+    // is why that job had an empty responsibilities list and no decoder.
+    .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    // Template markup leaves <li> elements with no content, which the list
+    // rule below would turn into a column of bare bullets.
+    .replace(/<li[^>]*>\s*<\/li>/gi, " ")
     .replace(/<br\s*\/?>/gi, "\n")
     // A real bullet, not just a newline: the formatter's own list detection
     // keys off bullet characters as well as bare line breaks.
@@ -82,6 +99,9 @@ function htmlToText(html: string): string {
     // Horizontal whitespace only — newlines are load-bearing here.
     .replace(/[ 	]+/g, " ")
     .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    // Bullets with nothing after them, left by emptied template elements.
+    .replace(/^[ 	]*•[ 	]*$/gm, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
 }

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
-import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, DollarSign, ExternalLink, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
+import { AlertTriangle, Ban, BriefcaseBusiness, Check, Clock, Users, DollarSign, ExternalLink, Eye, FileText, Flag, Heart, Repeat, ShieldAlert, TrendingUp } from "lucide-react";
 import { formatPostedAge } from "@/lib/jobFreshness";
 
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
@@ -266,10 +266,33 @@ export function JobResultCard({
                 <Clock className="h-3.5 w-3.5" />
                 Posted {freshness.label}
               </span>
-              {freshness.isFresh && (
-                <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11.5px] font-medium text-accent">
-                  Be an early applicant
+              {/* The real applicant count when LinkedIn gave us one, and only
+                  the time-based guess when it did not (2026-09-09).
+
+                  "Be an early applicant" inferred from elapsed time overstates
+                  a posting that drew 500 applicants in nine hours. LinkedIn's
+                  own phrasing is the honest version and is now stored, so it
+                  wins whenever present. Its wording already carries the
+                  meaning -- "Be among the first 25 applicants" reads as
+                  encouragement, "Over 100 applicants" as a warning -- so it is
+                  shown verbatim rather than reworded. */}
+              {job.applicant_count ? (
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium ${
+                    /first|be among|under|no applicants/i.test(job.applicant_count)
+                      ? "border-accent/30 bg-accent/10 text-accent"
+                      : "border-border bg-surface-secondary text-text-secondary"
+                  }`}
+                >
+                  <Users className="h-3.5 w-3.5" />
+                  {job.applicant_count}
                 </span>
+              ) : (
+                freshness.isFresh && (
+                  <span className="inline-flex items-center gap-1.5 rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[11.5px] font-medium text-accent">
+                    Be an early applicant
+                  </span>
+                )
               )}
             </div>
           )}

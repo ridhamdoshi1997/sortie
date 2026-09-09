@@ -145,6 +145,15 @@ type AdminDb = {
     // Promise, so it doesn't structurally implement catch/finally/
     // Symbol.toStringTag. PromiseLike only requires .then(), which it has.
     rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+    // Narrow, and deliberately so: the only direct table write this module
+    // makes is the applicant count, which cannot go through merge_job_source
+    // without adding a PostgREST overload. Kept to exactly the shape that one
+    // write needs rather than admitting the whole client surface.
+    from: (table: string) => {
+      update: (values: Record<string, unknown>) => {
+        eq: (column: string, value: string) => PromiseLike<{ error: { message: string } | null }>;
+      };
+    };
   };
 };
 
@@ -193,7 +202,29 @@ export async function canonicalizeJobSource(
   if (error) {
     return { status: "error", message: error.message, title: job.title ?? null };
   }
-  return { status: "merged", job: data as Job };
+
+  const merged = data as Job;
+
+  // Applicant count, written SEPARATELY rather than through merge_job_source
+  // (2026-09-09). Adding a parameter to that function would create a second
+  // PostgREST overload, which this project has been broken by more than once
+  // -- see migrations 20260903180000 and 20260907290000. A targeted update on
+  // a value that only LinkedIn supplies is not worth that risk.
+  //
+  // Only written when the source actually carried one, and never overwrites an
+  // existing value: a job merged from several sources should keep the count
+  // from whichever one knew it.
+  if (job.applicantCount && merged?.id && !merged.applicant_count) {
+    const { error: countError } = await admin.database
+      .from("jobs")
+      .update({ applicant_count: job.applicantCount })
+      .eq("id", merged.id);
+    // Cosmetic: a failure costs a badge, never the job.
+    if (countError) console.warn("[jobCanonicalization] applicant count write failed", countError.message);
+    else merged.applicant_count = job.applicantCount;
+  }
+
+  return { status: "merged", job: merged };
 }
 
 // Runs a batch of raw scrape hits through canonicalization and returns the
