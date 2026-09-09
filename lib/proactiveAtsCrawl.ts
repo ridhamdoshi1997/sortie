@@ -1,7 +1,8 @@
 import { fetchAtsJobs, fetchRegisteredAtsJobs, discoverAtsForRegistry, type AtsPlatform, type DiscoveredAts } from "@/lib/atsProviders";
 import { canonicalCompanyKey } from "@/lib/companyIdentity";
 import { resolveCompanyDomain } from "@/lib/companyDomain";
-import { expandTitleToOccupationTitles, normalizeTitle } from "@/lib/occupationMatch";
+import { expandTitleToOccupationTitles, normalizeTitle, searchDomainWords } from "@/lib/occupationMatch";
+import { resolveSearchCountry } from "@/lib/searchCountry";
 import { type NormalizedJob } from "@/lib/jobScraper";
 
 // Proactive ATS crawl (2026-09-01) — see
@@ -656,6 +657,18 @@ const MAX_CACHED_POSTINGS = 650_000;
 // merely sorted underneath. This only rescues genuinely unusual titles.
 const WORD_MATCH_FLOOR = 8;
 
+// Spelled-out country for a search location, for the anchored country-level
+// match in search_postings_by_titles. Returns null when unknown, which simply
+// disables that clause rather than guessing.
+const COUNTRY_NAMES: Record<string, string> = {
+  CA: "canada", US: "united states", UK: "united kingdom",
+  AU: "australia", IN: "india", DE: "germany", FR: "france",
+};
+
+function countryNameForLocation(location: string): string | null {
+  return COUNTRY_NAMES[resolveSearchCountry(location)] ?? null;
+}
+
 const INACTIVE_RETENTION_DAYS = 30;
 
 // Keeps the cache inside MAX_CACHED_POSTINGS, newest-seen first.
@@ -1082,10 +1095,21 @@ export async function queryProactiveCrawlCache(
       p_cities: metroCities ?? (primaryCity ? [primaryCity] : null),
       p_primary_city: primaryCity || null,
       p_exact_title: normalizeTitle(searchTitle),
-      // The raw title. The RPC turns it into an AND-ed tsquery answered from
-      // the existing title_tsv GIN index -- LIKE '%word%' could not use an
-      // index at all and measured 10-16s per search, over the 8s timeout.
-      p_search_text: searchTitle,
+      // The DOMAIN words, not the whole title -- role nouns are dropped, so
+      // "Investment Advisor" requires only "investment". Two reports pin this
+      // down together: Financial Advisor roles must not appear (the domain
+      // word is required) while Investment Banking Associate and Investment
+      // Policy Analyst should (the role noun must not be). It is also what
+      // lets "Software Developer" reach Software Engineer roles.
+      //
+      // Space-joined because the RPC feeds it to plainto_tsquery, which ANDs
+      // its terms and answers from the existing title_tsv GIN index.
+      p_search_text: searchDomainWords(searchTitle).join(" "),
+      // Country-only locations ("Canada", "Canada (Remote)") are open to
+      // someone in this city but matched no city or province name, so they
+      // were being dropped. Anchored in SQL so it cannot widen a Toronto
+      // search into a national one.
+      p_country: countryNameForLocation(searchLocation || ""),
     };
 
     const wordsOnly = await cacheDb.database.rpc("search_postings_by_titles", {
