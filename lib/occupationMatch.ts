@@ -307,3 +307,48 @@ export async function expandTitleToOccupationTitles(
 
   return titles.size > 0 ? [...titles] : null;
 }
+
+// Level markers, not professions. "senior financial advisor" and "financial
+// advisor" are the same job, so these must never count as words the posting
+// title has to contain.
+const LEVEL_WORDS = new Set([
+  "senior", "sr", "junior", "jr", "lead", "principal", "staff", "chief", "head",
+  "entry", "mid", "level", "i", "ii", "iii", "iv", "trainee", "intern",
+]);
+
+/**
+ * Narrows an occupation expansion to the titles that actually contain what the
+ * candidate typed.
+ *
+ * The expansion alone is too broad, and this is the reported failure
+ * (2026-09-09): "Investment Advisor" resolves to O*NET's "Personal Financial
+ * Advisors", whose 50 lay titles include only 9 mentioning investment. The
+ * search returned 82 postings of which 60 were off-topic, the largest group
+ * being 37 plain "financial advisor" roles -- while a competitor returned 58
+ * that were all investment-advisor roles.
+ *
+ * That is not a bug in the taxonomy. O*NET groups by labour-statistics function
+ * so employers and analysts can compare jobs; a candidate typing a title means
+ * something far narrower. Both readings are legitimate, so this keeps both and
+ * orders them, rather than replacing one with the other.
+ *
+ * Requires every CONTENT word, so "investment advisor" keeps "personal
+ * investment advisor" and drops "financial advisor". Level markers are ignored,
+ * so "senior financial advisor" still matches "financial advisor".
+ */
+export function narrowToSearchFocus(titles: string[], searchTitle: string): string[] {
+  const content = normalizeTitle(searchTitle)
+    .split(" ")
+    .filter((w) => w.length > 2 && !LEVEL_WORDS.has(w));
+  if (content.length === 0) return titles;
+
+  const focused = titles.filter((t) => {
+    const words = new Set(t.split(" "));
+    // Prefix-compare so "advisor"/"advisors" and "advisor"/"adviser" agree
+    // without a stemmer -- the same 5-character comparison the occupation
+    // scorer above already relies on.
+    return content.every((c) => [...words].some((w) => w.startsWith(c.slice(0, 5)) || c.startsWith(w.slice(0, 5))));
+  });
+
+  return focused.length > 0 ? focused : titles;
+}
