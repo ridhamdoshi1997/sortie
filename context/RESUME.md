@@ -92,6 +92,28 @@ Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do n
 
 **Minor cleanup noticed while verifying:** `lib/weather.ts`'s new `getLiveLocation()` (Phase 51) reads the same Vercel geo headers as `lib/geo.ts` but lacks its `DEV_COUNTRY_OVERRIDE`-style local escape hatch. Not a bug — different data, country vs lat/lon — but worth aligning so both can be QA'd locally the same way.
 
+### L. THREE ADMIN CONFIG TABLES ARE EMPTY — one root cause behind several "broken" features
+Found 2026-09-10 when the user asked why `/admin/ai-models` lists nothing. Verified by direct count:
+
+| table | rows | symptom |
+| --- | --- | --- |
+| `ai_model_config` | **0** | AI Models page lists no models; models cannot be changed without a redeploy |
+| `app_settings` | **0** | the site-wide AI kill switch has no persisted state |
+| `ai_cost_rates` | **0** | Expenses reports a structurally-zero AI spend (section A) |
+
+**This is a data-migration gap, not a code bug.** The schema came across the Supabase migration; the seeded configuration rows did not. All three are admin-only tables with RLS enabled and no client policies, so nothing user-facing reads them directly.
+
+**AI itself is fine and is NOT down.** `lib/models.ts` keeps a hardcoded fallback for exactly this case — its own comment says the fallback "must never be deleted, per the 'always keep a hardcoded fallback' gotcha `agy` research flagged for exactly this DB-config pattern." So every AI call is quietly running on code defaults. What is lost is **admin control and visibility**, not function — which is precisely why it went unnoticed.
+
+**Fix next session:** seed all three. `ai_model_config` from the defaults already in `lib/models.ts` (provider/tier/model_id), `app_settings` with a single row (`ai_enabled = true`), and `ai_cost_rates` as part of section A. Then re-check `/admin/ai-models` renders the list, the site-wide toggle persists, and the per-user override (`profiles.preferred_model`, column present, currently 0 users set) still applies.
+
+**Related, already handled:** Phase 51's `setCrawlPaused` writes to `app_settings` and already handles the zero-row case with an insert-if-missing, so the new crawl pause is not affected by this.
+
+### M. Regional pricing extended to 10 regions (DONE in Phase 51 — listed so it is not rebuilt)
+`COUNTRY_REGION_KEY` now covers Eurozone, UK, Canada, Australia/NZ (local currency, explicitly NOT discounts) plus India, South Asia, Southeast Asia, LATAM, Africa and Eastern Europe/Türkiye (PPP bands in USD). `defaultCurrencyForRegion()` added so the admin editor pre-fills EUR/GBP/CAD/AUD/INR rather than defaulting every new row to USD.
+
+All four plans still read `regional_prices: {}` — verified — so **no visitor's price changed**. The rows simply sit ready in the admin editor. Still outstanding, and still the owner's call: the actual price numbers, and a Stripe Price object per configured region (3 paid plans x 1 Price each). See section K for the visibility gap that must ship alongside them.
+
 ### J. Dashboard restructure (do this LAST — it consumes the data every section above produces)
 `/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
 
