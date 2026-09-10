@@ -176,7 +176,11 @@ export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsIte
         {item.title}
       </p>
       <p className="line-clamp-2 text-sm leading-6 text-text-secondary">{item.ai_summary}</p>
-      <p className="line-clamp-2 border-l-2 border-agent pl-3 text-[13px] leading-5 text-agent-dark">
+      {/* The full Agent Content recipe from context/ui-tokens.md (tinted
+          ground + agent border), scaled down for this denser card — not a
+          bare left rule. A 2px accent border with no tint behind it was an
+          ad-hoc half-version of that pattern and read as a generic side tab. */}
+      <p className="line-clamp-2 rounded-lg border-l-2 border-agent bg-agent-light px-3 py-2 text-[13px] leading-5 text-agent-dark">
         {item.ai_career_impact}
       </p>
       </div>
