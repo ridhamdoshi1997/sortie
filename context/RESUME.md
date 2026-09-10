@@ -64,6 +64,34 @@ Today it is create/edit markdown with a slug and draft/published, published at `
 5. **Auto table of contents** (S) — parse `##`/`###` into anchored jump links. Better long-form UX, and Google surfaces the anchors as sitelinks.
 6. **FAQ → JSON-LD** (S/M) — detect an FAQ section and emit `FAQPage` schema. **This pattern already exists in this codebase** on `app/interview-questions/[slug]/page.tsx`, so it is an extension of a proven approach, not a new one.
 
+### K. Regional pricing — the CODE IS DONE; what is missing is data and visibility
+Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do not rebuild any of this.
+
+**What already exists end to end (Phase 30):**
+- Detection: `lib/geo.ts`'s `getRequestCountry()` reads Vercel's `x-vercel-ip-country` at the edge — no extra API call, no added latency, and a `DEV_COUNTRY_OVERRIDE` escape hatch so it can be QA'd locally without deploying.
+- Region map: `lib/regionalPricing.ts`'s `COUNTRY_REGION_KEY`, a code constant (deliberately not admin-editable) — `IN → in`, and `PK/LK/BD → south_asia_usd`.
+- Storage: `subscription_plans.regional_prices` JSONB, per plan.
+- Display: `getPlansForPricing()` resolves the price; `CTASection.tsx` (`/` and `/pricing`) and `SubscriptionTab.tsx` render it.
+- Charge: `createCheckoutSessionAction()` **re-derives the region server-side at charge time**. The client only ever sends `tier`, so there is no client input to manipulate into claiming a cheaper region.
+- Safety: `resolveStripePriceId()` returns `null` for a *configured* region with a blank Stripe Price ID — blocking checkout rather than showing ₹749 and silently charging the base $15. That bait-and-switch was caught and fixed before it shipped; do not "helpfully" restore a fallback to the base price.
+- Webhook: `fulfill_stripe_subscription_event()` matches regional Price IDs too (and the nested key is **camelCase** `stripePriceId`, not snake_case — a real bug already fixed once).
+- Upgrade-vs-downgrade classification stays keyed on the BASE `priceCents`, never the regional one, so a discount cannot flip it.
+- Admin UI: `PlansManager.tsx` already contains `RegionalPricingEditor` — price / currency / Stripe Price ID per region.
+
+**What is actually missing — verified live, all four plans currently read `regional_prices: {}`:**
+1. The product owner has never set the real ₹/$ price points. Base prices today: recon $0, command $15, ace $29, vanguard $149.
+2. No live Stripe Price objects exist per region. Claude can create these via the Stripe API once given the numbers.
+
+**Add to the admin work (this is the only NEW build here):**
+- Surface regional-pricing status on Billing and/or System Health: which regions are configured, and — critically — **whether any configured region is missing its Stripe Price ID**. Today that state silently blocks checkout for everyone in that country with nothing anywhere reporting it. Right now the risk is dormant only because every region is blank; it becomes live the moment someone fills in a price before creating the Price object.
+- Optional: a "create Stripe Price" action from the admin editor, so setting up a region does not require a round trip through the Stripe dashboard.
+
+**Deferred / declined — do not relitigate:**
+- Razorpay and local rails (UPI/RuPay) are Phase 2 and need a separate Razorpay cross-border application, which is a business step and not code.
+- VPN/geo arbitrage was explicitly declined by the user ("skip for now"): a VPN exiting through India will always see the India price, and that is accepted as a normal cost of doing business.
+
+**Minor cleanup noticed while verifying:** `lib/weather.ts`'s new `getLiveLocation()` (Phase 51) reads the same Vercel geo headers as `lib/geo.ts` but lacks its `DEV_COUNTRY_OVERRIDE`-style local escape hatch. Not a bug — different data, country vs lat/lon — but worth aligning so both can be QA'd locally the same way.
+
 ### J. Dashboard restructure (do this LAST — it consumes the data every section above produces)
 `/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
 
