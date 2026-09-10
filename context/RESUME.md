@@ -58,13 +58,21 @@ Found when the user asked why `/admin/ai-models` lists nothing. A full row-count
 3. Seed `ai_cost_rates` as part of section 2, and resolve the `usage_daily` half above.
 4. **Verify, do not assume**: `/admin/ai-models` renders the list; the site-wide toggle persists across a reload; and the per-user override (`profiles.preferred_model` — column present, 0 users set, which is expected at 3 users rather than evidence of breakage) genuinely changes which model a real AI call uses. Set it on the test account, confirm, then clear it — same pattern used for the signup and recommended-jobs verification in Phase 51.
 
-### 2. Expenses — make it report a real number
-*(depends on L seeding ai_cost_rates)*
-Today `/admin/expenses` advertises "an estimated AI/API spend, joined against real usage" but `ai_cost_rates` has **zero rows** (verified), so that half is structurally always $0 and the page shows only manually-entered recurring costs. Real spend has grown a lot and none of it is tracked.
-- Seed `ai_cost_rates` with the models actually in use (Gemini fast/smart tiers, OpenRouter, Anthropic where used).
-- Add non-AI vendor cost lines: Serper (~$0.001/credit, 6/day on the daily news cron), SerpApi (free 250/mo x3 keys), Apify (measured $0.016 per LinkedIn+Indeed pair), Jina, Brevo (free 300/day), Supabase (free tier x2 projects), Vercel, Resend.
-- Distinguish **metered** (computed from real usage rows) from **fixed monthly** (manual) so the page can be honest about which half is measured and which is entered.
-- Fix the page copy so it cannot claim a computed number it is not computing.
+### 2. Expenses — ✅ DONE 2026-09-10
+
+`/admin/expenses` reports a real number now. Two independent causes, both fixed and both verified live.
+
+**Cause 1 — `ai_cost_rates` was empty.** Its original seed is in `20260819070000_admin-expenses-tables.sql` and never came across in the Supabase migration; same gap as section 1. Re-seeded in `migrations/20260910230000_meter-admin-usage-and-seed-rates.sql` against the **current** 29-action `UsageAction` union — three actions the 2026-08-19 seed named (`company_research`, `insider_connections`, `email_lookup`) no longer exist and re-inserting them would have created dead rows. **Every action gets a row, including the free ones at 0**, because a missing row and a genuine zero rendered identically as `$0`. Non-zero: `search` 1.6c (Apify LinkedIn+Indeed pair, measured), `strategic_moat` / `interviewer_research` 0.5c each (Perplexity worst case; free Jina Reader tried first, so it errs high).
+
+**Cause 2 — `usage_daily` was empty, and this was the one that mattered.** Fixed by separating **metering from enforcement**: an admin exemption exempts from the CAP, not the COUNT. New `record_usage_daily(p_action)` RPC increments with no limit check, called from the `isAdminUser` branch in `lib/usage.ts`. Deliberately a separate function rather than `increment_usage_daily` with a huge `p_limit`, so the metering path cannot be mistaken for enforcement. Metering failures are logged and swallowed — bookkeeping never blocks an admin. `increment_usage_daily` is untouched and still owns enforcement for everyone else.
+
+**New `lib/admin/vendorCosts.ts`** — the background spend no `UsageAction` ever covered (13 crons, the ATS crawl, daily news ingestion). Apify is a genuine live measurement via `/v2/users/me/usage/monthly`; every other vendor states its plan and says plainly that it is not measured rather than printing an unverified zero. Vendor metadata is a code constant, not a table — which vendor bills on what is engineering knowledge; the amounts an admin owns stay in `business_expenses`.
+
+**Verified live, end to end**: a real Navigator message as an admin account wrote a `usage_daily` row (structurally impossible before, $0 free-tier Gemini); one real search (~$0.016, disclosed) took the page from `$0.00` to **`$0.016` across 2 metered calls**, admin-share banner reading 2 of 2.
+
+**ACT ON THIS — Apify is at $3.75 of its $5.00 free credit (75%), cycle resets 2026-09-13.** Largest line is `PAID_ACTORS_PER_EVENT` at $3.25, i.e. the LinkedIn/Indeed search actors. **Only one Apify account is configured** — `APIFY_API_TOKEN_FALLBACK` is still outstanding from the user. If the credit runs out, LinkedIn and Indeed drop out of every search with no other symptom.
+
+**Still open, deliberately:** `business_expenses` has zero rows. Every vendor this project uses is genuinely on a free tier today, so there is nothing honest to enter — the table is empty because the costs are $0, not because nobody filled it in. Enter real amounts the moment anything moves to a paid plan.
 
 ### 3. AI Models — no usage, no cost, no fallback visibility
 *(depends on L seeding ai_model_config; shares the cost work with A)*

@@ -5,9 +5,15 @@ import { getUserSubscription, listPlans } from "@/lib/subscription";
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
 // Minimum-cost public launch policy (see progress-tracker.md "Phase 0").
-// Every action here triggers a real external cost — an AI call, a
-// Browserbase session, or a SerpApi search — so each gets a conservative
-// per-user daily cap on the free plan. Admins (lib/access.ts) are unmetered.
+// Every action here triggers a real external call, so each gets a
+// conservative per-user daily cap on the free plan. Most run on the
+// free-tier Gemini key and cost no marginal dollars; the three that do
+// (search via Apify, strategic_moat and interviewer_research via their
+// Perplexity fallback) carry a real rate in ai_cost_rates.
+//
+// Admins (lib/access.ts) are UNCAPPED but still METERED — see the
+// isAdminUser branch in checkAndConsumeUsage for why that distinction
+// matters and what it fixed.
 export type UsageAction =
   | "search"
   | "document_generation"
@@ -294,7 +300,28 @@ export async function checkAndConsumeUsage(
     return { allowed: false, error: "This account has been suspended. Contact support if you believe this is a mistake." };
   }
 
+  // Admins are exempt from the CAP, not from the COUNT (changed 2026-09-10,
+  // Phase 52 section 2). The old version returned here before writing
+  // anything, which is why usage_daily sat at 0 rows while agent_runs held
+  // 56 real runs — every active account on this project is an ADMIN_EMAILS
+  // account, so nothing was ever metered and /admin/expenses could only
+  // ever report $0. The dollars are identical whoever clicks: an Apify
+  // actor run, a Perplexity fallback and a SerpApi search all bill the same
+  // whether an owner or a customer triggered them, so usage that isn't
+  // recorded is spend that can't be reported.
+  //
+  // record_usage_daily (migration 20260910230000) increments without any
+  // limit check — deliberately a separate function from
+  // increment_usage_daily rather than the same one called with a huge
+  // p_limit, so a reader can't mistake this path for enforcement.
+  //
+  // A metering failure must never block an admin: this is bookkeeping, not
+  // a gate. Logged and swallowed.
   if (isAdminUser(email)) {
+    const { error: meterError } = await insforge.database.rpc("record_usage_daily", { p_action: action });
+    if (meterError) {
+      console.error("[lib/usage] record_usage_daily failed (admin metering, non-blocking):", meterError);
+    }
     return { allowed: true };
   }
 
