@@ -184,12 +184,18 @@ Return ONLY valid JSON, no markdown fences.`,
 // Serper returns `link` (https://www.latimes.com/business/story/…) and
 // `imageUrl` directly, both confirmed against live results.
 //
-// Cost is real but small: 1 credit per category per run, 2 categories on a
-// 6-hourly cron = 8 credits/day. Serper bills roughly $0.001/credit, so about
-// $0.25 a month. It is NOT free, which is why the RSS path below is kept as a
-// working fallback rather than deleted — if the key is missing, out of
-// credits, or erroring, ingestion silently continues on the free source and
-// simply has no images for those rows.
+// Cost is real but small: 1 credit per category per run, 6 categories on a
+// daily cron = 6 credits/day against Serper free tier'''s 2,500 one-time
+// credits, so well over a year before it matters. It is NOT free, which is
+// why SerpApi sits above it and the RSS path below is kept as a working
+// fallback — if the key is missing, out of credits, or erroring, ingestion
+// silently continues and simply has no images for those rows.
+//
+// NOTE for anyone reading a balance off the response headers: x-ratelimit-
+// limit/remaining is a 25-req/SECOND rate limit that resets continuously, NOT
+// the account credit balance. Misreading it as a balance produced a false
+// "about to run out" panic on 2026-09-10. The real balance is only on
+// Serper'''s dashboard.
 const CATEGORY_SERPER_QUERIES: Record<NewsCategory, string> = {
   hiring_layoffs: '"layoffs" OR "hiring surge" OR "plant closing"',
   ai_future_of_work: '"artificial intelligence" AND ("workforce" OR "jobs")',
@@ -198,6 +204,113 @@ const CATEGORY_SERPER_QUERIES: Record<NewsCategory, string> = {
   burnout_wellbeing: '"worker burnout" OR "workplace mental health" OR "staffing shortage" OR "employee wellbeing"',
   gig_freelance: '"gig economy" OR "freelance" OR "independent contractor" OR "side hustle"',
 };
+
+// SerpApi's Google News engine — tried BEFORE Serper (2026-09-10, direct
+// user ask: "can't we use SerpApi?"). It is the better fit here for reasons
+// checked live rather than assumed:
+//   * Three keys are already configured, and NOTHING else in this codebase
+//     consumes them any more — the SerpApi job providers went dormant on
+//     2026-09-04 and no live code path reads SERPAPI_KEY. So the whole
+//     allowance is available for news.
+//   * Free plan is 250 searches/month per key = 750 across the three,
+//     against a news need of 6/day (~180/month). Comfortable.
+//   * It is already paid for in the sense that it costs nothing extra,
+//     where Serper is a real per-credit spend.
+//
+// Confirmed live 2026-09-10: all three keys read 250/250 used, 0 left, and
+// the account's own `plan_renewal_date` is 2026-09-16. So this path returns
+// nothing until that date and ingestion simply falls through to Serper and
+// then to RSS in the meantime — which is exactly why the chain below is
+// ordered rather than swapped.
+//
+// NOT yet verified against a live SerpApi news response, because there is no
+// quota to spend on one until the 16th. The parsing below follows SerpApi's
+// documented google_news shape (news_results[].{title,link,source,thumbnail}
+// plus the `stories` grouping it uses for clustered coverage); re-check it
+// against a real response the first time this actually runs.
+type SerpApiNewsResult = {
+  title?: string;
+  link?: string;
+  thumbnail?: string;
+  date?: string;
+  source?: { name?: string; icon?: string } | string;
+  stories?: SerpApiNewsResult[];
+};
+
+function serpApiKeys(): string[] {
+  return [process.env.SERPAPI_KEY, process.env.SERPAPI_KEY_FALLBACK, process.env.SERPAPI_KEY_FALLBACK_2]
+    .map((k) => k?.trim())
+    .filter((k): k is string => Boolean(k))
+    .filter((k, i, all) => all.indexOf(k) === i);
+}
+
+function serpApiSourceName(source: SerpApiNewsResult["source"]): string | null {
+  if (!source) return null;
+  return typeof source === "string" ? source : (source.name ?? null);
+}
+
+function flattenSerpApiResults(results: SerpApiNewsResult[]): SerpApiNewsResult[] {
+  // google_news returns clustered coverage as a `stories` array on a parent
+  // entry that itself has no link. Flattening keeps those real articles
+  // instead of dropping a whole cluster.
+  return results.flatMap((r) => (Array.isArray(r.stories) && r.stories.length > 0 ? r.stories : [r]));
+}
+
+async function fetchViaSerpApi(category: NewsCategory): Promise<RssItem[] | null> {
+  const keys = serpApiKeys();
+  if (keys.length === 0) return null;
+
+  for (let i = 0; i < keys.length; i++) {
+    try {
+      const params = new URLSearchParams({
+        engine: "google_news",
+        q: CATEGORY_SERPER_QUERIES[category],
+        api_key: keys[i],
+      });
+      const res = await fetch(`https://serpapi.com/search.json?${params.toString()}`, {
+        signal: AbortSignal.timeout(20_000),
+      });
+      const json = (await res.json()) as { news_results?: SerpApiNewsResult[]; error?: string };
+
+      // "Your account has run out of searches" is the documented exhaustion
+      // message and is the ONLY thing worth spending the next key on — a
+      // malformed query would fail identically on all three.
+      if (json.error) {
+        if (/run out of searches|out of searches|monthly limit/i.test(json.error)) {
+          console.warn(`[newsIngestion] SerpApi key #${i + 1} exhausted for ${category} — trying the next key`);
+          continue;
+        }
+        console.warn(`[newsIngestion] SerpApi error for ${category}: ${json.error}`);
+        return null;
+      }
+
+      const items = flattenSerpApiResults(json.news_results ?? [])
+        .filter((n): n is SerpApiNewsResult & { title: string; link: string } => Boolean(n.title && n.link))
+        .map((n) => ({
+          title: n.title,
+          link: n.link,
+          // SerpApi reports relative ages the same way Serper does; left null
+          // rather than converted, for the same reason.
+          pubDate: null,
+          sourceName: serpApiSourceName(n.source),
+          sourceDomain: hostFromUrl(n.link),
+          imageUrl: n.thumbnail ?? null,
+        }));
+
+      if (items.length > 0) {
+        if (i > 0) console.warn(`[newsIngestion] ${category} served by SerpApi fallback key #${i + 1}`);
+        return items;
+      }
+      return null;
+    } catch (error) {
+      console.warn(`[newsIngestion] SerpApi request failed for ${category}`, error);
+      return null;
+    }
+  }
+
+  console.warn(`[newsIngestion] every SerpApi key is out of searches — falling back to Serper/RSS`);
+  return null;
+}
 
 type SerperNewsItem = { title?: string; link?: string; source?: string; imageUrl?: string; date?: string };
 
@@ -286,8 +399,15 @@ async function fetchViaSerper(category: NewsCategory): Promise<RssItem[] | null>
 export async function ingestNewsForCategory(category: NewsCategory): Promise<{ inserted: number; skipped: number }> {
   const client = createAdminDbClient();
 
-  // Paid-but-cheap source first (real links + real images), free RSS second.
-  let items = await fetchViaSerper(category);
+  // Source chain, cheapest-that-works first:
+  //   1. SerpApi   — free 250/mo x3 keys, already owned, nothing else uses it
+  //   2. Serper    — real per-credit spend, kept as the bridge until SerpApi's
+  //                  2026-09-16 renewal and as cover if SerpApi errors
+  //   3. Google RSS— free and always available, but carries NO article image
+  // Each step returns null (not throws) when it can't serve, so a dead key or
+  // an exhausted plan degrades quietly instead of breaking ingestion.
+  let items = await fetchViaSerpApi(category);
+  if (!items) items = await fetchViaSerper(category);
 
   if (!items) {
     const response = await fetch(CATEGORY_FEEDS[category], {
