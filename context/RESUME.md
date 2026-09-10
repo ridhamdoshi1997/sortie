@@ -92,22 +92,33 @@ Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do n
 
 **Minor cleanup noticed while verifying:** `lib/weather.ts`'s new `getLiveLocation()` (Phase 51) reads the same Vercel geo headers as `lib/geo.ts` but lacks its `DEV_COUNTRY_OVERRIDE`-style local escape hatch. Not a bug — different data, country vs lat/lon — but worth aligning so both can be QA'd locally the same way.
 
-### L. THREE ADMIN CONFIG TABLES ARE EMPTY — one root cause behind several "broken" features
-Found 2026-09-10 when the user asked why `/admin/ai-models` lists nothing. Verified by direct count:
+### L. EMPTY ADMIN CONFIG TABLES — full sweep, 2026-09-10
+Found when the user asked why `/admin/ai-models` lists nothing. A full row-count sweep of all 54 public tables followed (`pg_stat_user_tables`, live). **38 of 54 are empty, but most of those are legitimately empty** — this app has 3 real users and has not launched, so `applications`, `star_stories`, `notifications`, `support_tickets`, `push_subscriptions` and so on having no rows is expected, not a defect. Do not "fix" those.
+
+**CONFIRMED GAPS — config tables that must have seed rows and do not:**
 
 | table | rows | symptom |
 | --- | --- | --- |
-| `ai_model_config` | **0** | AI Models page lists no models; models cannot be changed without a redeploy |
+| `ai_model_config` | **0** | `/admin/ai-models` lists nothing; models cannot be changed without a redeploy |
 | `app_settings` | **0** | the site-wide AI kill switch has no persisted state |
 | `ai_cost_rates` | **0** | Expenses reports a structurally-zero AI spend (section A) |
 
-**This is a data-migration gap, not a code bug.** The schema came across the Supabase migration; the seeded configuration rows did not. All three are admin-only tables with RLS enabled and no client policies, so nothing user-facing reads them directly.
+**Root cause: a data-migration gap, not a code bug.** The Supabase migration carried the schema across and not the seeded configuration. All three are admin-only tables (RLS enabled, no client policies), which is part of why it went unnoticed — nothing user-facing reads them.
 
-**AI itself is fine and is NOT down.** `lib/models.ts` keeps a hardcoded fallback for exactly this case — its own comment says the fallback "must never be deleted, per the 'always keep a hardcoded fallback' gotcha `agy` research flagged for exactly this DB-config pattern." So every AI call is quietly running on code defaults. What is lost is **admin control and visibility**, not function — which is precisely why it went unnoticed.
+**AI is NOT down, and that is exactly why nobody noticed.** `lib/models.ts` keeps a hardcoded fallback for this precise case; its own comment says the fallback "must never be deleted, per the 'always keep a hardcoded fallback' gotcha `agy` research flagged for exactly this DB-config pattern." Every AI call is quietly running on code defaults. What was lost is **admin control and visibility**, not function.
 
-**Fix next session:** seed all three. `ai_model_config` from the defaults already in `lib/models.ts` (provider/tier/model_id), `app_settings` with a single row (`ai_enabled = true`), and `ai_cost_rates` as part of section A. Then re-check `/admin/ai-models` renders the list, the site-wide toggle persists, and the per-user override (`profiles.preferred_model`, column present, currently 0 users set) still applies.
+**A SECOND, INDEPENDENT CAUSE behind the Expenses $0 — seeding `ai_cost_rates` alone will NOT fix it.** `usage_daily` is also empty (0 rows) despite 56 real `agent_runs`. That is not a bug either: `lib/usage.ts` returns early on the ADMIN_EMAILS exemption **before** reaching its `increment_usage_daily` RPC, so an allowlisted admin never writes a usage row. Since the only active accounts today are admin accounts, there is genuinely nothing to join against. So Expenses needs BOTH: rates seeded AND either a non-admin user generating real usage, or the estimate explicitly labelled as covering non-admin usage only. Decide which before calling section A done — otherwise it will still read $0 and look unfixed.
 
-**Related, already handled:** Phase 51's `setCrawlPaused` writes to `app_settings` and already handles the zero-row case with an insert-if-missing, so the new crawl pause is not affected by this.
+**NEEDS A DECISION, not obviously a bug:**
+- `outreach_signal_settings` (0) — the Marketing outreach provider setting. Confirm whether the code expects a seeded row or treats "no row" as a valid default before seeding it.
+- `resumes` (0) — **worth an explicit answer**: the résumé workspace is a major shipped feature (Phase 7/8), and there are zero résumés. Either they were never re-created after the Supabase migration, or real rows were lost in it. InsForge cannot be checked to compare (its API returns 503, it is paused). Not claimed as data loss — but it should be answered rather than assumed.
+- `api_usage_metrics` (0) — same question as `usage_daily`: is anything actually writing to it?
+
+**Fix next session:**
+1. Seed `ai_model_config` from the defaults already in `lib/models.ts` (provider / tier / model_id).
+2. Seed `app_settings` with its single row (`ai_enabled = true`). NOTE: Phase 51's `setCrawlPaused` already handles the zero-row case with insert-if-missing, so the new crawl pause is unaffected either way.
+3. Seed `ai_cost_rates` as part of section A, and resolve the `usage_daily` half above.
+4. **Verify, do not assume**: `/admin/ai-models` renders the list; the site-wide toggle persists across a reload; and the per-user override (`profiles.preferred_model` — column present, 0 users set, which is expected at 3 users rather than evidence of breakage) genuinely changes which model a real AI call uses. Set it on the test account, confirm, then clear it — same pattern used for the signup and recommended-jobs verification in Phase 51.
 
 ### M. Regional pricing extended to 10 regions (DONE in Phase 51 — listed so it is not rebuilt)
 `COUNTRY_REGION_KEY` now covers Eurozone, UK, Canada, Australia/NZ (local currency, explicitly NOT discounts) plus India, South Asia, Southeast Asia, LATAM, Africa and Eastern Europe/Türkiye (PPP bands in USD). `defaultCurrencyForRegion()` added so the admin editor pre-fills EUR/GBP/CAD/AUD/INR rather than defaulting every new row to USD.
