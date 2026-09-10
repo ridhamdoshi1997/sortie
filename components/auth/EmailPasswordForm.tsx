@@ -163,7 +163,7 @@ export function EmailPasswordForm({ initialMode = "signin" }: { initialMode?: "s
         <input
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="6-digit code"
+          placeholder="8-digit code"
           inputMode="numeric"
           className={inputClass}
           required
