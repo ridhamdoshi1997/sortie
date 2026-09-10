@@ -16,7 +16,20 @@ Scope agreed with the user at the end of Phase 51, after a full reassessment of 
 - Affiliates, Marketing and Content **stay as-is** (direct user decision). They look premature for a 3-user pre-launch product, but they are built, working, and wanted at launch. The only change is an honest "PayPal not configured" notice on the Affiliates payout button, since `PAYPAL_CLIENT_ID` is empty and the button will fail silently today.
 - Doppler tokens **never** go into the deployed app env. Doppler stays CLI-only. Account-wide management tokens in a public web app is a blast-radius increase the user and I explicitly weighed.
 
-### 1. EMPTY ADMIN CONFIG TABLES — full sweep, 2026-09-10
+### 1. EMPTY ADMIN CONFIG TABLES — ✅ DONE 2026-09-10 (ai_cost_rates deliberately deferred to section 2)
+
+**Seeded and verified live.** `migrations/20260910210000_seed-admin-config-tables.sql`, applied.
+- `ai_model_config` — 6 rows, byte-identical to `lib/models.ts`'s `MODEL_IDS`, so seeding changed no behaviour at all; it only made the already-running config visible and editable.
+- `app_settings` — the singleton row (id 1, `ai_enabled=true`, `crawl_paused=false`), matching live state.
+- `ai_cost_rates` — **deliberately NOT seeded.** It is keyed by UsageAction (30 of them) and holds hand-maintained cents-per-call estimates; inventing 30 plausible numbers would make Expenses show a confident, precise, wrong figure — strictly worse than the honest zero. Belongs in section 2 with the real cost modelling.
+
+**Verified by proof, not inspection** (the values are identical to the fallback, so "it renders" would have proven nothing):
+- Temporarily set `ai_model_config.gemini/fast` to a sentinel, re-read through `getModel()`, got the sentinel back, restored. **Confirms getModel reads the TABLE, not the hardcoded fallback** — admin control is genuinely live.
+- Per-user override: set `profiles.preferred_model` to `anthropic` then `openai` on the test account and confirmed `resolveModelForUser()` returned each in turn, then restored to null. **Confirms the override actually changes the resolved provider.**
+
+Original findings kept below for context.
+
+### 1b. Original sweep findings — full sweep, 2026-09-10
 *(do first — it is quick and unblocks the two sections below)*
 Found when the user asked why `/admin/ai-models` lists nothing. A full row-count sweep of all 54 public tables followed (`pg_stat_user_tables`, live). **38 of 54 are empty, but most of those are legitimately empty** — this app has 3 real users and has not launched, so `applications`, `star_stories`, `notifications`, `support_tickets`, `push_subscriptions` and so on having no rows is expected, not a defect. Do not "fix" those.
 
