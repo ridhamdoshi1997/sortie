@@ -9,29 +9,89 @@ export type RegionKey = string;
 // PlansManager.tsx; which countries fall in which band changes rarely and
 // should go through a PR, not a live-editable dropdown.
 //
-// Seed list only (direct user request, 2026-08-28, emphasis on the Indian
-// subcontinent given population/price-sensitivity) — India gets its own
-// region since it's the single biggest market; Pakistan/Sri Lanka/
-// Bangladesh share one band for now since a real Stripe Price hasn't been
-// created for each individually yet. Extend this map as more regions are
-// prioritized; every unmapped country falls through to the base US price,
-// nothing breaks by omission.
+// Originally a seed list covering only the Indian subcontinent (2026-08-28).
+// Extended to global coverage 2026-09-10 (direct user request). Two kinds of
+// region live in this map, and conflating them is the mistake to avoid:
+//
+//   1. LOCAL-CURRENCY regions (eu/uk/ca/anz) — Europe, the UK, Canada and
+//      Australia/NZ are equal-or-higher purchasing power than the US. These
+//      exist purely so a visitor sees €14 rather than $15, which converts
+//      better. They are NOT discounts, and pricing them below the US number
+//      would be giving away revenue in the highest-value markets. Confirmed
+//      with the user before writing this.
+//   2. PPP BANDS (everything ending _usd) — genuinely price-sensitive
+//      markets grouped into shared bands, charged in USD so each band needs
+//      one Stripe Price per plan rather than one per country. Same reasoning
+//      that put Pakistan/Sri Lanka/Bangladesh in a single band originally.
+//
+// ADDING A REGION HERE COSTS NOTHING. An unconfigured region (blank price in
+// the admin editor) falls through to the base USD price exactly as an
+// unmapped country does — so these rows simply sit ready in
+// PlansManager.tsx's RegionalPricingEditor until someone sets real numbers.
+// The cost is per CONFIGURED region: 3 paid plans x 1 Stripe Price each.
+//
+// Still deliberately a code constant, not admin-editable: WHICH countries
+// fall in which band changes rarely and should go through a PR. The PRICE
+// per band is fully admin-controlled, which is the part that actually moves.
 export const COUNTRY_REGION_KEY: Record<string, RegionKey> = {
+  // --- Local currency, same value (not discounts) ---
+  // Eurozone
+  AT: "eu", BE: "eu", HR: "eu", CY: "eu", EE: "eu", FI: "eu", FR: "eu",
+  DE: "eu", GR: "eu", IE: "eu", IT: "eu", LV: "eu", LT: "eu", LU: "eu",
+  MT: "eu", NL: "eu", PT: "eu", SK: "eu", SI: "eu", ES: "eu",
+  GB: "uk",
+  CA: "ca",
+  AU: "anz", NZ: "anz",
+
+  // --- PPP bands (USD) ---
   IN: "in",
-  PK: "south_asia_usd",
-  LK: "south_asia_usd",
-  BD: "south_asia_usd",
+  PK: "south_asia_usd", LK: "south_asia_usd", BD: "south_asia_usd", NP: "south_asia_usd",
+  ID: "sea_usd", PH: "sea_usd", VN: "sea_usd", TH: "sea_usd", MY: "sea_usd",
+  BR: "latam_usd", MX: "latam_usd", AR: "latam_usd", CO: "latam_usd",
+  CL: "latam_usd", PE: "latam_usd",
+  NG: "africa_usd", KE: "africa_usd", ZA: "africa_usd", GH: "africa_usd", EG: "africa_usd",
+  UA: "eastern_europe_usd", RO: "eastern_europe_usd", BG: "eastern_europe_usd",
+  RS: "eastern_europe_usd", PL: "eastern_europe_usd", TR: "eastern_europe_usd",
 };
 
 // Human-readable label per region key, for the admin editor
 // (PlansManager.tsx's RegionalPricingEditor) — derived by hand from
 // COUNTRY_REGION_KEY's grouping rather than programmatically, since a
-// shared region key (e.g. south_asia_usd covering 3 countries) needs one
-// combined label, not a mechanical join of country codes.
+// shared region key (e.g. south_asia_usd covering several countries) needs
+// one combined label, not a mechanical join of country codes.
+//
+// This object's key order is also the ROW ORDER in the admin editor
+// (REGION_KEYS = Object.keys(REGION_LABELS)), so local-currency regions are
+// listed first and the discount bands after — matching how they should be
+// reasoned about, not alphabetically.
 export const REGION_LABELS: Record<RegionKey, string> = {
+  eu: "Eurozone (EUR) — local currency, not a discount",
+  uk: "United Kingdom (GBP) — local currency, not a discount",
+  ca: "Canada (CAD) — local currency, not a discount",
+  anz: "Australia / New Zealand (AUD) — local currency, not a discount",
   in: "India (INR)",
-  south_asia_usd: "Pakistan / Sri Lanka / Bangladesh (USD)",
+  south_asia_usd: "Pakistan / Sri Lanka / Bangladesh / Nepal (USD)",
+  sea_usd: "Southeast Asia — ID / PH / VN / TH / MY (USD)",
+  latam_usd: "Latin America — BR / MX / AR / CO / CL / PE (USD)",
+  africa_usd: "Africa — NG / KE / ZA / GH / EG (USD)",
+  eastern_europe_usd: "Eastern Europe / Türkiye — UA / RO / BG / RS / PL / TR (USD)",
 };
+
+// The currency a region is charged in, used to pre-fill the admin editor so
+// a Eurozone row does not silently default to USD. Lives here beside the
+// region map rather than in the component, so adding a region is still a
+// one-file change.
+export const REGION_DEFAULT_CURRENCY: Record<RegionKey, string> = {
+  eu: "eur",
+  uk: "gbp",
+  ca: "cad",
+  anz: "aud",
+  in: "inr",
+};
+
+export function defaultCurrencyForRegion(region: RegionKey): string {
+  return REGION_DEFAULT_CURRENCY[region] ?? "usd";
+}
 
 export function regionKeyForCountry(countryCode: string | null): RegionKey | null {
   if (!countryCode) return null;

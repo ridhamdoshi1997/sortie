@@ -6,7 +6,7 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { createPlan, deletePlan, updatePlan, type PlanInput } from "@/actions/admin";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { ACTION_LABELS, DAILY_LIMITS, type UsageAction } from "@/lib/usage";
-import { REGION_LABELS, type RegionKey } from "@/lib/regionalPricing";
+import { REGION_LABELS, type RegionKey, defaultCurrencyForRegion } from "@/lib/regionalPricing";
 import type { PlanConfig } from "@/lib/subscription";
 
 // Country/region-aware pricing (direct user request, 2026-08-28) — the
@@ -70,7 +70,7 @@ function toDraft(plan: PlanConfig): DraftPlan {
           region,
           {
             priceInput: override ? (override.priceCents / 100).toFixed(2) : "",
-            currency: override?.currency ?? (region === "in" ? "inr" : "usd"),
+            currency: override?.currency ?? defaultCurrencyForRegion(region),
             stripePriceIdInput: override?.stripePriceId ?? "",
           },
         ];
@@ -142,7 +142,7 @@ const EMPTY_DRAFT: DraftPlan = {
   jobEvaluationsDailyLimitInput: "3",
   dailyActionLimitsInput: Object.fromEntries(ACTION_KEYS.map((action) => [action, ""])),
   regionalPricesInput: Object.fromEntries(
-    REGION_KEYS.map((region) => [region, { priceInput: "", currency: region === "in" ? "inr" : "usd", stripePriceIdInput: "" }]),
+    REGION_KEYS.map((region) => [region, { priceInput: "", currency: defaultCurrencyForRegion(region), stripePriceIdInput: "" }]),
   ) as DraftPlan["regionalPricesInput"],
   llmUnlocked: false,
   featureBulletsText: "",
