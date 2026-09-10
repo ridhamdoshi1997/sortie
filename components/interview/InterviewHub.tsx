@@ -44,7 +44,7 @@ export function InterviewHub({ data, isSignedIn }: { data: InterviewHubData; isS
 
   function openContribute(company?: string): void {
     if (!isSignedIn) {
-      window.location.href = `/login?mode=signup&next=/interview-questions`;
+      window.location.href = "/login?mode=signup&next=/interview-questions";
       return;
     }
     setModalCompany(company ?? null);
@@ -53,29 +53,29 @@ export function InterviewHub({ data, isSignedIn }: { data: InterviewHubData; isS
 
   return (
     <div className="flex flex-col gap-8">
-      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
-        <div className="flex flex-col gap-4">
-          <p className="inline-flex w-fit items-center gap-1.5 rounded-full bg-agent-light px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-            <MessageSquarePlus className="h-3.5 w-3.5" />
-            Interview Prep
-          </p>
-          <h1 className="font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
-            Real interview questions, by company
-          </h1>
-          <p className="max-w-2xl text-lg leading-8 text-text-secondary">
-            Every question below is either generated for a real candidate&apos;s own role, or submitted by
-            someone who was actually asked it. Nothing here is invented, and none of it is gated.
-          </p>
+        <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex flex-col gap-4">
+            <p className="inline-flex w-fit items-center gap-1.5 rounded-full bg-agent-light px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
+              <MessageSquarePlus className="h-3.5 w-3.5" />
+              Interview Prep
+            </p>
+            <h1 className="font-display text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
+              Real interview questions, by company
+            </h1>
+            <p className="max-w-2xl text-lg leading-8 text-text-secondary">
+              Every question below is either generated for a real candidate&apos;s own role, or submitted by
+              someone who was actually asked it. Nothing here is invented, and none of it is gated.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => openContribute()}
+            className="btn-signal inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium text-accent-foreground"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            Contribute a question
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => openContribute()}
-          className="btn-signal inline-flex h-11 shrink-0 items-center justify-center gap-2 rounded-lg px-5 text-sm font-medium text-accent-foreground"
-        >
-          <MessageSquarePlus className="h-4 w-4" />
-          Contribute a question
-        </button>
-      </div>
 
       <div className="grid grid-cols-3 gap-3 sm:max-w-xl">
         {[

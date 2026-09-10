@@ -1,14 +1,20 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { createPortal } from "react-dom";
 import { BookOpen, Check, Code2, Copy, Loader2, Search, X } from "lucide-react";
 
 import { getOrGenerateQuestionBank, getQuestionDetails, getPracticeKit } from "@/actions/interviewQuestions";
+import { listContributedQuestionsByCompanyKey, type ContributedQuestion } from "@/actions/interviewContributions";
 import { PracticeSandbox } from "@/components/interview/PracticeSandbox";
+import { ContributeQuestionModal } from "@/components/interview/ContributeQuestionModal";
+import { ANY_ROLE } from "@/lib/interviewQuestions";
 import type { InterviewQuestion, PracticeKit, QuestionBank, QuestionCategory, QuestionDetails } from "@/lib/interviewQuestions";
 import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
+import { toCompanyKey } from "@/lib/atsRegistry";
+import { MessageSquarePlus, MessageSquare } from "lucide-react";
+import type { InterviewHubData } from "@/lib/interviewHub";
 
 export type QuickStartJob = { company: string; title: string; logoUrl: string | null };
 
@@ -37,6 +43,7 @@ export function QuestionBankPanel({
   initialSeniority = "",
   locked = false,
   quickStartJobs = [],
+  hubData,
 }: {
   initialCompany?: string;
   initialTitle?: string;
@@ -47,6 +54,9 @@ export function QuestionBankPanel({
    * research (2026-08-26) on how real interview-prep products expose
    * company-directory browsing. Real data only, never fabricated stats. */
   quickStartJobs?: QuickStartJob[];
+  /** Real company grid + stat counts for the browse view (lib/interviewHub.ts).
+   * Omitted on the job-detail embed (locked=true), which has no browse view. */
+  hubData?: InterviewHubData;
 }) {
   const [company, setCompany] = useState(initialCompany);
   const [title, setTitle] = useState(initialTitle);
@@ -59,6 +69,75 @@ export function QuestionBankPanel({
   const [showManualSearch, setShowManualSearch] = useState(locked || quickStartJobs.length === 0);
   const [loading, startTransition] = useTransition();
 
+  // Real, human-submitted questions for the currently-loaded bank's company
+  // (actions/interviewContributions.ts) — the "contribute on top of what we
+  // already have" addition, 2026-09-10. Kept separate from `bank.questions`
+  // rather than merged into one list: those are AI-predicted, these are a
+  // real candidate reporting a question they were actually asked, and
+  // mixing the two would blur exactly the distinction ui-tokens.md's
+  // Invariants section treats as a hard line (agent-teal is reserved
+  // exclusively for AI-generated content).
+  const [contributed, setContributed] = useState<ContributedQuestion[]>([]);
+  const [showContributeModal, setShowContributeModal] = useState(false);
+  const [browseQuery, setBrowseQuery] = useState("");
+
+  // The browse grid's real content, in one list: the user's OWN tracked
+  // companies first (the most common real case — practising for something
+  // they're actually pursuing), then the wider company grid from
+  // lib/interviewHub.ts. A company the user tracks is never duplicated into
+  // the lower sections. Clicking any card runs this panel's own AI lookup —
+  // no navigation away, same behaviour the quick-start grid always had.
+  const browseSections = useMemo(() => {
+    const q = browseQuery.trim().toLowerCase();
+    const tracked = new Set(quickStartJobs.map((j) => j.company.toLowerCase()));
+
+    const sections: {
+      name: string;
+      companies: {
+        company: string;
+        title: string;
+        logoUrl: string | null;
+        applyUrl: string | null;
+        activePostings: number;
+        totalQuestions: number;
+      }[];
+    }[] = [];
+
+    if (quickStartJobs.length > 0) {
+      sections.push({
+        name: "Companies you're tracking",
+        companies: quickStartJobs.map((j) => ({
+          company: j.company,
+          title: j.title,
+          logoUrl: j.logoUrl,
+          applyUrl: null,
+          activePostings: 0,
+          totalQuestions: 0,
+        })),
+      });
+    }
+
+    for (const section of hubData?.sections ?? []) {
+      sections.push({
+        name: section.name,
+        companies: section.companies
+          .filter((c) => !tracked.has(c.companyName.toLowerCase()))
+          .map((c) => ({
+            company: c.companyName,
+            title: "",
+            logoUrl: null,
+            applyUrl: c.domain ? `https://${c.domain}` : null,
+            activePostings: c.activePostings,
+            totalQuestions: c.totalQuestions,
+          })),
+      });
+    }
+
+    return sections
+      .map((s) => ({ ...s, companies: q ? s.companies.filter((c) => c.company.toLowerCase().includes(q)) : s.companies }))
+      .filter((s) => s.companies.length > 0);
+  }, [browseQuery, quickStartJobs, hubData]);
+
   // Accepts explicit overrides so a quick-start card click can search
   // immediately with real values, without waiting on the next render for
   // `company`/`title` state to catch up (they're set in the same handler).
@@ -66,8 +145,11 @@ export function QuestionBankPanel({
     const searchCompany = companyOverride ?? company;
     const searchTitle = titleOverride ?? title;
     startTransition(async () => {
-      if (!searchCompany.trim() || !searchTitle.trim()) {
-        setError("Enter at least a company and a role.");
+      // Company only — role is optional (2026-09-10). Clicking a company in
+      // the grid above passes no title at all and still returns a real
+      // company-wide bank; see ANY_ROLE in lib/interviewQuestions.ts.
+      if (!searchCompany.trim()) {
+        setError("Enter a company.");
         return;
       }
       setError(null);
@@ -79,19 +161,26 @@ export function QuestionBankPanel({
       }
       setBank(result.bank);
       setActiveCategory("all");
+      // Free, cheap read — no AI call, just the same company_key lookup
+      // the /interview-questions hub uses. Runs alongside the AI bank
+      // fetch rather than gating it, so a slow/failed contributed-question
+      // read never blocks the predicted questions from showing.
+      listContributedQuestionsByCompanyKey(toCompanyKey(searchCompany))
+        .then(setContributed)
+        .catch(() => setContributed([]));
     });
   }
 
   function handleQuickStart(job: QuickStartJob): void {
     setCompany(job.company);
     setTitle(job.title);
-    if (job.title.trim()) {
-      runLookup(job.company, job.title);
-    } else {
-      // No real title on record for this company — land the user in the
-      // manual form with Company pre-filled rather than guessing a role.
-      setShowManualSearch(true);
-    }
+    // Always runs, with or without a role (2026-09-10, direct user
+    // instruction). It used to dump the user into the manual form whenever
+    // the company had no title on record — which is every company in the
+    // curated grid, so clicking Google did nothing but show a form. A
+    // company with no role now returns that company's own culture/business/
+    // behavioural questions instead.
+    runLookup(job.company, job.title);
   }
 
   // Auto-fetch once on mount for the locked (job-embed) case only — same
@@ -112,43 +201,110 @@ export function QuestionBankPanel({
 
   return (
     <section className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <div className="flex items-center gap-2">
-        <BookOpen className="h-4 w-4 text-text-secondary" />
-        <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
-          Question Bank
-        </h2>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-text-secondary" />
+          <h2 className="text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary">
+            Question Bank
+          </h2>
+        </div>
+        {!locked && (
+          <button
+            type="button"
+            onClick={() => setShowContributeModal(true)}
+            className="btn-signal inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg px-4 text-sm font-medium text-accent-foreground"
+          >
+            <MessageSquarePlus className="h-4 w-4" />
+            Contribute a question
+          </button>
+        )}
       </div>
 
-      {/* Real "browse by company" grid — restructured 2026-08-26 (agy
-         research + direct user request): a text form asking the user to
-         retype a company/role they already have tracked was real friction
-         for the single most common case. This is the primary interaction
-         now; the manual form drops to a secondary "search a different
-         company" affordance below it. Cards, not chips — company logo +
-         real role title, one click straight into results. Never fabricated
-         stats/counts, only the user's own real job data. */}
-      {!locked && !bank && quickStartJobs.length > 0 && (
-        <div className="mt-4">
-          <p className="mb-2.5 text-[11px] font-medium text-text-muted">Practice for a company you&apos;re tracking</p>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {quickStartJobs.map((job, i) => (
-              <button
-                key={job.company}
-                type="button"
-                disabled={loading}
-                onClick={() => handleQuickStart(job)}
-                className="dim-card-in flex items-center gap-3 rounded-xl border border-border bg-surface-secondary p-3 text-left transition-all hover:-translate-y-0.5 hover:border-accent disabled:cursor-wait disabled:opacity-60"
-                style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
-              >
-                <CompanyLogo company={job.company} logoUrl={job.logoUrl} size="sm" />
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-text-primary">{job.company}</p>
-                  <p className="truncate text-xs text-text-muted">{job.title || "Any role"}</p>
+      {/* Browse-by-company, redesigned 2026-09-10 (direct user request, with
+         a competitor's company-directory page as the reference). One
+         section, not two: the stat strip, the company search and the
+         grouped company grid all live inside this panel, and clicking any
+         card runs the same AI lookup this panel has always run. Every number
+         is real — see lib/interviewHub.ts for where each comes from and why
+         no company is listed without real backing. */}
+      {!locked && !bank && (
+        <>
+          {hubData && (
+            <div className="mt-4 grid grid-cols-3 gap-3 sm:max-w-md">
+              {[
+                { label: "Companies", value: hubData.stats.companies },
+                { label: "Real Questions", value: hubData.stats.totalQuestions },
+                { label: "Last 30 Days", value: hubData.stats.last30Days, prefix: "+" },
+              ].map((stat) => (
+                <div key={stat.label} className="rounded-xl border border-border bg-surface-secondary px-4 py-3 text-center">
+                  <p className="font-mono text-2xl font-bold tabular-nums text-text-primary">
+                    {stat.prefix ?? ""}
+                    {stat.value.toLocaleString()}
+                  </p>
+                  <p className="mt-0.5 text-[11px] text-text-muted">{stat.label}</p>
                 </div>
-              </button>
-            ))}
+              ))}
+            </div>
+          )}
+
+          <div className="relative mt-4">
+            <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted" />
+            <input
+              value={browseQuery}
+              onChange={(e) => setBrowseQuery(e.target.value)}
+              placeholder="Search a company…"
+              className="h-11 w-full rounded-lg border border-border bg-surface-secondary pl-10 pr-3 text-sm text-text-primary outline-none placeholder:text-text-muted focus-visible:border-accent"
+            />
           </div>
-        </div>
+
+          <div className="mt-5 flex flex-col gap-5">
+            {browseSections.map((section) => (
+              <div key={section.name}>
+                <p className="mb-2.5 text-xs font-semibold uppercase tracking-wide text-text-secondary">
+                  {section.name}
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {section.companies.map((entry, i) => (
+                    <button
+                      key={`${section.name}:${entry.company}`}
+                      type="button"
+                      disabled={loading}
+                      onClick={() => handleQuickStart({ company: entry.company, title: entry.title, logoUrl: entry.logoUrl })}
+                      className="dim-card-in flex flex-col gap-2.5 rounded-xl border border-border bg-surface p-4 text-left transition-all hover:-translate-y-0.5 hover:border-accent hover:shadow-card disabled:cursor-wait disabled:opacity-60"
+                      style={{ animationDelay: `${Math.min(i, 8) * 40}ms` }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <CompanyLogo company={entry.company} logoUrl={entry.logoUrl} applyUrl={entry.applyUrl} size="sm" />
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-text-primary">{entry.company}</p>
+                            <p className="truncate text-xs text-text-muted">{entry.title || "Any role"}</p>
+                          </div>
+                        </div>
+                        {entry.activePostings > 0 && (
+                          <span className="shrink-0 rounded-full bg-surface-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-text-muted">
+                            {entry.activePostings} open
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-text-muted">
+                        {entry.totalQuestions > 0
+                          ? `${entry.totalQuestions} real question${entry.totalQuestions === 1 ? "" : "s"} on file`
+                          : "Generate AI-predicted questions"}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {browseSections.length === 0 && (
+              <p className="text-sm text-text-muted">
+                No companies matching &ldquo;{browseQuery}&rdquo; — search it below to generate a question bank
+                for it anyway.
+              </p>
+            )}
+          </div>
+        </>
       )}
 
       {!locked && (quickStartJobs.length === 0 || showManualSearch || bank) && (
@@ -163,7 +319,7 @@ export function QuestionBankPanel({
             />
           </div>
           <div className="min-w-40 flex-1">
-            <label className="mb-1 block text-[11px] font-medium text-text-muted">Role</label>
+            <label className="mb-1 block text-[11px] font-medium text-text-muted">Role (optional)</label>
             <input
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -220,7 +376,7 @@ export function QuestionBankPanel({
 
       {!bank && !loading && !locked && !hasSearched && quickStartJobs.length === 0 && (
         <p className="mt-3 text-sm text-text-muted">
-          Search any company and role to see likely interview questions — before or after you apply.
+          Search any company to see likely interview questions — add a role to narrow them, or leave it blank for company-wide ones.
         </p>
       )}
 
@@ -228,9 +384,11 @@ export function QuestionBankPanel({
         <div className="mt-4 flex flex-col gap-3">
           <AiReadsCard label="AI-predicted, not real leaked questions">
             <p className="text-xs leading-5 text-text-secondary">
-              Based on {bank.company}&apos;s known industry, tech stack, and typical expectations for a{" "}
-              {bank.roleFamily} role{bank.seniority !== "unspecified" ? ` at ${bank.seniority} level` : ""}.
-              No source claims to have leaked or sourced these from a real interview. Click any question
+              Based on {bank.company}&apos;s known industry, tech stack, and{" "}
+              {bank.roleFamily === ANY_ROLE
+                ? "what it tends to ask candidates across roles — add a role above to narrow these"
+                : `typical expectations for a ${bank.roleFamily} role${bank.seniority !== "unspecified" ? ` at ${bank.seniority} level` : ""}`}
+              . No source claims to have leaked or sourced these from a real interview. Click any question
               for a full guided study card.
             </p>
           </AiReadsCard>
@@ -303,7 +461,54 @@ export function QuestionBankPanel({
               );
             })}
           </div>
+
+          {/* Real, human-submitted questions — additive to the AI-predicted
+             bank above, never merged into it. Shown even when empty, with
+             a direct contribute CTA, so this is a visible "on top of what
+             we already have" feature rather than something a user has to
+             already know exists (2026-09-10). */}
+          <div className="rounded-xl border border-border bg-surface-secondary p-4">
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-[11px] font-medium uppercase tracking-wide text-text-muted">
+                From real candidates
+              </p>
+              <button
+                type="button"
+                onClick={() => setShowContributeModal(true)}
+                className="inline-flex items-center gap-1.5 text-xs font-medium text-accent hover:underline"
+              >
+                <MessageSquarePlus className="h-3.5 w-3.5" />
+                Contribute a question
+              </button>
+            </div>
+            {contributed.length === 0 ? (
+              <p className="mt-2 text-sm text-text-muted">
+                No real questions submitted for {bank.company} yet — if you&apos;ve interviewed here, add
+                one.
+              </p>
+            ) : (
+              <div className="mt-3 flex flex-col gap-2">
+                {contributed.map((q) => (
+                  <div key={q.id} className="rounded-lg border border-border bg-surface p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="rounded-full bg-surface-secondary px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-text-muted">
+                        {q.role}
+                      </span>
+                    </div>
+                    <p className="mt-1.5 flex items-start gap-1.5 text-sm leading-5 text-text-primary">
+                      <MessageSquare className="mt-0.5 h-3.5 w-3.5 shrink-0 text-text-muted" />
+                      {q.question}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
+      )}
+
+      {showContributeModal && (
+        <ContributeQuestionModal onClose={() => setShowContributeModal(false)} defaultCompany={bank?.company} />
       )}
 
       {bank && studyIndex !== null && (

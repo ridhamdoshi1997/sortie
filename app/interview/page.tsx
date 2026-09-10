@@ -8,6 +8,7 @@ import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { QuestionBankPanel } from "@/components/interview/QuestionBankPanel";
 import { StarStoryMatrix } from "@/components/interview/StarStoryMatrix";
 import { listStarStories } from "@/actions/starStories";
+import { getInterviewHubData } from "@/lib/interviewHub";
 import { formatDate } from "@/lib/utils";
 
 type InterviewingJobRow = {
@@ -70,6 +71,13 @@ export default async function InterviewPage() {
 
   const starStoriesResult = await listStarStories();
   const starStories = starStoriesResult.data ?? [];
+
+  // Same free-cache-only read /interview-questions itself uses (see
+  // lib/interviewHub.ts) — no AI cost, just the real company grid embedded
+  // here too (2026-09-10, direct user request: the redesign built for the
+  // public hub belongs on this page as well, not a second, differently-
+  // styled surface).
+  const hubData = await getInterviewHubData();
 
   return (
     <>
@@ -146,7 +154,7 @@ export default async function InterviewPage() {
         </div>
 
         <div className="fade-in-up" style={{ animationDelay: "120ms" }}>
-          <QuestionBankPanel quickStartJobs={quickStartCards} />
+          <QuestionBankPanel quickStartJobs={quickStartCards} hubData={hubData} />
         </div>
 
         <div className="fade-in-up" style={{ animationDelay: "180ms" }}>

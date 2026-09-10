@@ -180,6 +180,15 @@ export type QuestionBank = {
 const SENIORITY_WORDS =
   /\b(intern|entry[- ]?level|junior|jr\.?|associate|mid[- ]?level|senior|sr\.?|staff|principal|lead|head|director|vp|chief|i{1,3}|iv|v)\b/gi;
 
+// The role a company-level lookup uses when the candidate hasn't named one
+// (2026-09-10, direct user instruction: clicking a company in the browse grid
+// must return questions regardless of position, with role kept optional).
+// A real value rather than an empty string on purpose: it's part of the cache
+// key, so company-wide banks cache and dedupe like any other, and it's what
+// the prompt below switches on to ask for broadly-applicable questions
+// instead of role-specific ones.
+export const ANY_ROLE = "Any role";
+
 export function normalizeRoleFamily(title: string): string {
   return title
     .replace(SENIORITY_WORDS, "")
@@ -198,14 +207,22 @@ export async function generateQuestionBank(
   roleFamily: string,
   seniority: string,
 ): Promise<InterviewQuestion[]> {
+  // Company-wide mode: no role was given, so the questions must be ones this
+  // employer would plausibly ask ANY candidate — its values, its business,
+  // how it works — rather than guessing at a role nobody named.
+  const anyRole = roleFamily === ANY_ROLE;
   const raw = await complete(await getModel("gemini", "smart"), {
-    systemPrompt: `You are helping a job candidate prepare for an interview by predicting likely interview questions. You have no access to real leaked or sourced interview questions from this specific company — you are generating REALISTIC, PLAUSIBLE questions based on the company's known industry, business model, tech stack reputation, and typical expectations for this role and seniority level. Never imply these are real questions someone was actually asked. Generate 10-15 questions across a mix of categories: behavioral, technical, system_design (only if the role is technical and seniority warrants it), and culture_fit. Each question needs a one-sentence rationale explaining why a company like this, for a role like this, would likely ask it.
+    systemPrompt: `You are helping a job candidate prepare for an interview by predicting likely interview questions. You have no access to real leaked or sourced interview questions from this specific company — you are generating REALISTIC, PLAUSIBLE questions based on the company's known industry, business model, tech stack reputation, and typical expectations${anyRole ? "" : " for this role and seniority level"}. Never imply these are real questions someone was actually asked. ${
+      anyRole
+        ? "NO SPECIFIC ROLE was given, so generate questions this company would plausibly ask ANY candidate: its values and culture, its business and product, how it works, and broadly-applicable behavioral questions. Do not invent a role or assume the candidate is technical — skip system_design entirely and keep any technical question generic to the company's domain."
+        : ""
+    }Generate 10-15 questions across a mix of categories: behavioral, technical, system_design (only if the role is technical and seniority warrants it), and culture_fit. Each question needs a one-sentence rationale explaining why a company like this${anyRole ? "" : ", for a role like this,"} would likely ask it.
 
 ${HUMANIZED_WRITING_RULES}
 
 Return only valid JSON.`,
     userPrompt: `Company: ${company}
-Role family: ${roleFamily}
+Role family: ${anyRole ? "not specified — company-wide questions" : roleFamily}
 Seniority: ${seniority || "not specified"}
 
 Return JSON matching this exact shape:

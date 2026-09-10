@@ -39,6 +39,32 @@ type Props = {
     lastRunAt?: string | null;
     initialTitle?: string | null;
     initialLocation?: string | null;
+    /** Recommended tab (/jobs/recommended, 2026-09-10). The query comes from
+     * the user's own profile, not a form they filled in, so the console card
+     * (role/location inputs + Execute search + filters) is hidden — "no job
+     * search option there, just the listings", per direct user instruction.
+     * Everything below it is unchanged: same JobResultCard, same scoring
+     * poll, same save/hide/status actions. */
+    hideSearchForm?: boolean;
+    /** Fires one real search on mount when there's nothing already on
+     * screen, or when what's on screen is stale (see autoRunStale). Only
+     * meaningful alongside initialTitle/initialLocation. */
+    autoRun?: boolean;
+    /** True when the server decided the last recommended run is older than
+     * its refresh window (currently a day) — the Recommended tab refreshes
+     * itself once a day rather than on every visit, so a user who opens it
+     * five times in an afternoon spends one paid search, not five. */
+    autoRunStale?: boolean;
+    /** Renders a manual "Refresh" control above the results when the console
+     * card is hidden, so the daily cadence is never the only way to get a
+     * fresh pull. */
+    showRefreshButton?: boolean;
+    /** Every role the profile actually names (job_titles_seeking, plus the
+     * current title) — rendered as a picker beside Refresh on the
+     * Recommended tab, so a candidate targeting three roles can pull each
+     * one without going to the Search tab and retyping it. Not a free-text
+     * search box: the options are derived, never typed. */
+    roleOptions?: string[];
 };
 
 export function FindJobsForm({
@@ -48,6 +74,11 @@ export function FindJobsForm({
     lastRunAt = null,
     initialTitle = "",
     initialLocation = "",
+    hideSearchForm = false,
+    autoRun = false,
+    autoRunStale = false,
+    showRefreshButton = false,
+    roleOptions = [],
 }: Props) {
     const [title, setTitle] = useState(initialTitle ?? "");
     const [location, setLocation] = useState(initialLocation ?? "");
@@ -484,6 +515,31 @@ export function FindJobsForm({
         void runSearch();
     };
 
+    // Recommended tab's one auto-fired search (2026-09-10). Deliberately
+    // gated on initialJobs being empty: the page hands us the user's most
+    // recent real results server-side, so returning to the tab re-renders
+    // those for free instead of spending a fresh paid search on every
+    // visit. Runs once on mount only — the empty dep array is the point,
+    // not an oversight.
+    const autoRunFiredRef = useRef(false);
+    useEffect(() => {
+        if (!autoRun || autoRunFiredRef.current) return;
+        if (!initialTitle?.trim()) return;
+        // Nothing on screen, or what IS on screen is past its daily refresh
+        // window. Both cases mean this tab owes the user a fresh pull.
+        if (initialJobs.length > 0 && !autoRunStale) return;
+        autoRunFiredRef.current = true;
+        // Deferred, not called straight from the effect body — this
+        // codebase's react-hooks/set-state-in-effect rule fires on any
+        // synchronous setState in an effect, and runSearch's first act is
+        // setLoading(true). Same setTimeout(…, 0) fix used for every other
+        // auto-triggering effect here (see context/RESUME.md's Phase 7
+        // gotcha on this exact rule).
+        const timer = setTimeout(() => void runSearch(), 0);
+        return () => clearTimeout(timer);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     // Date Posted is the one filter that costs a real paid SerpApi call
     // (every other filter here just re-filters jobs already on screen, for
     // free) — auto-firing it on every click would silently spend a call per
@@ -572,6 +628,55 @@ export function FindJobsForm({
                 so it lights up correctly with the rest of the page.
                 FilterBar.tsx's pills below share this same card visually
                 and were swapped the same way — see that file. */}
+            {/* Recommended tab's own controls (2026-09-10). The console card
+                below is hidden there, so this is where the run status and the
+                manual refresh live — the daily auto-run is a convenience, not
+                the only way to get fresh results. */}
+            {showRefreshButton && (
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="text-sm text-text-secondary">
+                        {loading || searchInFlight ? (
+                            <span className="flex items-center gap-2">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                {jobs.length > 0 ? `${jobs.length} found so far` : "Scanning your profile"}
+                                {landedSources.length > 0 && ` · ${landedSources.join(", ")} done`}
+                            </span>
+                        ) : jobs.length > 0 ? (
+                            `${jobs.length} match${jobs.length === 1 ? "" : "es"}${lastRunLabel ? ` · refreshed ${lastRunLabel}` : ""}`
+                        ) : (
+                            ""
+                        )}
+                    </p>
+                    <div className="flex items-center gap-2">
+                        {roleOptions.length > 0 && (
+                            <select
+                                value={title}
+                                onChange={(e) => setTitle(e.target.value)}
+                                disabled={loading || searchInFlight}
+                                aria-label="Role to scan for"
+                                className="h-9 rounded-lg border border-border bg-surface px-3 text-sm text-text-primary outline-none focus-visible:border-accent disabled:opacity-60"
+                            >
+                                {roleOptions.map((role) => (
+                                    <option key={role} value={role}>
+                                        {role}
+                                    </option>
+                                ))}
+                            </select>
+                        )}
+                        <Button
+                            type="button"
+                            onClick={() => void runSearch()}
+                            disabled={loading || searchInFlight}
+                            className="btn-signal h-9 rounded-lg px-4 text-sm font-medium text-accent-foreground disabled:opacity-60"
+                        >
+                            <Search className="mr-2 h-3.5 w-3.5" />
+                            {loading || searchInFlight ? "Scanning…" : roleOptions.length > 1 ? "Search this role" : "Refresh"}
+                        </Button>
+                    </div>
+                </div>
+            )}
+
+            {!hideSearchForm && (
             <div className="rounded-2xl border border-border bg-surface p-5 shadow-card md:p-6">
                 <div className="mb-4 flex items-baseline gap-2">
                     <h2 className="font-display fade-in-up flex items-center gap-2 text-xl font-bold tracking-tight text-text-primary">
@@ -675,6 +780,7 @@ export function FindJobsForm({
                     </div>
                 )}
             </div>
+            )}
 
             {/* A completed search with zero matches is a real outcome, not
                 a failure — give it its own quiet empty state instead of

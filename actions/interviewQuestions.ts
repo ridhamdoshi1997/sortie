@@ -11,6 +11,7 @@ import {
   generateQuestionDetails,
   generatePracticeKit,
   normalizeRoleFamily,
+  ANY_ROLE,
   type InterviewQuestion,
   type PracticeKit,
   type QuestionBank,
@@ -51,11 +52,15 @@ export async function getOrGenerateQuestionBank(
 ): Promise<Result> {
   const user = await requireUser();
   const company = rawCompany.trim();
-  const roleFamily = normalizeRoleFamily(rawTitle);
+  // Role is OPTIONAL (2026-09-10, direct user instruction): clicking a
+  // company in the browse grid must return questions regardless of position.
+  // An unnamed role falls back to ANY_ROLE, which generateQuestionBank reads
+  // as "ask what this employer would ask anyone" — see its own comment.
+  const roleFamily = normalizeRoleFamily(rawTitle) || ANY_ROLE;
   const seniority = rawSeniority.trim();
 
-  if (!company || !roleFamily) {
-    return { success: false, error: "Enter at least a company and a role." };
+  if (!company) {
+    return { success: false, error: "Enter a company." };
   }
 
   const cacheKey = buildCacheKey(company, roleFamily, seniority);

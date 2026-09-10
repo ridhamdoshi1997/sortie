@@ -4,72 +4,129 @@ import { Sparkles } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
-import { RecommendedJobCard } from "@/components/jobs/RecommendedJobCard";
-import { getRecommendedJobs } from "@/lib/jobRecommendations";
+import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
+import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
+import type { Job, Profile } from "@/types";
 
-export const maxDuration = 30;
+// Same 60s budget /find-jobs runs under — this page fires the exact same
+// scrapeAndEvaluateJobs work, just with a query it derived instead of one
+// the user typed.
+export const maxDuration = 60;
 
-type ProfileRow = {
-  job_titles_seeking: string[] | null;
-  current_title: string | null;
-  skills: string[] | null;
-  preferred_locations: string[] | null;
-  location: string | null;
-};
+// Server Component rendered once per request, where reading the clock is the
+// whole point. Named so react-hooks/purity does not flag a bare Date.now() in
+// a render body — same workaround app/find-jobs/page.tsx already uses.
+function nowMs(): number {
+  return Date.now();
+}
 
-// "Recommended" (2026-09-10) — real replacement for the label that was
-// renamed away on 2026-08-25 because it was a false promise back then (see
-// components/layout/Navbar.tsx's own comment on jobsSubItems): "Recommended"
-// used to point at /find-jobs, a manual search form with nothing actually
-// pre-recommended. This tab is the real thing — built from the profile's
-// own target titles/skills/locations, no search box, just the listings.
+// "Recommended" (2026-09-10) — the real replacement for the label removed on
+// 2026-08-25 for being a false promise (see Navbar.tsx's jobsSubItems
+// comment: it pointed at /find-jobs, a manual search form, with nothing
+// actually pre-recommended).
+//
+// Deliberately NOT a second, parallel implementation of the search: it
+// renders FindJobsForm itself with the console card hidden and one auto-run
+// on mount, so the cards, the relevance ordering, the progressive scoring
+// poll, and Save/Hide/Status are all literally the same code path as the
+// Search tab. The only difference is where the query comes from — the
+// profile's own target roles and locations, never a form on this page.
 export default async function RecommendedJobsPage() {
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
   const { data: profile } = await insforge.database
     .from("profiles")
-    .select("job_titles_seeking,current_title,skills,preferred_locations,location")
+    .select("job_titles_seeking,current_title,preferred_locations,location")
     .eq("id", user.id)
-    .maybeSingle<ProfileRow>();
+    .maybeSingle<Pick<Profile, "job_titles_seeking" | "current_title" | "preferred_locations" | "location">>();
 
-  const { jobs, searchedTitles, hasSignal } = await getRecommendedJobs({
-    jobTitlesSeeking: profile?.job_titles_seeking ?? null,
-    currentTitle: profile?.current_title ?? null,
-    skills: profile?.skills ?? null,
-    preferredLocations: profile?.preferred_locations ?? null,
-    location: profile?.location ?? null,
-  });
+  // Every role the profile actually names, in the profile's own order, with
+  // the current title as a fallback member — this is the dropdown's whole
+  // source. Nothing is inferred or invented: a role appears here only
+  // because the candidate typed it into their own profile.
+  const roleOptions = [
+    ...(profile?.job_titles_seeking ?? []),
+    ...(profile?.current_title ? [profile.current_title] : []),
+  ]
+    .map((r) => r?.trim())
+    .filter((r): r is string => Boolean(r))
+    .filter((r, i, all) => all.findIndex((o) => o.toLowerCase() === r.toLowerCase()) === i);
+
+  const title = roleOptions[0] ?? "";
+  const location = profile?.preferred_locations?.[0] ?? profile?.location ?? "";
+
+  // Unlike /find-jobs — which starts empty by explicit product decision so a
+  // page load never presents old results as current — this tab SHOULD show
+  // what it last recommended. It's a standing feed, not a search you just
+  // ran, and re-deriving the same profile query on every visit would spend a
+  // real paid search to rebuild a list the user already has. FindJobsForm's
+  // autoRun only fires when this comes back empty.
+  const { data: recommendedRuns } = await insforge.database
+    .from("agent_runs")
+    .select("id,created_at")
+    .eq("user_id", user.id)
+    .eq("job_title_searched", title)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  const lastRun = recommendedRuns?.[0] ?? null;
+  const lastRunId = lastRun?.id ?? null;
+
+  // Refresh cadence: once a day, per direct user instruction. Opening this
+  // tab five times in an afternoon spends ONE paid search, not five — but a
+  // user coming back the next day gets a genuinely fresh scan without
+  // touching anything. The Refresh button below covers everything in
+  // between.
+  const lastRunAt = lastRun?.created_at ?? null;
+  const isStale = !lastRunAt || nowMs() - new Date(lastRunAt).getTime() > 24 * 60 * 60 * 1000;
+
+  let initialJobs: Job[] = [];
+  if (lastRunId) {
+    const { data } = await insforge.database
+      .from("jobs")
+      .select("*")
+      .eq("user_id", user.id)
+      .eq("run_id", lastRunId)
+      .eq("is_hidden", false)
+      .returns<Job[]>();
+    initialJobs = data ?? [];
+  }
+
+  const { data: allJobsForSignal } = await insforge.database
+    .from("jobs")
+    .select("company,title,found_at")
+    .eq("user_id", user.id);
+  const reappearanceCounts = computeReappearanceCounts(allJobsForSignal ?? []);
+  const reappearanceSignals: Record<string, ReappearanceSignal> = {};
+  for (const job of initialJobs) {
+    reappearanceSignals[job.id] = getReappearanceSignal(job, reappearanceCounts);
+  }
 
   return (
     <>
-      <Navbar />
-      <main className="mx-auto flex max-w-5xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
-        <div className="flex flex-col gap-2">
+      <Navbar isAuthenticated />
+      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+        <div className="flex flex-col gap-1">
           <p className="inline-flex w-fit items-center gap-1.5 rounded-full bg-agent-light px-3 py-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
             <Sparkles className="h-3.5 w-3.5" />
             Recommended
           </p>
-          <h1 className="font-display text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
-            Jobs matched to your profile
+          <h1 className="font-display mt-2 text-3xl font-bold tracking-tight text-text-primary sm:text-4xl">
+            Matched to your profile
           </h1>
-          {hasSignal ? (
-            <p className="text-sm text-text-secondary">
-              Pulled from {searchedTitles.map((t) => `"${t}"`).join(", ")} — from your profile, not a search you ran.
-            </p>
-          ) : (
-            <p className="text-sm text-text-secondary">
-              Add the roles you&apos;re targeting to your profile and this tab fills in on its own.
-            </p>
-          )}
+          <p className="text-base text-text-secondary sm:text-lg">
+            {title
+              ? `Scanned against your profile — ${title}${location ? ` in ${location}` : ""}. No search to run.`
+              : "Add the roles you're targeting to your profile and this fills in on its own."}
+          </p>
         </div>
 
-        {!hasSignal ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
+        {!title ? (
+          <div className="rounded-2xl border border-dashed border-border bg-surface p-8 text-center">
             <p className="text-sm font-medium text-text-primary">No target roles on your profile yet</p>
             <p className="mx-auto mt-1.5 max-w-sm text-sm text-text-secondary">
-              Recommended jobs come from the roles you&apos;re seeking and your skills — nothing here until your
-              profile has at least one.
+              Recommendations come from the roles you&apos;re seeking and where you want to work — nothing
+              here until your profile has at least one.
             </p>
             <Link
               href="/profile"
@@ -78,27 +135,20 @@ export default async function RecommendedJobsPage() {
               Complete your profile
             </Link>
           </div>
-        ) : jobs.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-border bg-surface p-8 text-center">
-            <p className="text-sm font-medium text-text-primary">Nothing matched yet</p>
-            <p className="mx-auto mt-1.5 max-w-sm text-sm text-text-secondary">
-              We didn&apos;t find anything in our index for{" "}
-              {searchedTitles.map((t) => `"${t}"`).join(", ")} right now. Run a search on the Search tab for a
-              broader, live pull.
-            </p>
-            <Link
-              href="/find-jobs"
-              className="mt-4 inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-border px-5 text-sm font-medium text-text-secondary hover:bg-surface-secondary"
-            >
-              Go to Search
-            </Link>
-          </div>
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {jobs.map((job) => (
-              <RecommendedJobCard key={job.id} job={job} />
-            ))}
-          </div>
+          <FindJobsForm
+            userId={user.id}
+            initialJobs={initialJobs}
+            reappearanceSignals={reappearanceSignals}
+            lastRunAt={lastRunAt}
+            initialTitle={title}
+            initialLocation={location}
+            hideSearchForm
+            autoRun
+            autoRunStale={isStale}
+            showRefreshButton
+            roleOptions={roleOptions}
+          />
         )}
       </main>
     </>
