@@ -36,7 +36,7 @@ Found when the user asked why `/admin/ai-models` lists nothing. A full row-count
 
 **NEEDS A DECISION, not obviously a bug:**
 - `outreach_signal_settings` (0) — the Marketing outreach provider setting. Confirm whether the code expects a seeded row or treats "no row" as a valid default before seeding it.
-- `resumes` (0) — **worth an explicit answer**: the résumé workspace is a major shipped feature (Phase 7/8), and there are zero résumés. Either they were never re-created after the Supabase migration, or real rows were lost in it. InsForge cannot be checked to compare (its API returns 503, it is paused). Not claimed as data loss — but it should be answered rather than assumed.
+- `resumes` (0) — **ANSWERED 2026-09-10, question closed: the user confirmed the data was deliberately cleared.** Not migration data loss, and nothing to investigate or restore. This is consistent with the Phase 44 entry below, which records a previous deliberate wipe of `jobs`/`job_sources`/`agent_runs`/`agent_logs`/`accomplishments` at the user's explicit request. Treat an empty `resumes` as the expected state.
 - `api_usage_metrics` (0) — same question as `usage_daily`: is anything actually writing to it?
 
 **Fix next session:**
