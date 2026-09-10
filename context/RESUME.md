@@ -38,7 +38,33 @@ The `contributed_interview_questions` table shipped in Phase 51 with an explicit
 ### D. Sidebar grouping
 The nav is a flat 12-item list (System Health was added in Phase 51) and this plan takes it further. Group it — suggested: **Ops** (System Health, Link Health, Support), **People** (Users, Team & Roles), **Money** (Billing, Expenses), **Growth** (Marketing, Affiliates, Content), **System** (AI Models). Confirm the grouping with the user before committing to labels.
 
-### E. Dashboard restructure
+### F. Billing & Plans — it is a plan EDITOR, not a billing dashboard
+`/admin/billing` edits `subscription_plans` well (price, caps, marketing bullets, LLM-router unlock, confirm-before-save, read live with no redeploy). What it has **no view of at all** is the actual business: no MRR, no active-subscriber count, no trial/churn/failed-payment view, no Stripe sync status. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are both configured, so this is readable today.
+- Add a revenue panel: active subscribers by tier, MRR, trials, failed payments, cancellations this period.
+- Show Stripe webhook health — last event received, and whether the projection is behind.
+- Keep the plan editor exactly as it is; this is a new panel above it, not a rewrite.
+
+### G. AI Models — no usage, no cost, no fallback visibility
+`/admin/ai-models` edits model config rows and carries the global kill switch. It cannot answer the questions that actually come up: which model burned the spend, and is anything rate-limited right now.
+- Per-model usage and cost over the period, joined to the same rates section A seeds. This is the natural other half of the Expenses fix — do them together.
+- **Fallback-chain state.** `lib/models.ts` has `GEMINI_FALLBACK_MODELS`, a 60s cooldown and a process-lifetime cooldown cache, precisely because the free Gemini tier has both an RPM and a hard daily RPD cap that has bitten this project before. None of that is visible: an admin cannot see that the primary model is cooling down and everything is silently running on a fallback.
+- Surface the kill switch's current state and who set it, alongside the crawl pause on System Health, so both emergency levers read the same way.
+
+### H. Link Health — measuring the wrong table
+`/admin/link-health` buckets apply links (direct / board / generic / mirror / unknown) with a worst-offenders list. Useful, but it scans **`jobs`** — the per-user rows created by searches — and NOT `discovered_postings`, the ~690k-row crawl cache that is now the primary source users actually search. So it reports on a small derived slice while the real inventory goes unmeasured.
+- Point it at `discovered_postings` as well, reported separately from `jobs` so the two are not conflated.
+- Add a trend (it is currently a point-in-time count with no history) and a "re-check now" action wired to the existing `repair-apply-links` cron, so an admin can act on what they see instead of only reading it.
+
+### I. Content — additions researched via agy (2026-09-10)
+Today it is create/edit markdown with a slug and draft/published, published at `/blog/[slug]`, plus a programmatic-SEO generate button. Six additions, ranked by leverage-per-effort, all sized for a 1-3 person team and deliberately NOT duplicating the news section or the marketing broadcast system:
+1. **Dynamic CTA injector** (S) — a shortcode like `{{CTA:ATS_CHECK}}` that drops a standard styled CTA into posts. Blog traffic currently leaks; this funnels it into the free ATS checker, and one CTA edit updates every post.
+2. **Programmatic-SEO auto-linker** (M) — on save, match the markdown against existing `/interview-questions/*` and `/salary-insights/*` pages and link the first occurrence. Passes authority to the highest-value pages and removes the manual cross-linking chore.
+3. **SEO metadata + author profiles** (S) — title/description/OG overrides and a real author. **Honesty constraint, non-negotiable in this codebase: an author credential must belong to a real person.** agy's example ("Ex-Google Recruiter") is exactly the kind of invented authority this project does not ship. Use the real owner, or omit the byline.
+4. **Stale-content tracker** (S) — "days since updated" column plus an update-timestamp action. Career advice ages fast and freshness is a real ranking factor in this niche.
+5. **Auto table of contents** (S) — parse `##`/`###` into anchored jump links. Better long-form UX, and Google surfaces the anchors as sitelinks.
+6. **FAQ → JSON-LD** (S/M) — detect an FAQ section and emit `FAQPage` schema. **This pattern already exists in this codebase** on `app/interview-questions/[slug]/page.tsx`, so it is an extension of a proven approach, not a new one.
+
+### J. Dashboard restructure (do this LAST — it consumes the data every section above produces)
 `/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
 
 ---
