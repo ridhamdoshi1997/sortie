@@ -6,6 +6,7 @@ import { UpcomingInterviews } from "@/components/dashboard/UpcomingInterviews";
 import { RecentActivity } from "@/components/dashboard/RecentActivity";
 import { RejectionRadar } from "@/components/dashboard/RejectionRadar";
 import { CareerRadar } from "@/components/dashboard/CareerRadar";
+import { WeatherWidget } from "@/components/shared/WeatherWidget";
 import { listNewsForCompanies, listNewsByCategory } from "@/lib/newsIngestion";
 import { PipelineStrategyCard } from "@/components/dashboard/PipelineStrategyCard";
 import { WeeklyBriefingCard } from "@/components/dashboard/WeeklyBriefingCard";
@@ -266,9 +267,21 @@ export default async function DashboardPage() {
           />
         )}
 
-        {!hidden.has("weeklyBriefing") && (
-          <WeeklyBriefingCard briefing={profile?.weekly_briefing ?? null} generatedAt={profile?.weekly_briefing_generated_at ?? null} />
-        )}
+        {/* Weather sits beside the weekly briefing rather than in the widget
+            grid (2026-09-10, direct user request — News page and dashboard).
+            It renders nothing at all when the profile has no location, so it
+            never leaves a hole in the layout. */}
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          {!hidden.has("weeklyBriefing") && (
+            <div className="min-w-0 flex-1">
+              <WeeklyBriefingCard briefing={profile?.weekly_briefing ?? null} generatedAt={profile?.weekly_briefing_generated_at ?? null} />
+            </div>
+          )}
+          <WeatherWidget
+            location={profile?.preferred_locations?.[0] ?? profile?.location ?? null}
+            className="lg:w-64 lg:shrink-0"
+          />
+        </div>
 
         {/* Row 1 — hero: what needs attention next, not what already happened */}
         {row1Items.length === 2 ? (

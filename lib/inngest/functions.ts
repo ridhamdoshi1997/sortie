@@ -1564,7 +1564,11 @@ export const resetLifetimePlanUsagePeriodsAsync = inngest.createFunction(
 // separate step so one category's failure (a feed hiccup, a Gemini rate
 // limit) doesn't block the other from ingesting.
 export const syncNewsItemsAsync = inngest.createFunction(
-    { id: "sync-news-items", name: "Sync News Items (Career Radar)", triggers: [{ cron: "0 */6 * * *" }] },
+    // Once a day, not every 6 hours (2026-09-10, direct user instruction).
+    // Also the cost lever on the news source: ingestion now prefers Serper
+    // for real article links + images at ~1 credit per category per run, so
+    // daily is 2 credits/day (~$0.06/month) where 6-hourly was 8.
+    { id: "sync-news-items", name: "Sync News Items (Career Radar)", triggers: [{ cron: "0 6 * * *" }] },
     async ({ step }) => {
         if (crawlPaused()) return pausedResult("News sync");
 
