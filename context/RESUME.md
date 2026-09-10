@@ -16,55 +16,58 @@ Scope agreed with the user at the end of Phase 51, after a full reassessment of 
 - Affiliates, Marketing and Content **stay as-is** (direct user decision). They look premature for a 3-user pre-launch product, but they are built, working, and wanted at launch. The only change is an honest "PayPal not configured" notice on the Affiliates payout button, since `PAYPAL_CLIENT_ID` is empty and the button will fail silently today.
 - Doppler tokens **never** go into the deployed app env. Doppler stays CLI-only. Account-wide management tokens in a public web app is a blast-radius increase the user and I explicitly weighed.
 
-### A. Expenses — make it report a real number
+### 1. EMPTY ADMIN CONFIG TABLES — full sweep, 2026-09-10
+*(do first — it is quick and unblocks the two sections below)*
+Found when the user asked why `/admin/ai-models` lists nothing. A full row-count sweep of all 54 public tables followed (`pg_stat_user_tables`, live). **38 of 54 are empty, but most of those are legitimately empty** — this app has 3 real users and has not launched, so `applications`, `star_stories`, `notifications`, `support_tickets`, `push_subscriptions` and so on having no rows is expected, not a defect. Do not "fix" those.
+
+**CONFIRMED GAPS — config tables that must have seed rows and do not:**
+
+| table | rows | symptom |
+| --- | --- | --- |
+| `ai_model_config` | **0** | `/admin/ai-models` lists nothing; models cannot be changed without a redeploy |
+| `app_settings` | **0** | the site-wide AI kill switch has no persisted state |
+| `ai_cost_rates` | **0** | Expenses reports a structurally-zero AI spend (section 2) |
+
+**Root cause: a data-migration gap, not a code bug.** The Supabase migration carried the schema across and not the seeded configuration. All three are admin-only tables (RLS enabled, no client policies), which is part of why it went unnoticed — nothing user-facing reads them.
+
+**AI is NOT down, and that is exactly why nobody noticed.** `lib/models.ts` keeps a hardcoded fallback for this precise case; its own comment says the fallback "must never be deleted, per the 'always keep a hardcoded fallback' gotcha `agy` research flagged for exactly this DB-config pattern." Every AI call is quietly running on code defaults. What was lost is **admin control and visibility**, not function.
+
+**A SECOND, INDEPENDENT CAUSE behind the Expenses $0 — seeding `ai_cost_rates` alone will NOT fix it.** `usage_daily` is also empty (0 rows) despite 56 real `agent_runs`. That is not a bug either: `lib/usage.ts` returns early on the ADMIN_EMAILS exemption **before** reaching its `increment_usage_daily` RPC, so an allowlisted admin never writes a usage row. Since the only active accounts today are admin accounts, there is genuinely nothing to join against. So Expenses needs BOTH: rates seeded AND either a non-admin user generating real usage, or the estimate explicitly labelled as covering non-admin usage only. Decide which before calling section 2 done — otherwise it will still read $0 and look unfixed.
+
+**NEEDS A DECISION, not obviously a bug:**
+- `outreach_signal_settings` (0) — the Marketing outreach provider setting. Confirm whether the code expects a seeded row or treats "no row" as a valid default before seeding it.
+- `resumes` (0) — **worth an explicit answer**: the résumé workspace is a major shipped feature (Phase 7/8), and there are zero résumés. Either they were never re-created after the Supabase migration, or real rows were lost in it. InsForge cannot be checked to compare (its API returns 503, it is paused). Not claimed as data loss — but it should be answered rather than assumed.
+- `api_usage_metrics` (0) — same question as `usage_daily`: is anything actually writing to it?
+
+**Fix next session:**
+1. Seed `ai_model_config` from the defaults already in `lib/models.ts` (provider / tier / model_id).
+2. Seed `app_settings` with its single row (`ai_enabled = true`). NOTE: Phase 51's `setCrawlPaused` already handles the zero-row case with insert-if-missing, so the new crawl pause is unaffected either way.
+3. Seed `ai_cost_rates` as part of section 2, and resolve the `usage_daily` half above.
+4. **Verify, do not assume**: `/admin/ai-models` renders the list; the site-wide toggle persists across a reload; and the per-user override (`profiles.preferred_model` — column present, 0 users set, which is expected at 3 users rather than evidence of breakage) genuinely changes which model a real AI call uses. Set it on the test account, confirm, then clear it — same pattern used for the signup and recommended-jobs verification in Phase 51.
+
+### 2. Expenses — make it report a real number
+*(depends on L seeding ai_cost_rates)*
 Today `/admin/expenses` advertises "an estimated AI/API spend, joined against real usage" but `ai_cost_rates` has **zero rows** (verified), so that half is structurally always $0 and the page shows only manually-entered recurring costs. Real spend has grown a lot and none of it is tracked.
 - Seed `ai_cost_rates` with the models actually in use (Gemini fast/smart tiers, OpenRouter, Anthropic where used).
 - Add non-AI vendor cost lines: Serper (~$0.001/credit, 6/day on the daily news cron), SerpApi (free 250/mo x3 keys), Apify (measured $0.016 per LinkedIn+Indeed pair), Jina, Brevo (free 300/day), Supabase (free tier x2 projects), Vercel, Resend.
 - Distinguish **metered** (computed from real usage rows) from **fixed monthly** (manual) so the page can be honest about which half is measured and which is entered.
 - Fix the page copy so it cannot claim a computed number it is not computing.
 
-### B. Vendor console — both tiers, in this order
-**Tier 1 — read-only, scoped (safe, do first).** Extend `/admin/system` using only keys the app already ships. Stripe, PostHog, Sentry, Inngest, Brevo/Resend reachability. No account-wide tokens.
+### 3. AI Models — no usage, no cost, no fallback visibility
+*(depends on L seeding ai_model_config; shares the cost work with A)*
+`/admin/ai-models` edits model config rows and carries the global kill switch. It cannot answer the questions that actually come up: which model burned the spend, and is anything rate-limited right now.
+- Per-model usage and cost over the period, joined to the same rates section 2 seeds. This is the natural other half of the Expenses fix — do them together.
+- **Fallback-chain state.** `lib/models.ts` has `GEMINI_FALLBACK_MODELS`, a 60s cooldown and a process-lifetime cooldown cache, precisely because the free Gemini tier has both an RPM and a hard daily RPD cap that has bitten this project before. None of that is visible: an admin cannot see that the primary model is cooling down and everything is silently running on a fallback.
+- Surface the kill switch's current state and who set it, alongside the crawl pause on System Health, so both emergency levers read the same way.
 
-**Tier 2 — owner-only, dedicated read-only keys.** Live Supabase project stats (database size, connection count, table sizes) and Brevo send statistics. Gate behind `requireRole(admin, ["owner"])`, not `["owner","admin"]`. Use dedicated read-only keys where the vendor offers them (Brevo does). `SUPABASE_ACCESS_TOKEN` is account-wide and RESUME already flags it for revocation — if it is used here at all it must be owner-gated and the tradeoff written down at the call site.
-
-### C. Interview section in admin — add and track
+### 4. Interview section in admin — add and track
 The `contributed_interview_questions` table shipped in Phase 51 with an explicit, documented "no moderation" gap. It is public user-generated content with **zero** admin surface.
 - Add a `status` column (`pending` / `published` / `rejected`). It currently auto-publishes with no approval step.
 - Moderation queue: approve / reject / delete, with the submitter visible.
 - Let an admin **add** questions directly from the admin site (the user's own ask), not only via the public contribute modal.
 - Track: per-company counts, contribution volume over time, and which companies have AI-generated banks vs real contributed questions.
 
-### D. Sidebar grouping
-The nav is a flat 12-item list (System Health was added in Phase 51) and this plan takes it further. Group it — suggested: **Ops** (System Health, Link Health, Support), **People** (Users, Team & Roles), **Money** (Billing, Expenses), **Growth** (Marketing, Affiliates, Content), **System** (AI Models). Confirm the grouping with the user before committing to labels.
-
-### F. Billing & Plans — it is a plan EDITOR, not a billing dashboard
-`/admin/billing` edits `subscription_plans` well (price, caps, marketing bullets, LLM-router unlock, confirm-before-save, read live with no redeploy). What it has **no view of at all** is the actual business: no MRR, no active-subscriber count, no trial/churn/failed-payment view, no Stripe sync status. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are both configured, so this is readable today.
-- Add a revenue panel: active subscribers by tier, MRR, trials, failed payments, cancellations this period.
-- Show Stripe webhook health — last event received, and whether the projection is behind.
-- Keep the plan editor exactly as it is; this is a new panel above it, not a rewrite.
-
-### G. AI Models — no usage, no cost, no fallback visibility
-`/admin/ai-models` edits model config rows and carries the global kill switch. It cannot answer the questions that actually come up: which model burned the spend, and is anything rate-limited right now.
-- Per-model usage and cost over the period, joined to the same rates section A seeds. This is the natural other half of the Expenses fix — do them together.
-- **Fallback-chain state.** `lib/models.ts` has `GEMINI_FALLBACK_MODELS`, a 60s cooldown and a process-lifetime cooldown cache, precisely because the free Gemini tier has both an RPM and a hard daily RPD cap that has bitten this project before. None of that is visible: an admin cannot see that the primary model is cooling down and everything is silently running on a fallback.
-- Surface the kill switch's current state and who set it, alongside the crawl pause on System Health, so both emergency levers read the same way.
-
-### H. Link Health — measuring the wrong table
-`/admin/link-health` buckets apply links (direct / board / generic / mirror / unknown) with a worst-offenders list. Useful, but it scans **`jobs`** — the per-user rows created by searches — and NOT `discovered_postings`, the ~690k-row crawl cache that is now the primary source users actually search. So it reports on a small derived slice while the real inventory goes unmeasured.
-- Point it at `discovered_postings` as well, reported separately from `jobs` so the two are not conflated.
-- Add a trend (it is currently a point-in-time count with no history) and a "re-check now" action wired to the existing `repair-apply-links` cron, so an admin can act on what they see instead of only reading it.
-
-### I. Content — additions researched via agy (2026-09-10)
-Today it is create/edit markdown with a slug and draft/published, published at `/blog/[slug]`, plus a programmatic-SEO generate button. Six additions, ranked by leverage-per-effort, all sized for a 1-3 person team and deliberately NOT duplicating the news section or the marketing broadcast system:
-1. **Dynamic CTA injector** (S) — a shortcode like `{{CTA:ATS_CHECK}}` that drops a standard styled CTA into posts. Blog traffic currently leaks; this funnels it into the free ATS checker, and one CTA edit updates every post.
-2. **Programmatic-SEO auto-linker** (M) — on save, match the markdown against existing `/interview-questions/*` and `/salary-insights/*` pages and link the first occurrence. Passes authority to the highest-value pages and removes the manual cross-linking chore.
-3. **SEO metadata + author profiles** (S) — title/description/OG overrides and a real author. **Honesty constraint, non-negotiable in this codebase: an author credential must belong to a real person.** agy's example ("Ex-Google Recruiter") is exactly the kind of invented authority this project does not ship. Use the real owner, or omit the byline.
-4. **Stale-content tracker** (S) — "days since updated" column plus an update-timestamp action. Career advice ages fast and freshness is a real ranking factor in this niche.
-5. **Auto table of contents** (S) — parse `##`/`###` into anchored jump links. Better long-form UX, and Google surfaces the anchors as sitelinks.
-6. **FAQ → JSON-LD** (S/M) — detect an FAQ section and emit `FAQPage` schema. **This pattern already exists in this codebase** on `app/interview-questions/[slug]/page.tsx`, so it is an extension of a proven approach, not a new one.
-
-### K. Regional pricing — the CODE IS DONE; what is missing is data and visibility
+### 5. Regional pricing — the CODE IS DONE; what is missing is data and visibility
 Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do not rebuild any of this.
 
 **What already exists end to end (Phase 30):**
@@ -92,41 +95,43 @@ Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do n
 
 **Minor cleanup noticed while verifying:** `lib/weather.ts`'s new `getLiveLocation()` (Phase 51) reads the same Vercel geo headers as `lib/geo.ts` but lacks its `DEV_COUNTRY_OVERRIDE`-style local escape hatch. Not a bug — different data, country vs lat/lon — but worth aligning so both can be QA'd locally the same way.
 
-### L. EMPTY ADMIN CONFIG TABLES — full sweep, 2026-09-10
-Found when the user asked why `/admin/ai-models` lists nothing. A full row-count sweep of all 54 public tables followed (`pg_stat_user_tables`, live). **38 of 54 are empty, but most of those are legitimately empty** — this app has 3 real users and has not launched, so `applications`, `star_stories`, `notifications`, `support_tickets`, `push_subscriptions` and so on having no rows is expected, not a defect. Do not "fix" those.
+### 6. Billing & Plans — it is a plan EDITOR, not a billing dashboard
+`/admin/billing` edits `subscription_plans` well (price, caps, marketing bullets, LLM-router unlock, confirm-before-save, read live with no redeploy). What it has **no view of at all** is the actual business: no MRR, no active-subscriber count, no trial/churn/failed-payment view, no Stripe sync status. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are both configured, so this is readable today.
+- Add a revenue panel: active subscribers by tier, MRR, trials, failed payments, cancellations this period.
+- Show Stripe webhook health — last event received, and whether the projection is behind.
+- Keep the plan editor exactly as it is; this is a new panel above it, not a rewrite.
 
-**CONFIRMED GAPS — config tables that must have seed rows and do not:**
+### 7. Link Health — measuring the wrong table
+`/admin/link-health` buckets apply links (direct / board / generic / mirror / unknown) with a worst-offenders list. Useful, but it scans **`jobs`** — the per-user rows created by searches — and NOT `discovered_postings`, the ~690k-row crawl cache that is now the primary source users actually search. So it reports on a small derived slice while the real inventory goes unmeasured.
+- Point it at `discovered_postings` as well, reported separately from `jobs` so the two are not conflated.
+- Add a trend (it is currently a point-in-time count with no history) and a "re-check now" action wired to the existing `repair-apply-links` cron, so an admin can act on what they see instead of only reading it.
 
-| table | rows | symptom |
-| --- | --- | --- |
-| `ai_model_config` | **0** | `/admin/ai-models` lists nothing; models cannot be changed without a redeploy |
-| `app_settings` | **0** | the site-wide AI kill switch has no persisted state |
-| `ai_cost_rates` | **0** | Expenses reports a structurally-zero AI spend (section A) |
+### 8. Vendor console — both tiers, in this order
+**Tier 1 — read-only, scoped (safe, do first).** Extend `/admin/system` using only keys the app already ships. Stripe, PostHog, Sentry, Inngest, Brevo/Resend reachability. No account-wide tokens.
 
-**Root cause: a data-migration gap, not a code bug.** The Supabase migration carried the schema across and not the seeded configuration. All three are admin-only tables (RLS enabled, no client policies), which is part of why it went unnoticed — nothing user-facing reads them.
+**Tier 2 — owner-only, dedicated read-only keys.** Live Supabase project stats (database size, connection count, table sizes) and Brevo send statistics. Gate behind `requireRole(admin, ["owner"])`, not `["owner","admin"]`. Use dedicated read-only keys where the vendor offers them (Brevo does). `SUPABASE_ACCESS_TOKEN` is account-wide and RESUME already flags it for revocation — if it is used here at all it must be owner-gated and the tradeoff written down at the call site.
 
-**AI is NOT down, and that is exactly why nobody noticed.** `lib/models.ts` keeps a hardcoded fallback for this precise case; its own comment says the fallback "must never be deleted, per the 'always keep a hardcoded fallback' gotcha `agy` research flagged for exactly this DB-config pattern." Every AI call is quietly running on code defaults. What was lost is **admin control and visibility**, not function.
+### 9. Content — additions researched via agy (2026-09-10)
+Today it is create/edit markdown with a slug and draft/published, published at `/blog/[slug]`, plus a programmatic-SEO generate button. Six additions, ranked by leverage-per-effort, all sized for a 1-3 person team and deliberately NOT duplicating the news section or the marketing broadcast system:
+1. **Dynamic CTA injector** (S) — a shortcode like `{{CTA:ATS_CHECK}}` that drops a standard styled CTA into posts. Blog traffic currently leaks; this funnels it into the free ATS checker, and one CTA edit updates every post.
+2. **Programmatic-SEO auto-linker** (M) — on save, match the markdown against existing `/interview-questions/*` and `/salary-insights/*` pages and link the first occurrence. Passes authority to the highest-value pages and removes the manual cross-linking chore.
+3. **SEO metadata + author profiles** (S) — title/description/OG overrides and a real author. **Honesty constraint, non-negotiable in this codebase: an author credential must belong to a real person.** agy's example ("Ex-Google Recruiter") is exactly the kind of invented authority this project does not ship. Use the real owner, or omit the byline.
+4. **Stale-content tracker** (S) — "days since updated" column plus an update-timestamp action. Career advice ages fast and freshness is a real ranking factor in this niche.
+5. **Auto table of contents** (S) — parse `##`/`###` into anchored jump links. Better long-form UX, and Google surfaces the anchors as sitelinks.
+6. **FAQ → JSON-LD** (S/M) — detect an FAQ section and emit `FAQPage` schema. **This pattern already exists in this codebase** on `app/interview-questions/[slug]/page.tsx`, so it is an extension of a proven approach, not a new one.
 
-**A SECOND, INDEPENDENT CAUSE behind the Expenses $0 — seeding `ai_cost_rates` alone will NOT fix it.** `usage_daily` is also empty (0 rows) despite 56 real `agent_runs`. That is not a bug either: `lib/usage.ts` returns early on the ADMIN_EMAILS exemption **before** reaching its `increment_usage_daily` RPC, so an allowlisted admin never writes a usage row. Since the only active accounts today are admin accounts, there is genuinely nothing to join against. So Expenses needs BOTH: rates seeded AND either a non-admin user generating real usage, or the estimate explicitly labelled as covering non-admin usage only. Decide which before calling section A done — otherwise it will still read $0 and look unfixed.
+### 10. Sidebar grouping
+*(do near the end — it moves everything the sections above added)*
+The nav is a flat 12-item list (System Health was added in Phase 51) and this plan takes it further. Group it — suggested: **Ops** (System Health, Link Health, Support), **People** (Users, Team & Roles), **Money** (Billing, Expenses), **Growth** (Marketing, Affiliates, Content), **System** (AI Models). Confirm the grouping with the user before committing to labels.
 
-**NEEDS A DECISION, not obviously a bug:**
-- `outreach_signal_settings` (0) — the Marketing outreach provider setting. Confirm whether the code expects a seeded row or treats "no row" as a valid default before seeding it.
-- `resumes` (0) — **worth an explicit answer**: the résumé workspace is a major shipped feature (Phase 7/8), and there are zero résumés. Either they were never re-created after the Supabase migration, or real rows were lost in it. InsForge cannot be checked to compare (its API returns 503, it is paused). Not claimed as data loss — but it should be answered rather than assumed.
-- `api_usage_metrics` (0) — same question as `usage_daily`: is anything actually writing to it?
+### 11. Dashboard restructure
+*(do LAST — it consumes the data every section above produces)*
+`/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
 
-**Fix next session:**
-1. Seed `ai_model_config` from the defaults already in `lib/models.ts` (provider / tier / model_id).
-2. Seed `app_settings` with its single row (`ai_enabled = true`). NOTE: Phase 51's `setCrawlPaused` already handles the zero-row case with insert-if-missing, so the new crawl pause is unaffected either way.
-3. Seed `ai_cost_rates` as part of section A, and resolve the `usage_daily` half above.
-4. **Verify, do not assume**: `/admin/ai-models` renders the list; the site-wide toggle persists across a reload; and the per-user override (`profiles.preferred_model` — column present, 0 users set, which is expected at 3 users rather than evidence of breakage) genuinely changes which model a real AI call uses. Set it on the test account, confirm, then clear it — same pattern used for the signup and recommended-jobs verification in Phase 51.
-
-### M. Regional pricing extended to 10 regions (DONE in Phase 51 — listed so it is not rebuilt)
+### Reference — already DONE in Phase 51, do not rebuild
 `COUNTRY_REGION_KEY` now covers Eurozone, UK, Canada, Australia/NZ (local currency, explicitly NOT discounts) plus India, South Asia, Southeast Asia, LATAM, Africa and Eastern Europe/Türkiye (PPP bands in USD). `defaultCurrencyForRegion()` added so the admin editor pre-fills EUR/GBP/CAD/AUD/INR rather than defaulting every new row to USD.
 
-All four plans still read `regional_prices: {}` — verified — so **no visitor's price changed**. The rows simply sit ready in the admin editor. Still outstanding, and still the owner's call: the actual price numbers, and a Stripe Price object per configured region (3 paid plans x 1 Price each). See section K for the visibility gap that must ship alongside them.
-
-### J. Dashboard restructure (do this LAST — it consumes the data every section above produces)
-`/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
+All four plans still read `regional_prices: {}` — verified — so **no visitor's price changed**. The rows simply sit ready in the admin editor. Still outstanding, and still the owner's call: the actual price numbers, and a Stripe Price object per configured region (3 paid plans x 1 Price each). See section 5 for the visibility gap that must ship alongside them.
 
 ---
 
