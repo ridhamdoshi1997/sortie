@@ -18,6 +18,31 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Admin System Health — /admin/system (Phase 51, 2026-09-10)
+
+Files: `components/admin/SystemHealthPanel.tsx`, `app/admin/system/page.tsx`, `lib/systemHealth.ts`, `actions/adminSystem.ts`. Nav: `AdminSidebar.tsx` (second item, `Activity` icon).
+- Card shell reuses the admin convention exactly: `rounded-2xl border border-border bg-surface p-5 shadow-card`, section label `text-xs font-semibold uppercase leading-4 tracking-wide text-text-secondary`.
+- Status colours map to existing semantic tokens only — `text-success` / `text-warning` / `text-error` / `text-text-muted`. **`unknown` is a first-class state with its own icon and label**; it is never rendered as OK. A bug caught during verification did exactly that (an unreachable cache showed `ok` with null counts), which is the failure this whole page exists to prevent.
+- Metrics use `font-mono text-xl font-bold tabular-nums`, consistent with every other real number in this app.
+- Destructive-ish action (Pause crawls) uses a warning-toned outline button, not `.btn-signal`; the recovery action (Resume) uses `.btn-signal`. The env kill switch is rendered as read-only text with an explanation, never as a control — see the file's own comment for why.
+
+### News cards — /news (Phase 51, 2026-09-10)
+
+Files: `components/news/NewsCard.tsx`, `app/news/page.tsx`, `lib/newsIngestion.ts`, `lib/newsBriefing.ts`.
+- Three sizes: `lead` (hero image + full AI block), `standard` (image band + clamped summary), `compact` (row with a small right-hand thumbnail).
+- **The AI takeaway uses the shared `AiReadsCard`**, hero variant on `lead` and compact variant on `standard`. Do NOT hand-roll `border-l-2 border-agent bg-agent-light` here — that flat callout is explicitly superseded (see `AiReadsCard`'s own header comment on the ~24 files that each re-implemented it). Using it made the news cards read far louder than every other AI block in the app; corrected after the user flagged it against a screenshot.
+- **Images are always the article's own.** No stock or placeholder fallback: a story without a real image renders typographically. Google's thumbnail cache (`gstatic.com`) is only ever rendered small — stretched to a 742px hero it measured 120×66 natural and looked like a smear — so `hasLargeImage()` decides which story gets the lead slot.
+- Plain `<img>` with `referrerPolicy="no-referrer"`, not `next/image`: the publisher/thumbnail hosts would each need a `next.config` remote pattern, and the thumbnail hosts 403 a request that leaks a referrer.
+- Briefing cards additionally render `matchedOn` chips (`bg-accent-muted text-accent`) so a personalised feed can always answer "why am I seeing this?".
+
+### Weather widget — /news + /dashboard (Phase 51, 2026-09-10)
+
+Files: `components/shared/WeatherWidget.tsx`, `lib/weather.ts`.
+- Server Component; Open-Meteo (free, no key, no attribution requirement). Follows the reader's **live** location via Vercel edge geo headers, falling back to the profile location only when those are absent.
+- Renders **nothing** when there is no real location — an empty slot is honest, a guessed city is not.
+- Icon is chosen by a `renderIcon()` helper rather than a capitalised local component, which `react-hooks/static-components` flags as creating a component during render.
+
+
 ### Interview hub redesign + Contribute a question (Phase 50, cont'd, 2026-09-10)
 
 Files: `components/interview/InterviewHub.tsx`, `components/interview/ContributeQuestionModal.tsx`, `components/interview/CompanyContributeButton.tsx`, `app/interview-questions/page.tsx`, `app/interview-questions/company/[key]/page.tsx`, `lib/interviewHub.ts`, `actions/interviewContributions.ts`.

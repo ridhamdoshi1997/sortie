@@ -4,9 +4,89 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-09-09, Phase 50. **START HERE — the Phase 50 work below is now shipped to PREVIEW (`jobpilot-experiment-preview-sortie3.vercel.app`), re-verified live after deploy, and the eviction rule that was deleting live inventory is fixed. Production has NOT been deployed** — by direct, standing user decision, production deploys only happen when the user explicitly asks for one in that message (see [[feedback_preview_only_no_prod_deploy]] in cross-session memory). **Crawls are back ON, running on preview** (`CRAWL_PAUSED=0` there; production stays paused/behind) — confirmed live, cache genuinely growing again. See "Phase 50, cont'd" for the full reasoning and numbers. Two parallel tracks remain in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work. **InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost.
+Last updated: 2026-09-10, Phase 51. **START HERE — NEXT SESSION BEGINS WITH THE ADMIN PORTAL REBUILD. The full plan is in "## Phase 52 — Admin portal rebuild (PLANNED, not started)" immediately below.** Everything from Phase 51 is committed on `feature/supabase-migration` and **NOT deployed** — by direct user instruction at the end of that session ("update everything and start next session from here... commit but don't deploy yet"). So the preview alias still points at the previous deployment; the committed work is ahead of it. Deploy preview first thing next session if you want to see Phase 51's changes live.
+
+## Phase 52 — Admin portal rebuild (PLANNED, not started)
+
+Scope agreed with the user at the end of Phase 51, after a full reassessment of the existing admin portal. Do these in this order.
+
+**Context for whoever picks this up:** the admin portal has 11 sections and is structurally healthy (all real Supabase reads via `createAdminDbClient`, no InsForge staleness, role-gated correctly). The problem is not quality, it is COVERAGE — it has no visibility into any subsystem built since roughly Phase 44, and one section reports a number it does not actually compute. Phase 51 already shipped the first piece (`/admin/system`, System Health); the rest is below.
+
+**Decisions already made — do not relitigate:**
+- Affiliates, Marketing and Content **stay as-is** (direct user decision). They look premature for a 3-user pre-launch product, but they are built, working, and wanted at launch. The only change is an honest "PayPal not configured" notice on the Affiliates payout button, since `PAYPAL_CLIENT_ID` is empty and the button will fail silently today.
+- Doppler tokens **never** go into the deployed app env. Doppler stays CLI-only. Account-wide management tokens in a public web app is a blast-radius increase the user and I explicitly weighed.
+
+### A. Expenses — make it report a real number
+Today `/admin/expenses` advertises "an estimated AI/API spend, joined against real usage" but `ai_cost_rates` has **zero rows** (verified), so that half is structurally always $0 and the page shows only manually-entered recurring costs. Real spend has grown a lot and none of it is tracked.
+- Seed `ai_cost_rates` with the models actually in use (Gemini fast/smart tiers, OpenRouter, Anthropic where used).
+- Add non-AI vendor cost lines: Serper (~$0.001/credit, 6/day on the daily news cron), SerpApi (free 250/mo x3 keys), Apify (measured $0.016 per LinkedIn+Indeed pair), Jina, Brevo (free 300/day), Supabase (free tier x2 projects), Vercel, Resend.
+- Distinguish **metered** (computed from real usage rows) from **fixed monthly** (manual) so the page can be honest about which half is measured and which is entered.
+- Fix the page copy so it cannot claim a computed number it is not computing.
+
+### B. Vendor console — both tiers, in this order
+**Tier 1 — read-only, scoped (safe, do first).** Extend `/admin/system` using only keys the app already ships. Stripe, PostHog, Sentry, Inngest, Brevo/Resend reachability. No account-wide tokens.
+
+**Tier 2 — owner-only, dedicated read-only keys.** Live Supabase project stats (database size, connection count, table sizes) and Brevo send statistics. Gate behind `requireRole(admin, ["owner"])`, not `["owner","admin"]`. Use dedicated read-only keys where the vendor offers them (Brevo does). `SUPABASE_ACCESS_TOKEN` is account-wide and RESUME already flags it for revocation — if it is used here at all it must be owner-gated and the tradeoff written down at the call site.
+
+### C. Interview section in admin — add and track
+The `contributed_interview_questions` table shipped in Phase 51 with an explicit, documented "no moderation" gap. It is public user-generated content with **zero** admin surface.
+- Add a `status` column (`pending` / `published` / `rejected`). It currently auto-publishes with no approval step.
+- Moderation queue: approve / reject / delete, with the submitter visible.
+- Let an admin **add** questions directly from the admin site (the user's own ask), not only via the public contribute modal.
+- Track: per-company counts, contribution volume over time, and which companies have AI-generated banks vs real contributed questions.
+
+### D. Sidebar grouping
+The nav is a flat 12-item list (System Health was added in Phase 51) and this plan takes it further. Group it — suggested: **Ops** (System Health, Link Health, Support), **People** (Users, Team & Roles), **Money** (Billing, Expenses), **Growth** (Marketing, Affiliates, Content), **System** (AI Models). Confirm the grouping with the user before committing to labels.
+
+### E. Dashboard restructure
+`/admin` currently leads with total users, 14-day signups and AI runs — reasonable, but not this app's actual operational risk. Reorder to lead with system health: crawl state, any quota at zero, email/signup health, cache headroom, news freshness, moderation queue depth. Keep signups and AI usage, demoted.
+
+---
+
+Last updated (previous): 2026-09-09, Phase 50. **START HERE — the Phase 50 work below is now shipped to PREVIEW (`jobpilot-experiment-preview-sortie3.vercel.app`), re-verified live after deploy, and the eviction rule that was deleting live inventory is fixed. Production has NOT been deployed** — by direct, standing user decision, production deploys only happen when the user explicitly asks for one in that message (see [[feedback_preview_only_no_prod_deploy]] in cross-session memory). **Crawls are back ON, running on preview** (`CRAWL_PAUSED=0` there; production stays paused/behind) — confirmed live, cache genuinely growing again. See "Phase 50, cont'd" for the full reasoning and numbers. Two parallel tracks remain in progress, on the SAME branch (`feature/supabase-migration`): the Supabase migration (app-code complete, Phase 42) and the Phase 40 job-search volume/authenticity work. **InsForge remains untouched and still paused**, per the standing rule below — nothing has been deleted or decommissioned there. `feature/signal-redesign` stays exactly at its last commit as the clean InsForge-based revert path, per direct user decision — see Phase 42's own section for the full reasoning on what reverting would and wouldn't cost.
 
 **Despite that resolution, the decision to migrate to Supabase stands — reason changed from "we're locked out" to "verified company-longevity risk."** Independent research (Gemini + Perplexity, cross-checked against primary sources via direct `WebSearch`/`WebFetch`, not taken on faith) confirmed: InsForge is a genuinely early-stage operation — founded 2025, Seattle, **6-person team** (per InsForge's own YC company page), Y Combinator **Spring 2026 (S26)** batch, **$1.5–2.2M raised** (sources vary slightly — Crunchbase shows a Pre-Seed round; other aggregators cite a $1.5M seed led by MindWorks Ventures, ~$2.2M total across 1984 Ventures/Apertu Capital/Llama Ventures/Multimodal Ventures), public Show HN launch ~3 months before this session (news.ycombinator.com/item?id=48181342, confirmed "YC P26"/S26, "we're a small team"). Contrast, also independently verified: Supabase raised a **$500M Series F in June 2026 at a $10.5B valuation** (CNBC, TechCrunch, PRNewswire all confirm), total raised **over $1B**, ~$170M ARR (up 2.4x from $70M in 2025), with Stripe and Salesforce Ventures among investors. That gap — not the now-resolved usage-cap scare — is why migrating pre-launch (zero real users, cheapest possible time to do it) is the right call. See "## Phase 40" below for the full migration plan and the separately-scoped job-search volume/authenticity work that follows it.
+
+## Phase 51 (2026-09-10) — signup fixed for real users, news rebuilt, admin System Health, Recommended/Interview reworked. COMMITTED, NOT DEPLOYED.
+
+**Nothing in this phase is on preview.** The user asked at the end of the session to document and commit but not deploy. The preview alias points at Phase 50's deployment; `feature/supabase-migration` is ahead of it.
+
+### SIGNUP WAS BROKEN FOR EVERY REAL USER — fixed
+The single most important finding of the session. Signup returned HTTP 500 "Error sending confirmation email" for any address that was not the Resend account owner's own, and **no user row was created** — so a real person got an error and no account, not even a pending one.
+
+Root cause was a REGRESSION from the Supabase migration, not a missing feature: Phase 9 already hit this and solved it by moving SMTP to Brevo (which works with no domain, verifying a single sender address). The Supabase project was configured with Resend's shared sandbox sender `onboarding@resend.dev`, which only delivers to the Resend account owner. That is why it looked fine — the owner's own signups worked, and nobody ever tested a non-owner address after the migration.
+
+Fixed by pointing Supabase SMTP at Brevo via the Management API (`smtp-relay.brevo.com:587`, user `b518fa001@smtp-brevo.com`, sender the owner's gmail) — the exact config still recorded in `insforge.toml`. **Verified end to end on a brand-new non-owner address**: signup 200 → real email delivered → 8-digit code `71914336` → `verify-email` 200 → `/onboarding`. All probe accounts deleted afterwards; `auth.users` back to 3.
+
+**Method note worth keeping:** the first test used an `@example.com` address, which Resend rejects for an unrelated reason, so the initial "signup is broken" call was right by luck rather than by evidence. The user pushed back with a screenshot of a code that HAD arrived; redoing it properly (mailinator vs `delivered@resend.dev`, same minute, only the recipient differing) is what actually proved it. **Test a non-owner address, and check the reason a send failed before concluding why.**
+
+Open, disclosed: mail sends via `…@brevosend.com` because the sender is a gmail address; Phase 9 already recorded Brevo flagging that as DMARC-misaligned. It delivers but can land in spam. A real domain is the durable fix. The Brevo SMTP key passed through chat and should be rotated.
+
+### News section rebuilt
+- **Real per-article images.** Verified live that Google News RSS carries no image at all and its `<link>` is an opaque encrypted redirect (a 585KB JS interstitial with the publisher URL nowhere in it), so neither an image nor an og:image was reachable from it. Ingestion now runs a chain: **SerpApi → Serper → Google RSS**, each returning null rather than throwing. SerpApi is preferred because three keys are already configured and nothing else in the codebase consumes them any more (750/mo free vs a need of ~180/mo) — but all three read 0/250 with `plan_renewal_date` **2026-09-16**, so it falls through to Serper until then. Serper supplies the real article URL, and the article's own og:image is then fetched for full resolution.
+- **`num` MUST stay 10 on Serper** — a free account 400s on `num=20` ("Query pattern not allowed for free accounts") and silently drops to the image-less RSS path.
+- **Categories 2 → 6.** Added Workplace & RTO, Unions & Worker Rights, Burnout & Wellbeing, Gig & Freelance — researched via agy, then volume-checked against the real feed before wiring (7-day counts 48/100/54/100). Phase 35's three rejected candidates stay rejected. The cron is now driven off `NEWS_CATEGORY_LABELS`; the old hardcoded two-call body would have left every new tab permanently empty while looking healthy.
+- **Refreshes daily**, not 6-hourly (user instruction), which also drops Serper to ~6 credits/day.
+- **"Your briefing" is a real tab** (`?category=briefing`), scored in plain code against the profile's roles/skills/industries/saved companies — no AI call — and every card shows which signal matched. Never falls back to the generic feed relabelled as personal.
+- Thumbnails are only ever rendered small; the lead slot goes to a story that actually has a full-size image. No stock or placeholder images anywhere.
+
+### Weather (news + dashboard)
+Open-Meteo, genuinely free and keyless. Follows the reader's **live location** via Vercel edge geo headers (verified: Windsor/ON, lat 42.1997). **Real bug fixed:** `h.get()` returns null for a missing header and `Number(null)` is 0, which passes `Number.isFinite` — so with no headers it reported the weather at 0°N 0°E (open ocean) labelled "Your location".
+
+### Admin — System Health (`/admin/system`)
+First piece of the Phase 52 plan above, shipped early because the session kept paying for its absence. Live checks, no caching: crawl state (env kill switch vs new admin pause, shown separately), job cache vs the 650k budget, news pipeline, and external services — SerpApi (real remaining/limit/renewal), Serper (reachability only; its `x-ratelimit-*` headers are a per-SECOND rate limit, NOT a balance — a misreading this project already made once), Apify per-account, and Supabase SMTP.
+
+**The crawl toggle deliberately does NOT control the env var.** `CRAWL_PAUSED` must survive an unreachable database, which is exactly what the Phase 49 outage created, so it stays a redeploy-only emergency switch and the page says so. The new `app_settings.crawl_paused` is the ordinary admin pause, read by the 13 cron guards via `crawlPausedNow()` with a 3s bound that degrades to the env value rather than hanging.
+
+### Recommended jobs + Interview — both reworked after being built wrong
+- `/jobs/recommended` now renders `FindJobsForm` itself with the console hidden, so the cards, scoring, relevance ordering and Save/Hide/Status are literally the Search tab's code path. The earlier parallel implementation and its bespoke card were deleted. Refreshes daily, has a Refresh button and a role dropdown from the profile.
+- `/interview`'s Question Bank panel IS the redesign now, rather than a second grid stacked above the old one. **Role is optional** — clicking a company used to dump the user into an empty form because no curated company carries a role, so clicking Google did nothing.
+
+### Apify multi-account fallback
+`APIFY_API_TOKEN_FALLBACK` / `_FALLBACK_2`, mirroring the existing SerpApi key chain. Only 401/402/403 or an explicit "monthly usage hard limit" escalates to the next account — a 400 or 500 fails identically everywhere and retrying would just burn the second account's credit. **Not yet set:** System Health currently reports only 1 Apify account configured.
+
+### Résumé prompt (partial, by design)
+`BULLET_QUALITY_RULES` already implemented Google's XYZ formula and ATS keyword mirroring before the user's prompt. Added from it: explicit placeholder brackets (`[X]%`, `[$ amount]`) when a real accomplishment has no metric, and prioritising `missing_skills` in keyword mirroring. **Deliberately NOT added:** the prompt's keyword-analysis / ATS-gap-analysis / formatting-tips report, because `lib/publicAtsChecker.ts` already produces real matched/missing keyword coverage. If the user wants that four-step report surfaced, it is a separate feature and is not built.
 
 ## Phase 50, cont'd (2026-09-09, same day) — shipped to preview, verified live, and the eviction rule fixed to stop deleting live inventory
 
