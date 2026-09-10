@@ -138,6 +138,13 @@ export function QuestionBankPanel({
       .filter((s) => s.companies.length > 0);
   }, [browseQuery, quickStartJobs, hubData]);
 
+  // Distinct companies across every section currently rendered — the number
+  // the "Companies" stat above reports, so it always matches the grid.
+  const browseCompanyCount = useMemo(
+    () => new Set(browseSections.flatMap((s) => s.companies.map((c) => c.company.toLowerCase()))).size,
+    [browseSections],
+  );
+
   // Accepts explicit overrides so a quick-start card click can search
   // immediately with real values, without waiting on the next render for
   // `company`/`title` state to catch up (they're set in the same handler).
@@ -232,8 +239,17 @@ export function QuestionBankPanel({
           {hubData && (
             <div className="mt-4 grid grid-cols-3 gap-3 sm:max-w-md">
               {[
-                { label: "Companies", value: hubData.stats.companies },
-                { label: "Real Questions", value: hubData.stats.totalQuestions },
+                // Companies is counted off the grid actually on screen, not
+                // off hubData.stats. On this page the grid also renders the
+                // user's OWN tracked companies above the curated sections, so
+                // the hub-only figure described something the reader could not
+                // see — it read 11 while ~19 cards were visible.
+                { label: "Companies", value: browseCompanyCount },
+                // "Questions", not "Real Questions": most of these are
+                // AI-PREDICTED for a company, and this app is strict about not
+                // implying AI output is something a person was actually asked.
+                // The contributed ones are labelled as such where they appear.
+                { label: "Questions", value: hubData.stats.totalQuestions },
                 { label: "Last 30 Days", value: hubData.stats.last30Days, prefix: "+" },
               ].map((stat) => (
                 <div key={stat.label} className="rounded-xl border border-border bg-surface-secondary px-4 py-3 text-center">

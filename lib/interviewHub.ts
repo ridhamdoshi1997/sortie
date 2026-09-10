@@ -76,6 +76,13 @@ type Accumulator = {
   mostRecentActivity: string | null;
 };
 
+// A bank row's `questions` is a jsonb array of individual questions. Anything
+// unexpected counts as zero rather than throwing — a malformed row should not
+// take down the whole stat strip.
+function questionCount(questions: unknown[] | null): number {
+  return Array.isArray(questions) ? questions.length : 0;
+}
+
 function newer(a: string | null, b: string | null): string | null {
   if (!a) return b;
   if (!b) return a;
@@ -104,13 +111,13 @@ export async function getInterviewHubData(): Promise<InterviewHubData> {
   // lib/interviewSeo.ts's listQuestionBankEntries() — that function shapes
   // rows for the per-role SEO page (slugs, questions array); this only
   // needs company + when, aggregated per company.
-  const banksResult = await withBuildTimeout<{ company: string; generated_at: string }[]>(
+  const banksResult = await withBuildTimeout<{ company: string; generated_at: string; questions: unknown[] | null }[]>(
     "interviewHub:question-banks",
     async () => {
       const { data, error } = await admin.database
         .from("interview_question_banks")
-        .select("company,generated_at")
-        .returns<{ company: string; generated_at: string }[]>();
+        .select("company,generated_at,questions")
+        .returns<{ company: string; generated_at: string; questions: unknown[] | null }[]>();
       if (error) throw new Error(error.message);
       return data ?? [];
     },
@@ -135,7 +142,13 @@ export async function getInterviewHubData(): Promise<InterviewHubData> {
         mostRecentActivity: row.generated_at,
       });
     }
-    if (row.generated_at && now - new Date(row.generated_at).getTime() <= RECENT_WINDOW_MS) last30Days += 1;
+    // Counts the QUESTIONS inside the bank, not the bank row. Each bank holds
+    // 10-15 real questions, so counting rows under-reported the feed by an
+    // order of magnitude — the panel read "3 Real Questions" while the three
+    // banks on file actually held 36 (verified against the table, 2026-09-10).
+    if (row.generated_at && now - new Date(row.generated_at).getTime() <= RECENT_WINDOW_MS) {
+      last30Days += questionCount(row.questions);
+    }
   }
 
   const contributedResult = await withBuildTimeout<{ company: string; company_key: string; created_at: string }[]>(
@@ -255,7 +268,8 @@ export async function getInterviewHubData(): Promise<InterviewHubData> {
   );
 
   const companies = sections.reduce((n, s) => n + s.companies.length, 0);
-  const totalQuestions = banksResult.length + contributedResult.length;
+  const totalQuestions =
+    banksResult.reduce((n, row) => n + questionCount(row.questions), 0) + contributedResult.length;
 
   return { sections, stats: { companies, totalQuestions, last30Days } };
 }

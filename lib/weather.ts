@@ -75,15 +75,75 @@ async function geocode(location: string): Promise<GeocodeResult | null> {
   }
 }
 
-export async function getWeatherForLocation(location: string | null | undefined): Promise<WeatherNow | null> {
-  if (!location?.trim()) return null;
+// Where the reader actually IS, from Vercel's own edge geolocation headers
+// (2026-09-10, direct user request: "the weather should be of the live
+// location of the user").
+//
+// Chosen over the two alternatives on purpose:
+//   * The browser Geolocation API is more precise but throws a permission
+//     prompt at someone who only came to read the news, and would force this
+//     widget to become a client component.
+//   * A paid IP-geolocation API costs money for something Vercel already
+//     attaches to every request for free.
+// Verified live on a real preview deployment: x-vercel-ip-city "Windsor",
+// region "ON", latitude 42.1997, longitude -83.0263 — the correct city, with
+// coordinates precise enough to skip the geocoding call entirely.
+//
+// Returns null locally (the headers only exist on Vercel), which is exactly
+// why the caller keeps a profile-location fallback rather than relying on
+// this alone.
+export async function getLiveLocation(): Promise<{ latitude: number; longitude: number; place: string } | null> {
+  try {
+    const { headers } = await import("next/headers");
+    const h = await headers();
+    const lat = Number(h.get("x-vercel-ip-latitude"));
+    const lon = Number(h.get("x-vercel-ip-longitude"));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-  const place = await geocode(location);
-  if (!place) return null;
+    // Header values are URL-encoded ("San%20Francisco").
+    const decode = (v: string | null) => {
+      if (!v) return null;
+      try {
+        return decodeURIComponent(v);
+      } catch {
+        return v;
+      }
+    };
+    const city = decode(h.get("x-vercel-ip-city"));
+    const region = decode(h.get("x-vercel-ip-country-region"));
+
+    return {
+      latitude: lat,
+      longitude: lon,
+      place: city ? (region ? `${city}, ${region}` : city) : "Your location",
+    };
+  } catch {
+    return null;
+  }
+}
+
+export async function getWeatherForLocation(location: string | null | undefined): Promise<WeatherNow | null> {
+  // Live position wins over whatever the profile says — someone travelling
+  // wants the weather where they are, not where they want to work.
+  const live = await getLiveLocation();
+  // Normalised here because the two sources disagree on shape: the Vercel
+  // headers give {latitude,longitude,place}, the geocoder gives {name,admin1}.
+  let coords: { latitude: number; longitude: number; place: string } | null = live;
+  if (!coords && location?.trim()) {
+    const geo = await geocode(location);
+    if (geo) {
+      coords = {
+        latitude: geo.latitude,
+        longitude: geo.longitude,
+        place: geo.admin1 ? `${geo.name}, ${geo.admin1}` : geo.name,
+      };
+    }
+  }
+  if (!coords) return null;
 
   try {
     const res = await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${place.latitude}&longitude=${place.longitude}` +
+      `https://api.open-meteo.com/v1/forecast?latitude=${coords.latitude}&longitude=${coords.longitude}` +
         `&current=temperature_2m,apparent_temperature,weather_code,is_day` +
         `&daily=temperature_2m_max,temperature_2m_min&timezone=auto&forecast_days=1`,
       // Half an hour: fresh enough that the number is honest, long enough
@@ -101,7 +161,7 @@ export async function getWeatherForLocation(location: string | null | undefined)
     if (typeof current?.temperature_2m !== "number" || typeof current.weather_code !== "number") return null;
 
     return {
-      place: place.admin1 ? `${place.name}, ${place.admin1}` : place.name,
+      place: coords.place,
       temperatureC: Math.round(current.temperature_2m),
       feelsLikeC: typeof current.apparent_temperature === "number" ? Math.round(current.apparent_temperature) : null,
       highC: typeof json.daily?.temperature_2m_max?.[0] === "number" ? Math.round(json.daily.temperature_2m_max[0]) : null,
