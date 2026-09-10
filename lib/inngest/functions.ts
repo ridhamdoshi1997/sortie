@@ -1572,14 +1572,24 @@ export const syncNewsItemsAsync = inngest.createFunction(
     async ({ step }) => {
         if (crawlPaused()) return pausedResult("News sync");
 
-        const { ingestNewsForCategory } = await import("@/lib/newsIngestion");
+        const { ingestNewsForCategory, NEWS_CATEGORY_LABELS } = await import("@/lib/newsIngestion");
 
-        const hiringLayoffs = await step.run("ingest-hiring-layoffs", () => ingestNewsForCategory("hiring_layoffs"));
-        const aiFutureOfWork = await step.run("ingest-ai-future-of-work", () => ingestNewsForCategory("ai_future_of_work"));
+        // Driven off NEWS_CATEGORY_LABELS rather than a hand-listed pair
+        // (2026-09-10): four categories were added and the old two-call body
+        // would have left every new tab permanently empty while looking
+        // perfectly healthy. Adding a category is now a one-line change in
+        // lib/newsIngestion.ts and nothing here.
+        //
+        // Still one step.run per category, so one feed's hiccup cannot block
+        // the others — that was the original reason for the split.
+        const categories = Object.keys(NEWS_CATEGORY_LABELS) as (keyof typeof NEWS_CATEGORY_LABELS)[];
+        const results: string[] = [];
+        for (const category of categories) {
+            const result = await step.run(`ingest-${category}`, () => ingestNewsForCategory(category));
+            results.push(`${NEWS_CATEGORY_LABELS[category]}: +${result.inserted} (${result.skipped} skipped)`);
+        }
 
-        return {
-            message: `Hiring & Layoffs: +${hiringLayoffs.inserted} (${hiringLayoffs.skipped} skipped). AI & Future of Work: +${aiFutureOfWork.inserted} (${aiFutureOfWork.skipped} skipped).`,
-        };
+        return { message: results.join(". ") };
     },
 );
 

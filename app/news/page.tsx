@@ -19,7 +19,14 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-const CATEGORIES: NewsCategory[] = ["hiring_layoffs", "ai_future_of_work"];
+const CATEGORIES: NewsCategory[] = [
+  "hiring_layoffs",
+  "ai_future_of_work",
+  "workplace_rto",
+  "unions_worker_rights",
+  "burnout_wellbeing",
+  "gig_freelance",
+];
 const DEFAULT_CATEGORY: NewsCategory = "hiring_layoffs";
 
 type Props = { searchParams: Promise<{ category?: string }> };
@@ -106,7 +113,7 @@ export default async function NewsPage({ searchParams }: Props) {
           <WeatherWidget location={profileLocation} className="fade-in-up shrink-0" />
         </div>
 
-        <div className="fade-in-up flex gap-1 overflow-x-auto border-b border-border" style={{ animationDelay: "40ms" }}>
+        <div className="fade-in-up flex gap-1 overflow-x-auto border-b border-border [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" style={{ animationDelay: "40ms" }}>
           {CATEGORIES.map((c) => (
             <Link
               key={c}

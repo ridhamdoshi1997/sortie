@@ -1,10 +1,17 @@
 import { ExternalLink } from "lucide-react";
 
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
 import { CompanyLogo } from "@/components/shared/CompanyLogo";
 import { formatTimeAgo } from "@/lib/utils";
 import type { NewsItem } from "@/lib/newsIngestion";
 
 // One story, in three sizes, image-led like the Google News reference.
+//
+// The AI takeaway uses the shared AiReadsCard, NOT a hand-rolled
+// border-l-2/bg-agent-light callout. That flat pattern is explicitly
+// superseded — see AiReadsCard's own header comment on the ~24 files that
+// each re-implemented it before it existed. Using it here made the news
+// cards read louder than every other AI block in the app.
 //
 // The image is ALWAYS the article's own (news_items.image_url, supplied by
 // the Serper ingestion path — see lib/newsIngestion.ts for why the free RSS
@@ -138,12 +145,9 @@ export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsIte
           {item.title}
         </h3>
         <p className="text-sm leading-6 text-text-secondary">{item.ai_summary}</p>
-        <div className="rounded-xl border-l-2 border-agent bg-agent-light px-4 py-3">
-          <p className="mb-1 font-mono text-[11px] font-semibold uppercase tracking-wide text-agent-dark">
-            What it means for you
-          </p>
+        <AiReadsCard label="What it means for you">
           <p className="text-sm leading-6 text-agent-dark">{item.ai_career_impact}</p>
-        </div>
+        </AiReadsCard>
         </div>
       </a>
     );
@@ -176,13 +180,9 @@ export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsIte
         {item.title}
       </p>
       <p className="line-clamp-2 text-sm leading-6 text-text-secondary">{item.ai_summary}</p>
-      {/* The full Agent Content recipe from context/ui-tokens.md (tinted
-          ground + agent border), scaled down for this denser card — not a
-          bare left rule. A 2px accent border with no tint behind it was an
-          ad-hoc half-version of that pattern and read as a generic side tab. */}
-      <p className="line-clamp-2 rounded-lg border-l-2 border-agent bg-agent-light px-3 py-2 text-[13px] leading-5 text-agent-dark">
-        {item.ai_career_impact}
-      </p>
+      <AiReadsCard label="What it means for you" variant="compact">
+        <p className="line-clamp-3 text-[13px] leading-5 text-agent-dark">{item.ai_career_impact}</p>
+      </AiReadsCard>
       </div>
     </a>
   );

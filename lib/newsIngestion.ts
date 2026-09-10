@@ -8,12 +8,36 @@ import { complete, getModel } from "@/lib/models";
 // "career impact" line or discards the article as not genuinely relevant.
 // Cross-industry by design, not tech-only — see the category queries below.
 
-export type NewsCategory = "hiring_layoffs" | "ai_future_of_work";
+export type NewsCategory =
+  | "hiring_layoffs"
+  | "ai_future_of_work"
+  | "workplace_rto"
+  | "unions_worker_rights"
+  | "burnout_wellbeing"
+  | "gig_freelance";
 
 export const NEWS_CATEGORY_LABELS: Record<NewsCategory, string> = {
   hiring_layoffs: "Hiring & Layoffs",
   ai_future_of_work: "AI & Future of Work",
+  workplace_rto: "Workplace & RTO",
+  unions_worker_rights: "Unions & Worker Rights",
+  burnout_wellbeing: "Burnout & Wellbeing",
+  gig_freelance: "Gig & Freelance",
 };
+
+// Four categories added 2026-09-10 on the user's ask, researched via agy and
+// then VOLUME-CHECKED against the real free Google News feed before being
+// wired in (7-day counts: Workplace & RTO 48, Unions & Worker Rights 100,
+// Burnout & Wellbeing 54, Gig & Freelance 100 — none at risk of looking
+// dead). All four are deliberately non-tech-skewed, which is the correction
+// the user made during Phase 35: real sampled headlines included a UofT
+// strike mandate, a Thunder Bay childcare staffing shortage and gig-economy
+// coverage, not software-industry news.
+//
+// The three candidates Phase 35 REJECTED are still rejected and were not
+// revisited: Business & Economy (undifferentiated against Hiring & Layoffs),
+// Tech & Startups (tech-skewed), Compensation (salary data moves quarterly,
+// so the tab would look dead).
 
 // Cross-industry queries — verified live 2026-08-30 that Google News RSS
 // returns real, well-formed <item> results for both (100 items/query,
@@ -28,6 +52,14 @@ const CATEGORY_FEEDS: Record<NewsCategory, string> = {
     'https://news.google.com/rss/search?q=%22layoffs%22+OR+%22hiring+surge%22+OR+%22plant+closing%22+when:7d',
   ai_future_of_work:
     'https://news.google.com/rss/search?q=%22artificial+intelligence%22+AND+(%22workforce%22+OR+%22jobs%22)+when:7d',
+  workplace_rto:
+    'https://news.google.com/rss/search?q=%22return+to+office%22+OR+%22remote+work+policy%22+OR+%22four+day+workweek%22+OR+%22workplace+culture%22+when:7d',
+  unions_worker_rights:
+    'https://news.google.com/rss/search?q=%22union%22+OR+%22strike%22+OR+%22minimum+wage%22+OR+%22worker+rights%22+OR+%22non-compete%22+when:7d',
+  burnout_wellbeing:
+    'https://news.google.com/rss/search?q=%22worker+burnout%22+OR+%22workplace+mental+health%22+OR+%22staffing+shortage%22+OR+%22employee+wellbeing%22+when:7d',
+  gig_freelance:
+    'https://news.google.com/rss/search?q=%22gig+economy%22+OR+%22freelance%22+OR+%22independent+contractor%22+OR+%22side+hustle%22+when:7d',
 };
 
 const MAX_NEW_ITEMS_PER_RUN = 8;
@@ -161,6 +193,10 @@ Return ONLY valid JSON, no markdown fences.`,
 const CATEGORY_SERPER_QUERIES: Record<NewsCategory, string> = {
   hiring_layoffs: '"layoffs" OR "hiring surge" OR "plant closing"',
   ai_future_of_work: '"artificial intelligence" AND ("workforce" OR "jobs")',
+  workplace_rto: '"return to office" OR "remote work policy" OR "four day workweek" OR "workplace culture"',
+  unions_worker_rights: '"union" OR "strike" OR "minimum wage" OR "worker rights" OR "non-compete"',
+  burnout_wellbeing: '"worker burnout" OR "workplace mental health" OR "staffing shortage" OR "employee wellbeing"',
+  gig_freelance: '"gig economy" OR "freelance" OR "independent contractor" OR "side hustle"',
 };
 
 type SerperNewsItem = { title?: string; link?: string; source?: string; imageUrl?: string; date?: string };

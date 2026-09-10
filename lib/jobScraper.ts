@@ -427,7 +427,79 @@ type ApifyIndeedJobResult = {
 };
 
 function getApifyToken(): string | null {
-    return process.env.APIFY_API_TOKEN || null;
+    return getApifyTokens()[0] ?? null;
+}
+
+// Every configured Apify account, in preference order (2026-09-10, direct
+// user request: "I have another account as well, before we move to the paid
+// plan"). APIFY_API_TOKEN is the primary; APIFY_API_TOKEN_FALLBACK (and _2)
+// are separate accounts with their own free monthly credit, tried only when
+// the one before them is genuinely out of credit or unauthorised.
+//
+// Mirrors the SERPAPI_KEY / _FALLBACK / _FALLBACK_2 chain this codebase
+// already uses for the same reason, so the shape is familiar rather than a
+// second invented convention. Deduped because pointing two vars at the same
+// token would otherwise burn two attempts on one exhausted account.
+function getApifyTokens(): string[] {
+    return [
+        process.env.APIFY_API_TOKEN,
+        process.env.APIFY_API_TOKEN_FALLBACK,
+        process.env.APIFY_API_TOKEN_FALLBACK_2,
+    ]
+        .map((t) => t?.trim())
+        .filter((t): t is string => Boolean(t))
+        .filter((t, i, all) => all.indexOf(t) === i);
+}
+
+// A 402 is Apify's explicit "monthly usage hard limit exceeded". 401/403 mean
+// the token is dead or revoked. Those are the only statuses worth spending a
+// second account on — a 400 (bad input) or a 500 (actor crashed) would fail
+// identically on every account, and retrying them would just burn the
+// fallback's credit for nothing.
+function isApifyAccountExhausted(status: number, body: string): boolean {
+    if (status === 402 || status === 401 || status === 403) return true;
+    return /monthly usage|usage hard limit|exceeded.*limit|insufficient credit/i.test(body);
+}
+
+/**
+ * Runs an Apify actor synchronously, falling through to the next configured
+ * account when one is out of credit. Returns the parsed dataset items.
+ *
+ * Every Apify call in this file goes through here — the four call sites had
+ * byte-identical fetch/`!response.ok`/throw blocks, so the fallback lives in
+ * one place instead of being copy-pasted (and inevitably half-applied) across
+ * them.
+ */
+async function runApifyActor<T>(actorId: string, body: unknown, label: string): Promise<T> {
+    const tokens = getApifyTokens();
+    if (tokens.length === 0) throw new Error("Missing APIFY_API_TOKEN");
+
+    let lastError = "";
+    for (let i = 0; i < tokens.length; i++) {
+        const response = await fetch(
+            `https://api.apify.com/v2/acts/${actorId}/run-sync-get-dataset-items?token=${tokens[i]}`,
+            { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+        );
+
+        if (response.ok) {
+            if (i > 0) console.warn(`[jobScraper] ${label} succeeded on Apify fallback account #${i + 1}`);
+            return (await response.json()) as T;
+        }
+
+        const bodyText = await response.text().catch(() => "");
+        lastError = `HTTP ${response.status}: ${bodyText.slice(0, 300)}`;
+
+        if (!isApifyAccountExhausted(response.status, bodyText)) {
+            throw new Error(`Apify ${label} error (${lastError})`);
+        }
+
+        console.warn(
+            `[jobScraper] Apify account #${i + 1} exhausted for ${label} (${lastError}) — ` +
+                (i + 1 < tokens.length ? "trying the next account" : "no accounts left"),
+        );
+    }
+
+    throw new Error(`Apify ${label} error — every configured account is out of credit (${lastError})`);
 }
 
 // DORMANT, not deleted (2026-09-04, direct user decision: "we are not
@@ -439,29 +511,18 @@ function getApifyToken(): string | null {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const apifyProvider: JobScraperProvider = {
     async search(jobTitle, location, countryCode) {
-        const token = getApifyToken();
-        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        if (getApifyTokens().length === 0) throw new Error("Missing APIFY_API_TOKEN");
 
-        const response = await fetch(
-            `https://api.apify.com/v2/acts/misceres~indeed-scraper/run-sync-get-dataset-items?token=${token}`,
+                const jobs = await runApifyActor<ApifyIndeedJobResult[]>(
+            "misceres~indeed-scraper",
             {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
                     position: jobTitle,
                     location,
                     country: countryCode.toUpperCase(),
                     maxItemsPerSearch: 25,
-                }),
-            },
+                },
+            "Indeed (misceres)",
         );
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`Apify API error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const jobs: ApifyIndeedJobResult[] = await response.json();
 
         return jobs.map((job) => ({
             id: `apify-indeed-${job.id}`,
@@ -593,17 +654,13 @@ type SortVariant = "primary" | "secondary";
 
 const apifyIndeedProvider = {
     async search(jobTitle: string, location: string, countryCode: string, variant: SortVariant = "primary"): Promise<NormalizedJob[]> {
-        const token = getApifyToken();
-        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        if (getApifyTokens().length === 0) throw new Error("Missing APIFY_API_TOKEN");
         const maxItems = apifyItemCap("APIFY_INDEED_MAX_ITEMS", 100);
         if (maxItems === 0) return [];
 
-        const response = await fetch(
-            `https://api.apify.com/v2/acts/kaix~indeed-scraper/run-sync-get-dataset-items?token=${token}`,
+                const jobs = await runApifyActor<KaixIndeedJob[]>(
+            "kaix~indeed-scraper",
             {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
                     keyword: jobTitle,
                     location,
                     country: indeedCountryCode(countryCode),
@@ -624,16 +681,9 @@ const apifyIndeedProvider = {
                     // anyway: whether an employer actually replies matters
                     // more to a candidate than how many others applied.
                     searchMode: "rich",
-                }),
-            },
+                },
+            "Indeed",
         );
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`Apify Indeed error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const jobs: KaixIndeedJob[] = await response.json();
         return jobs
             .filter((job) => job.id && job.title?.text)
             .map((job) => ({
@@ -664,8 +714,7 @@ const apifyIndeedProvider = {
 
 const apifyLinkedInProvider = {
     async search(jobTitle: string, location: string, _countryCode?: string, variant: SortVariant = "primary"): Promise<NormalizedJob[]> {
-        const token = getApifyToken();
-        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        if (getApifyTokens().length === 0) throw new Error("Missing APIFY_API_TOKEN");
         // Per-RUN cap, not per-search. LinkedIn measured 185 items in 86s,
         // which does not fit a 60s Vercel step at all -- the whole fetch was
         // timing out in production. Half the items is roughly half the time,
@@ -673,12 +722,9 @@ const apifyLinkedInProvider = {
         const maxJobs = Math.ceil(apifyItemCap("APIFY_LINKEDIN_MAX_ITEMS", 100) / 2);
         if (maxJobs === 0) return [];
 
-        const response = await fetch(
-            `https://api.apify.com/v2/acts/kaix~linkedin-jobs-scraper/run-sync-get-dataset-items?token=${token}`,
+                const jobs = await runApifyActor<KaixLinkedInJob[]>(
+            "kaix~linkedin-jobs-scraper",
             {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
                     keywords: jobTitle,
                     location,
                     maxJobs,
@@ -709,16 +755,9 @@ const apifyLinkedInProvider = {
                     // same result set differently, so a capped run of each
                     // returns overlapping but distinct slices.
                     sortBy: variant === "primary" ? "recent" : "relevant",
-                }),
-            },
+                },
+            "LinkedIn",
         );
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`Apify LinkedIn error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const jobs: KaixLinkedInJob[] = await response.json();
         return jobs
             .filter((job) => job.jobId && job.title)
             .map((job) => ({
@@ -768,31 +807,20 @@ type HirebaseJob = {
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const apifyHirebaseProvider: JobScraperProvider = {
     async search(jobTitle, location) {
-        const token = getApifyToken();
-        if (!token) throw new Error("Missing APIFY_API_TOKEN");
+        if (getApifyTokens().length === 0) throw new Error("Missing APIFY_API_TOKEN");
         const maxItems = apifyItemCap("APIFY_HIREBASE_MAX_ITEMS", 20);
         if (maxItems === 0) return [];
 
-        const response = await fetch(
-            `https://api.apify.com/v2/acts/hirebase~job-search/run-sync-get-dataset-items?token=${token}`,
+                const jobs = await runApifyActor<HirebaseJob[]>(
+            "hirebase~job-search",
             {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
                     jobTitles: [jobTitle],
                     locations: [location],
                     postedWithinDays: 30,
                     maxItems,
-                }),
-            },
+                },
+            "HireBase",
         );
-
-        if (!response.ok) {
-            const bodyText = await response.text().catch(() => "");
-            throw new Error(`Apify hirebase error (HTTP ${response.status}): ${bodyText.slice(0, 300)}`);
-        }
-
-        const jobs: HirebaseJob[] = await response.json();
         return jobs
             .filter((job) => job.jobTitle && job.applicationLink)
             // Staffing agencies are already hidden downstream by
