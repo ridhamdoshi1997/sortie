@@ -96,9 +96,20 @@ export async function getLiveLocation(): Promise<{ latitude: number; longitude: 
   try {
     const { headers } = await import("next/headers");
     const h = await headers();
-    const lat = Number(h.get("x-vercel-ip-latitude"));
-    const lon = Number(h.get("x-vercel-ip-longitude"));
+    // The raw header strings are checked BEFORE any numeric coercion, because
+    // Number(null) is 0 and Number("") is 0 — both of which pass
+    // Number.isFinite. Caught live on localhost, where no Vercel headers
+    // exist: the widget cheerfully reported the weather at 0°N 0°E (open
+    // ocean in the Gulf of Guinea) under the label "Your location". A missing
+    // header must mean "no live location", never "latitude zero".
+    const rawLat = h.get("x-vercel-ip-latitude");
+    const rawLon = h.get("x-vercel-ip-longitude");
+    if (!rawLat?.trim() || !rawLon?.trim()) return null;
+
+    const lat = Number(rawLat);
+    const lon = Number(rawLon);
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+    if (lat === 0 && lon === 0) return null;
 
     // Header values are URL-encoded ("San%20Francisco").
     const decode = (v: string | null) => {

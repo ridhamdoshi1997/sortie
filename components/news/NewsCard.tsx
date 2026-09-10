@@ -92,8 +92,33 @@ function Meta({ item }: { item: NewsItem }) {
   );
 }
 
-export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsItem; size?: NewsCardSize; index?: number }) {
+export function NewsCard({
+  item,
+  size = "standard",
+  index = 0,
+  matchedOn,
+}: {
+  item: NewsItem;
+  size?: NewsCardSize;
+  index?: number;
+  /** Why this story is in the reader's briefing (lib/newsBriefing.ts). Shown
+   * so a personalised feed can always answer "why am I seeing this?" — a
+   * briefing that cannot explain itself is indistinguishable from a generic
+   * feed with a personal label on it. */
+  matchedOn?: string[];
+}) {
   const animationDelay = `${Math.min(index, 8) * 45}ms`;
+  const why =
+    matchedOn && matchedOn.length > 0 ? (
+      <p className="flex flex-wrap items-center gap-1.5">
+        <span className="text-[10.5px] uppercase tracking-wide text-text-muted">Matched</span>
+        {matchedOn.map((m) => (
+          <span key={m} className="rounded-full bg-accent-muted px-2 py-0.5 text-[10.5px] font-medium capitalize text-accent">
+            {m}
+          </span>
+        ))}
+      </p>
+    ) : null;
 
   if (size === "compact") {
     return (
@@ -144,6 +169,7 @@ export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsIte
         <h3 className="font-display text-xl font-bold leading-tight tracking-tight text-text-primary transition-colors group-hover:text-accent sm:text-2xl">
           {item.title}
         </h3>
+        {why}
         <p className="text-sm leading-6 text-text-secondary">{item.ai_summary}</p>
         <AiReadsCard label="What it means for you">
           <p className="text-sm leading-6 text-agent-dark">{item.ai_career_impact}</p>
@@ -179,6 +205,7 @@ export function NewsCard({ item, size = "standard", index = 0 }: { item: NewsIte
       <p className="text-[15px] font-semibold leading-snug text-text-primary transition-colors group-hover:text-accent">
         {item.title}
       </p>
+      {why}
       <p className="line-clamp-2 text-sm leading-6 text-text-secondary">{item.ai_summary}</p>
       <AiReadsCard label="What it means for you" variant="compact">
         <p className="line-clamp-3 text-[13px] leading-5 text-agent-dark">{item.ai_career_impact}</p>

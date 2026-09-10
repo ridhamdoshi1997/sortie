@@ -47,6 +47,39 @@ export function crawlPaused(): boolean {
     return value === "1" || value === "true" || value === "yes";
 }
 
+/**
+ * The pause a cron should actually obey: the env kill switch above, OR the
+ * admin-flipped soft pause in app_settings (2026-09-10, System Health page).
+ *
+ * The two are deliberately different tools, and the env var stays primary —
+ * see migrations/20260910190000_crawl-pause-setting.sql for the full
+ * reasoning. Short version: the env var must keep working when the database
+ * is too slow to answer, which is exactly the situation the 2026-09-08
+ * outage created, so it can never be replaced by a row.
+ *
+ * Failure here degrades to the ENV value, never to "paused" and never to a
+ * hang: the read is bounded at 3s, and if the database cannot answer a
+ * single-row lookup in 3s the cron's real work was going to fail anyway.
+ * Defaulting to "not paused" on a failed read is safe precisely because the
+ * env var is still checked first and is the real safety net.
+ */
+export async function crawlPausedNow(): Promise<boolean> {
+    if (crawlPaused()) return true;
+
+    try {
+        const { createAdminDbClient } = await import("@/lib/admin/client");
+        const db = createAdminDbClient();
+        const result = await Promise.race([
+            db.database.from("app_settings").select("crawl_paused").limit(1).maybeSingle<{ crawl_paused: boolean }>(),
+            new Promise<null>((resolve) => setTimeout(() => resolve(null), 3_000)),
+        ]);
+        if (!result || result.error) return false;
+        return result.data?.crawl_paused === true;
+    } catch {
+        return false;
+    }
+}
+
 /** The value a paused cron returns, so a paused run is obvious in Inngest. */
 export function pausedResult(what: string): { message: string; paused: true } {
     return { message: `${what} skipped: CRAWL_PAUSED is set.`, paused: true };

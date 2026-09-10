@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy, Megaphone, CreditCard, Cpu, Handshake, Link2 as LinkIcon } from "lucide-react";
+import { Activity, LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy, Megaphone, CreditCard, Cpu, Handshake, Link2 as LinkIcon } from "lucide-react";
 
 // Shopify-shaped nav (2026-08-19, direct user request): a flat icon+label
 // list, not the old header-only shell. Only links to pages that actually
@@ -11,6 +11,7 @@ import { LayoutDashboard, Users, ShieldCheck, DollarSign, FileText, LifeBuoy, Me
 // for a page that doesn't exist yet.
 const NAV_ITEMS = [
   { href: "/admin", label: "Home", icon: LayoutDashboard, exact: true },
+  { href: "/admin/system", label: "System Health", icon: Activity, exact: false },
   { href: "/admin/users", label: "Users", icon: Users, exact: false },
   { href: "/admin/team", label: "Team & Roles", icon: ShieldCheck, exact: false },
   { href: "/admin/expenses", label: "Expenses", icon: DollarSign, exact: false },
