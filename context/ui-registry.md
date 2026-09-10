@@ -18,6 +18,30 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### Interview hub redesign + Contribute a question (Phase 50, cont'd, 2026-09-10)
+
+Files: `components/interview/InterviewHub.tsx`, `components/interview/ContributeQuestionModal.tsx`, `components/interview/CompanyContributeButton.tsx`, `app/interview-questions/page.tsx`, `app/interview-questions/company/[key]/page.tsx`, `lib/interviewHub.ts`, `actions/interviewContributions.ts`.
+Route: `/interview-questions` (hub grid), `/interview-questions/company/[key]` (new — per-company aggregate view, sits above the existing per-role-family `/interview-questions/[slug]` SEO pages which are unchanged).
+Design brief was a competitor's company-tier browse page (stat bar, search, grouped cards, contribute modal) — adapted, not copied: every number shown is real (see `lib/interviewHub.ts`'s header comment), and a second real content source (human-submitted questions) was added alongside the existing AI-generated banks.
+- Stat tiles: `rounded-xl border border-border bg-surface px-4 py-3 text-center`, value `font-mono text-2xl font-bold tabular-nums text-text-primary`, label `text-xs text-text-secondary`.
+- Search input: plain `<input>` with a `Search` icon absolutely positioned at `left-3.5`, `h-11 rounded-lg border border-border bg-surface pl-10`. Client-side filter only — dataset is small, no server round-trip needed.
+- Company card: `rounded-xl border border-border bg-surface p-4`, `CompanyLogo` (size `sm`) + name + "Updated Xd ago"; a neutral real-signal badge (`rounded-full bg-surface-secondary px-2 py-0.5 font-mono text-[10px] uppercase tracking-wide text-text-muted`) for the active-postings count — **not** agent-teal, since that's a factual crawl stat, not AI-generated content.
+- Question-count link uses `text-accent` (a user action — clicking navigates); the empty state ("No questions yet — be the first to add one") is a plain `text-text-muted` button opening the Contribute modal pre-filled with that company.
+- Contribute modal reuses `components/profile/SectionModal.tsx` (no new modal shell built) with the same `inputClass` pattern `AddAccomplishmentModal.tsx` already established — kept consistent rather than inventing a second form-input style.
+- **Color invariant enforced deliberately**: AI-generated question entries carry a small `bg-agent-light text-agent-dark` "AI" pill (agent-teal, per `ui-tokens.md`'s "exclusively AI-generated content" rule); contributed (human) questions carry no color-coded badge at all, just a neutral `bg-surface-secondary` role pill — never agent-teal, since that would misrepresent human content as AI-generated.
+- Logo resolution: never pass a raw `https://logo.clearbit.com/...` URL as `logoUrl` — that endpoint is confirmed DNS-dead (see `components/shared/CompanyLogo.tsx`'s own comment). Pass a real resolved domain as `applyUrl={\`https://\${domain}\`}` instead and let `CompanyLogo`'s own unavatar.io chain resolve it.
+- Cost posture: the hub's own data reads are free (cache DB + main DB reads only); nothing here triggers a paid Apify/SerpApi call or the paid AI evaluator.
+
+### "Recommended" jobs tab (Phase 50, cont'd, 2026-09-10)
+
+Files: `app/jobs/recommended/page.tsx`, `components/jobs/RecommendedJobCard.tsx`, `lib/jobRecommendations.ts`. Nav: `components/layout/Navbar.tsx`'s `jobsSubItems`, listed first (above Search).
+Real replacement for the "Recommended" label removed 2026-08-25 for being a false promise (see `Navbar.tsx`'s own comment) — this time backed by a real profile-driven feed, deliberately with **no search box at all**, per direct user instruction.
+- Page shell matches `/find-jobs`'s eyebrow+heading pattern (`bg-agent-light` pill, `font-display` h1) but swaps the `Sparkles` icon and drops the search form entirely.
+- Card (`RecommendedJobCard`) is deliberately **read-only** — no Save/Hide/Status actions, since these are free-cache rows with no persisted `jobs.id` yet (see the component's own comment). Clicking opens the real employer apply link in a new tab.
+- Matched-skill chips: `rounded-full bg-surface-secondary px-2 py-0.5 text-[11px] text-text-secondary` — a literal keyword-overlap tag against the profile's `skills`, never an AI relevance claim.
+- Two distinct empty states, per the "build the tried-but-empty state from day one" standing rule: no target roles at all → "Complete your profile" CTA to `/profile`; roles set but zero cache matches → "Go to Search" CTA to `/find-jobs` for a live pull.
+- **Cost posture is the whole point of this component**: reads ONLY the free crawl cache (`queryProactiveCrawlCache`, the same cache-first path `/find-jobs` already warms) — never a paid source (Apify/SerpApi/TheirStack) and never the paid AI evaluator, because this is a passive tab a user might open on every visit. See `lib/jobRecommendations.ts`'s header comment before adding anything that could turn this into a per-view paid call.
+
 ### Company Watchlist manager (Portal Scanner, Phase 8)
 
 Files: `components/find-jobs/TargetCompaniesManager.tsx`, `app/find-jobs/companies/page.tsx`

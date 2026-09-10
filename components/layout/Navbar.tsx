@@ -31,7 +31,13 @@ import { trackPostHogClientEvent } from "@/lib/posthog-client";
 // button (bookmark icon, labelled "Save" everywhere it appears) and the
 // destination page itself ("Saved Jobs") already named two other ways.
 // One vocabulary now: Search / Saved / External.
+//
+// "Recommended" is back (2026-09-10), listed first — this time pointing at
+// a real curated feed (app/jobs/recommended/page.tsx), built from the
+// profile's own target roles/skills, not a search form. The false-promise
+// problem above is exactly why that page has no search box at all.
 const jobsSubItems = [
+  { href: "/jobs/recommended", label: "Recommended" },
   { href: "/find-jobs", label: "Search" },
   { href: "/saved-jobs", label: "Saved" },
   { href: "/jobs/external", label: "External" },
