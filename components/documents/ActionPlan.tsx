@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Loader2, Sparkles, Target, Wand2, Zap } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Loader2, PenLine, Sparkles, Target, Wand2, Zap } from "lucide-react";
 
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
@@ -35,8 +35,16 @@ type RevisedData = { reply?: string; sections?: ResumeSection[]; style?: ResumeS
 // numbers are arithmetic, not estimates. Free fixes come first, and the
 // keyword work is ONE batched call instead of one per keyword.
 
+// Matches a bracketed blank a previous generation left behind: [X], [Y]%,
+// [$ amount], [add % reduction], [metric]. Not a general bracket match — a
+// bullet legitimately containing "[sic]" or an acronym in brackets is not a
+// placeholder, so it requires either a single letter or an explicit
+// fill-me-in word.
+const PLACEHOLDER_PATTERN = /\[(?:[XYZxyz]|\$[^\]]*|(?:add|insert|enter|your|metric|number|amount|percent)[^\]]*)\]/;
+
 type PlanItem =
   | { kind: "instant"; points: number; label: string; detail: string }
+  | { kind: "placeholder"; points: number; label: string; detail: string; company: string; bulletText: string }
   | { kind: "profile"; points: number; label: string; detail: string }
   | { kind: "keywords"; points: number; label: string; detail: string; prompt: string }
   | { kind: "bullet"; points: number; label: string; detail: string; company: string; bulletText: string };
@@ -137,6 +145,35 @@ export function ActionPlan({
       });
     }
 
+    // Placeholder blanks left by an earlier generation.
+    //
+    // Ranked at the top because a résumé that literally reads "[X]%" cannot
+    // be sent to anyone — it is worse than a weak bullet, it is an visibly
+    // unfinished document. Placeholders are banned in the prompt now
+    // (lib/writingStyle.ts), but that only governs NEW writing; bullets
+    // written before that change are still sitting in the résumé and
+    // nothing was surfacing them.
+    //
+    // Clicking focuses the bullet in the Editor, which is where the opt-in
+    // framework picker lives — so this doubles as the discoverable entry
+    // point for it.
+    for (const section of sections) {
+      if (!section.visible || section.type !== "work_experience") continue;
+      for (const entry of section.entries) {
+        for (const b of entry.bullets ?? []) {
+          if (!b || !PLACEHOLDER_PATTERN.test(b)) continue;
+          out.push({
+            kind: "placeholder",
+            points: 0,
+            label: "Fill in a placeholder blank",
+            detail: `"${b.slice(0, 70)}${b.length > 70 ? "…" : ""}"`,
+            company: entry.company ?? "",
+            bulletText: b,
+          });
+        }
+      }
+    }
+
     // Bullet-level issues just focus the editor — free, instant, no call.
     for (const section of qualityAnalysis?.sections ?? []) {
       if (section.severity === "optional") continue;
@@ -152,7 +189,10 @@ export function ActionPlan({
       }
     }
 
-    return out.sort((a, b) => b.points - a.points).slice(0, 7);
+    // Placeholders outrank other zero-point items: an unfinished-looking
+    // document beats a merely weak one for urgency.
+    const rank = (i: PlanItem) => (i.kind === "placeholder" ? 0.5 : 0);
+    return out.sort((a, b) => b.points + rank(b) - (a.points + rank(a))).slice(0, 8);
   }, [style, sections, contact, scoreJump, qualityAnalysis]);
 
   if (items.length === 0) return null;
@@ -185,7 +225,9 @@ export function ActionPlan({
               disabled={isAi && isPending}
               onClick={() => {
                 if (item.kind === "instant") return runInstantFix();
-                if (item.kind === "bullet") return onFocusBullet(item.company, item.bulletText);
+                if (item.kind === "bullet" || item.kind === "placeholder") {
+                  return onFocusBullet(item.company, item.bulletText);
+                }
                 if (item.kind === "keywords") {
                   setActiveKey(key);
                   return send(item.prompt);
@@ -201,6 +243,8 @@ export function ActionPlan({
                     <Zap className="h-3.5 w-3.5 text-success" />
                   ) : item.kind === "keywords" ? (
                     <Sparkles className="h-3.5 w-3.5 text-accent" />
+                  ) : item.kind === "placeholder" ? (
+                    <PenLine className="h-3.5 w-3.5 text-warning" />
                   ) : item.kind === "profile" ? (
                     <ArrowRight className="h-3.5 w-3.5 text-text-muted" />
                   ) : (

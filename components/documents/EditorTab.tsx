@@ -945,7 +945,12 @@ function WorkEntryEditor({
                   rows={2}
                   value={bullet}
                   disabled={isPending}
-                  placeholder="Achieved [metric] by doing [action], resulting in [outcome]"
+                  // Was "Achieved [metric] by doing [action], resulting in
+                  // [outcome]" — an empty-state hint that literally taught
+                  // the bracket habit the rest of this app now works to
+                  // remove. A real example teaches the same structure
+                  // without modelling a blank.
+                  placeholder="Cut deployment time from 40 minutes to 6 by automating the release pipeline"
                   onChange={(e) => {
                     const next = entry.bullets.map((b, idx) => (idx === j ? e.target.value : b));
                     onUpdate({ bullets: next });

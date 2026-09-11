@@ -20,10 +20,32 @@ type Props = {
   noKeywordDataHint?: string;
 };
 
-function scoreTone(score: number): { badge: string; label: string } {
+// The label names WHICH problem the score has, not just how big it is.
+//
+// A résumé with a perfect 30/30 searchability, zero formatting issues and a
+// weak keyword match was being labelled "High risk" — which reads as "this
+// will not parse", when it parses flawlessly and simply does not match this
+// particular job. That is a different problem with a different fix, and
+// telling someone their formatting is dangerous when it is immaculate sends
+// them to rewrite the wrong thing.
+//
+// So: a parsing problem is called a risk, and a keyword shortfall is called
+// a match problem, in the colour that matches its actual severity.
+function scoreTone(
+  score: number,
+  searchabilityEarned: number,
+  searchabilityWeight: number,
+): { badge: string; label: string } {
   if (score >= 80) return { badge: "bg-agent text-agent-foreground", label: "ATS-safe" };
-  if (score >= 60) return { badge: "bg-warning/15 text-warning", label: "Some risk" };
-  return { badge: "bg-error/10 text-error", label: "High risk" };
+
+  const parsesCleanly = searchabilityWeight > 0 && searchabilityEarned / searchabilityWeight >= 0.9;
+  if (parsesCleanly) {
+    // Nothing here endangers the parse — the gap is relevance to this job.
+    return { badge: "bg-warning/15 text-warning", label: score >= 60 ? "Partial match" : "Low keyword match" };
+  }
+
+  if (score >= 60) return { badge: "bg-warning/15 text-warning", label: "Some parsing risk" };
+  return { badge: "bg-error/10 text-error", label: "High parsing risk" };
 }
 
 // Deliberately always-on, no button/usage-cap — see lib/atsChecker.ts's
@@ -85,7 +107,8 @@ export function ATSAuditCard({
 
   const hasKeywordData = result.hasKeywordData;
   const displayScore = result.matchRate;
-  const tone = scoreTone(displayScore);
+  const searchability = result.categories.find((c) => c.key === "searchability");
+  const tone = scoreTone(displayScore, searchability?.earned ?? 0, searchability?.weight ?? 0);
 
   function handleRecheck(): void {
     setRecheckKey((k) => k + 1);
