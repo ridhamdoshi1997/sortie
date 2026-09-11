@@ -49,17 +49,31 @@ function buildJobContext(job: DocumentJob): string {
   return `Title: ${job.title ?? "Unknown"}
 Company: ${job.company ?? "Unknown"}
 About the role: ${job.about_role ?? "No saved description"}
-Matched skills: ${job.matched_skills.join(", ") || "None recorded"}
-Missing skills: ${job.missing_skills.join(", ") || "None recorded"}`;
+Matched skills: ${(Array.isArray(job.matched_skills) ? job.matched_skills : []).join(", ") || "None recorded"}
+Missing skills: ${(Array.isArray(job.missing_skills) ? job.missing_skills : []).join(", ") || "None recorded"}`;
 }
 
+// Every array is defended, because the TYPE lies about the runtime. This
+// dossier is AI-generated and stored as JSONB, so the compiler's guarantee
+// that `techStack` is a string[] holds only for rows written by the current
+// prompt — an older row, a partial write, or a model that omitted a key all
+// produce `undefined`, and `.join()` on it throws.
+//
+// Hit for real on 2026-09-11: a `company_research` row missing techStack
+// crashed reviseTailoredResume with "Cannot read properties of undefined
+// (reading 'join')", which surfaced to the user as a generic 500 from an
+// Action Plan chip. Same failure shape as analyzeResume's
+// `extracted.industries.join()` the same day.
 function buildResearchContext(dossier: CompanyResearchDossier): string {
-  return `Company overview: ${dossier.companyOverview}
-Why this role: ${dossier.whyThisRole}
-Tech stack: ${dossier.techStack.join(", ") || "Unknown"}
-Culture signals: ${dossier.culture.join("; ") || "None recorded"}
-Candidate's edge: ${dossier.yourEdge.join("; ") || "None recorded"}
-Gaps to address: ${dossier.gapsToAddress.join("; ") || "None recorded"}`;
+  const list = (value: unknown, fallback: string, separator = "; ") =>
+    (Array.isArray(value) ? value.filter(Boolean).join(separator) : "") || fallback;
+
+  return `Company overview: ${dossier.companyOverview ?? "Not recorded"}
+Why this role: ${dossier.whyThisRole ?? "Not recorded"}
+Tech stack: ${list(dossier.techStack, "Unknown", ", ")}
+Culture signals: ${list(dossier.culture, "None recorded")}
+Candidate's edge: ${list(dossier.yourEdge, "None recorded")}
+Gaps to address: ${list(dossier.gapsToAddress, "None recorded")}`;
 }
 
 export async function generateTailoredResume({

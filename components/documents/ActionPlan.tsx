@@ -90,12 +90,13 @@ export function ActionPlan({ jobId, scoreJump, qualityAnalysis, onFocusBullet, o
   // while a revision is in flight, and when that revision FAILED the hook
   // set an error nobody displayed — so the buttons simply un-greyed and the
   // résumé was unchanged, with no explanation anywhere on screen.
-  const { isPending, send, error, justUpdated } = useDocumentChat({ jobId, kind: "resume", onRevised });
+  const { isPending, send, error, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
   // Which item is running, so only that row shows a spinner instead of the
   // whole list greying out identically and leaving the user unsure which
   // click registered.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const items = buildPlan(scoreJump, qualityAnalysis);
+  const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
 
   useEffect(() => {
     if (!isPending) setActiveIndex(null);
@@ -152,9 +153,35 @@ export function ActionPlan({ jobId, scoreJump, qualityAnalysis, onFocusBullet, o
           <span>{error}</span>
         </p>
       )}
-      {justUpdated && !error && (
+      {/* The assistant's own reply, surfaced verbatim.
+
+          Second user report on this feature: a chip ran, said "Rewriting…",
+          and then the résumé came back unchanged with the same chip still
+          listed. That is usually the system working CORRECTLY and saying so
+          where nobody could hear it — these prompts instruct the model to
+          add a skill "only if it's genuinely something I have experience
+          with, don't fabricate it", so when the résumé contains no evidence
+          of that skill the model rightly declines and explains why. We threw
+          the explanation away and rendered a generic success line, which
+          read as a silent no-op.
+
+          A refusal to invent experience is a feature of this product, not a
+          failure — but only if the user is told, because the fix is theirs
+          to make: add the real experience to the profile first. */}
+      {justUpdated && !error && lastReply && (
+        <p className="mt-2 rounded-lg border border-border bg-surface-secondary/60 px-2.5 py-2 text-[11px] leading-snug text-text-secondary">
+          {lastReply}
+        </p>
+      )}
+      {justUpdated && !error && !lastReply && (
         <p className="mt-2 text-[11px] text-text-muted">
           Résumé updated — the preview and every score above recalculated automatically.
+        </p>
+      )}
+      {justUpdated && !error && (
+        <p className="mt-1 text-[11px] text-text-muted">
+          A chip that stays listed means that skill still is not in your résumé — usually because there is nothing in your
+          experience to support it yet. Add it to your profile first, then re-run.
         </p>
       )}
     </div>

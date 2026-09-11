@@ -1,21 +1,17 @@
-import React from "react";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
-import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { reviseCoverLetter, reviseTailoredResume, type ChatMessage } from "@/agent/documents";
 import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
-import { persistGeneratedDocument } from "@/lib/documentPersistence";
 import { getModel } from "@/lib/models";
 import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { toUserMessage } from "@/lib/errors";
-import { ResumePDF, type GeneratedContent } from "@/components/documents/ResumePDF";
-import { CoverLetterPDF } from "@/components/documents/CoverLetterPDF";
 import { buildDefaultStyle, mergeGeneratedContent } from "@/lib/resumeSections";
+import type { GeneratedContent } from "@/components/documents/ResumePDF";
 import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
 import type { Job, Profile } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
@@ -186,7 +182,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const dossier = job.company_research;
     const { provider, tier } = await resolveModelForUser(insforge, user.id, profile.email, profile.preferred_model);
-    let pdfBuffer: Buffer;
     let generatedContentText: string;
     let reply: string;
     // Only set for kind === "resume" — re-saved after persistGeneratedDocument
@@ -215,13 +210,6 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       // reviseTailoredResume) — merged onto the existing style rather than
       // replacing it, so a content-only chat turn never resets style.
       resumeStyle = revised.styleChanges ? { ...currentStyle, ...revised.styleChanges } : currentStyle;
-      pdfBuffer = await renderToBuffer(
-        React.createElement(ResumePDF, {
-          profile,
-          sections: resumeSections,
-          style: resumeStyle,
-        }) as unknown as React.ReactElement<DocumentProps>,
-      );
     } else {
       // Shares the résumé's exact style (see CoverLetterPDF.tsx's comment) —
       // already fetched above as part of `application`, no second query.
@@ -252,55 +240,74 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       if (revised.styleChanges) {
         resumeStyle = coverLetterStyle;
       }
-      pdfBuffer = await renderToBuffer(
-        React.createElement(CoverLetterPDF, {
-          profile,
-          company: job.company,
-          letterBody: revised.content,
-          style: coverLetterStyle,
-          salutation: application?.cover_letter_salutation,
-        }) as unknown as React.ReactElement<DocumentProps>,
-      );
     }
 
-    const persistResult = await persistGeneratedDocument({
-      insforge,
-      userId: user.id,
-      jobId,
-      kind,
-      pdfBuffer,
-      contentText: generatedContentText,
-      modelUsed: (await getModel(provider, tier)).model,
-    });
+    // A chat turn EDITS the document; it does not publish a PDF.
+    //
+    // This used to render a full PDF with renderToBuffer and upload it to
+    // storage on every single revision — including a one-word tweak from an
+    // Action Plan chip. That was wrong three ways, and the user called it
+    // out directly: "when user press any prompt or give any instruction
+    // through chat, you only change in the editor, once user makes the
+    // changes to save or something similar then only you generate the
+    // resume."
+    //
+    //   1. It put a slow PDF render and a remote upload on the hot path of
+    //      every tweak. That upload is exactly where the observed
+    //      ECONNRESET happened, so a transient socket reset could destroy a
+    //      revision the AI had already been paid for.
+    //   2. It archived a version of the PREVIOUS document every time, so
+    //      three Action Plan clicks left three permanent archived PDFs plus
+    //      three version rows, uncapped, against a 500 MB storage budget.
+    //   3. It was redundant. The editor's live preview renders the PDF
+    //      client-side from these same sections, so the user already sees
+    //      the result instantly with no server round trip.
+    //
+    // The durable state is resume_sections/resume_style, saved below — the
+    // PDF is a DERIVED ARTIFACT, now produced on demand at download time
+    // (app/api/documents/download) from exactly this saved state. Manual
+    // editor edits already worked this way via saveResumeSections; this
+    // makes the chat path consistent with them instead of special.
+    const modelUsed = (await getModel(provider, tier)).model;
 
-    if (!persistResult.success) {
-      return NextResponse.json(
-        { success: false, error: persistResult.error },
-        { status: 500 },
-      );
-    }
+    // persistGeneratedDocument used to own writing the content column; with
+    // the PDF step gone, that write moves here. Without it the NEXT chat
+    // turn would read a stale generated_resume and silently revise the
+    // pre-revision document — losing the user's last instruction.
+    const contentColumnToWrite = kind === "resume" ? "generated_resume" : "generated_cover_letter";
 
     let scoreJump: ScoreJumpResult | null = null;
     if (resumeSections && resumeStyle) {
       const { error: sectionsError } = await insforge.database
         .from("applications")
-        .update({ resume_sections: resumeSections, resume_style: resumeStyle, updated_at: new Date().toISOString() })
+        .update({
+          [contentColumnToWrite]: generatedContentText,
+          ai_model_used: modelUsed,
+          resume_sections: resumeSections,
+          resume_style: resumeStyle,
+          updated_at: new Date().toISOString(),
+        })
         .eq("user_id", user.id)
         .eq("job_id", jobId);
       if (sectionsError) {
         console.error("[api/documents/chat] save resume_sections/resume_style", sectionsError);
       }
       scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, resumeSections, provider, tier);
-    } else if (kind === "cover_letter" && resumeStyle) {
-      // Cover-letter-chat style change — no resumeSections/rescore involved
-      // (that's a résumé-only concept), just the shared style column.
-      const { error: styleError } = await insforge.database
+    } else {
+      // Cover letter: same content write, plus the shared style column only
+      // when this turn actually changed style.
+      const { error: letterError } = await insforge.database
         .from("applications")
-        .update({ resume_style: resumeStyle, updated_at: new Date().toISOString() })
+        .update({
+          [contentColumnToWrite]: generatedContentText,
+          ai_model_used: modelUsed,
+          ...(resumeStyle ? { resume_style: resumeStyle } : {}),
+          updated_at: new Date().toISOString(),
+        })
         .eq("user_id", user.id)
         .eq("job_id", jobId);
-      if (styleError) {
-        console.error("[api/documents/chat] save cover-letter resume_style", styleError);
+      if (letterError) {
+        console.error("[api/documents/chat] save cover-letter content/style", letterError);
       }
     }
 
@@ -312,7 +319,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
       success: true,
       data: {
         reply,
-        pdfUrl: persistResult.storagePath,
+        // No pdfUrl any more — a chat turn no longer publishes a file. The
+        // download route renders from the saved sections on demand, so the
+        // client has nothing to point at and nothing to invalidate.
         scoreJump,
         sections: resumeSections,
         style: resumeStyle,
