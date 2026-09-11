@@ -340,9 +340,32 @@ export async function checkAndConsumeUsage(
   // Rounds down, floor of 1 — a multiplier is meant to scale a cap up or
   // down, never to silently zero someone out (suspend already covers that
   // case explicitly and with a clear error message).
+  //
+  // EXCEPT when the plan itself says 0. That floor was written to stop a
+  // small multiplier (0.1 x 5 = 0.5 -> 0) from accidentally locking someone
+  // out, and for a multiplier it is still right. But the admin portal lets
+  // an owner set any plan's per-action limit, and 0 is the natural way to
+  // say "this feature is not included in this tier" — which the floor was
+  // silently converting into one free use per day. A deliberate 0 from the
+  // plan is honoured exactly; only the multiplier gets the floor.
   const multiplier = profile?.custom_usage_multiplier ?? 1;
   const baseLimit = override !== undefined ? override : DAILY_LIMITS[action];
-  const limit = Math.max(1, Math.floor(baseLimit * multiplier));
+  const limit = baseLimit === 0 ? 0 : Math.max(1, Math.floor(baseLimit * multiplier));
+
+  // A plan that grants none of this action shouldn't tell the user to "come
+  // back tomorrow" — tomorrow is the same. It's an upgrade prompt, not a
+  // rate limit, so it gets its own message and skips the counter entirely.
+  if (limit === 0) {
+    const canUpgrade = await higherTierExistsFor(insforge, plan.tier, action, 0);
+    return {
+      allowed: false,
+      error: `${ACTION_LABELS[action]} aren't included in ${plan.displayName}.${canUpgrade ? " Upgrade to unlock this." : ""}`,
+      reason: "daily_cap_reached",
+      limit: 0,
+      planDisplayName: plan.displayName,
+      canUpgrade,
+    };
+  }
 
   // Atomic, server-authoritative check-and-increment via a SECURITY DEFINER
   // RPC (migration 20260829120000) — usage_daily no longer accepts a direct
