@@ -107,6 +107,18 @@ Real per-call costs, all measured: insider connection **$0.315**, email lookup *
 
 Not fixed, noted: `components/profile/ProfileForm.tsx` uses `border-agent` as a decorative timeline rail on user-entered education — the same violation, left alone as decorative and out of scope.
 
+### Job evaluations: the unit is per-JOB but the cost is per-CHUNK — known mismatch
+
+Found live 2026-09-11 on a brand-new free account that had never clicked evaluate once: its very first search returned 120 jobs, consumed all 3 of Recon's `job_evaluations_daily_limit`, scored **3 of 120**, and then refused every further evaluation for the day with "Daily limit reached (3/day on Recon)".
+
+Two separate things are wrong and only one is fixed:
+
+1. **FIXED — the numbers.** `checkJobEvaluationLimit` is called once PER JOB inside the search loop (`lib/actions/scraper.actions.ts`), and a search evaluates up to `MAX_EVALUATED_JOBS = 120`. A cap of 3 was never survivable. Recon is now **50** (roughly one full useful search) and Command **400**. Ace and Vanguard remain unlimited.
+
+2. **NOT FIXED — the unit.** Evaluation chunks **10 jobs per AI call** (`chunkArray(rawJobs, 10)`), so 120 jobs is ~12 calls, not 120. The counter therefore overstates real cost by 10x, which makes every evaluation limit hard to reason about against the thing that actually binds — the free Gemini key's measured **500 requests/day**. Charging per chunk, or per search, would make the number mean something. Worth doing before evaluation limits are used as a real pricing lever.
+
+The sizing above uses the true cost: Recon's 50 jobs is ~5 AI calls, so the free tier supports roughly 100 users doing a search a day before Gemini's daily quota is the binding constraint rather than any per-user cap.
+
 ### Known-unverified, carried into the next session
 
 **The workspace layout.** Two blank-patch reports were fixed by giving the grid row one definite height with both columns filling it — but the login session expires roughly hourly and I do not type passwords, so **no version of that layout was ever seen rendered.** It is the highest-risk unverified change in this phase.

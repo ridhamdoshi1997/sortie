@@ -81,7 +81,17 @@ const PLANS = {
       rewrites: 3, rubric: 1, bullets: 10, interview: 2,
       strategy: 1, career: 1, outreach: 3, navigator: 10, imports: 2,
     }),
-    job_evaluations_daily_limit: 3,
+    // 50, not 3. Job evaluation is charged PER JOB and runs AUTOMATICALLY
+    // during a search, which can evaluate up to MAX_EVALUATED_JOBS = 120.
+    // At 3 a brand-new free user's very first search scored 3 of 120 jobs
+    // and then refused to evaluate anything else all day — reported live on
+    // a fresh account that had never clicked evaluate once.
+    //
+    // 50 is roughly one full useful search. The real cost is far lower than
+    // the count suggests: evaluation chunks 10 jobs per AI call, so 50 jobs
+    // is ~5 calls on the free-tier Gemini key. Against that key's measured
+    // 500 requests/day, this supports ~100 free users doing a search a day.
+    job_evaluations_daily_limit: 50,
     company_research_monthly_limit: 0,
     insider_connections_monthly_limit: 0,
     email_lookup_monthly_limit: 0,
@@ -93,7 +103,9 @@ const PLANS = {
       rewrites: 20, rubric: 10, bullets: 60, interview: 15,
       strategy: 10, career: 10, outreach: 20, navigator: 50, imports: 10,
     }),
-    job_evaluations_daily_limit: 25,
+    // Also raised for the same reason — 25 did not cover a single search.
+    // 400 jobs is ~40 AI calls.
+    job_evaluations_daily_limit: 400,
     company_research_monthly_limit: 25,
     insider_connections_monthly_limit: 7,
     email_lookup_monthly_limit: 12,
