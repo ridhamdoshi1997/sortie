@@ -4,7 +4,114 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
-Last updated: 2026-09-10, Phase 51. **START HERE — NEXT SESSION BEGINS WITH THE ADMIN PORTAL REBUILD. The full plan is in "## Phase 52 — Admin portal rebuild (PLANNED, not started)" immediately below.** Everything from Phase 51 is committed on `feature/supabase-migration` and **NOT deployed** — by direct user instruction at the end of that session ("update everything and start next session from here... commit but don't deploy yet"). So the preview alias still points at the previous deployment; the committed work is ahead of it. Deploy preview first thing next session if you want to see Phase 51's changes live.
+Last updated: 2026-09-10, Phase 51. **START HERE — NEXT SESSION BEGINS WITH THE ADMIN PORTAL REBUILD. The full plan is in "## NEXT SESSION — START HERE
+
+Phase 53 shipped the résumé rework and the pricing model. Before anything new:
+
+1. **Eyeball the résumé workspace layout on a wide screen.** Two blank-patch bugs were reported and fixed by giving the grid row ONE definite height (`lg:h-[720px]`) with both columns filling it. I could never verify it visually — the login session expires roughly hourly and I do not type passwords — so this is the single highest-risk unverified change in the phase.
+2. **Walk the Writing framework card** (AI Rewrite tab, above Action Plan; also top of Editor). Framework → bullet → its questions. Confirm the copy reads clearly at each step.
+3. **Look at `/admin/billing`.** The four plans' limits are live and verified in the database, but nobody has yet seen the plan editor render them.
+
+**Then pick up the Phase 52 admin plan below at section 5 (regional pricing).** Sections 1, 2, 3, 4, 6 and 7 are done. Section 5 is blocked on the user supplying real price points; 8–11 are polish.
+
+**Outstanding items owed by the user, unchanged:**
+- `APIFY_API_TOKEN_FALLBACK` — still one Apify account, and it sat at ~76% of its $5 free credit.
+- Regional price numbers for the 10 configured regions.
+- **Rotate the Brevo SMTP key** — it passed through chat.
+
+---
+
+## Phase 53 (2026-09-11) — résumé generation, editor, ATS scoring, and the pricing model. COMMITTED.
+
+### The root cause behind most of the résumé complaints: thinking tokens
+
+The default model is now a THINKING model and its reasoning tokens bill against `max_tokens`. A generous-looking budget could be spent entirely before a single character of JSON was emitted. **Reproduced 6 times out of 6** on the résumé quality prompt at `maxTokens: 4000` — `finish_reason: "length"`, budget pinned at 3,986/4,000, one run spending 3,681 tokens thinking and returning 305.
+
+Fixes, in order of leverage:
+- `complete()` now treats `finish_reason: "length"` as a real error for `jsonResponse` callers instead of returning truncated text that fails to parse downstream. Anthropic's `stop_reason: "max_tokens"` maps onto the same check.
+- **Structured-JSON calls default to `reasoning_effort: "low"` on Gemini.** There are ~25 `jsonResponse: true` call sites with budgets from 200 to 4000, all written before the model changed. Hand-tuning each is a losing game; defaulting fixes them all at once. Measured: default reasoning burned 2,086–3,681 thinking tokens and truncated 6/6; "low" burned 649–1,185 and parsed 6/6.
+- Budgets raised where the output is genuinely large: quality analysis 4000 → 10000, résumé generation and revision 4000 → **16000**, public ATS checker 1200 → 4000, bullet rewrite 200 → 1200.
+
+### Placeholders are banned, and frameworks became opt-in
+
+A real résumé came back with `[X]%` in essentially every bullet. Capping the count was tried first and was not enough — the user's answer settled it: *"we can't put the placeholders for users, then what's the meaning of having the resume editor."* If a figure is missing, the product's job is to COLLECT it, not ship a document with blanks.
+
+`BULLET_QUALITY_RULES` now bans every bracketed blank outright and orders the fallback: real number from the candidate's own material → concrete non-numeric scope → never a placeholder. **Verified on the user's own résumé content: 6 of 6 bullets carried `[X]%` before, zero blanks of any kind after.** A fresh full generation was separately verified at 7 bullets, 0 blanks.
+
+Google XYZ is no longer applied by default. **New `lib/resumeFrameworks.ts`** defines five opt-in frameworks — XYZ, CAR, PAR, STAR, SOAR — each with its expansion, summary, documented weakness, a worked example, and its own question set (one per letter, with a real example as the placeholder). Researched via agy against university career centres (MIT, Rutgers, Arizona) and industry career services.
+
+**`FrameworkBar` is the entry point**, above the Action Plan on AI Rewrite and again at the top of the Editor tab. Three steps: framework → bullet → questions. It took three rounds of user feedback to get there; the first two versions were genuinely unreachable, and the lesson is worth keeping: **an opt-in nobody can find is not opt-in, it is absent.**
+
+**STAR was quietly wrong and only testing caught it.** Given S/T/A/R answers it returned a Result-first bullet — strong writing, and CAR's shape. STAR's defining property IS the sequence. The instruction now pins the order; verified 3/3. SOAR was already correct.
+
+### The Action Plan, rebuilt twice
+
+v1 was six chips that all fired a full AI revision, labelled "High impact" with no quantity. v2 added per-bullet placeholder rows and produced seven identical truncated entries — the user's verdict: *"it's pathetic way to give the options."* Correct.
+
+Now: ordered by **real point value** (`weight - earned` per category from `lib/atsMatchRate`, so the numbers are arithmetic, not estimates), free deterministic fixes first, and **ONE batched call** for all missing hard skills instead of one per skill. Placeholder blanks collapse into a single row opening `PlaceholderFixPanel`, which shows every affected bullet at once with the blank highlighted and an input beside it — fill what you know, leave the rest blank and those get rewritten without a number.
+
+**Verified live**: "Fix 4 formatting issues / Instant / +29" took a deliberately-broken résumé from 23 → 61 with no AI call, issue count 5 → 1.
+
+### ATS scoring, rebuilt Jobscan-style
+
+`lib/atsMatchRate.ts` + `lib/atsSkills.ts`. Four categories — searchability 30, hard skills 55, soft skills 15, plus recruiter tips carrying **zero** numeric weight because they are advice for the human reader, not the parser. Target 75%, stuffing warning at 90%.
+
+**NO third-party integration is needed and none was added.** Everything is computed from data this app already owns, and we are better placed than Jobscan: they reverse-engineer structure by parsing an uploaded PDF; we know it, because the user built the résumé in our editor.
+
+**Honesty constraint, load-bearing:** Jobscan's actual weights are proprietary and unpublished. This implements the same CATEGORIES and prioritisation with our own stated weights. **It must never be described as "the Jobscan algorithm."**
+
+Three scoring bugs fixed along the way:
+- The card and the Action Plan ran **two different scoring systems** — the plan promised "+29" and the card moved 23 → 61 (+38). Both internally correct, the pair nonsense. `computeMatchRate` is now the single source.
+- "ATS score 75 but no explanation" — the card showed a score, then said "no formatting issues found", burying the real cause. It now shows every category as a labelled meter.
+- **"High risk" at 58 with a perfect 30/30 searchability.** That reads as "this will not parse" when it parses flawlessly and simply does not match the job. The label now names WHICH problem it has: a parsing problem is a risk, a keyword shortfall is a match problem.
+
+### Silent failures, found by making them loud
+
+- **The Action Plan did nothing.** `ActionPlan` destructured `error` off the chat hook and never rendered it, so a failed revision just un-greyed the buttons. With the error visible, the real cause appeared immediately: `StorageUnknownError: fetch failed / read ECONNRESET` on the PDF upload. Uploads now retry 3× with backoff, clearing partial objects between attempts, and only for network-shaped failures.
+- **"It said rewriting, then nothing changed."** The system was working correctly and saying so where nobody could hear it — the model declined to add "Mentoring" because there was no evidence for it, and we discarded its explanation. The assistant's reply is now surfaced verbatim in an `AiReadsCard`, and a missing skill produces a **draft to confirm** rather than a refusal.
+- Quick Tweaks had the same two bugs — silent errors, and each chip spending a full `document_generation` with nothing saying so.
+
+### The PDF is a derived artifact now
+
+Direct user design call, and a better architecture. A chat turn used to render a full PDF and upload it on **every** revision — slow render plus remote upload on the hot path of every tweak (exactly where the ECONNRESET struck), archiving a permanent version of the old document each time against a 500 MB budget, and redundant because the editor's live preview already renders client-side from the same sections.
+
+Now chat writes `resume_sections`/`resume_style` only, and the PDF renders on demand at download. Legacy documents with a stored PDF but no sections still fall back to the stored file. **Verified: a real revision left `document_versions` at 5, `resume_pdf_url` null, content and sections saved.**
+
+### Pricing and usage limits
+
+All four plans configured with **all 29 metered actions**. Previously `daily_action_limits` was `{}` on every plan, so a $149 lifetime buyer got the same 10 rewrites/day as a free user — **paid tiers unlocked nothing**.
+
+Search is unlimited on every tier. Two reasons, and the product one is decisive: **no job portal restricts search**, so capping it makes us worse than the free alternative a user would otherwise return to. The cost reason supports it — `claim_paid_source_fetch` bills per distinct (title, location) per 24h, so a user's 20th search of the same query costs $0, and cost scales with query diversity rather than user count.
+
+**Free tier costs exactly $0/month in recurring API spend** — all three paid features zeroed. Clean line: free gets everything that costs us nothing.
+
+Final limits (daily unless marked): Recon — 3 evals, 3 rewrites, 1 rubric, 10 bullet rewrites, 2 interview prep, 1 strategy, 1 career, 3 outreach, 10 Navigator, 0/0/0 monthly. Command $15 — 25 evals, 20 rewrites, 10 rubric, 60 bullets, 15/10/10/20, 50 Navigator, 25/7/12 monthly. Ace $29 — unlimited everything, 60/20/40 monthly. Vanguard $149 lifetime (150 seats) — 30 rewrites, 20 rubric, 25/20/20/30, 100 Navigator, 45/10/15 monthly.
+
+**Two real counting bugs, found by testing enforcement rather than reading it:**
+1. **A limit of 0 did not block.** The guard read `v_count IS NOT NULL AND v_count >= p_limit`; on the day's first call `v_count` is NULL, so it fell through and allowed one use. Every non-zero limit hid it. It matters because the admin portal lets an owner set 0 to mean "not in this tier" — so a paid feature leaked one free use per day.
+2. `lib/usage.ts` then overrode a deliberate 0 anyway, flooring every limit at 1.
+
+`scripts/verify-usage-accounting.mjs` — **22 checks against the live DB as a real signed-in user**, all passing: exact cap boundary, five concurrent requests against a cap of three, the quota-reset bypass staying closed, metering-without-capping, the zero-limit regression, and every plan configuring all 29 actions. Probe rows removed and the row count asserted back to start.
+
+`scripts/apply-plan-limits.mjs` applies the configuration and reads it back. Deliberately a script, not a migration: `subscription_plans` is admin-editable live data, and a migration would fight the admin portal by reasserting itself on replay.
+
+**Unit economics** (worst case / realistic at 25% utilisation): Recon $0.00 / $0.00 · Command $3.54 → 76% margin / $0.89 → 94% · Ace $10.60 → 63% / $2.65 → 91% · Vanguard $4.88, cohort cash-positive 30 months worst case and ~10 years realistic at 150 seats.
+
+Real per-call costs, all measured: insider connection **$0.315**, email lookup **$0.10**, search refresh **$0.016** per distinct query per 24h, company research **$0.005** worst case. Everything else — all résumé writing, evaluations, the rubric, interview prep, Navigator — is **$0** on the free-tier Gemini key.
+
+**The scaling wall is not dollars, it is Gemini's free tier at 500 requests/day** (this project measured `502/500 RPD`). Past roughly 150 active free users, Gemini becomes a metered cost that has NOT been priced. Pin that down before scaling acquisition.
+
+### Agent-token invariant, enforced in both directions
+
+`ui-tokens.md` is strict: if it came from the agent it gets agent-teal, if it did not it never does. Two violations fixed — the Action Plan's AI reply carried no agent treatment at all (now `AiReadsCard`, the canonical component), and the ATS card's "no formatting issues" block wore agent-teal despite being pure deterministic computation (now the success tone).
+
+Not fixed, noted: `components/profile/ProfileForm.tsx` uses `border-agent` as a decorative timeline rail on user-entered education — the same violation, left alone as decorative and out of scope.
+
+### Known-unverified, carried into the next session
+
+**The workspace layout.** Two blank-patch reports were fixed by giving the grid row one definite height with both columns filling it — but the login session expires roughly hourly and I do not type passwords, so **no version of that layout was ever seen rendered.** It is the highest-risk unverified change in this phase.
+
+## Phase 52 — Admin portal rebuild (PLANNED, not started)" immediately below.** Everything from Phase 51 is committed on `feature/supabase-migration` and **NOT deployed** — by direct user instruction at the end of that session ("update everything and start next session from here... commit but don't deploy yet"). So the preview alias still points at the previous deployment; the committed work is ahead of it. Deploy preview first thing next session if you want to see Phase 51's changes live.
 
 ## Phase 52 — Admin portal rebuild (PLANNED, not started)
 

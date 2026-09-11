@@ -105,8 +105,19 @@ export function FrameworkBar({ sections, pending, onApply }: Props) {
             <ArrowLeft className="h-3 w-3" />
             All frameworks
           </button>
+          {/* The formula is repeated HERE, not just on the previous screen.
+              User report: "How this is XYZ?" — looking at a list of their
+              existing bullets under a heading that said Google XYZ. The
+              bullets are the INPUT, not the output, and nothing on screen
+              said so. Showing the shape plus what happens next removes the
+              ambiguity. */}
           <p className="mt-1.5 text-[11px] text-text-secondary">
-            <span className="font-semibold text-text-primary">{framework.name}</span> — which bullet should it restructure?
+            <span className="font-semibold text-text-primary">{framework.name}</span>{" "}
+            <span className="font-mono text-[10px] text-accent">{framework.expansion}</span>
+          </p>
+          <p className="mt-1 text-[10px] leading-relaxed text-text-muted">
+            These are your bullets as they read today. Pick the one you want rewritten into that shape — you&apos;ll be
+            asked for {framework.questions.map((q) => q.slot).join(", ")} next, and nothing changes until you apply it.
           </p>
           <div className="mt-2 flex max-h-[36vh] flex-col gap-1.5 overflow-y-auto pr-1">
             {bullets.map((b) => (
