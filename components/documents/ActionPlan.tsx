@@ -1,6 +1,7 @@
 "use client";
 
-import { Sparkles, Target } from "lucide-react";
+import { useEffect, useState } from "react";
+import { AlertCircle, Loader2, Sparkles, Target } from "lucide-react";
 
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
@@ -83,37 +84,79 @@ type Props = {
 };
 
 export function ActionPlan({ jobId, scoreJump, qualityAnalysis, onFocusBullet, onRevised }: Props) {
-  const { isPending, send } = useDocumentChat({ jobId, kind: "resume", onRevised });
+  // `error` was previously destructured away and never rendered. That is
+  // the whole of the user-reported bug "I pressed one of these options and
+  // it's greyed out and nothing happened": every prompt button disables
+  // while a revision is in flight, and when that revision FAILED the hook
+  // set an error nobody displayed — so the buttons simply un-greyed and the
+  // résumé was unchanged, with no explanation anywhere on screen.
+  const { isPending, send, error, justUpdated } = useDocumentChat({ jobId, kind: "resume", onRevised });
+  // Which item is running, so only that row shows a spinner instead of the
+  // whole list greying out identically and leaving the user unsure which
+  // click registered.
+  const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const items = buildPlan(scoreJump, qualityAnalysis);
 
+  useEffect(() => {
+    if (!isPending) setActiveIndex(null);
+  }, [isPending]);
+
   if (items.length === 0) return null;
+
+  function handleClick(item: PlanItem, index: number): void {
+    if (item.kind === "bullet") {
+      onFocusBullet(item.company, item.bulletText);
+      return;
+    }
+    setActiveIndex(index);
+    send(item.prompt);
+  }
 
   return (
     <div>
       <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted">Action plan</p>
       <div className="flex flex-col gap-1.5">
-        {items.map((item, i) => (
-          <button
-            key={i}
-            type="button"
-            disabled={item.kind === "prompt" && isPending}
-            onClick={() => (item.kind === "bullet" ? onFocusBullet(item.company, item.bulletText) : send(item.prompt))}
-            className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:border-accent hover:text-text-primary disabled:opacity-50"
-          >
-            <span className="flex items-center gap-2 truncate">
-              {item.kind === "bullet" ? (
-                <Target className="h-3.5 w-3.5 shrink-0 text-text-muted" />
-              ) : (
-                <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
-              )}
-              <span className="truncate">{item.label}</span>
-            </span>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${IMPACT_STYLE[item.impact]}`}>
-              {IMPACT_LABEL[item.impact]}
-            </span>
-          </button>
-        ))}
+        {items.map((item, i) => {
+          const running = isPending && activeIndex === i;
+          return (
+            <button
+              key={i}
+              type="button"
+              disabled={item.kind === "prompt" && isPending}
+              onClick={() => handleClick(item, i)}
+              className="flex items-center justify-between gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-left text-xs text-text-secondary transition-colors hover:border-accent hover:text-text-primary disabled:opacity-50"
+            >
+              <span className="flex items-center gap-2 truncate">
+                {running ? (
+                  <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-accent" />
+                ) : item.kind === "bullet" ? (
+                  <Target className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+                ) : (
+                  <Sparkles className="h-3.5 w-3.5 shrink-0 text-accent" />
+                )}
+                <span className="truncate">{running ? "Rewriting…" : item.label}</span>
+              </span>
+              <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium ${IMPACT_STYLE[item.impact]}`}>
+                {IMPACT_LABEL[item.impact]}
+              </span>
+            </button>
+          );
+        })}
       </div>
+
+      {/* A failed revision must say so. Silence here is what made this
+          feature look broken rather than merely unlucky. */}
+      {error && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-error/30 bg-error/5 px-2.5 py-2 text-[11px] text-error">
+          <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
+      {justUpdated && !error && (
+        <p className="mt-2 text-[11px] text-text-muted">
+          Résumé updated — the preview and every score above recalculated automatically.
+        </p>
+      )}
     </div>
   );
 }

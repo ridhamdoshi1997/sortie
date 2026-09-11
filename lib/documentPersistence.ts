@@ -76,6 +76,44 @@ export async function archiveCurrentDocument(
   }
 }
 
+/**
+ * Uploads with three attempts and a short backoff, returning the final error
+ * or null on success.
+ *
+ * Only network-shaped failures are worth retrying — an ECONNRESET or a
+ * `fetch failed` is a transient socket problem, whereas a 4xx (bad policy,
+ * payload too large, duplicate) will fail identically every time and
+ * retrying it just makes the user wait three times as long for the same
+ * answer. The Supabase storage client surfaces transient cases with no
+ * `statusCode` at all, which is what distinguishes them here.
+ */
+async function uploadWithRetry(
+  insforge: Insforge,
+  storagePath: string,
+  blob: Blob,
+): Promise<{ message: string } | null> {
+  const MAX_ATTEMPTS = 3;
+  let lastError: { message: string } | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const { error } = await insforge.storage.from("resumes").upload(storagePath, blob);
+    if (!error) return null;
+
+    lastError = error;
+    const statusCode = (error as { statusCode?: string | number }).statusCode;
+    const isTransient = statusCode === undefined || statusCode === null || Number(statusCode) >= 500;
+    if (!isTransient || attempt === MAX_ATTEMPTS) return error;
+
+    console.warn(`[documentPersistence] upload attempt ${attempt} failed (${error.message}) — retrying`);
+    await new Promise((resolve) => setTimeout(resolve, attempt * 400));
+    // A partial object can survive a reset and then collide with the retry,
+    // since this bucket has no upsert. Clear it first.
+    await insforge.storage.from("resumes").remove([storagePath]);
+  }
+
+  return lastError;
+}
+
 type PersistInput = {
   insforge: Insforge;
   userId: string;
@@ -117,13 +155,26 @@ export async function persistGeneratedDocument({
   const blob = new Blob([pdfBuffer as unknown as ArrayBuffer], {
     type: "application/pdf",
   });
-  const { error: uploadError } = await insforge.storage
-    .from("resumes")
-    .upload(storagePath, blob);
+
+  // Retried, because by the time we get here the expensive work is ALREADY
+  // DONE — the AI call has been paid for and the revised résumé exists in
+  // memory. Throwing all of that away over one flaky socket is the worst
+  // possible trade.
+  //
+  // This is a real, observed failure, not a hypothetical: a user reported
+  // the Action Plan chips doing nothing, and the server log showed
+  // `StorageUnknownError: fetch failed / read ECONNRESET` on this exact
+  // upload. Uploading a multi-page PDF over a single unretried request to a
+  // remote storage host will occasionally reset, and the old code turned
+  // that blip into a lost revision plus a dead-end error message.
+  const uploadError = await uploadWithRetry(insforge, storagePath, blob);
 
   if (uploadError) {
-    console.error("[documentPersistence] storage upload", uploadError);
-    return { success: false, error: "Failed to upload document" };
+    console.error("[documentPersistence] storage upload failed after retries", uploadError);
+    return {
+      success: false,
+      error: "Couldn't save the PDF — the storage upload failed after three tries. Your text wasn't lost; try again in a moment.",
+    };
   }
 
   const documentColumn = kind === "resume" ? "generated_resume" : "generated_cover_letter";

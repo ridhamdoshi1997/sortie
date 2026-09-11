@@ -96,9 +96,14 @@ ${buildJobContext(job)}
 COMPANY RESEARCH:
 ${buildResearchContext(dossier)}`,
     temperature: 0.6,
-    // Full tailored resume JSON — 1200 truncated on longer work histories.
-    // maxTokens is a ceiling, not a charge.
-    maxTokens: 4000,
+    // Full tailored resume JSON. Raised 4000 -> 16000 on 2026-09-11: the
+    // old "maxTokens is a ceiling, not a charge" note stopped being the
+    // whole story once the default model became a THINKING model, because
+    // reasoning tokens bill against this same budget before any JSON is
+    // emitted. A whole resume's sections is one of the largest outputs in
+    // the app, and truncation here surfaces to the user as a generation
+    // that silently does nothing.
+    maxTokens: 16000,
     jsonResponse: true,
   });
 
@@ -202,8 +207,10 @@ ${JSON.stringify(currentStyle)}
 CONVERSATION SO FAR (apply the latest Candidate instruction):
 ${buildConversationContext(messages)}`,
     temperature: 0.5,
-    // Revised resume JSON — same truncation risk as generation above.
-    maxTokens: 4000,
+    // Revised resume JSON — same truncation risk as generation above, and
+    // this is the path behind the Action Plan chips, where a truncated
+    // response was the user-visible "I pressed it and nothing happened".
+    maxTokens: 16000,
     jsonResponse: true,
   });
 
