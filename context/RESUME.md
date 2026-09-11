@@ -147,10 +147,23 @@ New `BillingHealthPanel` above the plan editor. **The editor itself is untouched
 
 **Verified live**: panel rendered against real Stripe API responses and the real `user_subscriptions` table; the drift warning and hand-granted notice both fired on true data.
 
-### 7. Link Health — measuring the wrong table
-`/admin/link-health` buckets apply links (direct / board / generic / mirror / unknown) with a worst-offenders list. Useful, but it scans **`jobs`** — the per-user rows created by searches — and NOT `discovered_postings`, the ~690k-row crawl cache that is now the primary source users actually search. So it reports on a small derived slice while the real inventory goes unmeasured.
-- Point it at `discovered_postings` as well, reported separately from `jobs` so the two are not conflated.
-- Add a trend (it is currently a point-in-time count with no history) and a "re-check now" action wired to the existing `repair-apply-links` cron, so an admin can act on what they see instead of only reading it.
+### 7. Link Health — ✅ DONE 2026-09-11
+
+**It was measuring the wrong table, exactly as the plan said.** It scanned `jobs` — the small per-user slice created by real searches — while `discovered_postings`, the **714,765-active-row** crawl cache that is now the primary source users search, went entirely unmeasured.
+
+**Both sources are now reported SEPARATELY and never summed.** Blending them would let a healthy 1,500-row table hide a sick 700,000-row one.
+
+**First real numbers for the cache: 75% direct, 25% unverified, 0% mirror, 0% board** (1,000-row sample of 714,765). `jobs` for comparison: 46% direct, 40% board, 13% unverified, 1 mirror row out of 1,493.
+
+**Sampling took two attempts, and the first failure is the interesting one.** A random `.range()` OFFSET returned **zero rows every time** — a ~700k-row offset makes Postgres walk the relation to find the start, blowing the 8s statement timeout, and the client's error branch degraded silently to an empty sample that rendered as "no rows with apply links". **That is the silent-discard shape this codebase has been caught by repeatedly**, and it is why an empty sample now renders as "a failure to measure, not a clean result." Replaced with `sample_active_apply_urls()`, a `TABLESAMPLE SYSTEM` RPC **applied to the CACHE project** (`dbvlavcckctcqmohztxm`), cost proportional to the sample rather than the table.
+
+**The sample is 1,000, not the 5,000 first written** — PostgREST's default max-rows silently caps an RPC result there, so asking for more and slicing did nothing. The constant and its margin-of-error comment were corrected to match reality (±3.1% at 95%) rather than leaving a comment claiming a precision the code does not deliver.
+
+**Trend**: new `link_health_snapshots` table, one row per (day, source), upserted so a day checked five times keeps one row and does not outweigh a quiet one. **Not backfilled and cannot be** — nothing recorded this before now, which the page says.
+
+**Re-check + Run repair pass**: `repairApplyLinksAsync` gained an `admin/repair-apply-links` event trigger **alongside** its hourly cron — same function, same `crawlPausedNow()` guard, not a second code path. **Verified live**: clicking it put a real `admin/repair-apply-links` event into Inngest carrying `triggeredBy`. Also verified the failure path first — with no Inngest running it returned `ECONNREFUSED`, and the UI surfaced "Could not queue a repair run" rather than silently claiming success.
+
+**One denominator bug caught before it shipped**: the existing `LinkHealthReport` divided every bucket by `total`. With a 1,000-row sample of 714,765 that renders every bucket as 0% — reading as "no problems", the most dangerous possible wrong answer on this page. It now divides by `sampleSize` and shows both numbers.
 
 ### 8. Vendor console — both tiers, in this order
 **Tier 1 — read-only, scoped (safe, do first).** Extend `/admin/system` using only keys the app already ships. Stripe, PostHog, Sentry, Inngest, Brevo/Resend reachability. No account-wide tokens.

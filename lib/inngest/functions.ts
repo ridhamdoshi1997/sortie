@@ -1210,7 +1210,15 @@ export const reconcileStuckAgentRunsAsync = inngest.createFunction(
 const LINK_REPAIR_BATCH_SIZE = 40;
 
 export const repairApplyLinksAsync = inngest.createFunction(
-    { id: "repair-apply-links", name: "Repair Apply Links", triggers: [{ cron: "20 * * * *" }] },
+    // The event trigger is additive to the hourly cron (Phase 52 section 7):
+    // /admin/link-health can now kick this off on demand rather than an
+    // admin seeing a bad number and having to wait up to an hour. Same
+    // function, same crawlPausedNow() guard — not a second code path.
+    {
+        id: "repair-apply-links",
+        name: "Repair Apply Links",
+        triggers: [{ cron: "20 * * * *" }, { event: "admin/repair-apply-links" }],
+    },
     async ({ step }) => {
         if (await crawlPausedNow()) return pausedResult("Apply-link repair");
 

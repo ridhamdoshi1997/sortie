@@ -1,6 +1,6 @@
 import { CheckCircle2, AlertTriangle, HelpCircle, ExternalLink, Globe } from "lucide-react";
 
-import type { LinkHealthBucket, LinkHealthReport as Report } from "@/actions/admin";
+import type { LinkHealthBucket, SourceReport } from "@/lib/admin/linkHealth";
 
 // Ordered worst-last so the healthy state reads first — same "lead with
 // the real signal" framing the rest of the admin console uses. Every
@@ -64,18 +64,24 @@ const BAR_CLASS: Record<"good" | "ok" | "warn" | "bad", string> = {
   bad: "bg-error",
 };
 
-export function LinkHealthReport({ report }: { report: Report }) {
-  const { total, counts, worst } = report;
+export function LinkHealthReport({ report }: { report: SourceReport }) {
+  const { total, counts, worst, sampleSize, sampled, label, note } = report;
 
-  if (total === 0) {
+  if (sampleSize === 0) {
     return (
       <div className="rounded-xl border border-border bg-surface p-8 text-center">
-        <p className="text-sm text-text-secondary">No jobs with apply links yet. Run a search to populate this.</p>
+        <p className="text-sm text-text-secondary">
+          No rows with apply links in {label}. {note}
+        </p>
       </div>
     );
   }
 
-  const pct = (n: number) => Math.round((n / total) * 100);
+  // Denominator is sampleSize, NOT total. For the crawl cache those differ by
+  // two orders of magnitude (a ~5,000-row sample of ~810,000 postings), and
+  // dividing by total would render every bucket as 0% and read as "no
+  // problems" — the most dangerous possible wrong answer on this page.
+  const pct = (n: number) => Math.round((n / sampleSize) * 100);
   const healthy = counts.direct + counts.board;
 
   return (
@@ -97,7 +103,12 @@ export function LinkHealthReport({ report }: { report: Report }) {
             ) : null,
           )}
         </div>
-        <p className="mt-2 text-xs text-text-muted">{total.toLocaleString()} jobs with an apply link</p>
+        <p className="mt-2 text-xs text-text-muted">
+          {sampled
+            ? `${sampleSize.toLocaleString()} classified of ${total.toLocaleString()} with an apply link`
+            : `${total.toLocaleString()} rows with an apply link`}
+        </p>
+        <p className="mt-1 text-xs text-text-muted">{note}</p>
       </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
