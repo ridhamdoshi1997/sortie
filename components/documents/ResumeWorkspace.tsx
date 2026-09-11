@@ -181,6 +181,26 @@ export function ResumeWorkspace({
     setUpdatedAt(new Date().toISOString());
   }
 
+  // Routes a framework instruction built by FrameworkBar through the same
+  // /api/documents/chat round trip every other AI edit uses — one code path,
+  // so the result lands in state, the preview, and the scores identically.
+  async function sendFrameworkInstruction(instruction: string) {
+    try {
+      const res = await fetch("/api/documents/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jobId, kind: "resume", messages: [{ role: "user", content: instruction }] }),
+      });
+      const json = (await res.json()) as {
+        success: boolean;
+        data?: { sections?: ResumeSection[]; style?: ResumeStyle; scoreJump?: ScoreJumpResult | null };
+      };
+      if (json.success && json.data) handleRevised(json.data);
+    } catch (error) {
+      console.error("[ResumeWorkspace] framework instruction failed", error);
+    }
+  }
+
   async function handleRegenerate() {
     setRegenerating(true);
     try {
@@ -270,6 +290,7 @@ export function ResumeWorkspace({
                 onRevised={handleRevised}
                 onCommitSections={commitSections}
                 onCommitStyle={commitStyle}
+                onFrameworkApply={sendFrameworkInstruction}
                 style={style}
                 sections={sections}
                 contact={{ email: profile.email, phone: profile.phone, location: profile.location }}

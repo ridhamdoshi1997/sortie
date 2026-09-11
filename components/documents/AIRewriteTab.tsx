@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Gauge, Loader2, RefreshCw, Sparkles } from "lucide-react";
 
 import { ActionPlan } from "@/components/documents/ActionPlan";
+import { FrameworkBar } from "@/components/documents/FrameworkBar";
 import { ATSAuditCard } from "@/components/documents/ATSAuditCard";
 import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { QualityGradeCard } from "@/components/documents/QualityGradeCard";
@@ -98,6 +99,8 @@ type Props = {
   // lands exactly like a manual edit.
   onCommitSections: (sections: ResumeSection[]) => void;
   onCommitStyle: (style: ResumeStyle) => void;
+  /** Routes a built framework instruction through this tab's chat path. */
+  onFrameworkApply: (instruction: string) => void;
   style: ResumeStyle;
   sections: ResumeSection[];
   contact: { email: string | null; phone: string | null; location: string | null };
@@ -128,6 +131,7 @@ export function AIRewriteTab({
   onRevised,
   onCommitSections,
   onCommitStyle,
+  onFrameworkApply,
   style,
   sections,
   contact,
@@ -246,6 +250,10 @@ export function AIRewriteTab({
         />
         {qualityError && <p className="mt-1 text-[11px] text-error">{qualityError}</p>}
       </div>
+
+      {/* Above the Action Plan, at the user's direction. The frameworks were
+          unreachable before this — the names now sit on the surface. */}
+      <FrameworkBar sections={sections} pending={false} onApply={(instruction) => onFrameworkApply(instruction)} />
 
       <ActionPlan
         jobId={jobId}

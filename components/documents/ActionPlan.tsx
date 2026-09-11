@@ -1,9 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Loader2, PenLine, Sparkles, Target, Zap } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Layers, Loader2, PenLine, Sparkles, Target, Zap } from "lucide-react";
 
 import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { FrameworkRewritePanel } from "@/components/documents/FrameworkRewritePanel";
 import { PlaceholderFixPanel, findPlaceholderBullets } from "@/components/documents/PlaceholderFixPanel";
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
@@ -41,6 +42,7 @@ type RevisedData = { reply?: string; sections?: ResumeSection[]; style?: ResumeS
 type PlanItem =
   | { kind: "instant"; points: number; label: string; detail: string }
   | { kind: "placeholder"; points: number; label: string; detail: string }
+  | { kind: "framework"; points: number; label: string; detail: string }
   | { kind: "profile"; points: number; label: string; detail: string }
   | { kind: "keywords"; points: number; label: string; detail: string; prompt: string }
   | { kind: "bullet"; points: number; label: string; detail: string; company: string; bulletText: string };
@@ -77,6 +79,7 @@ export function ActionPlan({
   // framework choice lives INSIDE it, applying to the whole batch, so
   // CAR/STAR/PAR/SOAR are one decision rather than one per bullet.
   const [showPlaceholders, setShowPlaceholders] = useState(false);
+  const [showFrameworks, setShowFrameworks] = useState(false);
   const placeholderBullets = useMemo(() => findPlaceholderBullets(sections), [sections]);
 
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
@@ -170,6 +173,26 @@ export function ActionPlan({
       });
     }
 
+    // ALWAYS present whenever there is a bullet to rewrite.
+    //
+    // The frameworks were previously reachable only three clicks deep in the
+    // Editor tab, or inside the placeholder panel — which itself only exists
+    // if the résumé happens to contain blanks. On a clean résumé there was
+    // no way to reach CAR/STAR/PAR/SOAR/XYZ at all, and the user asked where
+    // the option was twice. An opt-in feature nobody can find is not opt-in,
+    // it is absent.
+    const hasAnyBullet = sections.some(
+      (sec) => sec.visible && sec.type === "work_experience" && sec.entries.some((e) => (e.bullets ?? []).some(Boolean)),
+    );
+    if (hasAnyBullet) {
+      out.push({
+        kind: "framework",
+        points: 0,
+        label: "Restructure a bullet with a proven framework",
+        detail: "Google XYZ · CAR · PAR · STAR · SOAR — each tells you what it needs before writing anything.",
+      });
+    }
+
     // Bullet-level issues just focus the editor — free, instant, no call.
     for (const section of qualityAnalysis?.sections ?? []) {
       if (section.severity === "optional") continue;
@@ -222,7 +245,13 @@ export function ActionPlan({
               onClick={() => {
                 if (item.kind === "instant") return runInstantFix();
                 if (item.kind === "placeholder") {
+                  setShowFrameworks(false);
                   setShowPlaceholders((v) => !v);
+                  return;
+                }
+                if (item.kind === "framework") {
+                  setShowPlaceholders(false);
+                  setShowFrameworks((v) => !v);
                   return;
                 }
                 if (item.kind === "bullet") return onFocusBullet(item.company, item.bulletText);
@@ -241,6 +270,8 @@ export function ActionPlan({
                     <Zap className="h-3.5 w-3.5 text-success" />
                   ) : item.kind === "keywords" ? (
                     <Sparkles className="h-3.5 w-3.5 text-accent" />
+                  ) : item.kind === "framework" ? (
+                    <Layers className="h-3.5 w-3.5 text-accent" />
                   ) : item.kind === "placeholder" ? (
                     <PenLine className="h-3.5 w-3.5 text-warning" />
                   ) : item.kind === "profile" ? (
@@ -290,6 +321,20 @@ export function ActionPlan({
           );
         })}
       </div>
+
+      {showFrameworks && (
+        <div className="mt-2">
+          <FrameworkRewritePanel
+            sections={sections}
+            pending={isPending}
+            onApply={(instruction) => {
+              setShowFrameworks(false);
+              send(instruction);
+            }}
+            onClose={() => setShowFrameworks(false)}
+          />
+        </div>
+      )}
 
       {showPlaceholders && placeholderBullets.length > 0 && (
         <div className="mt-2">

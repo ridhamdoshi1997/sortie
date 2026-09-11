@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 
+import { FrameworkBar } from "@/components/documents/FrameworkBar";
 import { FrameworkPicker } from "@/components/documents/FrameworkPicker";
 import { TagInput, FormInput, FormSelect, FormLabel, DEGREE_OPTIONS } from "@/components/ui/FormControls";
 import type { Education } from "@/types";
@@ -207,6 +208,20 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Same picker as the AI Rewrite tab, at the user's direction — the
+          frameworks should be reachable from wherever you happen to be
+          editing, not only from one tab. Routed through onRewriteBullet so
+          the result lands in this tab's own diff card. */}
+      <FrameworkBar
+        sections={sections}
+        pending={false}
+        onApply={(instruction) => {
+          const work = sections.find((sec) => sec.type === "work_experience");
+          const entry = work?.type === "work_experience" ? work.entries[0] : null;
+          if (!entry) return;
+          void onRewriteBullet(entry.title, entry.company, entry.bullets?.[0] ?? "", instruction);
+        }}
+      />
       <div className="flex items-start gap-2.5 rounded-xl border border-border bg-surface-secondary p-4">
         <span className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-agent" />
         <p className="text-xs leading-6 text-text-secondary">
