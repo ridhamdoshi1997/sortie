@@ -133,11 +133,19 @@ Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do n
 
 **Minor cleanup noticed while verifying:** `lib/weather.ts`'s new `getLiveLocation()` (Phase 51) reads the same Vercel geo headers as `lib/geo.ts` but lacks its `DEV_COUNTRY_OVERRIDE`-style local escape hatch. Not a bug — different data, country vs lat/lon — but worth aligning so both can be QA'd locally the same way.
 
-### 6. Billing & Plans — it is a plan EDITOR, not a billing dashboard
-`/admin/billing` edits `subscription_plans` well (price, caps, marketing bullets, LLM-router unlock, confirm-before-save, read live with no redeploy). What it has **no view of at all** is the actual business: no MRR, no active-subscriber count, no trial/churn/failed-payment view, no Stripe sync status. `STRIPE_SECRET_KEY` and `STRIPE_WEBHOOK_SECRET` are both configured, so this is readable today.
-- Add a revenue panel: active subscribers by tier, MRR, trials, failed payments, cancellations this period.
-- Show Stripe webhook health — last event received, and whether the projection is behind.
-- Keep the plan editor exactly as it is; this is a new panel above it, not a rewrite.
+### 6. Billing & Plans — ✅ DONE 2026-09-11
+
+New `BillingHealthPanel` above the plan editor. **The editor itself is untouched** — it worked; the gap was that the page had no idea whether anyone was paying.
+
+**Shows**: active subscribers, MRR, failed payments (past_due/unpaid), cancellations in the last 30 days, trialing count, per-tier breakdown, and Stripe sync state.
+
+**"Last event received" reads Stripe's own Events API** (30-day retention) rather than a local webhook log — a local log would only ever be as reliable as the webhook it was recording, which is the exact thing you are trying to verify. No new table needed.
+
+**MRR is deliberately WITHHELD outside live mode.** `STRIPE_SECRET_KEY` is currently a **test** key, and multiplying a plan price by a count of test fixtures produces a number that looks like revenue and is not. The page states TEST mode first and loudest, and the MRR card reads "— withheld outside live mode".
+
+**The drift check found a real disagreement, live:** Stripe reports **3 active subscriptions** (plus 1 cancelled), while **0 local rows carry a `payment_subscription_id`**. The one active local row is hand-granted (tier `ace`, no Stripe ids), so it will never renew, churn, or fail a payment through Stripe. Both facts are surfaced separately rather than blended. In test mode this is expected leftover fixture state — but the same check is what will catch a genuinely behind projection in live mode, which was the point.
+
+**Verified live**: panel rendered against real Stripe API responses and the real `user_subscriptions` table; the drift warning and hand-granted notice both fired on true data.
 
 ### 7. Link Health — measuring the wrong table
 `/admin/link-health` buckets apply links (direct / board / generic / mirror / unknown) with a worst-offenders list. Useful, but it scans **`jobs`** — the per-user rows created by searches — and NOT `discovered_postings`, the ~690k-row crawl cache that is now the primary source users actually search. So it reports on a small derived slice while the real inventory goes unmeasured.
