@@ -50,9 +50,12 @@ export function ModelHealthPanel({ health, settings }: { health: ModelHealth; se
             <Power className="h-4 w-4" />
             {settings.aiEnabled ? "AI enabled" : "AI disabled site-wide"}
           </span>
+          {/* No attribution is shown when updated_by is genuinely unset —
+              saying "by unknown" would imply the record exists and is
+              unreadable, when in fact nothing was ever recorded. */}
           <span className="text-xs text-text-muted">
             last changed {formatWhen(settings.updatedAt)}
-            {settings.updatedByEmail ? ` by ${settings.updatedByEmail}` : ""}
+            {settings.updatedByEmail ? ` by ${settings.updatedByEmail}` : " (no admin recorded)"}
           </span>
         </div>
         {!settings.aiEnabled && (
@@ -120,7 +123,8 @@ export function ModelHealthPanel({ health, settings }: { health: ModelHealth; se
           <>
             <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-text-secondary">
               <span>
-                <span className="font-mono text-text-primary">{health.totalCalls}</span> calls
+                <span className="font-mono text-text-primary">{health.totalCalls}</span> call
+                {health.totalCalls === 1 ? "" : "s"}
               </span>
               <span>
                 <span className="font-mono text-text-primary">{health.totalFallbackCalls}</span> served by a fallback (

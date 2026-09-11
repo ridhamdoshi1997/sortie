@@ -96,6 +96,10 @@ export async function listContributedQuestionsByCompanyKey(companyKey: string): 
     .from("contributed_interview_questions")
     .select("id,company,role,interview_date,question,created_at")
     .eq("company_key", companyKey)
+    // Moderation gate (Phase 52 section 4). This read feeds a PUBLIC,
+    // unauthenticated marketing page, so an unreviewed submission must
+    // never reach it — status defaults to 'pending' on insert.
+    .eq("status", "published")
     .order("created_at", { ascending: false });
 
   if (error) {

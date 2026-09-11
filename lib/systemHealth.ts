@@ -244,9 +244,15 @@ export async function getSystemHealth(): Promise<SystemHealth> {
   const contributions = await safe<SystemHealth["contributions"]>(
     "contributions",
     async () => {
+      // Was counting EVERY contributed row and labelling it "pending", back
+      // when no status column existed — so the number was really "total
+      // contributions" wearing the wrong name. Now that moderation is real
+      // (Phase 52 section 4), this counts what the word actually means:
+      // submissions still waiting for a human to look at them.
       const { count } = await admin.database
         .from("contributed_interview_questions")
-        .select("*", { count: "exact", head: true });
+        .select("*", { count: "exact", head: true })
+        .eq("status", "pending");
       return { pending: count ?? 0 };
     },
     { pending: null },

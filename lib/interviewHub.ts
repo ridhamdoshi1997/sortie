@@ -157,6 +157,10 @@ export async function getInterviewHubData(): Promise<InterviewHubData> {
       const { data, error } = await admin.database
         .from("contributed_interview_questions")
         .select("company,company_key,created_at")
+        // Published only — this drives the public hub's per-company counts,
+        // and counting unreviewed submissions would advertise content that
+        // the company page itself (correctly) refuses to show.
+        .eq("status", "published")
         .returns<{ company: string; company_key: string; created_at: string }[]>();
       if (error) throw new Error(error.message);
       return data ?? [];

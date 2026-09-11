@@ -85,18 +85,25 @@ Written with a raw PostgREST fetch, fire-and-forget, every error swallowed — o
 
 **Deliberately NO per-model cost column.** `ai_cost_rates` is keyed by action, not model, so a per-model dollar would have to be invented — and every Gemini model in the chain is free-tier, where the constraint is quota, not spend. The page says this and links to Expenses, which measures the real dollars.
 
-**Verified live**: a real call through the public ATS-checker route wrote `gemini / gemini-3.1-pro-preview / calls: 1` into `ai_model_usage`. Not backfilled and it cannot be — nothing recorded model attribution before this shipped.
+**Verified live**: a real call through the public ATS-checker route wrote `gemini / gemini-3.1-pro-preview / calls: 1` into `ai_model_usage`, and the page itself was then confirmed rendering that row, the four-model chain and the kill switch. Not backfilled and it cannot be — nothing recorded model attribution before this shipped.
 
 **Two findings worth carrying forward:**
 1. **`lib/models.ts`'s "zero Pro-model quota" comment is now STALE.** `gemini-3.1-pro-preview` answered a real request successfully — Cloud Billing was linked since that comment was written. The comment still says the smart tier always 429s into the fallback chain; it does not.
 2. **The free ATS checker returned "Automated analysis failed" on a normal résumé** — see the résumé section below.
 
-### 4. Interview section in admin — add and track
-The `contributed_interview_questions` table shipped in Phase 51 with an explicit, documented "no moderation" gap. It is public user-generated content with **zero** admin surface.
-- Add a `status` column (`pending` / `published` / `rejected`). It currently auto-publishes with no approval step.
-- Moderation queue: approve / reject / delete, with the submitter visible.
-- Let an admin **add** questions directly from the admin site (the user's own ask), not only via the public contribute modal.
-- Track: per-company counts, contribution volume over time, and which companies have AI-generated banks vs real contributed questions.
+### 4. Interview section in admin — ✅ DONE 2026-09-11
+
+`contributed_interview_questions` shipped in Phase 51 with an explicit, documented "no moderation" gap — public user-generated content rendering on unauthenticated SEO pages with **zero** admin surface. Its own migration said to add a status column and review queue "the moment this needs moderating." This was that moment.
+
+**Migration `20260911120000_contributed-questions-moderation.sql`**: `status` (`pending`/`published`/`rejected`, **default `pending`**), `moderated_at`, `moderated_by`, and `source` (`contributed`/`admin`). Default is pending on purpose — the whole point is that a stranger's submission reaches a public page only after a human looked at it. Existing rows grandfather to `published` (0 of them live, so a no-op that exists for correctness on replay).
+
+**Three read paths closed**, which was the actual risk: `listContributedQuestionsByCompanyKey` (public company page) and `lib/interviewHub.ts` (public hub counts) both now filter `status = 'published'`. **And a real pre-existing bug fixed**: `lib/systemHealth.ts` counted EVERY contributed row and labelled it "pending" — it was reporting "total contributions" under the wrong name. It now counts actual pending rows.
+
+**New `/admin/interview`**: review queue with the submitter's email visible (spotting one account spamming is the point), approve / reject / back-to-pending / delete, a direct "Add a question" form (the user's own ask) tagged `source='admin'` and published immediately since an admin adding it IS the review step, per-company coverage showing **AI-generated bank questions vs real contributed ones**, and a 30-day contribution volume bar. Moderation is owner+admin; `support_readonly` can read the queue but cannot publish to a public page.
+
+**Honesty constraints held**: contributed questions never render with agent-teal (`ui-tokens.md` reserves it exclusively for AI-generated content, and the entire value of this table is that a human wrote it), and admin-authored rows are visibly tagged rather than passed off as candidate reports.
+
+**Verified live end to end**: inserted a pending probe → confirmed the public read returned **0** for it and System Health's pending count read 1 → clicked Approve in the real UI → row flipped to `published` with `moderated_by` stamped → public read then returned 1 → probe deleted, table back to 0 rows.
 
 ### 5. Regional pricing — the CODE IS DONE; what is missing is data and visibility
 Re-verified live 2026-09-10, and it survived the Supabase migration intact. Do not rebuild any of this.
