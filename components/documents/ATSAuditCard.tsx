@@ -200,7 +200,14 @@ export function ATSAuditCard({
         // should parse cleanly through an ATS", which reads as a verdict on
         // the whole card and directly contradicted a "Some risk" badge
         // driven entirely by the keyword half.
-        <p className="mt-3 rounded-lg border-l-2 border-agent bg-agent/5 px-2.5 py-2 text-[11px] leading-snug text-text-secondary">
+        // NOT agent-teal. ui-tokens.md's Agent invariant is strict in both
+        // directions: "if it came from the agent, it gets this treatment; if
+        // it didn't, it never does." Every word in this block is
+        // deterministic computation over ResumeStyle/ResumeSection — no AI
+        // touched it — so wearing the AI treatment was telling the user a
+        // machine judged their formatting when in fact it was counted. The
+        // success tone is the honest signal here.
+        <p className="mt-3 rounded-lg border-l-2 border-success bg-success/5 px-2.5 py-2 text-[11px] leading-snug text-text-secondary">
           No formatting issues found — single-column layout, standard section headers, and all contact fields
           present. Nothing here will trip up an ATS parser.
           {hasKeywordData && missingKeywords.length > 0 && (

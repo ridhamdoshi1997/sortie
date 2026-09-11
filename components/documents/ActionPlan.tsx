@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { AlertCircle, ArrowRight, Check, Loader2, PenLine, Sparkles, Target, Wand2, Zap } from "lucide-react";
+import { AlertCircle, ArrowRight, Check, Loader2, PenLine, Sparkles, Target, Zap } from "lucide-react";
 
+import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { FrameworkPicker } from "@/components/documents/FrameworkPicker";
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
 import { computeMatchRate } from "@/lib/atsMatchRate";
@@ -77,6 +79,14 @@ export function ActionPlan({
   const { isPending, send, error, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
+  // Which bullet, if any, has the framework picker open INLINE here.
+  //
+  // The picker previously lived only on the bullet row inside the Editor
+  // tab — real, but three clicks deep, and the user reported "I can't see
+  // the option picker in any tabs" while sitting on AI Rewrite. Opening it
+  // right here is what makes CAR/STAR/PAR/SOAR discoverable at the moment
+  // the problem is named.
+  const [pickerFor, setPickerFor] = useState<{ key: string; bulletText: string } | null>(null);
 
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
 
@@ -225,9 +235,11 @@ export function ActionPlan({
               disabled={isAi && isPending}
               onClick={() => {
                 if (item.kind === "instant") return runInstantFix();
-                if (item.kind === "bullet" || item.kind === "placeholder") {
-                  return onFocusBullet(item.company, item.bulletText);
+                if (item.kind === "placeholder") {
+                  setPickerFor(pickerFor?.key === key ? null : { key, bulletText: item.bulletText });
+                  return;
                 }
+                if (item.kind === "bullet") return onFocusBullet(item.company, item.bulletText);
                 if (item.kind === "keywords") {
                   setActiveKey(key);
                   return send(item.prompt);
@@ -293,6 +305,21 @@ export function ActionPlan({
         })}
       </div>
 
+      {pickerFor && (
+        <div className="mt-2">
+          <FrameworkPicker
+            bulletText={pickerFor.bulletText}
+            pending={isPending}
+            onApply={(instruction) => {
+              setActiveKey(pickerFor.key);
+              setPickerFor(null);
+              send(instruction);
+            }}
+            onClose={() => setPickerFor(null)}
+          />
+        </div>
+      )}
+
       {appliedNote && (
         <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-success/30 bg-success/5 px-2.5 py-2 text-[11px] text-success">
           <Check className="mt-px h-3.5 w-3.5 shrink-0" />
@@ -311,17 +338,21 @@ export function ActionPlan({
           skill it now proposes a draft bullet instead of asking the user to
           go find information, and that draft is the entire value of the
           reply — summarising it away was the bug. */}
+      {/* The canonical agent surface, not a hand-rolled one. ui-tokens.md's
+          Agent invariant is strict — anything the AI produced carries this
+          treatment and nothing else ever does — and AiReadsCard's own header
+          records that ~24 files each re-implementing the flat callout by
+          hand is exactly what it exists to replace. "compact" is the right
+          tier here: AI output nested inside an already-dense card. */}
       {justUpdated && !error && lastReply && (
-        <div className="mt-2 rounded-lg border border-border bg-surface-secondary/60 px-2.5 py-2">
-          <p className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-text-muted">
-            <Wand2 className="h-3 w-3" />
-            What changed
-          </p>
-          <p className="mt-1 whitespace-pre-wrap text-[11px] leading-snug text-text-secondary">{lastReply}</p>
-          <p className="mt-1.5 text-[11px] text-text-muted">
-            Anything offered as a draft is not in your résumé yet — reply in the chat below to confirm it&apos;s true and
-            it gets added.
-          </p>
+        <div className="mt-2">
+          <AiReadsCard label="What changed" variant="compact">
+            <p className="whitespace-pre-wrap text-[11px] leading-snug">{lastReply}</p>
+            <p className="mt-1.5 text-[11px] opacity-80">
+              Anything offered as a draft is not in your résumé yet — reply in the chat below to confirm it&apos;s true
+              and it gets added.
+            </p>
+          </AiReadsCard>
         </div>
       )}
     </div>
