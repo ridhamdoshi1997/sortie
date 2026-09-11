@@ -147,17 +147,46 @@ function buildDailySeries(days: number, counts: Map<string, number>): DailyCount
   return series;
 }
 
-export type AppSettings = { aiEnabled: boolean; aiDisabledReason: string | null };
+export type AppSettings = {
+  aiEnabled: boolean;
+  aiDisabledReason: string | null;
+  /** When the kill switch was last changed, and by whom — Phase 52 section 3. */
+  updatedAt: string | null;
+  updatedByEmail: string | null;
+};
 
 export async function getAppSettings(): Promise<AppSettings> {
   const admin = createAdminDbClient();
   const { data } = await admin.database
     .from("app_settings")
-    .select("ai_enabled,ai_disabled_reason")
+    .select("ai_enabled,ai_disabled_reason,updated_at,updated_by")
     .eq("id", 1)
-    .maybeSingle<{ ai_enabled: boolean; ai_disabled_reason: string | null }>();
+    .maybeSingle<{
+      ai_enabled: boolean;
+      ai_disabled_reason: string | null;
+      updated_at: string | null;
+      updated_by: string | null;
+    }>();
 
-  return { aiEnabled: data?.ai_enabled ?? true, aiDisabledReason: data?.ai_disabled_reason ?? null };
+  // setAiEnabled writes admin_users.id into updated_by, so the readable name
+  // needs one lookup. An emergency lever nobody can attribute is half a
+  // lever — the crawl pause on System Health reads the same way, deliberately.
+  let updatedByEmail: string | null = null;
+  if (data?.updated_by) {
+    const { data: who } = await admin.database
+      .from("admin_users")
+      .select("email")
+      .eq("id", data.updated_by)
+      .maybeSingle<{ email: string | null }>();
+    updatedByEmail = who?.email ?? null;
+  }
+
+  return {
+    aiEnabled: data?.ai_enabled ?? true,
+    aiDisabledReason: data?.ai_disabled_reason ?? null,
+    updatedAt: data?.updated_at ?? null,
+    updatedByEmail,
+  };
 }
 
 export type UserListRow = {

@@ -91,7 +91,7 @@ async function resolveModelId(provider: ModelProvider, tier: ModelTier): Promise
 // plan-level block, not today's usage) despite looking plausible from the
 // model name alone. Re-verify the same way (a real completions call, not a
 // models.list check) before adding anything else here.
-const GEMINI_FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
+export const GEMINI_FALLBACK_MODELS = ["gemini-flash-lite-latest", "gemini-3-flash-preview", "gemini-3.5-flash-lite"];
 
 export async function getModel(
   provider: ModelProvider,
@@ -176,6 +176,43 @@ function markCooldown(model: string): void {
   modelCooldownUntil.set(model, Date.now() + 60_000);
 }
 
+// Durable, cross-instance counterpart to the cooldown Map above (Phase 52,
+// section 3). That Map is per-lambda and request-local by design, so it can
+// make THIS process fail fast but can never tell an admin what is happening
+// fleet-wide — /admin/ai-models reads ai_model_usage instead.
+//
+// A raw PostgREST fetch rather than the createAdminDbClient already imported
+// above, for one reason: this fires on EVERY completion, and building a fresh
+// Supabase client per call to issue one fire-and-forget RPC is waste. The
+// import-graph hazard is real but already paid for by resolveModelId's use of
+// the same client, so this is not avoiding it — just not adding work.
+//
+// The window guard is belt-and-braces: this module is reachable from the
+// client graph (lib/models.ts -> Navbar.tsx, the import chain that once broke
+// the whole app — see lib/admin/client.ts's comment), though complete() is
+// only ever called server-side and SUPABASE_SERVICE_ROLE_KEY is not
+// NEXT_PUBLIC so it is never inlined into a client bundle regardless.
+//
+// Fire-and-forget with every error swallowed: this is observability, and an
+// AI call must never fail or slow down because bookkeeping did.
+function recordModelUsage(provider: ModelProvider, modelId: string, wasFallback: boolean, rateLimited: boolean): void {
+  if (typeof window !== "undefined") return;
+  const url = process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) return;
+
+  void fetch(`${url}/rest/v1/rpc/record_model_usage`, {
+    method: "POST",
+    headers: { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      p_provider: provider,
+      p_model_id: modelId,
+      p_was_fallback: wasFallback,
+      p_rate_limited: rateLimited,
+    }),
+  }).catch(() => {});
+}
+
 // The free-tier gemini-3.1-flash-lite key this project uses is rate-limited
 // to 15 requests/minute (confirmed live from a real 429 response) — a
 // single call in a request that fires several in quick succession (e.g.
@@ -240,6 +277,7 @@ export async function complete(
       throw new Error("Anthropic returned an empty response");
     }
 
+    recordModelUsage("anthropic", handle.model, false, false);
     return args.jsonResponse ? stripJsonFences(textBlock.text) : textBlock.text;
   }
 
@@ -285,6 +323,10 @@ export async function complete(
         throw new Error(`${handle.provider} returned an empty response`);
       }
 
+      // `model !== modelsToTry[0]` is the whole definition of "this was a
+      // fallback": the configured model is always first in the chain, so
+      // serving from anything else means the primary already failed.
+      recordModelUsage(handle.provider, model, model !== modelsToTry[0], false);
       return raw;
     } catch (error) {
       lastError = error;
@@ -296,6 +338,7 @@ export async function complete(
         throw error;
       }
       markCooldown(model);
+      recordModelUsage(handle.provider, model, model !== modelsToTry[0], true);
       console.error(`[lib/models] ${model} exhausted (${status}) — trying next fallback`);
     }
   }

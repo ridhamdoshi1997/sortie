@@ -28,7 +28,16 @@ export function AiKillSwitch({ initialSettings }: { initialSettings: AppSettings
         setError(result.error);
         return;
       }
-      setSettings({ aiEnabled: enabled, aiDisabledReason: enabled ? null : reason || null });
+      // Optimistic local echo of the write that just succeeded. updatedAt is
+      // stamped client-side here purely so the UI doesn't briefly show stale
+      // attribution; the authoritative values come from app_settings on the
+      // next server read.
+      setSettings((prev) => ({
+        ...prev,
+        aiEnabled: enabled,
+        aiDisabledReason: enabled ? null : reason || null,
+        updatedAt: new Date().toISOString(),
+      }));
       setConfirmingDisable(false);
       setReason("");
     });
