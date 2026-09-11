@@ -3,6 +3,7 @@
 import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 
 import { useDocumentChat, type RevisedData } from "@/components/documents/useDocumentChat";
+import { DAILY_LIMITS } from "@/lib/usage";
 
 export type ChipPreset = { label: string; prompt: string };
 
@@ -34,12 +35,15 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
 
   return (
     <div>
-      {/* Every one of these spends a full document_generation — the same
-          unit EditorUsageMeter shows as "N of 10 left today", and the same
-          cost as the Action Plan's AI item. They looked free because nothing
-          said otherwise, which is how a user burns a daily allowance on
-          four one-tap chips without realising. */}
-      <p className="mb-1.5 text-[10px] text-text-muted">Each uses 1 generation from your daily allowance.</p>
+      {/* Every one of these spends a full document_generation from the
+          per-action DAILY cap in lib/usage.ts. They looked free because
+          nothing said otherwise, which is how a user burns a day's
+          allowance on four one-tap chips without realising. The number is
+          read from the same constant enforcement uses, so it cannot drift
+          from what actually gets blocked. */}
+      <p className="mb-1.5 text-[10px] text-text-muted">
+        Each uses 1 of your {DAILY_LIMITS.document_generation} daily résumé rewrites.
+      </p>
       <div className="flex flex-wrap gap-1.5">
         {presets.map((preset) => (
           <button

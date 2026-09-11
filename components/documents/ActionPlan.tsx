@@ -7,6 +7,7 @@ import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
 import { computeMatchRate } from "@/lib/atsMatchRate";
 import { splitSkills } from "@/lib/atsSkills";
+import { DAILY_LIMITS } from "@/lib/usage";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
 import type { ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
@@ -215,11 +216,17 @@ export function ActionPlan({
               </span>
               <span className="flex shrink-0 items-center gap-1.5">
                 {/* Cost is stated up front, because one of these spends a
-                    ~25s AI call and one of the day's `document_generation`
-                    allowance (the same budget EditorUsageMeter shows as
-                    "N of 10 left today") while the others cost nothing at
-                    all. "1 generation" deliberately matches that meter's
-                    unit rather than inventing a second currency. */}
+                    ~25s AI call against the day's document_generation
+                    allowance while the others cost nothing at all.
+                    
+                    This said "1 AI credit" briefly and that was wrong —
+                    there IS no credit system here. Metering is per-action
+                    DAILY caps (lib/usage.ts's DAILY_LIMITS, overridable per
+                    plan), so the badge names the real unit and the real
+                    cap, read from the same constant the enforcement uses.
+                    Inventing a currency the backend does not implement is
+                    exactly the kind of confident-but-false surface this
+                    project keeps having to remove. */}
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                     item.kind === "instant"
@@ -229,7 +236,7 @@ export function ActionPlan({
                         : "bg-surface-secondary text-text-muted"
                   }`}
                 >
-                  {item.kind === "instant" ? "Instant" : isAi ? "1 generation" : "Free"}
+                  {item.kind === "instant" ? "Instant" : isAi ? `1 of ${DAILY_LIMITS.document_generation}/day` : "Free"}
                 </span>
                 {item.points > 0 && (
                   <span className="rounded-full bg-surface-secondary px-2 py-0.5 font-mono text-[10px] font-medium text-text-secondary">
