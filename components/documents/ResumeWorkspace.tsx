@@ -239,12 +239,17 @@ export function ResumeWorkspace({
         <EditorUsageMeter action="document_generation" />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="border-b border-border bg-surface-secondary p-6 lg:border-b-0 lg:border-r">
+      {/* ONE definite row height, so the preview and the editor panel are
+          exactly as tall as each other and each scrolls inside itself.
+          Previously each column sized itself independently — a 700px
+          PDF beside a freely-growing panel — which left a dead patch
+          under whichever one was shorter. */}
+      <div className="grid grid-cols-1 lg:h-[720px] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="min-h-0 border-b border-border bg-surface-secondary p-6 lg:border-b-0 lg:border-r">
           <ResumeLivePreview profile={profile} sections={sections} style={style} />
         </div>
 
-        <div className="flex flex-col">
+        <div className="flex min-h-0 flex-col">
           {/* Underline, not a filled pill (2026-08-26, same fix as
              components/ui/Tabs.tsx) — `bg-accent-muted` resolves to
              `#2c1a08` in dark mode, the identical muddy-fill bug already
@@ -275,7 +280,7 @@ export function ResumeWorkspace({
           {/* Keyed on `tab` so a tab switch remounts this wrapper and
              replays the entrance animation — a real state transition
              (switching panels), not decoration for its own sake. */}
-          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 max-h-[560px] overflow-y-auto p-5 duration-200">
+          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 min-h-0 flex-1 overflow-y-auto p-5 duration-200">
             {tab === "ai-rewrite" && (
               <AIRewriteTab
                 jobId={jobId}
@@ -312,7 +317,12 @@ export function ResumeWorkspace({
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-3 border-t border-border bg-surface-secondary p-5">
+      {/* Sticky: the panel above can run long, and a user who has just
+          finished editing should not have to scroll to find how to get the
+          file out. Saving itself is automatic (debounced commitSections /
+          commitStyle, with the "Saving… / Updated" indicator in the header),
+          so these are export actions, not a save button. */}
+      <div className="sticky bottom-0 z-10 flex flex-wrap gap-3 border-t border-border bg-surface-secondary p-5">
         <a
           href={`/api/documents/download?jobId=${jobId}&kind=resume`}
           target="_blank"

@@ -107,8 +107,16 @@ export const RESUME_FRAMEWORKS: ResumeFramework[] = [
       { id: "a", slot: "A", label: "What did you do?", placeholder: "Built an automated onboarding module" },
       { id: "r", slot: "R", label: "What was the outcome?", placeholder: "Ramp-up time down by two weeks" },
     ],
+    // Order is enforced explicitly because the model would not keep it
+    // otherwise. Tested live 2026-09-11: given S/T/A/R answers, it returned
+    // "Reduced mean time to detect from 45 minutes to under 5 by rolling
+    // out..." — a genuinely strong bullet, but Result-first, i.e. CAR
+    // shaped. That is a fine résumé line and the wrong framework: STAR's
+    // defining property IS the sequence, so someone who picked STAR and got
+    // Result-first did not get what they chose. If leading with impact is
+    // what they want, XYZ and CAR are both on the menu.
     instruction:
-      "Apply the STAR framework, but compress ruthlessly — a résumé bullet is one or two lines, not a paragraph. If all four elements will not fit, merge Situation and Task into a single opening clause rather than dropping the Result.",
+      "Apply the STAR framework and PRESERVE ITS ORDER: open on the Situation, then the Task, then the Action, and close on the Result. Do not lead with the result — that is a different framework. Compress ruthlessly, since a résumé bullet is one or two lines, not a paragraph: if all four will not fit, merge Situation and Task into a single opening clause rather than dropping the Result or reordering.",
   },
   {
     id: "soar",

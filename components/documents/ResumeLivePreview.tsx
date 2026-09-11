@@ -26,9 +26,15 @@ export function ResumeLivePreview({ profile, sections, style }: Props) {
     return () => clearTimeout(timer);
   }, [sections, style]);
 
+  // Fills its container rather than declaring its own 700px. The workspace
+  // puts this beside a scrolling editor panel, and a hard height here made
+  // the two columns independently sized — whichever was taller left a blank
+  // patch next to the shorter one. Both user-reported, one on each side.
   return (
-    <PDFViewer width="100%" height={700} showToolbar>
-      <ResumePDF profile={profile} sections={debounced.sections} style={debounced.style} />
-    </PDFViewer>
+    <div className="h-full min-h-[420px]">
+      <PDFViewer width="100%" height="100%" showToolbar>
+        <ResumePDF profile={profile} sections={debounced.sections} style={debounced.style} />
+      </PDFViewer>
+    </div>
   );
 }

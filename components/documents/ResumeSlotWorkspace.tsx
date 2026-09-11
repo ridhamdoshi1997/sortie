@@ -153,8 +153,13 @@ export function ResumeSlotWorkspace({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
-        <div className="border-b border-border bg-surface-secondary p-6 lg:border-b-0 lg:border-r">
+      {/* ONE definite row height, so the preview and the editor panel are
+          exactly as tall as each other and each scrolls inside itself.
+          Previously each column sized itself independently — a 700px
+          PDF beside a freely-growing panel — which left a dead patch
+          under whichever one was shorter. */}
+      <div className="grid grid-cols-1 lg:h-[720px] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        <div className="min-h-0 border-b border-border bg-surface-secondary p-6 lg:border-b-0 lg:border-r">
           {hasStartedEditing ? (
             <div className="flex flex-col gap-3">
               <div className="flex w-fit gap-1 rounded-full border border-border bg-surface p-1">
@@ -204,7 +209,7 @@ export function ResumeSlotWorkspace({
           )}
         </div>
 
-        <div className="flex flex-col">
+        <div className="flex min-h-0 flex-col">
           <div className="flex gap-1 border-b border-border p-3">
             {(
               [
@@ -229,7 +234,7 @@ export function ResumeSlotWorkspace({
           </div>
           {/* Keyed on `tab` — see ResumeWorkspace.tsx's own comment on this
              same pattern. */}
-          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 max-h-[560px] overflow-y-auto p-5 duration-200">
+          <div key={tab} className="animate-in fade-in-0 slide-in-from-bottom-1 min-h-0 flex-1 overflow-y-auto p-5 duration-200">
             {tab === "insights" && (
               <div className="flex flex-col gap-4">
                 <ATSAuditCard

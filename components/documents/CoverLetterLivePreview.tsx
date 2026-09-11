@@ -26,14 +26,16 @@ export function CoverLetterLivePreview({ profile, company, letterBody, style, sa
   }, [letterBody, style, salutation]);
 
   return (
-    <PDFViewer width="100%" height={700} showToolbar>
-      <CoverLetterPDF
-        profile={profile}
-        company={company}
-        letterBody={debounced.letterBody}
-        style={debounced.style}
-        salutation={debounced.salutation}
-      />
-    </PDFViewer>
+    <div className="h-full min-h-[420px]">
+      <PDFViewer width="100%" height="100%" showToolbar>
+        <CoverLetterPDF
+          profile={profile}
+          company={company}
+          letterBody={debounced.letterBody}
+          style={debounced.style}
+          salutation={debounced.salutation}
+        />
+      </PDFViewer>
+    </div>
   );
 }
