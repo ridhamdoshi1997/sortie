@@ -81,17 +81,17 @@ const PLANS = {
       rewrites: 3, rubric: 1, bullets: 10, interview: 2,
       strategy: 1, career: 1, outreach: 3, navigator: 10, imports: 2,
     }),
-    // 50, not 3. Job evaluation is charged PER JOB and runs AUTOMATICALLY
-    // during a search, which can evaluate up to MAX_EVALUATED_JOBS = 120.
-    // At 3 a brand-new free user's very first search scored 3 of 120 jobs
-    // and then refused to evaluate anything else all day — reported live on
-    // a fresh account that had never clicked evaluate once.
+    // Governs ONLY user-initiated evaluations now: re-scoring a job, the
+    // full 10-dimension rubric, and adding an external job by URL. The
+    // automatic pass that scores a search's results no longer touches it,
+    // because search is free on every tier and the scoring that makes its
+    // results usable is part of what is free (see the comment in
+    // lib/actions/scraper.actions.ts).
     //
-    // 50 is roughly one full useful search. The real cost is far lower than
-    // the count suggests: evaluation chunks 10 jobs per AI call, so 50 jobs
-    // is ~5 calls on the free-tier Gemini key. Against that key's measured
-    // 500 requests/day, this supports ~100 free users doing a search a day.
-    job_evaluations_daily_limit: 50,
+    // 10 deliberate deep-dives a day is a real free tier. It was briefly
+    // raised to 50 while search was still charging against it — that was
+    // treating the symptom.
+    job_evaluations_daily_limit: 10,
     company_research_monthly_limit: 0,
     insider_connections_monthly_limit: 0,
     email_lookup_monthly_limit: 0,
@@ -103,9 +103,8 @@ const PLANS = {
       rewrites: 20, rubric: 10, bullets: 60, interview: 15,
       strategy: 10, career: 10, outreach: 20, navigator: 50, imports: 10,
     }),
-    // Also raised for the same reason — 25 did not cover a single search.
-    // 400 jobs is ~40 AI calls.
-    job_evaluations_daily_limit: 400,
+    // User-initiated evaluations only — see recon's note.
+    job_evaluations_daily_limit: 100,
     company_research_monthly_limit: 25,
     insider_connections_monthly_limit: 7,
     email_lookup_monthly_limit: 12,

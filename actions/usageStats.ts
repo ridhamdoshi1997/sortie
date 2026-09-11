@@ -20,6 +20,10 @@ export type UsageStatRow = {
   limit: number | null;
 };
 
+// Written by checkJobEvaluationLimit (lib/subscription.ts), which meters
+// into the same table without being part of the UsageAction union.
+const JOB_EVALUATION_ACTION = "job_evaluation";
+
 type Result = { success: true; rows: UsageStatRow[]; multiplier: number } | { success: false; error: string };
 
 export async function getUsageStats(): Promise<Result> {
@@ -71,14 +75,33 @@ export async function getUsageStats(): Promise<Result> {
       countByAction.set(row.action, row.count);
     }
 
+    // `job_evaluation` is metered but is NOT a UsageAction — it lives in
+    // usage_daily like the rest while being governed by its own plan column
+    // (job_evaluations_daily_limit), so `action in DAILY_LIMITS` silently
+    // dropped it from this panel entirely.
+    //
+    // That invisibility is exactly how a user ended up unable to explain
+    // what had consumed their allowance: the row existed, the cap fired, and
+    // the one screen meant to show usage never mentioned it. Anything the
+    // app meters, the user must be able to see.
     const rows: UsageStatRow[] = Array.from(countByAction.entries())
-      .filter(([action]) => action in DAILY_LIMITS)
-      .map(([action, count]) => ({
-        action: action as UsageAction,
-        label: ACTION_LABELS[action as UsageAction],
-        count,
-        limit: resolveLimit(action as UsageAction),
-      }))
+      .filter(([action]) => action in DAILY_LIMITS || action === JOB_EVALUATION_ACTION)
+      .map(([action, count]) => {
+        if (action === JOB_EVALUATION_ACTION) {
+          return {
+            action: action as UsageAction,
+            label: "job evaluations",
+            count,
+            limit: admin ? null : plan.jobEvaluationsDailyLimit,
+          };
+        }
+        return {
+          action: action as UsageAction,
+          label: ACTION_LABELS[action as UsageAction],
+          count,
+          limit: resolveLimit(action as UsageAction),
+        };
+      })
       .sort((a, b) => b.count - a.count);
 
     return { success: true, rows, multiplier };

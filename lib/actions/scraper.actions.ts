@@ -18,7 +18,6 @@ import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust
 import { looksLikeSpecificJobPosting, verifyApplyLinksBeforeReveal } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient, createCacheDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
-import { checkJobEvaluationLimit } from "@/lib/subscription";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isAdminUser } from "@/lib/access";
@@ -329,12 +328,29 @@ async function evaluateWithinQuota(
         }
     }
 
-    const evaluableJobIds: string[] = [];
-    for (const job of orderedForEvaluation) {
-        const evalCheck = await checkJobEvaluationLimit(insforge, userId, userEmail);
-        if (!evalCheck.allowed) break;
-        evaluableJobIds.push(job.id);
-    }
+    // Search-time scoring is part of SEARCH, and search is free on every
+    // tier — so it does NOT consume the user's evaluation allowance.
+    //
+    // This used to call checkJobEvaluationLimit once PER JOB right here,
+    // which quietly made the free search un-free: a brand-new Recon account
+    // ran one search, the loop spent its whole daily allowance on the
+    // automatic pass, scored 3 of 120 jobs, and then refused every
+    // user-initiated evaluation for the rest of the day — on an account that
+    // had never clicked evaluate once. Raising the number only moved the
+    // cliff; the contradiction was structural. If search is free, the
+    // scoring that makes search results usable is part of what is free.
+    //
+    // Three real bounds remain without charging the user:
+    //   * MAX_EVALUATED_JOBS caps how many jobs a single search evaluates.
+    //   * Only jobs that need evaluation are queued, so repeating the same
+    //     search re-scores nothing.
+    //   * evaluateJobChunk sits behind a global 12-calls-per-60s throttle
+    //     shared across all users, which is what actually protects the key.
+    //
+    // job_evaluations_daily_limit still governs every USER-INITIATED
+    // evaluation — re-scoring a job, the full 10-dimension rubric, and
+    // adding an external job by URL (actions/jobs.ts, lib/externalJob.ts).
+    const evaluableJobIds: string[] = orderedForEvaluation.map((job) => job.id);
 
     if (evaluableJobIds.length > 0) {
         // Real bug found live (2026-08-27): an unreachable Inngest dev

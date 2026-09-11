@@ -107,17 +107,24 @@ Real per-call costs, all measured: insider connection **$0.315**, email lookup *
 
 Not fixed, noted: `components/profile/ProfileForm.tsx` uses `border-agent` as a decorative timeline rail on user-entered education — the same violation, left alone as decorative and out of scope.
 
-### Job evaluations: the unit is per-JOB but the cost is per-CHUNK — known mismatch
+### Search no longer charges the evaluation quota — search is free on every tier
 
-Found live 2026-09-11 on a brand-new free account that had never clicked evaluate once: its very first search returned 120 jobs, consumed all 3 of Recon's `job_evaluations_daily_limit`, scored **3 of 120**, and then refused every further evaluation for the day with "Daily limit reached (3/day on Recon)".
+Found live 2026-09-11 on a brand-new free account that had never clicked evaluate once: its first search returned 120 jobs, consumed all 3 of Recon's `job_evaluations_daily_limit`, scored **3 of 120**, then refused every further evaluation that day.
 
-Two separate things are wrong and only one is fixed:
+**The first fix was wrong.** Raising Recon to 50 only moved the cliff. The user identified the real problem: *"you should not connect the job search to the user account, because the job search is free for all the tiers."* Correct — search was advertised as unlimited on every tier while silently spending a metered allowance, so capping evaluations capped search.
 
-1. **FIXED — the numbers.** `checkJobEvaluationLimit` is called once PER JOB inside the search loop (`lib/actions/scraper.actions.ts`), and a search evaluates up to `MAX_EVALUATED_JOBS = 120`. A cap of 3 was never survivable. Recon is now **50** (roughly one full useful search) and Command **400**. Ace and Vanguard remain unlimited.
+`lib/actions/scraper.actions.ts` called `checkJobEvaluationLimit` **once per job** inside the search loop. That call is gone. Search-time scoring is part of search, and search is free, so the scoring that makes its results usable is part of what is free.
 
-2. **NOT FIXED — the unit.** Evaluation chunks **10 jobs per AI call** (`chunkArray(rawJobs, 10)`), so 120 jobs is ~12 calls, not 120. The counter therefore overstates real cost by 10x, which makes every evaluation limit hard to reason about against the thing that actually binds — the free Gemini key's measured **500 requests/day**. Charging per chunk, or per search, would make the number mean something. Worth doing before evaluation limits are used as a real pricing lever.
+Three real bounds remain without charging anyone:
+- `MAX_EVALUATED_JOBS = 120` caps a single search.
+- Only jobs that need evaluation are queued, so repeating a search re-scores nothing.
+- `evaluateJobChunk` sits behind a **global 12-calls-per-60s throttle** shared across all users — which is what actually protects the shared key, not a per-user counter.
 
-The sizing above uses the true cost: Recon's 50 jobs is ~5 AI calls, so the free tier supports roughly 100 users doing a search a day before Gemini's daily quota is the binding constraint rather than any per-user cap.
+`job_evaluations_daily_limit` now governs **only user-initiated** evaluations: re-scoring a job (`actions/jobs.ts:1599`), the full 10-dimension rubric (`actions/jobs.ts:1683`), and adding an external job by URL (`lib/externalJob.ts:101`). Rescoped to **Recon 10 / Command 100**, Ace and Vanguard unlimited.
+
+**Still open — the unit is per-JOB but the cost is per-CHUNK.** Evaluation chunks 10 jobs per AI call, so the counter overstates real spend by 10x. It matters less now that it only covers deliberate actions, but it should be charged per chunk (or per search) before evaluation limits are used as a real pricing lever.
+
+**Lesson worth keeping:** when a free feature quietly consumes a metered one, raising the meter is treating the symptom. Check whether the two should be connected at all.
 
 ### Known-unverified, carried into the next session
 
