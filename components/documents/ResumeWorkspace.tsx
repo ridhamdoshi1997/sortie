@@ -268,6 +268,8 @@ export function ResumeWorkspace({
                 onAnalyzeQuality={handleAnalyzeQuality}
                 onFocusBullet={focusBullet}
                 onRevised={handleRevised}
+                onCommitSections={commitSections}
+                onCommitStyle={commitStyle}
                 style={style}
                 sections={sections}
                 contact={{ email: profile.email, phone: profile.phone, location: profile.location }}

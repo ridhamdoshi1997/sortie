@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { AlertTriangle, RefreshCw, ShieldCheck } from "lucide-react";
 
-import { analyzeATSFormatting, computeATSScore } from "@/lib/atsChecker";
+import { computeMatchRate } from "@/lib/atsMatchRate";
 import { AnimatedScoreValue } from "@/components/job-details/AnimatedScoreValue";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -63,21 +63,28 @@ export function ATSAuditCard({
   // read as "something happened," then stops.
   const [spinning, setSpinning] = useState(false);
 
+  // ONE scoring system, shared with the Action Plan.
+  //
+  // This card used to run its own computeATSScore (formatting 50 + keywords
+  // 50) while the Action Plan quoted point values from computeMatchRate's
+  // weights (searchability 30 / hard 55 / soft 15). Caught live: the plan
+  // promised "+29" for a formatting fix and the card then moved 23 -> 61,
+  // a jump of 38. Both numbers were internally correct and the pair was
+  // nonsense, which is worse than either being wrong alone. computeMatchRate
+  // is now the single source for both, so a predicted delta and the observed
+  // delta are the same arithmetic.
+  //
+  // computeMatchRate also handles the no-keyword-data case itself, reporting
+  // searchability on a /100 scale rather than letting a clean résumé cap at
+  // 50 and read as "High risk" with no explanation.
   const result = useMemo(
-    () => computeATSScore(analyzeATSFormatting(style, sections, contact), matchedKeywords, missingKeywords),
+    () => computeMatchRate(style, sections, contact, matchedKeywords, missingKeywords),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [style, sections, contact, matchedKeywords, missingKeywords, recheckKey],
   );
 
-  const hasKeywordData = matchedKeywords.length + missingKeywords.length > 0;
-  // With no keyword data at all (e.g. a résumé slot with no target job to
-  // check keywords against), computeATSScore's overallScore silently caps
-  // at 50 — even a perfectly clean, zero-issue formatting pass reads as
-  // "High risk" with no explanation, which is exactly backwards. Show the
-  // formatting score alone (scaled to /100) in that case, since it's the
-  // only real signal available; the moment real keyword data exists, this
-  // reverts to the normal combined score unchanged.
-  const displayScore = hasKeywordData ? result.overallScore : result.formatting.score * 2;
+  const hasKeywordData = result.hasKeywordData;
+  const displayScore = result.matchRate;
   const tone = scoreTone(displayScore);
 
   function handleRecheck(): void {
@@ -105,12 +112,12 @@ export function ATSAuditCard({
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {result.formatting.issues.length === 0 ? (
+          {result.searchabilityIssues.length === 0 ? (
             <ShieldCheck className="h-4 w-4 text-agent" />
           ) : (
             <span className="flex items-center gap-1 text-[11px] font-medium text-warning">
               <AlertTriangle className="h-3.5 w-3.5" />
-              {result.formatting.issues.length} issue{result.formatting.issues.length === 1 ? "" : "s"}
+              {result.searchabilityIssues.length} issue{result.searchabilityIssues.length === 1 ? "" : "s"}
             </span>
           )}
           <button
@@ -135,23 +142,20 @@ export function ATSAuditCard({
           explanation contradicted the score, and nothing said where the 25
           missing points went.
 
-          The score is two independent halves of 50. Showing both makes the
-          number self-explanatory and stops the formatting line from reading
-          as a verdict on the whole score. */}
+          The score is three weighted categories. Showing all of them makes
+          the number self-explanatory and stops the formatting line from
+          reading as a verdict on the whole score. */}
       {hasKeywordData && (
         <div className="mt-3 flex flex-col gap-1.5">
-          <ScoreBar
-            label="Formatting & parseability"
-            value={result.formatting.score}
-            max={result.formatting.maxScore}
-          />
-          <ScoreBar label="Keyword match for this job" value={result.keywordScore} max={result.keywordMaxScore} />
+          {result.categories.map((c) => (
+            <ScoreBar key={c.key} label={c.label} value={c.earned} max={c.weight} />
+          ))}
         </div>
       )}
 
-      {result.formatting.issues.length > 0 ? (
+      {result.searchabilityIssues.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-2">
-          {result.formatting.issues.map((issue, i) => (
+          {result.searchabilityIssues.map((issue, i) => (
             <li
               key={issue.id}
               className={`dim-card-in rounded-lg border-l-2 px-2.5 py-2 text-[11px] leading-snug ${

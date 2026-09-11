@@ -1,6 +1,6 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
+import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 
 import { useDocumentChat, type RevisedData } from "@/components/documents/useDocumentChat";
 
@@ -27,22 +27,43 @@ type Props = {
 // trip DocumentChatEditor uses (via the shared useDocumentChat hook) —
 // nearly free to build, far more discoverable than a blank text box.
 export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRESETS, onRevised }: Props) {
-  const { isPending, send } = useDocumentChat({ jobId, kind, onRevised });
+  // `error` is read and rendered, not dropped. These chips hit the exact
+  // same route as the Action Plan, so they had the exact same bug: a failed
+  // revision un-greyed the chip and changed nothing, with no explanation.
+  const { isPending, send, error } = useDocumentChat({ jobId, kind, onRevised });
 
   return (
-    <div className="flex flex-wrap gap-1.5">
-      {presets.map((preset) => (
-        <button
-          key={preset.label}
-          type="button"
-          disabled={isPending}
-          onClick={() => send(preset.prompt)}
-          className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
-        >
-          <Sparkles className="h-3 w-3 text-accent" />
-          {preset.label}
-        </button>
-      ))}
+    <div>
+      {/* Every one of these spends a full document_generation — the same
+          unit EditorUsageMeter shows as "N of 10 left today", and the same
+          cost as the Action Plan's AI item. They looked free because nothing
+          said otherwise, which is how a user burns a daily allowance on
+          four one-tap chips without realising. */}
+      <p className="mb-1.5 text-[10px] text-text-muted">Each uses 1 generation from your daily allowance.</p>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((preset) => (
+          <button
+            key={preset.label}
+            type="button"
+            disabled={isPending}
+            onClick={() => send(preset.prompt)}
+            className="inline-flex items-center gap-1 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent hover:text-accent disabled:opacity-50"
+          >
+            {isPending ? (
+              <Loader2 className="h-3 w-3 animate-spin text-accent" />
+            ) : (
+              <Sparkles className="h-3 w-3 text-accent" />
+            )}
+            {preset.label}
+          </button>
+        ))}
+      </div>
+      {error && (
+        <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-error/30 bg-error/5 px-2.5 py-2 text-[11px] text-error">
+          <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
+          <span>{error}</span>
+        </p>
+      )}
     </div>
   );
 }

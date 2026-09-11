@@ -93,6 +93,11 @@ type Props = {
   onAnalyzeQuality: () => Promise<{ success: boolean; error?: string }>;
   onFocusBullet: (company: string, bulletText: string) => void;
   onRevised: (data: RevisedData) => void;
+  // Deterministic, zero-cost fixes the Action Plan applies directly — same
+  // debounced save+rescore path the editor already uses, so a free fix
+  // lands exactly like a manual edit.
+  onCommitSections: (sections: ResumeSection[]) => void;
+  onCommitStyle: (style: ResumeStyle) => void;
   style: ResumeStyle;
   sections: ResumeSection[];
   contact: { email: string | null; phone: string | null; location: string | null };
@@ -121,6 +126,8 @@ export function AIRewriteTab({
   onAnalyzeQuality,
   onFocusBullet,
   onRevised,
+  onCommitSections,
+  onCommitStyle,
   style,
   sections,
   contact,
@@ -244,8 +251,13 @@ export function AIRewriteTab({
         jobId={jobId}
         scoreJump={scoreJump}
         qualityAnalysis={qualityAnalysis}
+        style={style}
+        sections={sections}
+        contact={contact}
         onFocusBullet={onFocusBullet}
         onRevised={onRevised}
+        onCommitSections={onCommitSections}
+        onCommitStyle={onCommitStyle}
       />
 
       <div>

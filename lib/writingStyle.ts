@@ -29,32 +29,34 @@ export const HUMANIZED_WRITING_RULES = `Write like a real person, not an AI mode
 // ("Accomplished X as measured by Y, by doing Z" — the résumé-writing
 // framework popularized by Google's former SVP of People Ops, Laszlo Bock).
 //
-// Placeholder-bracket rule added 2026-09-10, then REINED IN 2026-09-11
-// after the user saw the result on a real résumé: "you can't put simple x,
-// y and z — you have to see as per the user's profile and resume — you need
-// either real numbers or phrase which makes sense, not this jibberish."
+// Placeholders are BANNED here, and XYZ is no longer applied by default.
+// Both were removed 2026-09-11 on direct user instruction, in two steps.
 //
-// They were right, and the failure was one of degree, not principle. The
-// original rule offered a bracketed placeholder as a third option between
-// inventing a number (dishonest) and dropping it silently (unhelpful). But
-// it gave the model no reason to PREFER the other two, so the placeholder
-// became the default: a live résumé came back with "[X]%" in essentially
-// every bullet, which reads as an unfinished draft rather than a document
-// anyone would send.
+// The bracket rule was added 2026-09-10 as a third option between inventing
+// a number (dishonest) and dropping it silently (unhelpful). It backfired:
+// with nothing pushing the model toward the other two, a placeholder became
+// the default and a real résumé came back with "[X]%" in nearly every
+// bullet. Capping the count was tried first and was not enough — the user's
+// answer was decisive: "we can't put the placeholders for users, then
+// what's the meaning of having the resume editor." They are right. If a
+// figure is missing, the product's job is to COLLECT it through the editor,
+// not to ship a document with blanks and make the candidate finish it.
 //
-// The rule is now an explicit ordered fallback — real number from the
-// candidate's own material, else concrete non-numeric scope, else at most
-// one self-describing placeholder — with a hard cap of two placeholders per
-// résumé. The no-invention guarantee is unchanged; what changed is that a
-// placeholder is now the last resort it was always meant to be.
-export const BULLET_QUALITY_RULES = `Write each bullet as: concrete result first, then how it was achieved. (This is Google's XYZ shape — but never echo the literal letters X, Y or Z into the bullet; they are a description of the structure, not text to output.)
+// So the default is now: real numbers where the candidate's own material
+// has them, strong number-free writing where it doesn't, and never a blank.
+// Google's XYZ formula — and the other frameworks in RESUME_FRAMEWORKS
+// below — moved to being an explicit opt-in the user chooses, at which
+// point the missing inputs are gathered from them first. A framework
+// applied to data nobody has is exactly what produced the brackets.
+export const BULLET_QUALITY_RULES = `Write each bullet as a finished sentence: concrete result first, then how it was achieved. Start with a strong past-tense action verb.
 
-METRICS — follow this order, and stop at the first one that applies:
-1. USE A REAL NUMBER the candidate's own material actually contains. Re-read their profile, résumé and the original bullet for figures already present — team sizes, years, counts of systems/services/clients, percentages, dollar amounts, volumes, timeframes — and put those in. This is by far the best outcome and is very often possible when it looks like it isn't.
-2. If there is no real number, USE CONCRETE NON-NUMERIC SCOPE instead. "across twelve services", "for the digital banking platform", "spanning three regions", "for the firm's largest client" — specifics drawn from their real experience carry most of the weight a number would, and read as finished writing.
-3. ONLY IF neither is possible, and the metric is genuinely the point of the bullet, leave ONE self-describing placeholder that tells the candidate exactly what to supply — for example "[add % reduction]" or "[add annual $ savings]". Never a bare "[X]", "[Y]", "[Z]" or "[X]%": those read as gibberish on a finished document.
+NEVER OUTPUT A PLACEHOLDER. No "[X]", "[Y]", "[Z]", "[X]%", "[$ amount]", "[add % reduction]", "[number]" — no bracketed blank of any kind, and no underscores or ellipses standing in for a missing figure. Every bullet you write must be something the candidate could send to an employer exactly as-is, today, without editing it first. A résumé full of blanks to fill in is an unfinished draft, not a résumé.
 
-HARD LIMIT: at most ONE placeholder per bullet, and no more than two placeholders across the entire résumé. A document peppered with brackets is worse than one with fewer, fully-written bullets — if you are about to exceed that, rewrite the remaining bullets using option 2 instead. Never invent a number that is not grounded in the candidate's actual background.
+METRICS — use a number ONLY when the candidate's own material actually contains one:
+1. Re-read their profile, résumé and the original bullet for figures that are genuinely there — team sizes, years, counts of systems/services/clients/regions, percentages, dollar amounts, volumes, timeframes — and use those. This is very often possible when it first looks like it isn't.
+2. If there is no real number, write the bullet WITHOUT one. Carry the weight with concrete non-numeric scope drawn from their real experience instead: "across the firm's payments platform", "for multi-environment production deployments", "spanning the bank's retail and commercial lines". A specific, number-free bullet is strong writing; a bullet with a blank in it is not.
+
+Never invent, estimate, or imply a figure that is not grounded in the candidate's actual background.
 
 Frame every accomplishment positively — never phrase a bullet around a shortfall, failure, or what was lacking. Where the target job posting's own language supports it, mirror its exact key action words and terminology (for ATS keyword matching), prioritizing the skills/terms recorded as missing for this candidate over ones already matched, without misrepresenting what the candidate actually did.`;
 
