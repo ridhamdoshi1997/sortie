@@ -2,8 +2,8 @@
 
 import { AlertCircle, Loader2, Sparkles } from "lucide-react";
 
+import { LimitReachedModal } from "@/components/shared/LimitReachedModal";
 import { useDocumentChat, type RevisedData } from "@/components/documents/useDocumentChat";
-import { DAILY_LIMITS } from "@/lib/usage";
 
 export type ChipPreset = { label: string; prompt: string };
 
@@ -31,7 +31,7 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
   // `error` is read and rendered, not dropped. These chips hit the exact
   // same route as the Action Plan, so they had the exact same bug: a failed
   // revision un-greyed the chip and changed nothing, with no explanation.
-  const { isPending, send, error } = useDocumentChat({ jobId, kind, onRevised });
+  const { isPending, send, error, limit, clearLimit } = useDocumentChat({ jobId, kind, onRevised });
 
   return (
     <div>
@@ -40,9 +40,12 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
           nothing said otherwise, which is how a user burns a day's
           allowance on four one-tap chips without realising. The number is
           read from the same constant enforcement uses, so it cannot drift
-          from what actually gets blocked. */}
+          from what actually gets blocked. The exact remaining count lives in
+          EditorUsageMeter, which resolves the real per-plan limit; printing
+          the flat constant here was wrong for every plan that overrides it
+          and for admins, who have no cap at all. */}
       <p className="mb-1.5 text-[10px] text-text-muted">
-        Each uses 1 of your {DAILY_LIMITS.document_generation} daily résumé rewrites.
+        Each uses 1 résumé rewrite from your daily allowance.
       </p>
       <div className="flex flex-wrap gap-1.5">
         {presets.map((preset) => (
@@ -67,6 +70,16 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
           <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </p>
+      )}
+      {limit && (
+        <LimitReachedModal
+          reason={limit.reason}
+          featureLabel={kind === "resume" ? "résumé rewrites" : "cover letter rewrites"}
+          message={limit.message}
+          resetsAt={limit.resetsAt}
+          canUpgrade={limit.canUpgrade}
+          onClose={clearLimit}
+        />
       )}
     </div>
   );

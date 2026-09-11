@@ -177,7 +177,25 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
 
     const usage = await checkAndConsumeUsage(insforge, user.id, profile.email, "document_generation");
     if (!usage.allowed) {
-      return NextResponse.json({ success: false, error: usage.error }, { status: 429 });
+      // Forward the WHOLE limit result, not just its message.
+      //
+      // checkAndConsumeUsage already computes `canUpgrade` (is there a plan
+      // above this one that grants more of this action) and `resetsAt`, and
+      // LimitReachedModal already exists and is used by search, email lookup
+      // and insider connections. This route dropped all of it and returned a
+      // bare string, so the entire résumé surface — Action Plan, Quick
+      // Tweaks, the framework bar — showed a plain red error where every
+      // other capped feature shows a real upgrade prompt.
+      return NextResponse.json(
+        {
+          success: false,
+          error: usage.error,
+          ...("reason" in usage ? { reason: usage.reason } : {}),
+          ...("resetsAt" in usage ? { resetsAt: usage.resetsAt } : {}),
+          ...("canUpgrade" in usage ? { canUpgrade: usage.canUpgrade } : {}),
+        },
+        { status: 429 },
+      );
     }
 
     const dossier = job.company_research;

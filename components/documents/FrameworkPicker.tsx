@@ -4,7 +4,6 @@ import { useState } from "react";
 import { ArrowLeft, Loader2, PenLine } from "lucide-react";
 
 import { RESUME_FRAMEWORKS, buildFrameworkPrompt, type ResumeFramework } from "@/lib/resumeFrameworks";
-import { DAILY_LIMITS } from "@/lib/usage";
 
 // Opt-in bullet frameworks (Phase 53).
 //
@@ -147,7 +146,7 @@ export function FrameworkPicker({ bulletText, pending, onApply, onClose }: Props
           {pending ? "Rewriting…" : `Apply ${selected.name}`}
         </button>
         <span className="text-[10px] text-text-muted">
-          {hasAnyAnswer ? `1 of ${DAILY_LIMITS.bullet_rewrite}/day` : "Fill in at least one field"}
+          {hasAnyAnswer ? "Uses 1 bullet rewrite" : "Fill in at least one field"}
         </span>
       </div>
     </div>

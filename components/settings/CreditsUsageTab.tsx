@@ -51,7 +51,20 @@ function PremiumUsageSection() {
 }
 
 function UsageBar({ row }: { row: UsageStatRow }) {
-  const pct = Math.min(100, Math.round((row.count / row.limit) * 100));
+  // A null limit is genuinely unlimited (an admin, or a plan override of
+  // null). There is no meaningful bar to fill against no cap, and dividing
+  // by it would render either NaN or a full red bar for someone who is not
+  // limited at all — so this shows the count alone.
+  if (row.limit === null) {
+    return (
+      <div className="flex items-center justify-between text-xs">
+        <span className="text-text-secondary">{row.label}</span>
+        <span className="text-text-muted">{row.count} used · unlimited</span>
+      </div>
+    );
+  }
+
+  const pct = row.limit > 0 ? Math.min(100, Math.round((row.count / row.limit) * 100)) : 100;
   const isNearLimit = pct >= 80;
 
   return (
@@ -59,7 +72,7 @@ function UsageBar({ row }: { row: UsageStatRow }) {
       <div className="flex items-center justify-between text-xs">
         <span className="text-text-secondary">{row.label}</span>
         <span className={isNearLimit ? "font-medium text-warning" : "text-text-muted"}>
-          {row.count} / {row.limit}
+          {row.limit === 0 ? "not included in your plan" : `${row.count} / ${row.limit}`}
         </span>
       </div>
       <div className="h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary">

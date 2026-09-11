@@ -3,10 +3,15 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
+import type { LimitReachedReason } from "@/components/shared/LimitReachedModal";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
 export type ChatMessage = { role: "user" | "assistant"; content: string };
+
+/** Set when the server refused because a usage cap was hit, so the caller
+ *  can show the real upgrade prompt instead of a red error line. */
+export type ChatLimit = { reason: LimitReachedReason; message: string; resetsAt?: string; canUpgrade?: boolean };
 
 export type RevisedData = {
   reply: string;
@@ -37,6 +42,7 @@ export function useDocumentChat({
   const router = useRouter();
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [limit, setLimit] = useState<ChatLimit | null>(null);
   const [justUpdated, setJustUpdated] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -47,6 +53,7 @@ export function useDocumentChat({
     const nextMessages: ChatMessage[] = [...messages, { role: "user", content: trimmed }];
     setMessages(nextMessages);
     setError(null);
+    setLimit(null);
     setJustUpdated(false);
 
     startTransition(async () => {
@@ -60,9 +67,23 @@ export function useDocumentChat({
           success: boolean;
           data?: RevisedData;
           error?: string;
+          reason?: LimitReachedReason;
+          resetsAt?: string;
+          canUpgrade?: boolean;
         };
 
         if (!res.ok || !json.success || !json.data) {
+          // A cap is not a failure — it is a product state with its own
+          // surface. Routed to the modal rather than the error line.
+          if (json.reason) {
+            setLimit({
+              reason: json.reason,
+              message: json.error ?? "You've reached your limit for this.",
+              resetsAt: json.resetsAt,
+              canUpgrade: json.canUpgrade,
+            });
+            return;
+          }
           setError(json.error ?? "Revision failed. Please try again.");
           return;
         }
@@ -77,5 +98,5 @@ export function useDocumentChat({
     });
   }
 
-  return { messages, error, justUpdated, isPending, send };
+  return { messages, error, limit, clearLimit: () => setLimit(null), justUpdated, isPending, send };
 }

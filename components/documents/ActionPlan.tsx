@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, Check, Layers, Loader2, PenLine, Sparkles, Target, Zap } from "lucide-react";
 
 import { AiReadsCard } from "@/components/shared/AiReadsCard";
+import { LimitReachedModal } from "@/components/shared/LimitReachedModal";
 import { FrameworkRewritePanel } from "@/components/documents/FrameworkRewritePanel";
 import { PlaceholderFixPanel, findPlaceholderBullets } from "@/components/documents/PlaceholderFixPanel";
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
 import { computeMatchRate } from "@/lib/atsMatchRate";
 import { splitSkills } from "@/lib/atsSkills";
-import { DAILY_LIMITS } from "@/lib/usage";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
 import type { ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
@@ -72,7 +72,7 @@ export function ActionPlan({
   onCommitSections,
   onCommitStyle,
 }: Props) {
-  const { isPending, send, error, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
+  const { isPending, send, error, limit, clearLimit, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
   // The batch placeholder workspace, opened inline from its own row. The
@@ -295,11 +295,15 @@ export function ActionPlan({
                     This said "1 AI credit" briefly and that was wrong —
                     there IS no credit system here. Metering is per-action
                     DAILY caps (lib/usage.ts's DAILY_LIMITS, overridable per
-                    plan), so the badge names the real unit and the real
-                    cap, read from the same constant the enforcement uses.
-                    Inventing a currency the backend does not implement is
-                    exactly the kind of confident-but-false surface this
-                    project keeps having to remove. */}
+                    plan), so the badge names the real unit.
+                    
+                    It briefly printed the cap too ("1 of 10/day") straight
+                    from the constant — also wrong, because that constant is
+                    only the fallback: a plan override, an unlimited null, or
+                    the admin exemption all produce a different real number.
+                    The live COUNT belongs to EditorUsageMeter, which now
+                    resolves the limit the same way enforcement does; this
+                    badge just states the cost. */}
                 <span
                   className={`rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
                     item.kind === "instant"
@@ -309,7 +313,7 @@ export function ActionPlan({
                         : "bg-surface-secondary text-text-muted"
                   }`}
                 >
-                  {item.kind === "instant" ? "Instant" : isAi ? `1 of ${DAILY_LIMITS.document_generation}/day` : "Free"}
+                  {item.kind === "instant" ? "Instant" : isAi ? "Uses 1 rewrite" : "Free"}
                 </span>
                 {item.points > 0 && (
                   <span className="rounded-full bg-surface-secondary px-2 py-0.5 font-mono text-[10px] font-medium text-text-secondary">
@@ -362,6 +366,21 @@ export function ActionPlan({
           <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </p>
+      )}
+
+      {/* A cap is a product state, not an error. Same modal search, email
+          lookup and insider connections already use — this surface was the
+          odd one out, showing a red line where everything else offers a
+          real upgrade path. */}
+      {limit && (
+        <LimitReachedModal
+          reason={limit.reason}
+          featureLabel="résumé rewrites"
+          message={limit.message}
+          resetsAt={limit.resetsAt}
+          canUpgrade={limit.canUpgrade}
+          onClose={clearLimit}
+        />
       )}
 
       {/* The assistant's own words, verbatim. When it declines to add a

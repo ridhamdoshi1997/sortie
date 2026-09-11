@@ -4,7 +4,6 @@ import { useState } from "react";
 import { ArrowLeft, Layers } from "lucide-react";
 
 import { RESUME_FRAMEWORKS, buildFrameworkPrompt, type ResumeFramework } from "@/lib/resumeFrameworks";
-import { DAILY_LIMITS } from "@/lib/usage";
 import type { ResumeSection } from "@/types/resumeEditor";
 
 // The visible, always-present way to choose a writing framework (Phase 53).
@@ -194,7 +193,7 @@ export function FrameworkBar({ sections, pending, onApply }: Props) {
               Apply {framework.name}
             </button>
             <span className="text-[10px] text-text-muted">
-              {hasAnyAnswer ? `1 of ${DAILY_LIMITS.bullet_rewrite}/day` : "Fill in at least one field"}
+              {hasAnyAnswer ? "Uses 1 bullet rewrite" : "Fill in at least one field"}
             </span>
           </div>
         </>

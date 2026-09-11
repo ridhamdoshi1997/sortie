@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { Loader2, Wand2 } from "lucide-react";
 
 import { RESUME_FRAMEWORKS, type FrameworkId } from "@/lib/resumeFrameworks";
-import { DAILY_LIMITS } from "@/lib/usage";
 import type { ResumeSection } from "@/types/resumeEditor";
 
 // One workspace for every bullet left holding a blank (Phase 53).
@@ -181,7 +180,7 @@ export function PlaceholderFixPanel({ bullets, pending, onApply, onClose }: Prop
           {pending ? "Rewriting…" : `Fix all ${bullets.length}`}
         </button>
         <span className="text-[10px] text-text-muted">
-          {filled} of {bullets.length} filled · 1 of {DAILY_LIMITS.document_generation}/day for the whole batch
+          {filled} of {bullets.length} filled · uses 1 rewrite for the whole batch
         </span>
       </div>
     </div>
