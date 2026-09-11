@@ -12,7 +12,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { buildQualityAnalysisText, runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
-import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES } from "@/lib/writingStyle";
+import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES, USER_INSTRUCTION_PRECEDENCE } from "@/lib/writingStyle";
 import type { Job, Profile, ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -240,10 +240,12 @@ export async function rewriteResumeBullet(
     );
     const raw = await complete(await getModel(rewriteProvider, rewriteTier), {
       systemPrompt:
-        `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
-      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
+        `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused and better aligned with a specific target job. Default to a strong action verb and roughly 15-25 words on one line — these are defaults, not hard limits, and a user instruction overrides them. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\n${USER_INSTRUCTION_PRECEDENCE}\n\nReturn only valid JSON.`,
+      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\n\nUSER INSTRUCTION (primary requirement — follow this over the style defaults above): ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
       temperature: 0.5,
-      maxTokens: 200,
+      // Was 200. Reasoning tokens bill against this budget on Gemini 3,
+      // so a 200-token ceiling truncates before the JSON even starts.
+      maxTokens: 1200,
       jsonResponse: true,
     });
 

@@ -187,6 +187,21 @@ function createStyles(t: ThemeTokens, style: ResumeStyle) {
   const subheadingSize = style.fontSizes.subheading;
   const bodySize = style.fontSizes.body;
 
+  // Gutter width is per-GLYPH, not one number for all three.
+  //
+  // The three allowed marks (• — ▪) have very different advance widths: an
+  // em dash is roughly a full em, a round bullet closer to a third. A single
+  // shared width either crowds the dash against the text (observed live —
+  // "—Led the migration" with no gap at all) or leaves a canyon after a
+  // round bullet. Each multiplier is glyph width plus a deliberate ~0.5em
+  // of separation.
+  const BULLET_GUTTER_EM: Record<ResumeStyle["bulletStyle"], number> = {
+    "•": 0.9,
+    "▪": 1.05,
+    "—": 1.7,
+  };
+  const bulletGutter = bodySize * (BULLET_GUTTER_EM[style.bulletStyle] ?? 1.0);
+
   return StyleSheet.create({
     page: {
       paddingTop: margin,
@@ -312,14 +327,37 @@ function createStyles(t: ThemeTokens, style: ResumeStyle) {
       color: t.accentDark,
       marginBottom: 4,
     },
+    // Bullet alignment, rebuilt 2026-09-11 after a direct user report that
+    // bullets sat "in the middle and sometimes completely off".
+    //
+    // Three separate causes, all of them in these three rules:
+    //
+    //  1. The mark and the text are sibling <Text> nodes, and only the text
+    //     carried a lineHeight. Two text runs with different line heights
+    //     do not share a baseline, so the glyph floated against the first
+    //     line — visibly high on tight line spacing, low on loose.
+    //  2. flexDirection "row" defaults to alignItems "stretch", so on any
+    //     bullet that wrapped to two or more lines the mark's box stretched
+    //     the full height and its glyph drifted toward the vertical middle
+    //     of the paragraph instead of sitting on line one.
+    //  3. width was a hard 10pt regardless of font size. The three allowed
+    //     glyphs (• — ▪) have very different widths, and an em dash at a
+    //     larger body size overflowed its box and pushed into the text.
+    //
+    // Fixed by giving the mark the SAME lineHeight as the text (shared
+    // baseline), pinning the row to flex-start (mark stays on line one),
+    // and scaling the gutter with the font so it holds at every size.
     bulletRow: {
       flexDirection: "row",
+      alignItems: "flex-start",
       marginBottom: 3,
     },
     bulletMark: {
       fontSize: bodySize - 0.5,
       color: t.accent,
-      width: 10,
+      width: bulletGutter,
+      flexShrink: 0,
+      lineHeight: lineHeight - 0.1,
     },
     bulletText: {
       flex: 1,

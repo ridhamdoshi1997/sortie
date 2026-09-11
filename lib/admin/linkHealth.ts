@@ -131,9 +131,18 @@ async function scanCache(): Promise<SourceReport> {
   // silently to an empty sample that rendered as "no rows with apply links".
   // That is the silent-discard shape this codebase has been caught by
   // repeatedly, and it is exactly why this is measured rather than assumed.
+  // The over-sample multiplier covers rows TABLESAMPLE returns that the
+  // WHERE clause then filters out. p_limit lets Postgres stop as soon as it
+  // has enough — without it, sampling ~0.9% of a 550 MB table is enough
+  // random I/O on this shared tier to intermittently blow the 8s statement
+  // timeout (observed live as a run of "cache sample failed: canceling
+  // statement due to statement timeout").
   const percent = total > 0 ? Math.min(100, (CACHE_SAMPLE_SIZE / total) * 100 * 1.3) : 100;
 
-  const { data, error } = await db.database.rpc("sample_active_apply_urls", { p_percent: percent });
+  const { data, error } = await db.database.rpc("sample_active_apply_urls", {
+    p_percent: percent,
+    p_limit: CACHE_SAMPLE_SIZE,
+  });
   if (error) {
     console.error("[linkHealth] cache sample failed", error.message);
   }

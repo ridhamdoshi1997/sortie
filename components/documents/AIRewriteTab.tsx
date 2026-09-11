@@ -150,14 +150,34 @@ export function AIRewriteTab({
         <div className="dim-card-in flex items-center gap-4 rounded-xl border border-agent/20 bg-surface p-4 shadow-card">
           <ScoreGauge score={scoreJump.score} />
           <div className="flex-1">
-            {scoreJump.previousScore != null ? (
-              <p className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
-                <Sparkles className="h-4 w-4 shrink-0 text-agent" />
-                Score jumped from {scoreJump.previousScore.toFixed(1)} to {scoreJump.score.toFixed(1)}
-              </p>
-            ) : (
-              <p className="text-sm font-medium text-text-primary">Fit score for this job</p>
-            )}
+            {/* "Jumped from 5.0 to 5.0" was a real user-reported bug: the
+                copy claimed an improvement whenever a previous score
+                existed, without checking that the number moved — or which
+                way it moved. A re-check that changes nothing is the common
+                case, and celebrating it reads as broken. Compared on the
+                rounded values actually shown, so the text can never
+                contradict the two numbers beside it. */}
+            {(() => {
+              if (scoreJump.previousScore == null) {
+                return <p className="text-sm font-medium text-text-primary">Fit score for this job</p>;
+              }
+              const before = Number(scoreJump.previousScore.toFixed(1));
+              const after = Number(scoreJump.score.toFixed(1));
+              if (after === before) {
+                return (
+                  <p className="text-sm font-medium text-text-primary">
+                    Fit score unchanged at {after.toFixed(1)}
+                  </p>
+                );
+              }
+              const improved = after > before;
+              return (
+                <p className="flex items-center gap-1.5 text-sm font-medium text-text-primary">
+                  {improved && <Sparkles className="h-4 w-4 shrink-0 text-agent" />}
+                  Score {improved ? "rose" : "fell"} from {before.toFixed(1)} to {after.toFixed(1)}
+                </p>
+              );
+            })()}
             {scoreJump.matchedKeywords.length > 0 && (
               <p className="mt-1 text-xs text-text-muted">
                 {scoreJump.matchedKeywords.length} keyword{scoreJump.matchedKeywords.length === 1 ? "" : "s"} matched

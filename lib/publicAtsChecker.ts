@@ -24,14 +24,26 @@ export type PublicAtsResult = {
 
 const flagSchema = z.object({ severity: z.enum(["info", "warning"]), note: z.string().min(1) });
 
+// Upper bounds are CLAMPED, not enforced as rejections.
+//
+// These `.max()` limits used to fail the parse outright, and a failed parse
+// throws the entire analysis away and shows the visitor "Automated analysis
+// failed — please try again." Observed live 2026-09-11: a completely valid,
+// useful response was discarded because the model returned 5 suggestions
+// where the schema allowed 4. That is a presentation preference being
+// enforced as a correctness gate, on the app's public top-of-funnel feature.
+//
+// The prompt still asks for 2-4; if the model returns more, the extras are
+// dropped and the visitor gets their result. Only genuinely unusable output
+// (missing fields, a non-numeric score) should ever reach fallbackResult().
 const resultSchema = z.object({
   result: z.object({
     overallScore: z.number().min(0).max(100),
-    formattingFlags: z.array(flagSchema).max(6),
+    formattingFlags: z.array(flagSchema).transform((a) => a.slice(0, 6)),
     keywordCoverage: z
       .object({ matched: z.array(z.string()), missing: z.array(z.string()) })
       .nullable(),
-    suggestions: z.array(z.string().min(1)).min(1).max(4),
+    suggestions: z.array(z.string().min(1)).min(1).transform((a) => a.slice(0, 4)),
   }),
 });
 
@@ -73,7 +85,11 @@ export async function checkPublicAtsScore(resumeText: string, jobDescriptionText
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,
-    maxTokens: 1200,
+    // Was 1200, which a thinking model could spend entirely on reasoning
+    // before emitting any JSON -- the cause of the "Automated analysis
+    // failed" this public, top-of-funnel feature was intermittently
+    // returning. See lib/models.ts's reasoningEffort comment.
+    maxTokens: 4000,
     jsonResponse: true,
   });
 

@@ -13,7 +13,7 @@ import { runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { extractProfileFromBuffer, type ExtractedProfile } from "@/actions/profile";
 import { SYNC_SECTIONS, type SyncSection } from "@/lib/resumeSync";
 import { complete, getModel } from "@/lib/models";
-import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES } from "@/lib/writingStyle";
+import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES, USER_INSTRUCTION_PRECEDENCE } from "@/lib/writingStyle";
 import type { Profile, ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -752,11 +752,11 @@ export async function analyzeResume(
     const résuméText = `
 Target role: ${targetRole}
 Current title: ${extracted.current_title ?? "—"} (${extracted.experience_level ?? "—"}, ${extracted.years_experience ?? "—"} years)
-Skills: ${extracted.skills.join(", ") || "—"}
-Industries: ${extracted.industries.join(", ") || "—"}
+Skills: ${(extracted.skills ?? []).join(", ") || "—"}
+Industries: ${(extracted.industries ?? []).join(", ") || "—"}
 
 Work Experience:
-${extracted.work_experience
+${(extracted.work_experience ?? [])
   .map(
     (w) =>
       `- ${w.company} | ${w.title} | ${w.start_date} to ${w.is_current ? "Present" : w.end_date ?? "—"}\n  ${w.responsibilities || "(no description)"}`,
@@ -980,10 +980,12 @@ export async function rewriteResumeSlotBullet(
     );
     const raw = await complete(await getModel(rewriteProvider, rewriteTier), {
       systemPrompt:
-        `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused, starting with a strong action verb, roughly 15-25 words, one line. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. If a specific instruction is given, follow it. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\nReturn only valid JSON.`,
-      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\nSpecific instruction: ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
+        `You are an expert resume writer. Rewrite a single work-experience bullet point to be more achievement-focused. Default to a strong action verb and roughly 15-25 words on one line — these are defaults, not hard limits, and a user instruction overrides them. Do NOT invent any statistic, percentage, dollar amount, team size, or outcome not already stated or clearly implied in the original — only reframe, tighten, and better align what's already there. ${BULLET_QUALITY_RULES}\n\n${HUMANIZED_WRITING_RULES}\n\n${USER_INSTRUCTION_PRECEDENCE}\n\nReturn only valid JSON.`,
+      userPrompt: `Role: ${entryTitle} at ${entryCompany}\n${jobContext}\nOriginal bullet: "${bulletText}"${instruction ? `\n\nUSER INSTRUCTION (primary requirement — follow this over the style defaults above): ${instruction}` : ""}\n\nReturn JSON with this exact shape: { "rewritten": string }`,
       temperature: 0.5,
-      maxTokens: 200,
+      // Was 200. Reasoning tokens bill against this budget on Gemini 3,
+      // so a 200-token ceiling truncates before the JSON even starts.
+      maxTokens: 1200,
       jsonResponse: true,
     });
 

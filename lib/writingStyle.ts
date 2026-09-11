@@ -40,3 +40,34 @@ export const HUMANIZED_WRITING_RULES = `Write like a real person, not an AI mode
 // (unhelpful) — it's a third option, not a relaxation of the no-invention
 // rule below.
 export const BULLET_QUALITY_RULES = `Structure each bullet on Google's XYZ formula: "Accomplished [X] as measured by [Y], by doing [Z]" — lead with the concrete result, back it with a real number, then say how it was achieved. Quantify the goal or achievement whenever the candidate's real experience supports a number (scale, time saved, percentage, dollar amount, team size) — never invent one that isn't grounded in their actual background. When the underlying accomplishment is real but the candidate's own material has no number for it, don't invent one and don't silently drop the metric either — write the bullet with an explicit placeholder like "[X]%" or "[$ amount]" in the Y slot so the candidate can see exactly what to fill in themselves. Frame every accomplishment positively — never phrase a bullet around a shortfall, failure, or what was lacking. Where the target job posting's own language supports it, mirror its exact key action words and terminology (for ATS keyword matching), prioritizing the skills/terms recorded as missing for this candidate over ones already matched, without misrepresenting what the candidate actually did.`;
+
+/**
+ * Precedence rule for AI edits the user explicitly asked for.
+ *
+ * Direct user report (2026-09-11): "if user prompt something which is
+ * wrong, AI should listen to user instead of sticking to the prompt we have
+ * in the background — user's prompt is primary."
+ *
+ * The bug was structural, not a missing instruction. Every rewrite prompt
+ * said "If a specific instruction is given, follow it" and then appended
+ * BULLET_QUALITY_RULES — several hundred words of style rules — AFTER it.
+ * The user's actual ask ended up as one short clause competing with a long,
+ * emphatic rule block, so the model reliably obeyed the house style and
+ * quietly ignored the person. Asking for a two-line bullet, or a bullet
+ * without a metric, or a different opening verb, simply did not work.
+ *
+ * The one thing a user instruction CANNOT override is fabrication. Style,
+ * length, structure, tone and formatting are all preferences and the user
+ * owns them. Inventing a number the candidate never earned is not a
+ * preference — it is a lie on a document they will be interviewed against,
+ * and this app does not ship those. So honesty stays absolute and
+ * everything else yields.
+ *
+ * Append this LAST in the system prompt, after the style rules, so the
+ * override is the final word the model reads.
+ */
+export const USER_INSTRUCTION_PRECEDENCE = `PRECEDENCE — read this after everything above, it overrides it.
+
+If the user gave a specific instruction, that instruction is the primary requirement and OUTRANKS every style, length, structure and formatting rule stated above. Follow it even when it contradicts the house style — if they ask for two lines, write two lines; if they ask you to drop a metric or change the opening verb, do it; if they ask for a format the rules above discourage, use their format. Do not "correct" them back toward the guidance above, and do not silently split the difference.
+
+The ONLY rule the user cannot override is factual honesty: never invent a statistic, percentage, dollar amount, team size, employer, date, or outcome that is not stated or clearly implied in the candidate's own material. If their instruction can only be satisfied by making something up, follow everything else about the instruction and use an explicit placeholder like "[X]%" instead of inventing a value.`;

@@ -142,7 +142,47 @@ type CompletionArgs = {
   maxTokens: number;
   temperature?: number;
   jsonResponse?: boolean;
+  /**
+   * Gemini 3 models THINK, and their reasoning tokens are billed against
+   * max_tokens — so a generous-looking budget can be consumed entirely
+   * before a single character of the answer is emitted.
+   *
+   * Measured on the résumé quality prompt (2026-09-11): at max_tokens 4000
+   * the model spent 2,086-3,681 tokens thinking and truncated the JSON
+   * **6 times out of 6**, one run producing only 305 completion tokens after
+   * 3,681 tokens of thought. With reasoning_effort "low" the same prompt
+   * used 649-1,185 thinking tokens and parsed 6 out of 6.
+   *
+   * Set this to "low" on structured-extraction calls, where the work is
+   * formatting known input rather than reasoning about it. Leave it unset
+   * for genuinely analytical calls. Ignored by non-Gemini providers.
+   */
+  reasoningEffort?: "low" | "medium" | "high";
 };
+
+/**
+ * Truncation is an ERROR for JSON, not a partial result.
+ *
+ * `finish_reason: "length"` means the model hit max_tokens mid-output. The
+ * old code returned that truncated string anyway, so every caller's
+ * JSON.parse threw and reported "The AI response was incomplete. Please try
+ * again." — a message that described the symptom and hid the cause, and
+ * which a retry could not fix because the budget was still too small.
+ *
+ * Only enforced for jsonResponse callers: truncated JSON is always useless,
+ * whereas truncated prose is degraded but can still be worth showing.
+ */
+function assertNotTruncated(finishReason: string | null | undefined, args: CompletionArgs, model: string): void {
+  if (finishReason !== "length") return;
+  if (!args.jsonResponse) {
+    console.warn(`[lib/models] ${model} hit max_tokens (${args.maxTokens}) — prose response is truncated`);
+    return;
+  }
+  throw new Error(
+    `[lib/models] ${model} hit its ${args.maxTokens}-token budget before finishing the JSON response. ` +
+      `On a thinking model, reasoning tokens count against this budget — raise maxTokens or pass reasoningEffort: "low".`,
+  );
+}
 
 function stripJsonFences(raw: string): string {
   const trimmed = raw.trim();
@@ -270,6 +310,11 @@ export async function complete(
       }),
     );
 
+    // Anthropic signals the same condition as stop_reason "max_tokens" —
+    // mapped onto the shared check so a truncated JSON response fails the
+    // same way on every provider rather than only on Gemini.
+    assertNotTruncated(response.stop_reason === "max_tokens" ? "length" : response.stop_reason, args, handle.model);
+
     const textBlock = response.content.find(
       (block): block is Anthropic.TextBlock => block.type === "text",
     );
@@ -308,6 +353,22 @@ export async function complete(
           model,
           max_tokens: args.maxTokens,
           temperature: args.temperature,
+          // Structured-JSON calls default to LOW reasoning on Gemini.
+          //
+          // There are ~25 `jsonResponse: true` call sites in this codebase
+          // with budgets from 200 to 4000 tokens, every one of them written
+          // before the default model became a thinking model. Hand-tuning
+          // each is a losing game: the same overflow would come back with
+          // the next model change. Defaulting here fixes all of them at
+          // once, and a caller doing genuinely analytical JSON work can
+          // still pass an explicit reasoningEffort to opt out.
+          //
+          // Measured on the résumé-quality prompt: default reasoning burned
+          // 2,086-3,681 thinking tokens and truncated 6/6; "low" burned
+          // 649-1,185 and parsed 6/6.
+          ...(handle.provider === "gemini"
+            ? { reasoning_effort: args.reasoningEffort ?? (args.jsonResponse ? "low" : undefined) }
+            : {}),
           ...(args.jsonResponse
             ? { response_format: { type: "json_object" as const } }
             : {}),
@@ -317,6 +378,12 @@ export async function complete(
           ],
         }),
       );
+
+      // Checked BEFORE the empty check: a run that spends its whole budget
+      // thinking returns finish_reason "length" with empty content, and
+      // "returned an empty response" would misattribute a budget problem to
+      // the provider.
+      assertNotTruncated(response.choices[0].finish_reason, args, model);
 
       const raw = response.choices[0].message.content;
       if (!raw) {

@@ -125,6 +125,30 @@ export function ATSAuditCard({
         </div>
       </div>
 
+      {/* Score breakdown — added 2026-09-11 after a direct user report:
+          "It's giving the ATS score of 75 but no explanation?"
+
+          The card showed a 75 labelled "Some risk", then immediately said
+          "No formatting issues found — should parse cleanly through an
+          ATS", and buried the actual reason (a 3-of-6 keyword match) in
+          muted 11px text at the bottom as a bare fact. So the one prominent
+          explanation contradicted the score, and nothing said where the 25
+          missing points went.
+
+          The score is two independent halves of 50. Showing both makes the
+          number self-explanatory and stops the formatting line from reading
+          as a verdict on the whole score. */}
+      {hasKeywordData && (
+        <div className="mt-3 flex flex-col gap-1.5">
+          <ScoreBar
+            label="Formatting & parseability"
+            value={result.formatting.score}
+            max={result.formatting.maxScore}
+          />
+          <ScoreBar label="Keyword match for this job" value={result.keywordScore} max={result.keywordMaxScore} />
+        </div>
+      )}
+
       {result.formatting.issues.length > 0 ? (
         <ul className="mt-3 flex flex-col gap-2">
           {result.formatting.issues.map((issue, i) => (
@@ -145,9 +169,18 @@ export function ATSAuditCard({
         // A bare checkmark icon with no text read as "nothing rendered" —
         // zero formatting issues is a real, positive result worth stating
         // explicitly, not just implying via an icon's absence of a badge.
+        // Scoped explicitly to FORMATTING. The old copy ended "This résumé
+        // should parse cleanly through an ATS", which reads as a verdict on
+        // the whole card and directly contradicted a "Some risk" badge
+        // driven entirely by the keyword half.
         <p className="mt-3 rounded-lg border-l-2 border-agent bg-agent/5 px-2.5 py-2 text-[11px] leading-snug text-text-secondary">
           No formatting issues found — single-column layout, standard section headers, and all contact fields
-          present. This résumé should parse cleanly through an ATS.
+          present. Nothing here will trip up an ATS parser.
+          {hasKeywordData && missingKeywords.length > 0 && (
+            <span className="mt-1 block text-text-muted">
+              The points below 100 are all from keyword match, not formatting.
+            </span>
+          )}
         </p>
       )}
 
@@ -155,11 +188,36 @@ export function ATSAuditCard({
         {hasKeywordData ? (
           <p className="text-[11px] text-text-muted">
             Keyword match: {matchedKeywords.length} of {matchedKeywords.length + missingKeywords.length} for this job
-            {missingKeywords.length > 0 && ` — missing: ${missingKeywords.slice(0, 4).join(", ")}`}
+            {missingKeywords.length > 0 && (
+              <>
+                {" — add these to lift the score: "}
+                <span className="text-text-secondary">{missingKeywords.slice(0, 4).join(", ")}</span>
+              </>
+            )}
           </p>
         ) : (
           <p className="text-[11px] text-text-muted">{noKeywordDataHint}</p>
         )}
+      </div>
+    </div>
+  );
+}
+
+// Two 50-point halves rendered as labelled meters, so the headline number is
+// traceable to its parts at a glance rather than being asserted.
+function ScoreBar({ label, value, max }: { label: string; value: number; max: number }) {
+  const pct = max > 0 ? Math.round((value / max) * 100) : 0;
+  const tone = pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-error";
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-[11px] text-text-secondary">{label}</span>
+        <span className="font-mono text-[11px] text-text-primary">
+          {Math.round(value)}/{max}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary">
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
     </div>
   );

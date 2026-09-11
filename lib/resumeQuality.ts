@@ -85,7 +85,12 @@ export async function runResumeQualityAnalysis(
 }
 Provide exactly 10 dimensions. "sections" should only include sections that actually have issues — omit clean ones entirely.`,
       temperature: 0.4,
-      maxTokens: 4000,
+      // 10 dimensions + narrative + vulnerabilities + per-bullet issues is
+      // the largest JSON schema in this app. Measured 2026-09-11: at 4000
+      // this truncated 6 times out of 6 on a realistic resume (peak real
+      // usage 4,881 tokens, which alone exceeds the old ceiling). 10000
+      // leaves roughly 2x headroom over the worst observed run.
+      maxTokens: 10000,
       jsonResponse: true,
     });
 
