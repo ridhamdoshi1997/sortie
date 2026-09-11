@@ -20,6 +20,7 @@ import {
   EyeOff,
   FolderPlus,
   GripVertical,
+  Layers,
   Loader2,
   Pencil,
   Plus,
@@ -29,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 
+import { FrameworkPicker } from "@/components/documents/FrameworkPicker";
 import { TagInput, FormInput, FormSelect, FormLabel, DEGREE_OPTIONS } from "@/components/ui/FormControls";
 import type { Education } from "@/types";
 import {
@@ -767,6 +769,8 @@ function WorkEntryEditor({
   const [rewritingIndex, setRewritingIndex] = useState<number | null>(null);
   const [instructingIndex, setInstructingIndex] = useState<number | null>(null);
   const [instructionText, setInstructionText] = useState("");
+  // Which bullet, if any, has the opt-in framework picker open.
+  const [frameworkIndex, setFrameworkIndex] = useState<number | null>(null);
   const [bulletError, setBulletError] = useState<{ index: number; message: string } | null>(null);
   const [highlightIndex, setHighlightIndex] = useState<number | null>(null);
   const [pending, setPending] = useState<PendingSuggestion | null>(null);
@@ -984,12 +988,35 @@ function WorkEntryEditor({
                   <button
                     type="button"
                     disabled={rewritingIndex === j}
+                    onClick={() => setFrameworkIndex(frameworkIndex === j ? null : j)}
+                    className="inline-flex items-center gap-1 text-[11px] font-medium text-text-muted transition-colors hover:text-accent disabled:opacity-50"
+                  >
+                    <Layers className="h-3 w-3" />
+                    Use a framework
+                  </button>
+                  <button
+                    type="button"
+                    disabled={rewritingIndex === j}
                     onClick={() => requestRewrite(j)}
                     className="inline-flex items-center gap-1 text-[11px] font-medium text-text-muted transition-colors hover:text-accent disabled:opacity-50"
                   >
                     {rewritingIndex === j ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                     Regenerate
                   </button>
+                </div>
+              )}
+
+              {frameworkIndex === j && !isPending && (
+                <div className="pl-0.5">
+                  <FrameworkPicker
+                    bulletText={bullet}
+                    pending={rewritingIndex === j}
+                    onApply={(instruction) => {
+                      setFrameworkIndex(null);
+                      requestRewrite(j, instruction);
+                    }}
+                    onClose={() => setFrameworkIndex(null)}
+                  />
                 </div>
               )}
 
