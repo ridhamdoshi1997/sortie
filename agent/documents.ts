@@ -1,5 +1,5 @@
 import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/models";
-import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES } from "@/lib/writingStyle";
+import { BULLET_QUALITY_RULES, HUMANIZED_WRITING_RULES, USER_INSTRUCTION_PRECEDENCE } from "@/lib/writingStyle";
 import type { CompanyResearchDossier, Job, Profile } from "@/types";
 import type { GeneratedContent } from "@/components/documents/ResumePDF";
 import type { ResumeStyle } from "@/types/resumeEditor";
@@ -182,6 +182,8 @@ This resume also has a visual STYLE (template/theme/colors/layout), shown to you
 If the candidate asks for something this resume format genuinely can't do (e.g. adding a photo, a QR code, a chart), say so plainly in "reply" rather than silently agreeing and not actually doing it.
 
 ${HUMANIZED_WRITING_RULES}
+
+${USER_INSTRUCTION_PRECEDENCE}
 
 Return only valid JSON with a short conversational 'reply' summarizing what you changed (or explaining what you can't do), the full revised 'content' in the same shape as the current content, and 'styleChanges' per the rule above.`,
     userPrompt: `Return JSON matching this exact shape:

@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, Check, Loader2, PenLine, Sparkles, Target, Zap } from "lucide-react";
 
 import { AiReadsCard } from "@/components/shared/AiReadsCard";
-import { FrameworkPicker } from "@/components/documents/FrameworkPicker";
+import { PlaceholderFixPanel, findPlaceholderBullets } from "@/components/documents/PlaceholderFixPanel";
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
 import { computeMatchRate } from "@/lib/atsMatchRate";
@@ -37,16 +37,10 @@ type RevisedData = { reply?: string; sections?: ResumeSection[]; style?: ResumeS
 // numbers are arithmetic, not estimates. Free fixes come first, and the
 // keyword work is ONE batched call instead of one per keyword.
 
-// Matches a bracketed blank a previous generation left behind: [X], [Y]%,
-// [$ amount], [add % reduction], [metric]. Not a general bracket match — a
-// bullet legitimately containing "[sic]" or an acronym in brackets is not a
-// placeholder, so it requires either a single letter or an explicit
-// fill-me-in word.
-const PLACEHOLDER_PATTERN = /\[(?:[XYZxyz]|\$[^\]]*|(?:add|insert|enter|your|metric|number|amount|percent)[^\]]*)\]/;
 
 type PlanItem =
   | { kind: "instant"; points: number; label: string; detail: string }
-  | { kind: "placeholder"; points: number; label: string; detail: string; company: string; bulletText: string }
+  | { kind: "placeholder"; points: number; label: string; detail: string }
   | { kind: "profile"; points: number; label: string; detail: string }
   | { kind: "keywords"; points: number; label: string; detail: string; prompt: string }
   | { kind: "bullet"; points: number; label: string; detail: string; company: string; bulletText: string };
@@ -79,14 +73,11 @@ export function ActionPlan({
   const { isPending, send, error, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
-  // Which bullet, if any, has the framework picker open INLINE here.
-  //
-  // The picker previously lived only on the bullet row inside the Editor
-  // tab — real, but three clicks deep, and the user reported "I can't see
-  // the option picker in any tabs" while sitting on AI Rewrite. Opening it
-  // right here is what makes CAR/STAR/PAR/SOAR discoverable at the moment
-  // the problem is named.
-  const [pickerFor, setPickerFor] = useState<{ key: string; bulletText: string } | null>(null);
+  // The batch placeholder workspace, opened inline from its own row. The
+  // framework choice lives INSIDE it, applying to the whole batch, so
+  // CAR/STAR/PAR/SOAR are one decision rather than one per bullet.
+  const [showPlaceholders, setShowPlaceholders] = useState(false);
+  const placeholderBullets = useMemo(() => findPlaceholderBullets(sections), [sections]);
 
   const lastReply = [...messages].reverse().find((m) => m.role === "assistant")?.content ?? null;
 
@@ -155,33 +146,28 @@ export function ActionPlan({
       });
     }
 
-    // Placeholder blanks left by an earlier generation.
+    // Placeholder blanks, as ONE item covering all of them.
     //
-    // Ranked at the top because a résumé that literally reads "[X]%" cannot
-    // be sent to anyone — it is worse than a weak bullet, it is an visibly
-    // unfinished document. Placeholders are banned in the prompt now
-    // (lib/writingStyle.ts), but that only governs NEW writing; bullets
-    // written before that change are still sitting in the résumé and
-    // nothing was surfacing them.
+    // This used to push one row per affected bullet. With seven of them the
+    // plan became seven identical "Fill in a placeholder blank" labels, each
+    // truncated mid-sentence so the bullet could not be read, each needing
+    // its own click and its own AI call — and between them they shoved every
+    // genuinely valuable item off the list. The user's verdict was blunt and
+    // right: "it's pathetic way to give the options."
     //
-    // Clicking focuses the bullet in the Editor, which is where the opt-in
-    // framework picker lives — so this doubles as the discoverable entry
-    // point for it.
-    for (const section of sections) {
-      if (!section.visible || section.type !== "work_experience") continue;
-      for (const entry of section.entries) {
-        for (const b of entry.bullets ?? []) {
-          if (!b || !PLACEHOLDER_PATTERN.test(b)) continue;
-          out.push({
-            kind: "placeholder",
-            points: 0,
-            label: "Fill in a placeholder blank",
-            detail: `"${b.slice(0, 70)}${b.length > 70 ? "…" : ""}"`,
-            company: entry.company ?? "",
-            bulletText: b,
-          });
-        }
-      }
+    // The underlying decision is not N decisions, it is one: the résumé is
+    // missing numbers and only the candidate has them. So this opens a
+    // single workspace showing every gap at once, and fixes the lot in one
+    // pass.
+    const placeholderBullets = findPlaceholderBullets(sections);
+    if (placeholderBullets.length > 0) {
+      out.push({
+        kind: "placeholder",
+        points: 0,
+        label: `Fill in ${placeholderBullets.length} blank${placeholderBullets.length === 1 ? "" : "s"} left in your bullets`,
+        detail:
+          "These read as an unfinished draft to anyone you send it to. Type the real numbers, or have them rewritten without one.",
+      });
     }
 
     // Bullet-level issues just focus the editor — free, instant, no call.
@@ -236,7 +222,7 @@ export function ActionPlan({
               onClick={() => {
                 if (item.kind === "instant") return runInstantFix();
                 if (item.kind === "placeholder") {
-                  setPickerFor(pickerFor?.key === key ? null : { key, bulletText: item.bulletText });
+                  setShowPlaceholders((v) => !v);
                   return;
                 }
                 if (item.kind === "bullet") return onFocusBullet(item.company, item.bulletText);
@@ -305,17 +291,16 @@ export function ActionPlan({
         })}
       </div>
 
-      {pickerFor && (
+      {showPlaceholders && placeholderBullets.length > 0 && (
         <div className="mt-2">
-          <FrameworkPicker
-            bulletText={pickerFor.bulletText}
+          <PlaceholderFixPanel
+            bullets={placeholderBullets}
             pending={isPending}
             onApply={(instruction) => {
-              setActiveKey(pickerFor.key);
-              setPickerFor(null);
+              setShowPlaceholders(false);
               send(instruction);
             }}
-            onClose={() => setPickerFor(null)}
+            onClose={() => setShowPlaceholders(false)}
           />
         </div>
       )}
