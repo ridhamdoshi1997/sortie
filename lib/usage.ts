@@ -1,6 +1,7 @@
 import type { createInsforgeServer } from "@/lib/insforge-server";
 import { isAdminUser } from "@/lib/access";
 import { getUserSubscription, listPlans } from "@/lib/subscription";
+import { getUsageWindow, incrementUsage, recordUsage } from "@/lib/usageMeter";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -216,6 +217,89 @@ export const ACTION_LABELS: Record<UsageAction, string> = {
   pipeline_strategy_read: "pipeline strategy reads",
 };
 
+// AI work that is metered but never capped by a plan (Phase 54). Each runs as
+// PART of something the user already did — scoring the jobs a search
+// returned, extracting a posting's details when a job is opened, re-scoring a
+// tailored résumé after an edit — so capping it would cap the parent action
+// by stealth, exactly the search-vs-evaluation mistake Phase 53 undid. Counted
+// so Settings -> Credits & usage and /admin/expenses see every AI call, not
+// only the capped ones.
+//
+// Deliberately NOT members of UsageAction: that union is what the admin plan
+// editor lists as configurable limits, and these are not configurable.
+export type TrackedOnlyAction = "search_job_scoring" | "job_detail_extraction" | "weekly_briefing" | "resume_rescore";
+
+export const TRACKED_ONLY_LABELS: Record<TrackedOnlyAction, string> = {
+  // Counted per JOB scored, not per AI call — one call scores up to ten.
+  search_job_scoring: "AI job scores from searches",
+  job_detail_extraction: "job detail extractions",
+  weekly_briefing: "weekly AI briefings",
+  resume_rescore: "tailored résumé re-scores",
+};
+
+// Capped, but by its own plan column (job_evaluations_daily_limit) rather
+// than daily_action_limits — see lib/subscription.ts's checkJobEvaluationLimit.
+export const JOB_EVALUATION_ACTION = "job_evaluation" as const;
+const JOB_EVALUATION_LABEL = "job evaluations you request";
+
+export type TrackedAction = UsageAction | TrackedOnlyAction | typeof JOB_EVALUATION_ACTION;
+
+export type UsageGroup = "jobs" | "resume" | "interview" | "strategy" | "outreach";
+
+export const USAGE_GROUP_LABELS: Record<UsageGroup, string> = {
+  jobs: "Jobs & search",
+  resume: "Résumé & documents",
+  interview: "Interview prep",
+  strategy: "Strategy & career",
+  outreach: "Outreach & Navigator",
+};
+
+// Every metered action, in display order. A Record over TrackedAction, so an
+// action nobody places in a group fails to compile instead of silently going
+// missing from Settings — which is how job_evaluation once did.
+export const USAGE_GROUP_OF: Record<TrackedAction, UsageGroup> = {
+  search: "jobs",
+  search_job_scoring: "jobs",
+  job_evaluation: "jobs",
+  job_detail_extraction: "jobs",
+  jd_decoder: "jobs",
+  extension_score_preview: "jobs",
+  document_generation: "resume",
+  resume_extract: "resume",
+  resume_analysis: "resume",
+  resume_quality_analysis: "resume",
+  resume_rescore: "resume",
+  bullet_rewrite: "resume",
+  brag_doc: "resume",
+  interview_question_bank: "interview",
+  question_detail_generation: "interview",
+  practice_kit_generation: "interview",
+  star_story_matching: "interview",
+  trap_door_prediction: "interview",
+  interrogation_plan: "interview",
+  interviewer_research: "interview",
+  strategic_moat: "strategy",
+  leverage_synthesis: "strategy",
+  rejection_intelligence: "strategy",
+  negotiation_script: "strategy",
+  ninety_day_plan: "strategy",
+  skill_gap_synthesis: "strategy",
+  market_readiness: "strategy",
+  pipeline_strategy_read: "strategy",
+  outcome_narrative: "strategy",
+  weekly_briefing: "strategy",
+  agent_message: "outreach",
+  outreach_message: "outreach",
+  referral_message: "outreach",
+  email_draft: "outreach",
+};
+
+export function labelForTrackedAction(action: TrackedAction): string {
+  if (action === JOB_EVALUATION_ACTION) return JOB_EVALUATION_LABEL;
+  if (action in TRACKED_ONLY_LABELS) return TRACKED_ONLY_LABELS[action as TrackedOnlyAction];
+  return ACTION_LABELS[action as UsageAction];
+}
+
 // reason/resetsAt/canUpgrade added 2026-08-28 so the polished
 // LimitReachedModal (components/shared/LimitReachedModal.tsx) can render an
 // honest daily-cap message with a real reset time and only offer an
@@ -318,10 +402,7 @@ export async function checkAndConsumeUsage(
   // A metering failure must never block an admin: this is bookkeeping, not
   // a gate. Logged and swallowed.
   if (isAdminUser(email)) {
-    const { error: meterError } = await insforge.database.rpc("record_usage_daily", { p_action: action });
-    if (meterError) {
-      console.error("[lib/usage] record_usage_daily failed (admin metering, non-blocking):", meterError);
-    }
+    await recordUsage(insforge, userId, action);
     return { allowed: true };
   }
 
@@ -373,10 +454,11 @@ export async function checkAndConsumeUsage(
   // user could PATCH their own row's count back to 0 via the REST API and
   // reset their daily quota. This also closes the old read-then-write race
   // between concurrent requests that the two-step version had.
-  const { data, error } = (await insforge.database.rpc("increment_usage_daily", {
-    p_action: action,
-    p_limit: limit,
-  })) as { data: { new_count: number; allowed: boolean }[] | null; error: { message: string } | null };
+  //
+  // incrementUsage (lib/usageMeter.ts) switches to the service-role variant
+  // when there is no signed-in user — an Inngest job or a bearer-token route,
+  // which previously failed here for every call.
+  const { data, error } = await incrementUsage(insforge, userId, action, limit);
 
   if (error) {
     console.error("[lib/usage] increment_usage_daily failed:", error);
@@ -385,9 +467,8 @@ export async function checkAndConsumeUsage(
 
   const result = data?.[0];
   if (!result?.allowed) {
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    tomorrow.setUTCHours(0, 0, 0, 0);
+    // The user's own next midnight, not UTC's (Phase 54).
+    const usageWindow = await getUsageWindow(insforge, userId);
     const canUpgrade = await higherTierExistsFor(insforge, plan.tier, action, limit);
     return {
       allowed: false,
@@ -395,7 +476,7 @@ export async function checkAndConsumeUsage(
       reason: "daily_cap_reached",
       limit,
       planDisplayName: plan.displayName,
-      resetsAt: tomorrow.toISOString(),
+      resetsAt: usageWindow.resetsAt,
       canUpgrade,
     };
   }

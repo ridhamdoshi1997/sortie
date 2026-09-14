@@ -65,15 +65,20 @@ export async function POST(request: NextRequest): Promise<NextResponse> {
 
     const { data: profile } = await admin.database
       .from("profiles")
-      .select("current_title,experience_level,years_experience,skills,job_titles_seeking")
+      .select("current_title,experience_level,years_experience,skills,job_titles_seeking,email")
       .eq("id", apiKey.user_id)
-      .maybeSingle<Pick<Profile, "current_title" | "experience_level" | "years_experience" | "skills" | "job_titles_seeking">>();
+      .maybeSingle<Pick<Profile, "current_title" | "experience_level" | "years_experience" | "skills" | "job_titles_seeking" | "email">>();
 
     if (!profile) {
       return NextResponse.json({ error: "Profile not found" }, { status: 404 });
     }
 
-    const usage = await checkAndConsumeUsage(admin, apiKey.user_id, null, "extension_score_preview");
+    // The real email, not null: with null an admin account was never
+    // recognised as one. And this admin client has no signed-in user, which
+    // the user-scoped usage RPC used to refuse outright — every cache miss
+    // returned 429 for every user until lib/usageMeter.ts routed service-role
+    // callers to the *_for variant (Phase 54).
+    const usage = await checkAndConsumeUsage(admin, apiKey.user_id, profile.email, "extension_score_preview");
     if (!usage.allowed) {
       return NextResponse.json({ error: usage.error }, { status: 429 });
     }

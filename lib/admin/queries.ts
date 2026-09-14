@@ -49,10 +49,6 @@ export type DailyCount = { date: string; count: number };
 // there's real usage data to look at.
 const SUSPICIOUS_DAILY_TOTAL = 100;
 
-function todayIso(): string {
-  return new Date().toISOString().slice(0, 10);
-}
-
 function daysAgoIso(days: number): string {
   const d = new Date();
   d.setDate(d.getDate() - days);
@@ -64,14 +60,57 @@ function daysAgoIso(days: number): string {
 // log, so "today" is the real available window, not a true rolling 24h.
 // Good enough for the actual operational question this answers: who's
 // burning the shared OpenRouter rate limit right now.
+//
+// "Today" is each user's OWN today (Phase 54). usage_daily.day is written in
+// the user's timezone, so a single UTC date would drop a Toronto user's
+// evening and pull in a Tokyo user's tomorrow. Every row that could be
+// someone's today lies within a day of the UTC date, so that window is
+// fetched and each row kept only if it is its owner's local date.
 export async function getTopUsersByUsage(limit = 20): Promise<UsageLeaderboardRow[]> {
   const admin = createAdminDbClient();
-  const today = todayIso();
+  const now = new Date();
+  const candidateDays = [-1, 0, 1].map((offset) => {
+    const d = new Date(now);
+    d.setUTCDate(d.getUTCDate() + offset);
+    return d.toISOString().slice(0, 10);
+  });
 
-  const { data: usageRows } = await admin.database.from("usage_daily").select("user_id,count").eq("day", today);
+  const { data: usageRows } = await admin.database
+    .from("usage_daily")
+    .select("user_id,day,count")
+    .in("day", candidateDays);
+  const rows = (usageRows ?? []) as { user_id: string; day: string; count: number }[];
+
+  const userIds = [...new Set(rows.map((r) => r.user_id))];
+  if (userIds.length === 0) return [];
+
+  const { data: profileRows } = await admin.database
+    .from("profiles")
+    .select("id,email,is_suspended,timezone")
+    .in("id", userIds);
+
+  const profileById = new Map(
+    ((profileRows ?? []) as { id: string; email: string | null; is_suspended: boolean; timezone: string | null }[]).map(
+      (p) => [p.id, p],
+    ),
+  );
+
+  function localToday(timezone: string | null | undefined): string {
+    try {
+      return new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone || "UTC",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(now);
+    } catch {
+      return now.toISOString().slice(0, 10);
+    }
+  }
 
   const totals = new Map<string, number>();
-  for (const row of (usageRows ?? []) as { user_id: string; count: number }[]) {
+  for (const row of rows) {
+    if (row.day !== localToday(profileById.get(row.user_id)?.timezone)) continue;
     totals.set(row.user_id, (totals.get(row.user_id) ?? 0) + row.count);
   }
 
@@ -81,12 +120,6 @@ export async function getTopUsersByUsage(limit = 20): Promise<UsageLeaderboardRo
     .map(([userId]) => userId);
 
   if (topUserIds.length === 0) return [];
-
-  const { data: profileRows } = await admin.database.from("profiles").select("id,email,is_suspended").in("id", topUserIds);
-
-  const profileById = new Map(
-    ((profileRows ?? []) as { id: string; email: string | null; is_suspended: boolean }[]).map((p) => [p.id, p]),
-  );
 
   return topUserIds.map((userId) => {
     const totalRuns = totals.get(userId) ?? 0;

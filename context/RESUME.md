@@ -4,6 +4,20 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+## Phase 54 (2026-09-14) — local-day usage, full AI metering, Recommended refresh. COMMITTED, NOT DEPLOYED.
+
+Migration `20260914120000_usage-local-day-and-service-metering.sql` is **applied live** and backward-compatible with the deployed code (same RPC names; `record_usage_daily(p_action)` still works via its default).
+
+- **Daily limits reset at the user's midnight**, from `profiles.timezone` reported by `TimezoneSync` (authenticated Navbar). One change per 24h via trigger; `usage_local_day()` is the only place the day key is computed.
+- **Every AI action is metered.** New tracked-only actions (never capped, not in `UsageAction`, so not in the plan editor): `search_job_scoring`, `job_detail_extraction`, `weekly_briefing`, `resume_rescore`. Admins are counted everywhere, including premium monthly lookups.
+- **Real bugs this fixed, not just metering:** any service-role caller of the usage RPCs failed ("not authenticated") — résumé suggestions never generated for non-admins, the extension score badge 429'd for everyone, extension-captured jobs never evaluated. `lib/usageMeter.ts` now routes those to service-only `*_for` RPCs.
+- **Recommended tab**: Strict-Mode-cancelled auto-run, no re-check for a tab left open past 24h, and a "refreshed X ago" label frozen at the mount-time value — all fixed in `FindJobsForm.tsx`.
+- **Verified**: 36/36 live checks in `scripts/verify-usage-accounting.mjs`; tsc + eslint clean.
+- **Owed**: see the Credits & usage tab and a stale Recommended tab in a signed-in browser — the session was signed out and I do not type passwords.
+- **Known and left alone**: admin 14-day usage charts bucket by each row's local date (fine); `checkJobEvaluationLimit` still floors a 0 limit to 1 via the multiplier (pre-existing, only matters if an owner sets job evaluations to 0); the evaluation counter is per job while cost is per 10-job chunk (Phase 53 note).
+
+---
+
 Last updated: 2026-09-10, Phase 51. **START HERE — NEXT SESSION BEGINS WITH THE ADMIN PORTAL REBUILD. The full plan is in "## NEXT SESSION — START HERE
 
 Phase 53 shipped the résumé rework and the pricing model. Before anything new:

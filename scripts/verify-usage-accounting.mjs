@@ -130,6 +130,75 @@ for (let i = 0; i < 4; i++) {
 check("metering increments without any cap", recorded, [1, 2, 3, 4]);
 
 // ---------------------------------------------------------------------------
+// 4b. Metering by amount (Phase 54). Search scoring records a whole search's
+//     jobs in one call. A non-positive amount would be a quota reset by
+//     another name, so it must be refused.
+// ---------------------------------------------------------------------------
+{
+  const { data } = await user.rpc("record_usage_daily", { p_action: PROBE, p_amount: 5 });
+  check("record_usage_daily adds a whole amount", data?.[0]?.new_count ?? null, 9);
+  const { error: zeroErr } = await user.rpc("record_usage_daily", { p_action: PROBE, p_amount: 0 });
+  check("an amount of 0 is refused", Boolean(zeroErr), true);
+  const { error: negErr } = await user.rpc("record_usage_daily", { p_action: PROBE, p_amount: -9 });
+  check("a negative amount is refused", Boolean(negErr), true);
+}
+
+// ---------------------------------------------------------------------------
+// 4c. Service-role metering (Phase 54). Background jobs and bearer-token
+//     routes have no signed-in user, so the user-scoped RPCs refuse them —
+//     which silently broke résumé suggestions and the extension score badge.
+//     The *_for variants take the user explicitly and must stay closed to
+//     every signed-in user.
+// ---------------------------------------------------------------------------
+{
+  await admin.from("usage_daily").delete().eq("user_id", userId).eq("action", PROBE);
+  const { error: userForErr } = await user.rpc("increment_usage_daily_for", { p_user_id: userId, p_action: PROBE, p_limit: 3 });
+  check("a signed-in user cannot call the service-role variant", Boolean(userForErr), true);
+  const { error: plainServiceErr } = await admin.rpc("record_usage_daily", { p_action: PROBE });
+  check("the user-scoped RPC refuses a service-role client", /not authenticated/i.test(plainServiceErr?.message ?? ""), true);
+  const serviceResults = [];
+  for (let i = 0; i < 3; i++) {
+    const { data } = await admin.rpc("increment_usage_daily_for", { p_user_id: userId, p_action: PROBE, p_limit: 2 });
+    serviceResults.push(data?.[0]?.allowed ?? null);
+  }
+  check("service-role increments enforce the same cap", serviceResults, [true, true, false]);
+  const { data: rec } = await admin.rpc("record_usage_daily_for", { p_user_id: userId, p_action: PROBE, p_amount: 3 });
+  check("service-role recording adds to the same row", rec?.[0]?.new_count ?? null, 5);
+}
+
+// ---------------------------------------------------------------------------
+// 4d. The user's own day (Phase 54). Kiritimati (UTC+14) and Pago Pago
+//     (UTC-11) are 25 hours apart, so their dates ALWAYS differ — if the day
+//     were still computed in UTC, at least one of these would fail.
+// ---------------------------------------------------------------------------
+{
+  const { data: before } = await admin.from("profiles").select("timezone").eq("id", userId).single();
+  const originalTz = before?.timezone ?? null;
+  const localDay = (tz) =>
+    new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+
+  for (const tz of ["Pacific/Kiritimati", "Pacific/Pago_Pago"]) {
+    // Service role, so the once-a-day change limit does not apply to the test.
+    await admin.from("profiles").update({ timezone: tz }).eq("id", userId);
+    const { data: win } = await user.rpc("my_usage_window");
+    check(`${tz}: the usage day is that zone's date`, win?.[0]?.day, localDay(tz));
+    await admin.from("usage_daily").delete().eq("user_id", userId).eq("action", PROBE);
+    await user.rpc("record_usage_daily", { p_action: PROBE });
+    const { data: row } = await admin.from("usage_daily").select("day").eq("user_id", userId).eq("action", PROBE).maybeSingle();
+    check(`${tz}: usage is written to that zone's date`, row?.day, localDay(tz));
+  }
+
+  const { data: kept } = await user.rpc("set_my_timezone", { p_timezone: "Asia/Tokyo" });
+  check("a user's second timezone change within 24h is ignored", kept, "Pacific/Pago_Pago");
+  const { error: badTz } = await user.rpc("set_my_timezone", { p_timezone: "Mars/Olympus_Mons" });
+  check("an unknown timezone is rejected", Boolean(badTz), true);
+
+  await admin.from("profiles").update({ timezone: originalTz }).eq("id", userId);
+  const { data: restored } = await admin.from("profiles").select("timezone").eq("id", userId).single();
+  check("the test account's timezone is restored", restored?.timezone ?? null, originalTz);
+}
+
+// ---------------------------------------------------------------------------
 // 5. Plan limits actually resolve the way lib/usage.ts will read them.
 //    An explicit null means unlimited and skips the counter; an ABSENT key
 //    silently falls back to the flat DAILY_LIMITS constant, which is how a
@@ -150,7 +219,8 @@ for (const p of plans ?? []) {
 const recon = plans.find((p) => p.tier === "recon");
 const ace = plans.find((p) => p.tier === "ace");
 check("recon caps résumé rewrites at 3/day", recon.daily_action_limits.document_generation, 3);
-check("recon caps AI evaluations at 3/day", recon.job_evaluations_daily_limit, 3);
+// Rescoped 3 -> 10 when search stopped charging this allowance (Phase 53).
+check("recon caps user-requested evaluations at 10/day", recon.job_evaluations_daily_limit, 10);
 check("ace makes résumé rewrites unlimited", ace.daily_action_limits.document_generation, null);
 check("ace makes AI evaluations unlimited", ace.job_evaluations_daily_limit, null);
 

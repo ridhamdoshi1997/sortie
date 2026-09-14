@@ -20,6 +20,7 @@ import { ThemeToggle } from "@/components/layout/ThemeToggle";
 import { PostHogLogoutLink } from "@/components/analytics/PostHogLogoutLink";
 import { GlobalSearchBar } from "@/components/layout/GlobalSearchBar";
 import { SiteModelSelector } from "@/components/shared/SiteModelSelector";
+import { TimezoneSync } from "@/components/shared/TimezoneSync";
 import { getUnreadNotificationCount } from "@/actions/notifications";
 import { trackPostHogClientEvent } from "@/lib/posthog-client";
 
@@ -356,6 +357,9 @@ export function Navbar({ isAuthenticated = false, showSearchBar = true }: Props)
 
   return (
     <>
+    {/* Signed-in pages only: reports the browser's timezone so daily AI
+        limits reset at the user's own midnight. Renders nothing. */}
+    <TimezoneSync />
     <header className="sticky top-4 z-40 mx-4 mt-4 sm:mx-6 lg:mx-8">
       <div className="glass-panel-overlay mx-auto grid h-16 max-w-[1400px] grid-cols-[auto_1fr_auto] items-center gap-4 rounded-2xl px-4 sm:px-6 lg:px-8">
         <div className="flex items-center">

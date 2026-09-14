@@ -1,6 +1,12 @@
 import { createAdminDbClient } from "@/lib/admin/client";
 import { isAdminUser } from "@/lib/access";
-import { ACTION_LABELS, type UsageAction } from "@/lib/usage";
+import {
+  ACTION_LABELS,
+  JOB_EVALUATION_ACTION,
+  TRACKED_ONLY_LABELS,
+  labelForTrackedAction,
+  type TrackedAction,
+} from "@/lib/usage";
 import { getVendorCosts, type VendorCostLine } from "@/lib/admin/vendorCosts";
 
 export type ExpenseCadence = "monthly" | "yearly" | "one_time";
@@ -15,7 +21,7 @@ export type BusinessExpenseRow = {
 };
 
 export type AiCostRateRow = {
-  action: UsageAction;
+  action: TrackedAction;
   label: string;
   rateCentsPerCall: number;
   provider: string | null;
@@ -149,7 +155,14 @@ export async function getAiCostRates(): Promise<AiCostRateRow[]> {
     }
   }
 
-  const actions = Object.keys(ACTION_LABELS) as UsageAction[];
+  // Every metered action, not only the plan-cappable ones: job_evaluation and
+  // the tracked-only work (search scoring, extraction, briefings, re-scores)
+  // land in usage_daily too, and were invisible here until Phase 54.
+  const actions: TrackedAction[] = [
+    ...(Object.keys(ACTION_LABELS) as TrackedAction[]),
+    JOB_EVALUATION_ACTION,
+    ...(Object.keys(TRACKED_ONLY_LABELS) as TrackedAction[]),
+  ];
 
   return actions
     .map((action) => {
@@ -158,7 +171,7 @@ export async function getAiCostRates(): Promise<AiCostRateRow[]> {
       const callsLast30d = callsByAction.get(action) ?? 0;
       return {
         action,
-        label: ACTION_LABELS[action],
+        label: labelForTrackedAction(action),
         rateCentsPerCall,
         provider: rate?.provider ?? null,
         rateIsSet: Boolean(rate),

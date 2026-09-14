@@ -6,6 +6,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { Navbar } from "@/components/layout/Navbar";
 import { FindJobsForm } from "@/components/find-jobs/FindJobsForm";
 import { computeReappearanceCounts, getReappearanceSignal, type ReappearanceSignal } from "@/lib/churnSignal";
+import { RECOMMENDED_REFRESH_MS } from "@/lib/recommendedRefresh";
 import type { Job, Profile } from "@/types";
 
 // Same 60s budget /find-jobs runs under — this page fires the exact same
@@ -78,7 +79,9 @@ export default async function RecommendedJobsPage() {
   // touching anything. The Refresh button below covers everything in
   // between.
   const lastRunAt = lastRun?.created_at ?? null;
-  const isStale = !lastRunAt || nowMs() - new Date(lastRunAt).getTime() > 24 * 60 * 60 * 1000;
+  // This check only runs when the page renders. A tab left open past the
+  // window is FindJobsForm's job — see its visibility/interval re-check.
+  const isStale = !lastRunAt || nowMs() - new Date(lastRunAt).getTime() > RECOMMENDED_REFRESH_MS;
 
   let initialJobs: Job[] = [];
   if (lastRunId) {

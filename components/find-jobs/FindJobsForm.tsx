@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Bookmark, Search, MapPin, Briefcase, Loader2 } from "lucide-react";
 import { scrapeAndEvaluateJobs, getJobsByIds } from "@/lib/actions/scraper.actions";
 import { formatTimeAgo } from "@/lib/utils";
+import { RECOMMENDED_REFRESH_MS } from "@/lib/recommendedRefresh";
 import { toUserMessage } from "@/lib/errors";
 import { JobResultCard } from "@/components/shared/JobResultCard";
 import { JobDetailDrawer } from "@/components/find-jobs/JobDetailDrawer";
@@ -124,12 +125,30 @@ export function FindJobsForm({
     // formatTimeAgo(lastRunAt) computed inline in JSX renders a different
     // string at SSR-time than at client-hydration-time whenever real time
     // crosses a bucket boundary between those two moments.
+    //
+    // What that label counts FROM (2026-09-14). Seeded from the server's last
+    // run, then moved to now whenever a search here succeeds. It used to read
+    // the prop alone, which never changes after mount — so right after the
+    // Recommended tab refreshed itself it still said "refreshed 4 days ago",
+    // which is indistinguishable from not refreshing at all.
+    const [lastRunAtState, setLastRunAtState] = useState(lastRunAt);
+    const [lastSeenLastRunAt, setLastSeenLastRunAt] = useState(lastRunAt);
+    if (lastRunAt !== lastSeenLastRunAt) {
+        setLastSeenLastRunAt(lastRunAt);
+        setLastRunAtState(lastRunAt);
+    }
     const [lastRunLabel, setLastRunLabel] = useState<string | null>(null);
     useEffect(() => {
-        if (!lastRunAt) return;
-        const timer = setTimeout(() => setLastRunLabel(formatTimeAgo(lastRunAt)), 0);
-        return () => clearTimeout(timer);
-    }, [lastRunAt]);
+        if (!lastRunAtState) return;
+        const update = () => setLastRunLabel(formatTimeAgo(lastRunAtState));
+        const timer = setTimeout(update, 0);
+        // Keeps the age honest on a tab left open.
+        const interval = setInterval(update, 60_000);
+        return () => {
+            clearTimeout(timer);
+            clearInterval(interval);
+        };
+    }, [lastRunAtState]);
 
     // Mirrors the visible list into the module cache so a later mount (Back
     // from a job's detail page) can restore it. Writing to an external store,
@@ -490,6 +509,7 @@ export function FindJobsForm({
                 setJobIds(unscored.map((job) => job.id));
                 setHasSearched(true);
                 setLastSearchedDatePosted(searchFilters.datePosted);
+                setLastRunAtState(new Date().toISOString());
             } else {
                 // reason is only ever populated for the real daily-cap-reached
                 // case — a kill-switch/suspension block has no reason and
@@ -522,23 +542,71 @@ export function FindJobsForm({
     // visit. Runs once on mount only — the empty dep array is the point,
     // not an oversight.
     const autoRunFiredRef = useRef(false);
+    // When this tab last STARTED an automatic refresh, successful or not. The
+    // open-tab re-check below backs off on it, so a search that keeps failing
+    // (a daily cap, a provider outage) is not retried every few minutes.
+    const lastAutoAttemptRef = useRef(0);
     useEffect(() => {
-        if (!autoRun || autoRunFiredRef.current) return;
+        if (!autoRun) return;
         if (!initialTitle?.trim()) return;
         // Nothing on screen, or what IS on screen is past its daily refresh
         // window. Both cases mean this tab owes the user a fresh pull.
         if (initialJobs.length > 0 && !autoRunStale) return;
-        autoRunFiredRef.current = true;
         // Deferred, not called straight from the effect body — this
         // codebase's react-hooks/set-state-in-effect rule fires on any
         // synchronous setState in an effect, and runSearch's first act is
         // setLoading(true). Same setTimeout(…, 0) fix used for every other
         // auto-triggering effect here (see context/RESUME.md's Phase 7
         // gotcha on this exact rule).
-        const timer = setTimeout(() => void runSearch(), 0);
+        //
+        // The fired-flag is claimed INSIDE the timeout, not before it
+        // (2026-09-14). Claiming it first meant React Strict Mode's
+        // mount -> cleanup -> mount cycle cancelled the only scheduled run in
+        // cleanup, and the second mount then saw the flag already set and
+        // returned — the automatic refresh never fired in development at all.
+        const timer = setTimeout(() => {
+            if (autoRunFiredRef.current) return;
+            autoRunFiredRef.current = true;
+            lastAutoAttemptRef.current = Date.now();
+            void runSearch();
+        }, 0);
         return () => clearTimeout(timer);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // The daily refresh must also happen for a tab that stays OPEN past the
+    // window (2026-09-14). The server decides staleness only when the page
+    // renders, so a Recommended tab left open overnight — or restored from the
+    // browser's back/forward cache — kept yesterday's list indefinitely.
+    // Re-checked whenever the tab comes back into view, and every few minutes
+    // while it is visible. Reads through refs so the listeners, attached once,
+    // always see the latest search function and run state.
+    const runSearchRef = useRef(runSearch);
+    const staleCheckRef = useRef({ lastRunAt: lastRunAtState, busy: loading || searchInFlight });
+    useEffect(() => {
+        runSearchRef.current = runSearch;
+        staleCheckRef.current = { lastRunAt: lastRunAtState, busy: loading || searchInFlight };
+    });
+    useEffect(() => {
+        if (!autoRun || !initialTitle?.trim()) return;
+        const refreshIfStale = () => {
+            if (document.visibilityState !== "visible") return;
+            const { lastRunAt: last, busy } = staleCheckRef.current;
+            if (busy || !last) return;
+            if (Date.now() - new Date(last).getTime() < RECOMMENDED_REFRESH_MS) return;
+            if (Date.now() - lastAutoAttemptRef.current < 30 * 60_000) return;
+            lastAutoAttemptRef.current = Date.now();
+            void runSearchRef.current();
+        };
+        const interval = setInterval(refreshIfStale, 5 * 60_000);
+        document.addEventListener("visibilitychange", refreshIfStale);
+        window.addEventListener("pageshow", refreshIfStale);
+        return () => {
+            clearInterval(interval);
+            document.removeEventListener("visibilitychange", refreshIfStale);
+            window.removeEventListener("pageshow", refreshIfStale);
+        };
+    }, [autoRun, initialTitle]);
 
     // Date Posted is the one filter that costs a real paid SerpApi call
     // (every other filter here just re-filters jobs already on screen, for
@@ -856,7 +924,7 @@ export function FindJobsForm({
 
                     <JobDetailDrawer job={drawerJob} onClose={() => setDrawerJob(null)} />
 
-                    {lastRunAt && (
+                    {lastRunAtState && (
                         <div className="mt-6 flex items-center gap-2 font-mono text-xs text-text-muted">
                             <span className="h-1.5 w-1.5 rounded-full bg-success" />
                             Last sortie · {lastRunLabel}

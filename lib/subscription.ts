@@ -1,5 +1,6 @@
 import type { createInsforgeServer } from "@/lib/insforge-server";
 import { isAdminUser, resolveProvider } from "@/lib/access";
+import { getUsageWindow, incrementUsage, recordUsage } from "@/lib/usageMeter";
 import type { ModelProvider, ModelTier } from "@/lib/models";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
@@ -219,8 +220,14 @@ export async function getUserSubscription(
   email: string | null | undefined,
 ): Promise<{ tier: string; status: string; periodStart: Date; periodEnd: Date; plan: PlanConfig }> {
   if (isAdminUser(email)) {
+    // A stable calendar month, not a window starting "now". Admin premium
+    // usage is counted too (Phase 54), and api_usage_metrics is keyed by
+    // period_start — a start that moved on every call would split an admin's
+    // month into one row per request, each reading 1.
     const now = new Date();
-    return { tier: "admin", status: "active", periodStart: now, periodEnd: new Date(now.getTime() + 30 * 86_400_000), plan: ADMIN_PLAN };
+    const periodStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    const periodEnd = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1));
+    return { tier: "admin", status: "active", periodStart, periodEnd, plan: ADMIN_PLAN };
   }
 
   const [{ data }, overrides] = await Promise.all([
@@ -408,14 +415,11 @@ export async function checkUsageLimit(
   email: string | null | undefined,
   feature: PremiumFeature,
 ): Promise<CircuitBreakerResult> {
-  // True bypass — no counter read/write at all, same as
-  // lib/usage.ts's checkAndConsumeUsage. Admin/owner accounts are unmetered
-  // on every axis, not just given a high cap — a founder/support account
-  // debugging a real user issue must never trip a "limit reached" wall.
-  if (isAdminUser(email)) {
-    return { allowed: true };
-  }
-
+  // Admins are uncapped but COUNTED (Phase 54), same as lib/usage.ts's
+  // checkAndConsumeUsage. This used to return before touching the counter, so
+  // the most expensive calls in the app — an insider-connection lookup costs
+  // $0.315 — were exactly the ones nobody could see. ADMIN_PLAN's limits are
+  // Infinity, so the cap check below can never block an admin account.
   const { plan, periodStart, periodEnd } = await getUserSubscription(insforge, userId, email);
   const limit = planLimitFor(plan, feature);
 
@@ -517,6 +521,9 @@ export async function checkJobEvaluationLimit(
   email: string | null | undefined,
 ): Promise<JobEvaluationResult> {
   if (isAdminUser(email)) {
+    // Uncapped but counted — admin re-scores and rubric runs were the only
+    // job evaluations recorded nowhere.
+    await recordUsage(insforge, userId, "job_evaluation");
     return { allowed: true };
   }
 
@@ -553,10 +560,9 @@ export async function checkJobEvaluationLimit(
   // usage_daily no longer accepts a direct client UPDATE/INSERT, closing a
   // real bypass where a signed-in user could PATCH their own row's count
   // back to 0 via the REST API and reset their daily job-evaluation quota.
-  const { data, error } = (await insforge.database.rpc("increment_usage_daily", {
-    p_action: "job_evaluation",
-    p_limit: limit,
-  })) as { data: { new_count: number; allowed: boolean }[] | null; error: { message: string } | null };
+  // Service-role callers (the extension's capture-job route, via
+  // lib/externalJob.ts) are routed to the *_for variant by incrementUsage.
+  const { data, error } = await incrementUsage(insforge, userId, "job_evaluation", limit);
 
   if (error) {
     console.error("[lib/subscription] increment_usage_daily failed:", error);
@@ -564,9 +570,7 @@ export async function checkJobEvaluationLimit(
   }
 
   if (!data?.[0]?.allowed) {
-    const tomorrow = new Date();
-    tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
-    tomorrow.setUTCHours(0, 0, 0, 0);
+    const usageWindow = await getUsageWindow(insforge, userId);
     // Every non-Recon plan today has jobEvaluationsDailyLimit === null
     // (unlimited) — so hitting a real numeric cap here means a strictly
     // better tier exists almost by definition. Checked properly anyway
@@ -579,7 +583,7 @@ export async function checkJobEvaluationLimit(
       allowed: false,
       error: `Daily limit reached for job evaluations (${limit}/day on ${plan.displayName}) — resets tomorrow.`,
       reason: "daily_cap_reached",
-      resetsAt: tomorrow.toISOString(),
+      resetsAt: usageWindow.resetsAt,
       canUpgrade,
     };
   }

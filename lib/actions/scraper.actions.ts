@@ -18,6 +18,7 @@ import { extractLikelyLogoDomain, classifyApplyHost } from "@/lib/applyLinkTrust
 import { looksLikeSpecificJobPosting, verifyApplyLinksBeforeReveal } from "@/lib/reresolveApplyLink";
 import { createAdminDbClient, createCacheDbClient } from "@/lib/admin/client";
 import { checkAndConsumeUsage } from "@/lib/usage";
+import { recordUsage } from "@/lib/usageMeter";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { isAdminUser } from "@/lib/access";
@@ -368,6 +369,13 @@ async function evaluateWithinQuota(
                 name: "jobs/evaluate",
                 data: { jobIds: evaluableJobIds, filters, userId, runId },
             });
+            // Counted per job queued for scoring, never capped — the comment
+            // above is why this must not spend an allowance. It still has to be
+            // COUNTED (Phase 54): it is the largest single source of AI calls
+            // in the app, and it was the one nobody could see. The paid-source
+            // half of a search runs this from Inngest with a service-role
+            // client, which recordUsage handles.
+            await recordUsage(insforge, userId, "search_job_scoring", evaluableJobIds.length);
         } catch (error) {
             console.error("[scraper.actions] Failed to trigger evaluation — jobs saved, unscored", error);
         }

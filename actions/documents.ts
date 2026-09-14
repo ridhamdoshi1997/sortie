@@ -9,6 +9,7 @@ import { createInsforgeServer } from "@/lib/insforge-server";
 import { complete, getModel } from "@/lib/models";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { checkAndConsumeUsage } from "@/lib/usage";
+import { recordUsage } from "@/lib/usageMeter";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { buildQualityAnalysisText, runResumeQualityAnalysis } from "@/lib/resumeQuality";
 import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
@@ -51,6 +52,10 @@ export async function saveResumeSections(
 
     const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile.preferred_model);
     const scoreJump = await rescoreAgainstTailoredResume(insforge, user.id, jobId, profile, sections, provider, tier);
+    // A real AI call on every manual editor save, and the one re-score path
+    // not already inside a metered action (generate/chat count it as part of
+    // document_generation). Tracked, never capped: saving must never fail.
+    await recordUsage(insforge, user.id, "resume_rescore");
 
     revalidatePath(`/resume/tailored/${jobId}`);
     revalidatePath(`/find-jobs/${jobId}`);

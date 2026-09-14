@@ -22,7 +22,7 @@ import {
   type AdminRosterRow,
 } from "@/lib/admin/queries";
 import { getExpensesSummary, type ExpensesSummary, type ExpenseCadence } from "@/lib/admin/expenses";
-import type { UsageAction } from "@/lib/usage";
+import type { TrackedAction } from "@/lib/usage";
 import { listPlans, type PlanConfig } from "@/lib/subscription";
 import { toUserMessage } from "@/lib/errors";
 import { sendPayout } from "@/lib/paypalPayouts";
@@ -549,7 +549,7 @@ export async function removeBusinessExpense(expenseId: string): Promise<ActionRe
 // reprice (context/RESUME.md: "providers reprice every 3-6 months") is a
 // blast-radius-large enough lever to match the AI kill switch's gating,
 // not the everyday admin/support level.
-export async function updateAiCostRate(action: UsageAction, rateCentsPerCall: number, provider: string): Promise<ActionResult> {
+export async function updateAiCostRate(action: TrackedAction, rateCentsPerCall: number, provider: string): Promise<ActionResult> {
   try {
     const admin = await requireAdmin();
     requireRole(admin, ["owner"]);

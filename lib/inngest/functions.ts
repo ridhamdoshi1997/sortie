@@ -14,6 +14,7 @@ import {
 import type { ModelProvider, ModelTier } from "@/lib/models";
 import { generateResumeUpdateSuggestion } from "@/lib/resumeSuggestions";
 import { checkAndConsumeUsage } from "@/lib/usage";
+import { recordUsage } from "@/lib/usageMeter";
 import { createAdminClient, createCacheDbClient } from '@/lib/admin/client';
 import { classifyApplyHost } from "@/lib/applyLinkTrust";
 import { reresolveApplyLinkForJob, looksLikeSpecificJobPosting } from "@/lib/reresolveApplyLink";
@@ -1002,6 +1003,9 @@ export const generateWeeklyBriefingsAsync = inngest.createFunction(
 
                 const { provider, tier } = await resolveModelForUser(admin, userId, profile?.email ?? undefined, profile?.preferred_model);
                 const result = await generateWeeklyBriefing(snapshot, provider, tier);
+                // Tracked, never capped — a once-a-week digest the user did
+                // not click for (Phase 54).
+                await recordUsage(admin, userId, "weekly_briefing");
 
                 await admin.database
                     .from("profiles")
@@ -1725,16 +1729,20 @@ export const extractJobDetailsAsync = inngest.createFunction(
         const job = await step.run("load-job", async () => {
             const { data, error } = await admin.database
                 .from("jobs")
-                .select("id,title,company,location,description,about_role,salary,salary_min,salary_max,job_type")
+                .select("id,user_id,title,company,location,description,about_role,salary,salary_min,salary_max,job_type")
                 .eq("id", jobId)
                 .maybeSingle();
             if (error) throw new Error(`extract: load failed for ${jobId}: ${error.message}`);
-            return data as EvaluationJob | null;
+            return data as (EvaluationJob & { user_id: string }) | null;
         });
         if (!job) return { message: `job ${jobId} not found` };
         if (job.about_role) return { message: `job ${jobId} already extracted` };
 
         const [extracted] = await step.run("extract", () => extractJobDetails([job]));
+        // Counted once the AI call has actually run, against the user whose
+        // job it is. Tracked, never capped: it fires on OPENING a job, and
+        // opening a job must never be refused (Phase 54).
+        await step.run("record-usage", () => recordUsage(admin, job.user_id, "job_detail_extraction"));
         if (!extracted) return { message: `extraction returned nothing for ${jobId}` };
 
         await step.run("persist", async () => {
