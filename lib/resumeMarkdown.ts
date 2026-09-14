@@ -1,4 +1,4 @@
-import { sectionDisplayLabel, type ResumeSection } from "@/types/resumeEditor";
+import { formatDegree, sectionDisplayLabel, type ResumeSection } from "@/types/resumeEditor";
 
 // Markdown résumé export — same reasoning as lib/resumeDocx.ts's own header
 // comment: a single plain, ATS-safe layout, not a per-template mirror of
@@ -49,7 +49,7 @@ function sectionMarkdown(section: ResumeSection): string {
         `## ${sectionDisplayLabel(section, "Education")}\n\n` +
         section.entries
           .map((entry) =>
-            `- ${entry.degree ?? ""} ${entry.field ? `in ${entry.field}` : ""} — ${entry.institution ?? ""}${entry.graduation_year ? `, ${entry.graduation_year}` : ""}`.trim(),
+            `- ${formatDegree(entry.degree, entry.field)} — ${entry.institution ?? ""}${entry.graduation_year ? `, ${entry.graduation_year}` : ""}`.trim(),
           )
           .join("\n") + "\n\n"
       );

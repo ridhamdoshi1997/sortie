@@ -4,7 +4,7 @@ import type { Style } from "@react-pdf/types";
 
 import { toHref } from "@/lib/utils";
 import type { Profile } from "@/types";
-import { sectionDisplayLabel, type ResumeSection, type ResumeStyle } from "@/types/resumeEditor";
+import { formatDegree, sectionDisplayLabel, type ResumeSection, type ResumeStyle } from "@/types/resumeEditor";
 
 // Still the shape the AI generation/revision pipeline (agent/documents.ts)
 // produces — summary + work_experience are the only AI-authored content;
@@ -675,10 +675,7 @@ function renderSection(section: ResumeSection, styles: Styles, tokens: ThemeToke
         <Text style={styles.sectionTitle}>{sectionDisplayLabel(section, "Education")}</Text>
         {entries.map((e, i) => (
           <View key={i} style={styles.eduEntry}>
-            <Text style={styles.eduDegree}>
-              {e.degree}
-              {e.field ? ` in ${e.field}` : ""}
-            </Text>
+            <Text style={styles.eduDegree}>{formatDegree(e.degree, e.field)}</Text>
             <Text style={styles.eduDetails}>{[e.institution, e.graduation_year].filter(Boolean).join("   •   ")}</Text>
           </View>
         ))}

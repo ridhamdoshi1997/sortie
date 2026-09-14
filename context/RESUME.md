@@ -12,6 +12,7 @@ Migration `20260914150000_document-chat-messages.sql` is **applied live** (new t
 - **Capped messages are answered** in the thread with the reason and an upgrade link — `DocumentChatEditor` previously ignored the limit state entirely.
 - **ATS card re-checks the résumé text on every edit** and names Missing/Found hard and soft skills; soft skills also come from the posting text. The Action Plan shares the result.
 - **Layout**: navbar-width page, viewport-height workspace, even split, chat docked on every tab.
+- **DOCX export mirrors the PDF's theme** (fonts, colours, spacing, chips, bullets, banner) while staying single-column; both DOCX routes read `resume_style`. `formatDegree` fixes the doubled "Master of X in X" in PDF/DOCX/Markdown. Markdown export is otherwise still plain by design.
 - **Owed**: see it rendered signed-in; the cover-letter page does not load saved chat history yet (it saves it — same table, `kind='cover_letter'`).
 
 ---

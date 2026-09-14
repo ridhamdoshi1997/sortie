@@ -53,6 +53,19 @@ export function sectionDisplayLabel(section: ResumeSection, defaultLabel: string
   return section.label?.trim() || defaultLabel;
 }
 
+// "Master of Electrical and Computer Engineering in Electrical and Computer
+// Engineering" was printed on a real résumé (2026-09-14): the degree name
+// already contains the field, and every renderer appended " in <field>"
+// regardless. Shared by the PDF and DOCX exports so they cannot disagree.
+export function formatDegree(degree: string | null | undefined, field: string | null | undefined): string {
+  const d = (degree ?? "").trim();
+  const f = (field ?? "").trim();
+  if (!f) return d;
+  if (!d) return f;
+  const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return normalize(d).includes(normalize(f)) ? d : `${d} in ${f}`;
+}
+
 // "structured" is the original single-column layout. "centered" is the same
 // flow with a centered header/section titles. "split" is a two-column
 // sidebar layout (Contact+Skills+Education in a left sidebar, Summary+Work
