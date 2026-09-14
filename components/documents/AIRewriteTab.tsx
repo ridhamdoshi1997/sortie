@@ -6,7 +6,6 @@ import { Gauge, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { ActionPlan } from "@/components/documents/ActionPlan";
 import { FrameworkBar } from "@/components/documents/FrameworkBar";
 import { ATSAuditCard } from "@/components/documents/ATSAuditCard";
-import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { QualityGradeCard } from "@/components/documents/QualityGradeCard";
 import { RefinementChips } from "@/components/documents/RefinementChips";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
@@ -104,6 +103,8 @@ type Props = {
   style: ResumeStyle;
   sections: ResumeSection[];
   contact: { email: string | null; phone: string | null; location: string | null };
+  /** The job posting's text, for soft skills the AI keyword list skipped. */
+  postingText?: string;
 };
 
 // The mockup/reference for this tab groups the score, the changelog, one-tap
@@ -135,6 +136,7 @@ export function AIRewriteTab({
   style,
   sections,
   contact,
+  postingText,
 }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [qualityError, setQualityError] = useState<string | null>(null);
@@ -239,6 +241,7 @@ export function AIRewriteTab({
         contact={contact}
         matchedKeywords={scoreJump?.matchedKeywords ?? []}
         missingKeywords={scoreJump?.missingKeywords ?? []}
+        postingText={postingText}
       />
 
       <div>
@@ -262,6 +265,7 @@ export function AIRewriteTab({
         style={style}
         sections={sections}
         contact={contact}
+        postingText={postingText}
         onFocusBullet={onFocusBullet}
         onRevised={onRevised}
         onCommitSections={onCommitSections}
@@ -272,8 +276,9 @@ export function AIRewriteTab({
         <p className="mb-2 font-mono text-[10px] font-semibold uppercase tracking-wide text-text-muted">Quick tweaks</p>
         <RefinementChips jobId={jobId} onRevised={onRevised} />
       </div>
-
-      <DocumentChatEditor jobId={jobId} kind="resume" onRevised={onRevised} />
+      {/* The chat box moved out of this scroll area to a dock pinned under the
+          workspace panel (ResumeWorkspace), so it stays reachable — with its
+          history — from every tab instead of only at the bottom of this one. */}
     </div>
   );
 }

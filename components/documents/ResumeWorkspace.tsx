@@ -12,7 +12,10 @@ import {
   saveResumeStyle,
 } from "@/actions/documents";
 import { AIRewriteTab } from "@/components/documents/AIRewriteTab";
+import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
+import { DocumentChatProvider, useDocumentChatState, type ChatMessage } from "@/components/documents/useDocumentChat";
 import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
+import { LimitReachedModal } from "@/components/shared/LimitReachedModal";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
 import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -60,6 +63,10 @@ type Props = {
   initialUpdatedAt: string | null;
   initialQualityAnalysis: ResumeAnalysis | null;
   initialQualityAnalyzedAt: string | null;
+  /** The saved AI chat thread for this résumé, oldest first. */
+  initialChat: ChatMessage[];
+  /** The job posting's text, for the ATS soft-skills check. */
+  postingText: string;
 };
 
 export function ResumeWorkspace({
@@ -71,6 +78,8 @@ export function ResumeWorkspace({
   initialUpdatedAt,
   initialQualityAnalysis,
   initialQualityAnalyzedAt,
+  initialChat,
+  postingText,
 }: Props) {
   const [sections, setSections] = useState(initialSections);
   const [style, setStyle] = useState(initialStyle);
@@ -89,6 +98,13 @@ export function ResumeWorkspace({
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
   const sectionsTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const styleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ONE chat state for every AI surface in this workspace — the chat dock,
+  // Quick Tweaks, the Action Plan and the framework card — provided to them
+  // through context below. Owned here, above the tabs, so switching to the
+  // Editor tab (which unmounts the AI Rewrite panel) no longer erases the
+  // thread; seeded from the saved history so a refresh doesn't either.
+  const chat = useDocumentChatState({ jobId, kind: "resume", onRevised: handleRevised, initialMessages: initialChat });
 
   // ActionPlan (AI Rewrite tab) calls this when the user clicks a specific
   // flagged bullet — switches to the Editor tab and hands it a target to
@@ -184,21 +200,13 @@ export function ResumeWorkspace({
   // Routes a framework instruction built by FrameworkBar through the same
   // /api/documents/chat round trip every other AI edit uses — one code path,
   // so the result lands in state, the preview, and the scores identically.
-  async function sendFrameworkInstruction(instruction: string) {
-    try {
-      const res = await fetch("/api/documents/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jobId, kind: "resume", messages: [{ role: "user", content: instruction }] }),
-      });
-      const json = (await res.json()) as {
-        success: boolean;
-        data?: { sections?: ResumeSection[]; style?: ResumeStyle; scoreJump?: ScoreJumpResult | null };
-      };
-      if (json.success && json.data) handleRevised(json.data);
-    } catch (error) {
-      console.error("[ResumeWorkspace] framework instruction failed", error);
-    }
+  //
+  // Through the shared chat, not its own fetch: the old private request
+  // dropped every failure into console.error, so a capped framework rewrite
+  // simply did nothing on screen. Now it lands in the thread, and a refusal
+  // is answered there.
+  function sendFrameworkInstruction(instruction: string) {
+    chat.send(instruction);
   }
 
   async function handleRegenerate() {
@@ -228,6 +236,7 @@ export function ResumeWorkspace({
   }
 
   return (
+    <DocumentChatProvider value={{ ...chat, isShared: true }}>
     <div className="fade-in-up overflow-hidden rounded-2xl border border-border bg-surface shadow-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border p-5">
         <div>
@@ -236,7 +245,7 @@ export function ResumeWorkspace({
             {savingSections || savingStyle ? "Saving…" : `Updated ${formatRelative(updatedAt)}`}
           </p>
         </div>
-        <EditorUsageMeter action="document_generation" />
+        <EditorUsageMeter action="document_generation" refreshKey={chat.revisionCount} />
       </div>
 
       {/* ONE definite row height, so the preview and the editor panel are
@@ -244,7 +253,11 @@ export function ResumeWorkspace({
           Previously each column sized itself independently — a 700px
           PDF beside a freely-growing panel — which left a dead patch
           under whichever one was shorter. */}
-      <div className="grid grid-cols-1 lg:h-[720px] lg:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+      {/* Phase 55 ("make this entire editor bigger"): the row fills the
+          viewport below the page header instead of a fixed 720px, never
+          shorter than 760px, and the panel gets an even half of a page that
+          is now navbar-width rather than max-w-6xl. */}
+      <div className="grid grid-cols-1 lg:h-[max(760px,calc(100dvh-13rem))] lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="min-h-0 border-b border-border bg-surface-secondary p-6 lg:border-b-0 lg:border-r">
           <ResumeLivePreview profile={profile} sections={sections} style={style} />
         </div>
@@ -267,7 +280,7 @@ export function ResumeWorkspace({
                 key={key}
                 type="button"
                 onClick={() => setTab(key)}
-                className={`flex-1 border-b-2 px-3 py-2 text-xs font-semibold transition-colors ${
+                className={`flex-1 border-b-2 px-3 py-2 text-sm font-semibold transition-colors ${
                   tab === key
                     ? "border-accent text-text-primary"
                     : "border-transparent text-text-muted hover:text-text-primary"
@@ -299,6 +312,7 @@ export function ResumeWorkspace({
                 style={style}
                 sections={sections}
                 contact={{ email: profile.email, phone: profile.phone, location: profile.location }}
+                postingText={postingText}
               />
             )}
             {tab === "editor" && (
@@ -314,6 +328,11 @@ export function ResumeWorkspace({
             )}
             {tab === "style" && <StyleTab style={style} onChange={commitStyle} />}
           </div>
+
+          {/* Pinned under every tab, outside the scroll area: the chat used
+              to sit at the very bottom of the AI Rewrite scroll, so it was
+              both hard to reach and gone the moment another tab opened. */}
+          <DocumentChatEditor jobId={jobId} kind="resume" onRevised={handleRevised} docked />
         </div>
       </div>
 
@@ -358,5 +377,18 @@ export function ResumeWorkspace({
         <DocumentVersionHistory jobId={jobId} kind="resume" label="Résumé" />
       </div>
     </div>
+
+    {/* The single limit modal for every AI surface in this workspace. */}
+    {chat.limit && (
+      <LimitReachedModal
+        reason={chat.limit.reason}
+        featureLabel="résumé rewrites"
+        message={chat.limit.message}
+        resetsAt={chat.limit.resetsAt}
+        canUpgrade={chat.limit.canUpgrade}
+        onClose={chat.clearLimit}
+      />
+    )}
+    </DocumentChatProvider>
   );
 }

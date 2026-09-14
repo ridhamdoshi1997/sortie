@@ -9,6 +9,7 @@ import { Navbar } from "@/components/layout/Navbar";
 import { ResumeWorkspace } from "@/components/documents/ResumeWorkspace";
 import { DocumentSwitcher } from "@/components/documents/DocumentSwitcher";
 import type { GeneratedContent } from "@/components/documents/ResumePDF";
+import type { ChatMessage } from "@/components/documents/useDocumentChat";
 import type { Profile, ResumeAnalysis, ResumeGapAnalysisResult } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -31,13 +32,20 @@ export default async function TailoredResumeEditorPage({
   const user = await requireUser();
   const insforge = await createInsforgeServer();
 
-  const [{ data: job }, { data: profile }, { data: application }] = await Promise.all([
+  const [{ data: job }, { data: profile }, { data: application }, { data: chatRows }] = await Promise.all([
     insforge.database
       .from("jobs")
-      .select("id,title,company,resume_analysis")
+      .select("id,title,company,resume_analysis,about_role,description")
       .eq("id", jobId)
       .eq("user_id", user.id)
-      .maybeSingle<{ id: string; title: string | null; company: string | null; resume_analysis: ResumeGapAnalysisResult | null }>(),
+      .maybeSingle<{
+        id: string;
+        title: string | null;
+        company: string | null;
+        resume_analysis: ResumeGapAnalysisResult | null;
+        about_role: string | null;
+        description: string | null;
+      }>(),
     insforge.database.from("profiles").select("*").eq("id", user.id).maybeSingle<Profile>(),
     insforge.database
       .from("applications")
@@ -45,6 +53,16 @@ export default async function TailoredResumeEditorPage({
       .eq("user_id", user.id)
       .eq("job_id", jobId)
       .maybeSingle<ApplicationRow>(),
+    // The saved AI chat thread — newest 200, reversed below to read oldest
+    // first — so a refresh keeps the conversation.
+    insforge.database
+      .from("document_chat_messages")
+      .select("role,content")
+      .eq("user_id", user.id)
+      .eq("job_id", jobId)
+      .eq("kind", "resume")
+      .order("created_at", { ascending: false })
+      .limit(200),
   ]);
 
   if (!job || !profile) notFound();
@@ -62,7 +80,9 @@ export default async function TailoredResumeEditorPage({
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
+      {/* Navbar width (1400px), not max-w-6xl — the workspace was a narrow
+          column in the middle of a wide screen. */}
+      <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h1 className="fade-in-up text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">
@@ -82,6 +102,8 @@ export default async function TailoredResumeEditorPage({
           initialUpdatedAt={application.updated_at}
           initialQualityAnalysis={application.quality_analysis}
           initialQualityAnalyzedAt={application.quality_analyzed_at}
+          initialChat={((chatRows ?? []) as ChatMessage[]).reverse()}
+          postingText={[job.about_role, job.description].filter(Boolean).join("\n\n")}
         />
       </main>
     </>

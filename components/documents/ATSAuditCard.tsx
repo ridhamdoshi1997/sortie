@@ -13,6 +13,8 @@ type Props = {
   contact: { email: string | null; phone: string | null; location: string | null };
   matchedKeywords: string[];
   missingKeywords: string[];
+  /** The posting's own text, so soft skills it names count even when the AI keyword list skipped them. */
+  postingText?: string;
   // Shown when there's no keyword data yet — differs by context (a
   // tailored résumé has a fit-score button to point at above this card; a
   // résumé slot has no target job to check against at all, so pointing at
@@ -71,6 +73,7 @@ export function ATSAuditCard({
   contact,
   matchedKeywords,
   missingKeywords,
+  postingText,
   noKeywordDataHint = "Check your fit score above to include keyword match in this score.",
 }: Props) {
   // This card already recomputes automatically via useMemo on every real
@@ -100,10 +103,12 @@ export function ATSAuditCard({
   // searchability on a /100 scale rather than letting a clean résumé cap at
   // 50 and read as "High risk" with no explanation.
   const result = useMemo(
-    () => computeMatchRate(style, sections, contact, matchedKeywords, missingKeywords),
+    () => computeMatchRate(style, sections, contact, matchedKeywords, missingKeywords, postingText),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [style, sections, contact, matchedKeywords, missingKeywords, recheckKey],
+    [style, sections, contact, matchedKeywords, missingKeywords, postingText, recheckKey],
   );
+  const foundCount = result.matchedHardSkills.length + result.matchedSoftSkills.length;
+  const missingCount = result.missingHardSkills.length + result.missingSoftSkills.length;
 
   const hasKeywordData = result.hasKeywordData;
   const displayScore = result.matchRate;
@@ -171,7 +176,23 @@ export function ATSAuditCard({
       {hasKeywordData && (
         <div className="mt-3 flex flex-col gap-1.5">
           {result.categories.map((c) => (
-            <ScoreBar key={c.key} label={c.label} value={c.earned} max={c.weight} />
+            <ScoreBar
+              key={c.key}
+              label={c.label}
+              value={c.earned}
+              max={c.weight}
+              found={
+                c.key === "hard_skills" ? result.matchedHardSkills : c.key === "soft_skills" ? result.matchedSoftSkills : undefined
+              }
+              missing={
+                c.key === "hard_skills" ? result.missingHardSkills : c.key === "soft_skills" ? result.missingSoftSkills : undefined
+              }
+              emptyNote={
+                c.key === "soft_skills" && result.matchedSoftSkills.length + result.missingSoftSkills.length === 0
+                  ? c.detail
+                  : undefined
+              }
+            />
           ))}
         </div>
       )}
@@ -210,7 +231,7 @@ export function ATSAuditCard({
         <p className="mt-3 rounded-lg border-l-2 border-success bg-success/5 px-2.5 py-2 text-[11px] leading-snug text-text-secondary">
           No formatting issues found — single-column layout, standard section headers, and all contact fields
           present. Nothing here will trip up an ATS parser.
-          {hasKeywordData && missingKeywords.length > 0 && (
+          {hasKeywordData && missingCount > 0 && (
             <span className="mt-1 block text-text-muted">
               The points below 100 are all from keyword match, not formatting.
             </span>
@@ -220,14 +241,11 @@ export function ATSAuditCard({
 
       <div className="mt-3 border-t border-border pt-2.5">
         {hasKeywordData ? (
+          // Counted from the résumé as it reads right now, not from the last
+          // AI re-score — an edit moves this the moment it is made.
           <p className="text-[11px] text-text-muted">
-            Keyword match: {matchedKeywords.length} of {matchedKeywords.length + missingKeywords.length} for this job
-            {missingKeywords.length > 0 && (
-              <>
-                {" — add these to lift the score: "}
-                <span className="text-text-secondary">{missingKeywords.slice(0, 4).join(", ")}</span>
-              </>
-            )}
+            Keyword match: {foundCount} of {foundCount + missingCount} for this job, checked against your résumé as it
+            reads right now.
           </p>
         ) : (
           <p className="text-[11px] text-text-muted">{noKeywordDataHint}</p>
@@ -237,9 +255,26 @@ export function ATSAuditCard({
   );
 }
 
-// Two 50-point halves rendered as labelled meters, so the headline number is
-// traceable to its parts at a glance rather than being asserted.
-function ScoreBar({ label, value, max }: { label: string; value: number; max: number }) {
+// Each category as a labelled meter, so the headline number is traceable to
+// its parts — and, for the skill categories, to the exact skills behind it
+// (Phase 55, direct user request: "for each missing ATS score skills, give
+// what skills are missing"). A bar reading 0/15 with no names gave no way to
+// act on it.
+function ScoreBar({
+  label,
+  value,
+  max,
+  found,
+  missing,
+  emptyNote,
+}: {
+  label: string;
+  value: number;
+  max: number;
+  found?: string[];
+  missing?: string[];
+  emptyNote?: string;
+}) {
   const pct = max > 0 ? Math.round((value / max) * 100) : 0;
   const tone = pct >= 80 ? "bg-success" : pct >= 50 ? "bg-warning" : "bg-error";
   return (
@@ -253,6 +288,27 @@ function ScoreBar({ label, value, max }: { label: string; value: number; max: nu
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-surface-secondary">
         <div className={`h-full rounded-full ${tone}`} style={{ width: `${pct}%` }} />
       </div>
+      {missing && missing.length > 0 && (
+        <p className="mt-1.5 flex flex-wrap items-center gap-1 text-[10px] text-text-muted">
+          <span>Missing:</span>
+          {missing.map((skill, i) => (
+            <span key={`${skill}-${i}`} className="rounded-full bg-warning/10 px-1.5 py-0.5 text-warning">
+              {skill}
+            </span>
+          ))}
+        </p>
+      )}
+      {found && found.length > 0 && (
+        <p className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-text-muted">
+          <span>Found:</span>
+          {found.map((skill, i) => (
+            <span key={`${skill}-${i}`} className="rounded-full bg-success/10 px-1.5 py-0.5 text-success">
+              {skill}
+            </span>
+          ))}
+        </p>
+      )}
+      {emptyNote && <p className="mt-1 text-[10px] text-text-muted">{emptyNote}</p>}
     </div>
   );
 }

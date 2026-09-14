@@ -102,7 +102,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 400 },
       );
     }
-    const messages = body.messages;
+    // Only the NEWEST instruction is taken from the client. The conversation
+    // before it is read back from document_chat_messages further down, so a
+    // refreshed page still revises with memory of earlier turns, and a client
+    // cannot put words in the assistant's mouth.
+    const latest = body.messages[body.messages.length - 1];
+    if (latest.role !== "user" || !latest.content.trim()) {
+      return NextResponse.json(
+        { success: false, error: "The last message must be your instruction." },
+        { status: 400 },
+      );
+    }
+    const latestText = latest.content.trim().slice(0, 4000);
 
     const insforge = await createInsforgeServer();
 
@@ -197,6 +208,24 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         { status: 429 },
       );
     }
+
+    // The saved thread, newest 20, oldest first. If that read fails the
+    // client's own copy is the fallback — a revision with slightly less
+    // context beats refusing the user's instruction.
+    const HISTORY_TURNS = 20;
+    const { data: historyRows, error: historyError } = await insforge.database
+      .from("document_chat_messages")
+      .select("role,content")
+      .eq("user_id", user.id)
+      .eq("job_id", jobId)
+      .eq("kind", kind)
+      .order("created_at", { ascending: false })
+      .limit(HISTORY_TURNS);
+    if (historyError) console.error("[api/documents/chat] load chat history", historyError);
+    const history: ChatMessage[] = historyError
+      ? body.messages.slice(0, -1).slice(-HISTORY_TURNS)
+      : ((historyRows ?? []) as ChatMessage[]).reverse();
+    const messages: ChatMessage[] = [...history, { role: "user", content: latestText }];
 
     const dossier = job.company_research;
     const { provider, tier } = await resolveModelForUser(insforge, user.id, profile.email, profile.preferred_model);
@@ -328,6 +357,23 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         console.error("[api/documents/chat] save cover-letter content/style", letterError);
       }
     }
+
+    // Saved only after the revision itself is written, so the history never
+    // records an instruction that did not happen. Explicit timestamps keep
+    // the pair in order — one insert gives both rows the same now().
+    const turnAt = Date.now();
+    const { error: chatSaveError } = await insforge.database.from("document_chat_messages").insert([
+      { user_id: user.id, job_id: jobId, kind, role: "user", content: latestText, created_at: new Date(turnAt).toISOString() },
+      {
+        user_id: user.id,
+        job_id: jobId,
+        kind,
+        role: "assistant",
+        content: (reply.trim() || "Done.").slice(0, 8000),
+        created_at: new Date(turnAt + 1).toISOString(),
+      },
+    ]);
+    if (chatSaveError) console.error("[api/documents/chat] save chat history", chatSaveError);
 
     revalidatePath(`/find-jobs/${jobId}`);
     revalidatePath(`/resume/tailored/${jobId}`);

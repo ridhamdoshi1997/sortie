@@ -1,4 +1,4 @@
-import { splitSkills } from "@/lib/atsSkills";
+import { buildTextIndex, extractPostingSoftSkills, splitSkills, textMentions } from "@/lib/atsSkills";
 import { analyzeATSFormatting, type ATSIssue } from "@/lib/atsChecker";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
 
@@ -140,20 +140,61 @@ function buildRecruiterTips(sections: ResumeSection[], style: ResumeStyle): Recr
   ];
 }
 
+// Every string the reader of the résumé would see, from every visible
+// section. Walks the section objects rather than naming each section type, so
+// a new section type is searched automatically instead of silently skipped.
+const NON_CONTENT_KEYS = new Set(["id", "type", "visible", "start_date", "end_date", "is_current", "url", "link", "date"]);
+
+function resumeText(sections: ResumeSection[]): string {
+  const parts: string[] = [];
+  const walk = (value: unknown, key?: string): void => {
+    if (key && NON_CONTENT_KEYS.has(key)) return;
+    if (typeof value === "string") parts.push(value);
+    else if (Array.isArray(value)) for (const v of value) walk(v);
+    else if (value && typeof value === "object") for (const [k, v] of Object.entries(value)) walk(v, k);
+  };
+  for (const s of sections) if (s.visible) walk(s);
+  return parts.join("\n");
+}
+
 export function computeMatchRate(
   style: ResumeStyle,
   sections: ResumeSection[],
   contact: { email: string | null; phone: string | null; location: string | null },
   matchedKeywords: string[],
   missingKeywords: string[],
+  /** The job posting's text. When given, soft skills it names count too. */
+  postingText?: string,
 ): MatchRateResult {
   const formatting = analyzeATSFormatting(style, sections, contact);
   // analyzeATSFormatting scores out of 50; rescaled to this category's
   // weight rather than duplicating its checks with different numbers.
   const searchabilityEarned = (formatting.score / formatting.maxScore) * WEIGHTS.searchability;
 
-  const matched = splitSkills(matchedKeywords);
-  const missing = splitSkills(missingKeywords);
+  // The AI fit check decides WHICH keywords the job wants. Whether the résumé
+  // contains them is re-checked here against the résumé as it reads right
+  // now (Phase 55), so an edit counts the moment it is made instead of after
+  // the next paid re-score. AI "matched" verdicts are kept — they can be
+  // semantic ("RESTful services" for "REST APIs") — while an AI "missing"
+  // keyword the text now plainly contains is promoted.
+  const index = buildTextIndex(resumeText(sections));
+  const nowMatched = [...matchedKeywords];
+  const stillMissing: string[] = [];
+  for (const keyword of missingKeywords) (textMentions(index, keyword) ? nowMatched : stillMissing).push(keyword);
+
+  const matched = splitSkills(nowMatched);
+  const missing = splitSkills(stillMissing);
+
+  // Soft skills the posting names that the AI keyword list did not already
+  // cover (a posting asking for "leadership" is covered by an AI keyword
+  // "Senior-level leadership", and is not counted twice).
+  if (postingText?.trim()) {
+    const known = [...matchedKeywords, ...missingKeywords].map((k) => buildTextIndex(k));
+    for (const skill of extractPostingSoftSkills(postingText)) {
+      if (known.some((k) => textMentions(k, skill))) continue;
+      (textMentions(index, skill) ? matched.soft : missing.soft).push(skill);
+    }
+  }
 
   const hardTotal = matched.hard.length + missing.hard.length;
   const softTotal = matched.soft.length + missing.soft.length;

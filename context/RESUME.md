@@ -4,6 +4,18 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+## Phase 55 (2026-09-14) — résumé workspace: persistent chat, visible limits, live ATS skills, bigger layout. COMMITTED, NOT DEPLOYED.
+
+Migration `20260914150000_document-chat-messages.sql` is **applied live** (new table only — nothing the deployed code reads).
+
+- **Chat thread survives refresh and tab switches**: `document_chat_messages` + one shared chat state owned by `ResumeWorkspace` (`DocumentChatProvider`). The chat route reads prior turns from the table and trusts only the newest client message.
+- **Capped messages are answered** in the thread with the reason and an upgrade link — `DocumentChatEditor` previously ignored the limit state entirely.
+- **ATS card re-checks the résumé text on every edit** and names Missing/Found hard and soft skills; soft skills also come from the posting text. The Action Plan shares the result.
+- **Layout**: navbar-width page, viewport-height workspace, even split, chat docked on every tab.
+- **Owed**: see it rendered signed-in; the cover-letter page does not load saved chat history yet (it saves it — same table, `kind='cover_letter'`).
+
+---
+
 ## Phase 54 (2026-09-14) — local-day usage, full AI metering, Recommended refresh. COMMITTED, NOT DEPLOYED.
 
 Migration `20260914120000_usage-local-day-and-service-metering.sql` is **applied live** and backward-compatible with the deployed code (same RPC names; `record_usage_daily(p_action)` still works via its default).

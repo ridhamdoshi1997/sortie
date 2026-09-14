@@ -12,7 +12,9 @@ import type { UsageAction } from "@/lib/usage";
 // résumé/cover-letter regeneration, bullet_rewrite for the AI Rewrite
 // tab's per-bullet rewrites) instead of the full multi-row Settings view —
 // this is a small in-context reminder, not a dashboard.
-export function EditorUsageMeter({ action }: { action: UsageAction }) {
+// refreshKey: bump it after anything that spends this action, so the count
+// moves with the work instead of staying at its mount-time value.
+export function EditorUsageMeter({ action, refreshKey = 0 }: { action: UsageAction; refreshKey?: number }) {
   const [state, setState] = useState<{ count: number; limit: number | null } | null>(null);
 
   useEffect(() => {
@@ -25,7 +27,7 @@ export function EditorUsageMeter({ action }: { action: UsageAction }) {
     return () => {
       cancelled = true;
     };
-  }, [action]);
+  }, [action, refreshKey]);
 
   if (!state || state.limit === 0) return null;
 

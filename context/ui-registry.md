@@ -247,8 +247,15 @@ Last updated: 2026-08-19 (Phase 16). Hardcoded 3-tier permission enum (`owner`/`
 
 ### Résumé workspace — AI Rewrite / Editor / Style (internal, /resume/tailored/[jobId], /resume/[id])
 
-Files: `components/documents/{ResumeWorkspace,ResumeSlotWorkspace,AIRewriteTab,EditorTab,ActionPlan,ATSAuditCard,FrameworkBar,FrameworkPicker,FrameworkRewritePanel,PlaceholderFixPanel,RefinementChips,ResumeLivePreview,ResumePDF}.tsx`, `lib/{atsMatchRate,atsSkills,atsAutoFix,resumeFrameworks,writingStyle}.ts`
-Last updated: 2026-09-11 (Phase 53).
+Files: `components/documents/{ResumeWorkspace,ResumeSlotWorkspace,AIRewriteTab,EditorTab,ActionPlan,ATSAuditCard,FrameworkBar,FrameworkPicker,FrameworkRewritePanel,PlaceholderFixPanel,RefinementChips,ResumeLivePreview,ResumePDF,DocumentChatEditor}.tsx`, `components/documents/useDocumentChat.ts`, `lib/{atsMatchRate,atsSkills,atsAutoFix,resumeFrameworks,writingStyle}.ts`
+Last updated: 2026-09-14 (Phase 55).
+
+**Phase 55 layout and patterns:**
+- **Size**: page `max-w-[1400px]` (matches the Navbar's own width), workspace row `lg:h-[max(760px,calc(100dvh-13rem))]`, preview and panel an even `1fr/1fr` split; tab labels `text-sm`.
+- **Chat dock**: `DocumentChatEditor docked` sits OUTSIDE the panel's scroll area, below it, on every tab (`shrink-0 border-t bg-surface px-5 pb-4 pt-3`). Header row = `font-mono` uppercase "Refine with AI · N messages" + a "Hide/Show history" toggle; thread `max-h-64`, auto-scrolls to the newest item. User bubbles `bg-accent-muted` right-aligned (`max-w-[85%]`); assistant replies keep the agent treatment (`border-l-2 border-agent bg-agent-light text-agent-dark`). Pending = `Loader2` + "Revising your résumé…".
+- **Limit refusal in the thread**: `rounded-lg border border-warning/30 bg-warning/5` with a `Lock` icon, the server's message, "That message wasn't applied — nothing in your résumé changed", and a `text-accent` "See upgrade options" link reopening `LimitReachedModal`. Deliberately NOT agent-toned — the app is speaking, not the AI.
+- **Shared chat state**: inside the workspace, `ActionPlan`/`RefinementChips` suppress their own error line, modal and "What changed" card (`isShared`), because the dock shows them once. Standalone uses keep them.
+- **ATS skill chips**: under the Hard/Soft skills meters, "Missing:" chips `bg-warning/10 text-warning` and "Found:" chips `bg-success/10 text-success`, both `rounded-full px-1.5 py-0.5 text-[10px]`. Deterministic data, so never agent-toned. The footer line reads the counts from the re-checked result, not the raw AI keyword list.
 
 **Layout.** The two-column grid carries ONE definite height (`lg:h-[720px]`) and both columns fill it, each scrolling inside itself. Previously each column sized itself independently — a hard-coded 700px `PDFViewer` beside a freely-growing editor panel — so the row stretched to whichever was taller and left a dead patch under the shorter one. Both sides were reported by the user, one after a first fix that only unbounded the panel and therefore moved the gap rather than closing it. The previews now fill their container (`h-full min-h-[420px]`) instead of declaring a height. Same structure in the slot and cover-letter workspaces. **Not visually verified** — see RESUME.md.
 

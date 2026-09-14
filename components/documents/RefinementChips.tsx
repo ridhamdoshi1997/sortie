@@ -31,7 +31,7 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
   // `error` is read and rendered, not dropped. These chips hit the exact
   // same route as the Action Plan, so they had the exact same bug: a failed
   // revision un-greyed the chip and changed nothing, with no explanation.
-  const { isPending, send, error, limit, clearLimit } = useDocumentChat({ jobId, kind, onRevised });
+  const { isPending, send, error, limit, clearLimit, isShared } = useDocumentChat({ jobId, kind, onRevised });
 
   return (
     <div>
@@ -65,13 +65,16 @@ export function RefinementChips({ jobId, kind = "resume", presets = DEFAULT_PRES
           </button>
         ))}
       </div>
-      {error && (
+      {/* Inside the résumé workspace the shared chat state answers errors and
+          limits in the pinned chat thread, with one modal — rendering them
+          here too would say the same thing twice, or three times. */}
+      {error && !isShared && (
         <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-error/30 bg-error/5 px-2.5 py-2 text-[11px] text-error">
           <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
         </p>
       )}
-      {limit && (
+      {limit && !isShared && (
         <LimitReachedModal
           reason={limit.reason}
           featureLabel={kind === "resume" ? "résumé rewrites" : "cover letter rewrites"}

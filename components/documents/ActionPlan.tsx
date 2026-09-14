@@ -10,7 +10,6 @@ import { PlaceholderFixPanel, findPlaceholderBullets } from "@/components/docume
 import { useDocumentChat } from "@/components/documents/useDocumentChat";
 import { applyFormattingFixes } from "@/lib/atsAutoFix";
 import { computeMatchRate } from "@/lib/atsMatchRate";
-import { splitSkills } from "@/lib/atsSkills";
 import type { ScoreJumpResult } from "@/lib/scoreJump";
 import type { ResumeAnalysis } from "@/types";
 import type { ResumeSection, ResumeStyle } from "@/types/resumeEditor";
@@ -54,6 +53,8 @@ type Props = {
   style: ResumeStyle;
   sections: ResumeSection[];
   contact: { email: string | null; phone: string | null; location: string | null };
+  /** The job posting's text — passed to computeMatchRate so the plan and the ATS card score identically. */
+  postingText?: string;
   onFocusBullet: (company: string, bulletText: string) => void;
   onRevised: (data: RevisedData) => void;
   onCommitSections: (sections: ResumeSection[]) => void;
@@ -67,12 +68,17 @@ export function ActionPlan({
   style,
   sections,
   contact,
+  postingText,
   onFocusBullet,
   onRevised,
   onCommitSections,
   onCommitStyle,
 }: Props) {
-  const { isPending, send, error, limit, clearLimit, justUpdated, messages } = useDocumentChat({ jobId, kind: "resume", onRevised });
+  const { isPending, send, error, limit, clearLimit, justUpdated, messages, isShared } = useDocumentChat({
+    jobId,
+    kind: "resume",
+    onRevised,
+  });
   const [activeKey, setActiveKey] = useState<string | null>(null);
   const [appliedNote, setAppliedNote] = useState<string | null>(null);
   // The batch placeholder workspace, opened inline from its own row. The
@@ -90,7 +96,7 @@ export function ActionPlan({
     // on every single render and defeat the memo entirely.
     const matched = scoreJump?.matchedKeywords ?? [];
     const missing = scoreJump?.missingKeywords ?? [];
-    const rate = computeMatchRate(style, sections, contact, matched, missing);
+    const rate = computeMatchRate(style, sections, contact, matched, missing, postingText);
     const out: PlanItem[] = [];
 
     // Points recoverable in a category = its weight minus what it earned.
@@ -135,7 +141,11 @@ export function ActionPlan({
     // ONE call for every missing hard skill, not one per skill. Soft skills
     // are deliberately excluded: they are worth a fraction of the points and
     // padding a résumé with trait words is the stuffing this app warns about.
-    const missingHard = splitSkills(missing).hard;
+    //
+    // From the re-checked result, not the AI list: a skill the résumé text
+    // already contains is not missing, and offering to "work in" something
+    // the summary says word for word spends a rewrite for nothing.
+    const missingHard = rate.missingHardSkills;
     if (missingHard.length > 0 && hardGap > 0) {
       out.push({
         kind: "keywords",
@@ -212,7 +222,7 @@ export function ActionPlan({
     // document beats a merely weak one for urgency.
     const rank = (i: PlanItem) => (i.kind === "placeholder" ? 0.5 : 0);
     return out.sort((a, b) => b.points + rank(b) - (a.points + rank(a))).slice(0, 8);
-  }, [style, sections, contact, scoreJump, qualityAnalysis]);
+  }, [style, sections, contact, scoreJump, qualityAnalysis, postingText]);
 
   if (items.length === 0) return null;
 
@@ -361,7 +371,10 @@ export function ActionPlan({
         </p>
       )}
 
-      {error && (
+      {/* In the résumé workspace, errors, limits and the AI's reply all land
+          in the shared chat thread pinned under this panel (one place, one
+          modal); these inline copies are for standalone use only. */}
+      {error && !isShared && (
         <p className="mt-2 flex items-start gap-1.5 rounded-lg border border-error/30 bg-error/5 px-2.5 py-2 text-[11px] text-error">
           <AlertCircle className="mt-px h-3.5 w-3.5 shrink-0" />
           <span>{error}</span>
@@ -372,7 +385,7 @@ export function ActionPlan({
           lookup and insider connections already use — this surface was the
           odd one out, showing a red line where everything else offers a
           real upgrade path. */}
-      {limit && (
+      {limit && !isShared && (
         <LimitReachedModal
           reason={limit.reason}
           featureLabel="résumé rewrites"
@@ -393,7 +406,7 @@ export function ActionPlan({
           records that ~24 files each re-implementing the flat callout by
           hand is exactly what it exists to replace. "compact" is the right
           tier here: AI output nested inside an already-dense card. */}
-      {justUpdated && !error && lastReply && (
+      {justUpdated && !error && lastReply && !isShared && (
         <div className="mt-2">
           <AiReadsCard label="What changed" variant="compact">
             <p className="whitespace-pre-wrap text-[11px] leading-snug">{lastReply}</p>
