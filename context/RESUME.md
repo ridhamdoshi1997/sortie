@@ -20,7 +20,7 @@ Built (all in code, tsc clean, eslint clean on changed files):
 **Owed next session, in order:**
 1. Visually verify both templates in PDF and DOCX against the user's Word files (render test PDFs offline or signed-in preview); tune spacing values in `TEMPLATE_PRESETS`.
 2. Verify fonts load in the browser preview (`/fonts/*.woff`) and on a server download.
-3. Update ui-registry / progress-tracker for Phase 56, then commit anything left.
+3. Docs updated (progress-tracker, ui-registry). Commit anything left.
 4. Phase 2: humanizer score, cover-letter fields (date/recipient/closing), versions on AI edits.
 
 **Data note:** user worried old résumés were deleted — verified live they were not (2 tailored résumés, 5 versions). The RBC résumé belongs to the **ridhamkdoshi@gmail.com** account.

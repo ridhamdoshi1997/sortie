@@ -248,7 +248,16 @@ Last updated: 2026-08-19 (Phase 16). Hardcoded 3-tier permission enum (`owner`/`
 ### Résumé workspace — AI Rewrite / Editor / Style (internal, /resume/tailored/[jobId], /resume/[id])
 
 Files: `components/documents/{ResumeWorkspace,ResumeSlotWorkspace,AIRewriteTab,EditorTab,ActionPlan,ATSAuditCard,FrameworkBar,FrameworkPicker,FrameworkRewritePanel,PlaceholderFixPanel,RefinementChips,ResumeLivePreview,ResumePDF,DocumentChatEditor}.tsx`, `components/documents/useDocumentChat.ts`, `lib/{atsMatchRate,atsSkills,atsAutoFix,resumeFrameworks,writingStyle}.ts`
-Last updated: 2026-09-14 (Phase 55).
+Last updated: 2026-09-15 (Phase 56).
+
+**Phase 56 Style tab and preview patterns:**
+- **Template picker:** 2–4 column grid in `TEMPLATE_ORDER` (Professional, Early Career first). Each card = schematic thumbnail + label + ATS chip: `bg-success/10 text-success` with `ShieldCheck` ("ATS-safe") or `bg-warning/10 text-warning` with `TriangleAlert` ("Higher risk"). Description line below the grid; risky templates add a Workday/Taleo note.
+- **Section-order offer:** after picking a preset template, a `rounded-lg border border-border bg-surface-secondary p-3` card with `ListOrdered` icon, the recommended order, and "Use this order" (`bg-accent`) / "Keep my order" (outline) buttons.
+- **Font & sizes group (open by default):** font `Dropdown` with the category as a muted hint on each option; Small/Medium/Large segmented preset; `SizeControl` rows inside a bordered box — label left, `Minus` button, `pt` number input (font-mono, no spinners, commits on blur/Enter), `Plus` button, full-width range slider (0.5pt steps); Name style segmented (Normal / CAPITALS).
+- **Layout group adds:** Skills layout (Theme/Chips/Grid/Bullets/Grouped), Job header (Job title first / Company first), Certifications (List / One line). Spacing sliders show real units; margins show pt and inches.
+- **Editor additions:** Skill groups (group name input + TagInput per group, "Add skill group"), job Location, education Location + Start/Graduation year pair, custom-entry details and link inputs (full width), Key highlights section (TagInput + real-figures note), bold-markup tip under the summary.
+- **Live preview page badge:** `absolute bottom-3 left-3` pill, `font-mono text-[11px] shadow-card bg-surface`; neutral border for 1 page, `border-warning/40 text-warning` when more than one.
+- **Document rendering (PDF/DOCX):** compact centered header for Professional/Early Career (capitalized navy name, pipe-separated contact line, Professional's full-width accent rule under contact, Early Career's underlined email and bold highlights strip); compact section titles (0.75pt accent rule); grouped skills "**Label:** a, b"; company-first roles with italic navy title line.
 
 **Phase 55 layout and patterns:**
 - **Size**: page `max-w-[1400px]` (matches the Navbar's own width), workspace row `lg:h-[max(760px,calc(100dvh-13rem))]`, preview and panel an even `1fr/1fr` split; tab labels `text-sm`.
