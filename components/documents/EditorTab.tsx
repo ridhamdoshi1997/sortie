@@ -40,6 +40,7 @@ import {
   type CustomEntry,
   type ResumeSection,
   type ResumeSectionType,
+  type SkillGroup,
   type TailoredWorkEntry,
 } from "@/types/resumeEditor";
 
@@ -59,6 +60,8 @@ function defaultLabelFor(type: ResumeSectionType): string {
       return "Education";
     case "certifications":
       return "Certifications";
+    case "highlights":
+      return "Key Highlights";
     case "custom":
       return "Custom Section";
   }
@@ -203,8 +206,17 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
     setAddSectionOpen(false);
   }
 
+  // Key highlights go first so they sit with the header they print under.
+  function addHighlightsSection() {
+    const section: ResumeSection = { id: newId(), type: "highlights", visible: true, items: [] };
+    onChange([section, ...sections]);
+    setOpenId(section.id);
+    setAddSectionOpen(false);
+  }
+
   const hiddenSections = sections.filter((s) => !s.visible);
   const hasCertifications = sections.some((s) => s.type === "certifications");
+  const hasHighlights = sections.some((s) => s.type === "highlights");
 
   return (
     <div className="flex flex-col gap-4">
@@ -245,7 +257,9 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
                 onUpdate={(next) => updateSection(section.id, next)}
                 onRename={(label) => renameSection(section.id, label)}
                 onRemove={
-                  section.type === "custom" || section.type === "certifications" ? () => removeSection(section.id) : undefined
+                  section.type === "custom" || section.type === "certifications" || section.type === "highlights"
+                    ? () => removeSection(section.id)
+                    : undefined
                 }
               />
             ))}
@@ -286,6 +300,15 @@ export function EditorTab({ sections, onChange, onRewriteBullet, focusTarget, on
                 className="block w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
               >
                 Certifications
+              </button>
+            )}
+            {!hasHighlights && (
+              <button
+                type="button"
+                onClick={addHighlightsSection}
+                className="block w-full rounded-lg px-3 py-2 text-left text-xs font-medium text-text-secondary hover:bg-surface-secondary hover:text-text-primary"
+              >
+                Key highlights
               </button>
             )}
             {CUSTOM_SECTION_PRESETS.map((preset) => (
@@ -497,25 +520,38 @@ function SectionEditor({
 }) {
   if (section.type === "summary") {
     return (
-      <textarea
-        rows={5}
-        value={section.content}
-        placeholder="Briefly summarize your fit for this role — 2-3 sentences highlighting your strongest, most relevant qualifications."
-        onChange={(e) => onUpdate({ ...section, content: e.target.value })}
-        className="w-full resize-none rounded-lg border border-border bg-surface p-3 text-xs leading-6 text-text-primary outline-none placeholder:text-text-muted/60 focus-visible:border-accent"
-      />
+      <div className="flex flex-col gap-1.5">
+        <textarea
+          rows={5}
+          value={section.content}
+          placeholder="Briefly summarize your fit for this role — 2-3 sentences highlighting your strongest, most relevant qualifications."
+          onChange={(e) => onUpdate({ ...section, content: e.target.value })}
+          className="w-full resize-none rounded-lg border border-border bg-surface p-3 text-xs leading-6 text-text-primary outline-none placeholder:text-text-muted/60 focus-visible:border-accent"
+        />
+        <p className="text-[11px] text-text-muted">Tip: put **double asterisks** around words to print them in bold. Works in bullets too.</p>
+      </div>
+    );
+  }
+
+  if (section.type === "highlights") {
+    return (
+      <div className="flex flex-col gap-1.5">
+        <TagInput
+          tags={section.items}
+          onAdd={(tag) => onUpdate({ ...section, items: [...section.items, tag] })}
+          onRemove={(tag) => onUpdate({ ...section, items: section.items.filter((s) => s !== tag) })}
+          placeholder="e.g. 20% client base growth"
+        />
+        <p className="text-[11px] text-text-muted">
+          Short, real results printed as a strip under your name. Use your own figures — 3 or 4 read best.
+          {section.items.length > 4 && " More than 4 gets crowded."}
+        </p>
+      </div>
     );
   }
 
   if (section.type === "skills") {
-    return (
-      <TagInput
-        tags={section.items}
-        onAdd={(tag) => onUpdate({ ...section, items: [...section.items, tag] })}
-        onRemove={(tag) => onUpdate({ ...section, items: section.items.filter((s) => s !== tag) })}
-        placeholder="Add a skill"
-      />
-    );
+    return <SkillsEditor section={section} onUpdate={onUpdate} />;
   }
 
   if (section.type === "work_experience") {
@@ -644,6 +680,76 @@ function SectionEditor({
       >
         <Plus className="h-3 w-3" /> Add entry
       </button>
+    </div>
+  );
+}
+
+// Skills as optional labeled groups plus a flat ungrouped list. Groups print
+// as "Label: a, b, c" lines when the Skills layout is "Grouped" (the
+// Professional template's default), and fold into one list everywhere else.
+function SkillsEditor({
+  section,
+  onUpdate,
+}: {
+  section: Extract<ResumeSection, { type: "skills" }>;
+  onUpdate: (next: ResumeSection) => void;
+}) {
+  const groups = section.groups ?? [];
+
+  function setGroups(next: SkillGroup[]) {
+    onUpdate({ ...section, groups: next });
+  }
+
+  function updateGroup(index: number, patch: Partial<SkillGroup>) {
+    setGroups(groups.map((g, i) => (i === index ? { ...g, ...patch } : g)));
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {groups.map((group, g) => (
+        <div key={g} className="flex flex-col gap-2 rounded-lg border border-border/60 p-3">
+          <div className="flex items-center gap-2">
+            <div className="flex-1">
+              <FormInput value={group.label} onChange={(v) => updateGroup(g, { label: v })} placeholder="Group name (e.g. Cloud & DevOps)" />
+            </div>
+            <button
+              type="button"
+              onClick={() => setGroups(groups.filter((_, i) => i !== g))}
+              className="shrink-0 text-text-muted hover:text-error"
+              aria-label="Remove this skill group"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <TagInput
+            tags={group.items}
+            onAdd={(tag) => updateGroup(g, { items: [...group.items, tag] })}
+            onRemove={(tag) => updateGroup(g, { items: group.items.filter((s) => s !== tag) })}
+            placeholder="Add a skill to this group"
+          />
+        </div>
+      ))}
+
+      <div className="flex flex-col gap-1.5">
+        {groups.length > 0 && <FormLabel>Ungrouped skills</FormLabel>}
+        <TagInput
+          tags={section.items}
+          onAdd={(tag) => onUpdate({ ...section, items: [...section.items, tag] })}
+          onRemove={(tag) => onUpdate({ ...section, items: section.items.filter((s) => s !== tag) })}
+          placeholder="Add a skill"
+        />
+      </div>
+
+      <button
+        type="button"
+        onClick={() => setGroups([...groups, { label: "", items: [] }])}
+        className="inline-flex items-center gap-1 self-start text-[11px] font-medium text-accent hover:underline"
+      >
+        <Plus className="h-3 w-3" /> Add skill group
+      </button>
+      <p className="text-[11px] text-text-muted">
+        Groups print as labeled lines (&ldquo;Cloud: Azure, AWS&rdquo;) when the Style tab&apos;s Skills layout is Grouped, and as one list otherwise.
+      </p>
     </div>
   );
 }
@@ -918,6 +1024,7 @@ function WorkEntryEditor({
         <div className="grid flex-1 grid-cols-1 gap-2 sm:grid-cols-2">
           <FormInput value={entry.title} onChange={(v) => onUpdate({ title: v })} placeholder="Job title" />
           <FormInput value={entry.company} onChange={(v) => onUpdate({ company: v })} placeholder="Company" />
+          <FormInput value={entry.location ?? ""} onChange={(v) => onUpdate({ location: v })} placeholder="Location (e.g. Toronto, ON)" />
           <FormInput value={entry.start_date} onChange={(v) => onUpdate({ start_date: v })} placeholder="Start date (e.g. Jan 2022)" />
           <div className="flex items-center gap-2">
             {entry.is_current ? (
@@ -1126,8 +1233,18 @@ function EducationEntryEditor({
           <FormInput value={entry.institution ?? ""} onChange={(v) => onUpdate({ institution: v })} />
         </div>
         <div>
-          <FormLabel>Graduation Year</FormLabel>
-          <FormInput value={entry.graduation_year ?? ""} onChange={(v) => onUpdate({ graduation_year: v })} />
+          <FormLabel>Location</FormLabel>
+          <FormInput value={entry.location ?? ""} onChange={(v) => onUpdate({ location: v })} placeholder="Windsor, ON" />
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <FormLabel>Start Year</FormLabel>
+            <FormInput value={entry.start_year ?? ""} onChange={(v) => onUpdate({ start_year: v })} placeholder="2019" />
+          </div>
+          <div>
+            <FormLabel>Graduation Year</FormLabel>
+            <FormInput value={entry.graduation_year ?? ""} onChange={(v) => onUpdate({ graduation_year: v })} placeholder="2020" />
+          </div>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1">
@@ -1244,6 +1361,16 @@ function CustomEntryEditor({
           <FormInput value={entry.title} onChange={(v) => onUpdate({ title: v })} placeholder="Title" />
           <FormInput value={entry.subtitle} onChange={(v) => onUpdate({ subtitle: v })} placeholder="Subtitle (issuer, role...)" />
           <FormInput value={entry.date} onChange={(v) => onUpdate({ date: v })} placeholder="Date" />
+          <div className="sm:col-span-3">
+            <FormInput
+              value={entry.details ?? ""}
+              onChange={(v) => onUpdate({ details: v })}
+              placeholder="Details line, e.g. tech stack (optional)"
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <FormInput value={entry.link ?? ""} onChange={(v) => onUpdate({ link: v })} placeholder="Link line, e.g. Live: example.com (optional)" />
+          </div>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button type="button" onClick={onDuplicate} className="text-text-muted hover:text-accent" aria-label="Duplicate this entry">

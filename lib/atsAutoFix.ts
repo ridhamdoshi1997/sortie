@@ -72,6 +72,8 @@ function defaultLabelFor(type: ResumeSection["type"]): string {
       return "Education";
     case "certifications":
       return "Certifications";
+    case "highlights":
+      return "Key Highlights";
     case "custom":
       return "Custom";
   }

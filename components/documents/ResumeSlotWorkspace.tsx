@@ -7,6 +7,7 @@ import { Download, FileText } from "lucide-react";
 import { analyzeResume, rewriteResumeSlotBullet, saveResumeSlotSections, saveResumeSlotStyle } from "@/actions/resumes";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
 import { StyleTab } from "@/components/documents/StyleTab";
+import { orderSectionsForTemplate } from "@/lib/resumeTemplates";
 import { QualityGradeCard } from "@/components/documents/QualityGradeCard";
 import { ATSAuditCard } from "@/components/documents/ATSAuditCard";
 import type { Profile, ResumeAnalysis } from "@/types";
@@ -264,7 +265,16 @@ export function ResumeSlotWorkspace({
                 onFocusHandled={() => setFocusTarget(null)}
               />
             )}
-            {tab === "style" && <StyleTab style={style} onChange={commitStyle} />}
+            {tab === "style" && (
+              <StyleTab
+                style={style}
+                onChange={commitStyle}
+                onApplySectionOrder={(template) => {
+                  const ordered = orderSectionsForTemplate(sections, template);
+                  if (ordered) commitSections(ordered);
+                }}
+              />
+            )}
           </div>
         </div>
       </div>

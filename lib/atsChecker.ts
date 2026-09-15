@@ -53,6 +53,8 @@ const SAFE_SECTION_HEADERS = new Set([
   "professional summary",
   "summary",
   "certifications",
+  "licenses & certifications",
+  "licenses and certifications",
   "projects",
   "languages",
   "awards",
@@ -71,6 +73,8 @@ function defaultSectionLabel(type: ResumeSection["type"]): string {
       return "Education";
     case "certifications":
       return "Certifications";
+    case "highlights":
+      return "Key Highlights";
     case "custom":
       return "Custom";
   }
@@ -97,6 +101,8 @@ export function analyzeATSFormatting(
 
   const visibleSections = sections.filter((s) => s.visible);
   for (const section of visibleSections) {
+    // Highlights print in the header, with no heading to parse.
+    if (section.type === "highlights") continue;
     const label = (section.type === "custom" ? section.title : section.label?.trim() || defaultSectionLabel(section.type))
       .toLowerCase()
       .trim();

@@ -13,6 +13,8 @@ export type TailoredWorkEntry = {
   end_date: string | null;
   is_current: boolean;
   bullets: string[];
+  /** "Toronto, ON" — shown beside the company in templates that print it. */
+  location?: string;
 };
 
 // A user-defined section outside the 4 built-in types (Projects,
@@ -24,7 +26,16 @@ export type TailoredWorkEntry = {
 // ever touch summary/work_experience — see mergeGeneratedContent), and
 // deliberately excluded from scoreJump/resumeQuality's analysis for the same
 // reason: those only know about the 4 original types today.
-export type CustomEntry = { title: string; subtitle: string; date: string; bullets: string[] };
+export type CustomEntry = {
+  title: string;
+  subtitle: string;
+  date: string;
+  bullets: string[];
+  /** A second descriptive line, e.g. a project's tech stack. */
+  details?: string;
+  /** A link line, e.g. "Live: example.com | GitHub: github.com/…". */
+  link?: string;
+};
 
 // Mirrors Education's own "real, structured, fully editable" treatment —
 // the base profile only ever stores certifications as a flat string[]
@@ -33,12 +44,21 @@ export type CustomEntry = { title: string; subtitle: string; date: string; bulle
 // education entries seeded from a résumé upload before the user refines them.
 export type CertificationEntry = { name: string; issuer: string; date: string };
 
+// Labeled skill lines ("DevOps & Automation: CI/CD, YAML…"), the standard
+// layout for technical résumés. Optional and additive: `items` stays the flat
+// list every other consumer already reads.
+export type SkillGroup = { label: string; items: string[] };
+
 export type ResumeSection =
   | { id: string; type: "summary"; visible: boolean; content: string; label?: string }
-  | { id: string; type: "skills"; visible: boolean; items: string[]; label?: string }
+  | { id: string; type: "skills"; visible: boolean; items: string[]; groups?: SkillGroup[]; label?: string }
   | { id: string; type: "work_experience"; visible: boolean; entries: TailoredWorkEntry[]; label?: string }
   | { id: string; type: "education"; visible: boolean; entries: Education[]; label?: string }
   | { id: string; type: "certifications"; visible: boolean; entries: CertificationEntry[]; label?: string }
+  // Short, real, user-entered figures printed as a strip under the header
+  // ("$220M portfolio supported • 20% client growth"). Never a titled body
+  // section, and never AI-written — the honesty rules forbid invented metrics.
+  | { id: string; type: "highlights"; visible: boolean; items: string[]; label?: string }
   | { id: string; type: "custom"; visible: boolean; title: string; entries: CustomEntry[] };
 
 export type ResumeSectionType = ResumeSection["type"];
@@ -77,7 +97,26 @@ export function formatDegree(degree: string | null | undefined, field: string | 
 // the RIGHT and a full-width header above the two-column row instead of
 // inside the sidebar; "block" is single-column with a solid-color header
 // banner and centered, thick-ruled section titles.
-export type ResumeTemplate = "structured" | "centered" | "split" | "timeline" | "executive" | "block";
+//
+// Added 2026-09-15 (Phase 1), each modeled on a real submitted résumé:
+// "professional" — centered capitalized header with a rule under the contact
+// line, grouped skill lines, company-first roles; for experienced
+// professionals. "early_career" — compact centered header with a highlights
+// strip, licenses first, a two-column bulleted skills grid, title-first
+// roles; for early-career and regulated fields. The stored value "executive"
+// is unchanged; only its label became "Executive Sidebar".
+export type ResumeTemplate =
+  | "structured"
+  | "centered"
+  | "split"
+  | "timeline"
+  | "executive"
+  | "block"
+  | "professional"
+  | "early_career";
+
+/** Résumé fonts. See lib/resumeFonts.ts for how each reaches the PDF and Word file. */
+export type ResumeFontKey = "calibri" | "arial" | "cambria" | "georgia" | "times" | "garamond";
 
 export type ResumeStyle = {
   template: ResumeTemplate;
@@ -89,8 +128,38 @@ export type ResumeStyle = {
   headerAlignment: "left" | "center" | "right";
   skillsColumns: 2 | 3 | 4;
   bulletStyle: "•" | "—" | "▪";
-  fontSizes: { name: number; heading: number; subheading: number; body: number };
+  fontSizes: {
+    name: number;
+    heading: number;
+    subheading: number;
+    body: number;
+    /** Contact line. Absent on older styles: body − 1 is used. */
+    contact?: number;
+    /** Role and education dates. Absent on older styles: body − 1 is used. */
+    dates?: number;
+  };
   // 0-100 slider values, mapped to real point ranges at render time — kept
   // as plain 0-100 in storage so the UI sliders stay simple.
   spacing: { section: number; entry: number; line: number; margins: number };
+
+  // ---- Phase 1 (2026-09-15). All optional, so every saved style still works. ----
+
+  /** Absent: the theme's own family (Helvetica → Arial, Times → Times New Roman). */
+  fontFamily?: ResumeFontKey;
+  /** Print the name in capitals. */
+  nameUppercase?: boolean;
+  /** "theme" (or absent) keeps the theme's chips/grid choice. */
+  skillsDisplay?: "theme" | "chips" | "grid" | "grouped" | "bulleted";
+  /** Role header order. Absent: title first. */
+  entryHeader?: "title_first" | "company_first";
+  /** Certifications as a list, or all on one line. Absent: list. */
+  certificationsDisplay?: "stacked" | "inline";
+  /** A template's own palette, replacing the theme's colors. Cleared when a theme is picked. */
+  colors?: { accent: string; accentDark: string; ink: string; body: string; muted: string; rule: string } | null;
+  /**
+   * 2 = spacing sliders map onto the wider ranges (margins down to 20pt, line
+   * height down to 1.0×). Absent = the original ranges, so a saved résumé's
+   * spacing never shifts just because the ranges grew.
+   */
+  spacingVersion?: 2;
 };

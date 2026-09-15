@@ -10,6 +10,7 @@ import { checkAndConsumeUsage } from "@/lib/usage";
 import { featureDisabledMessage, isFeatureEnabled } from "@/lib/features";
 import { checkRateLimit } from "@/lib/rateLimit";
 import { toUserMessage } from "@/lib/errors";
+import { stripLeadingGreeting } from "@/lib/coverLetterText";
 import { buildDefaultStyle, mergeGeneratedContent } from "@/lib/resumeSections";
 import type { GeneratedContent } from "@/components/documents/ResumePDF";
 import { rescoreAgainstTailoredResume, type ScoreJumpResult } from "@/lib/scoreJump";
@@ -272,7 +273,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         currentStyle: currentCoverLetterStyle,
       });
       reply = revised.reply;
-      generatedContentText = revised.content;
+      // The salutation is its own field; never store a second one in the body.
+      generatedContentText = stripLeadingGreeting(revised.content);
       // styleChanges only non-null when the latest message was actually
       // about template/theme/layout — merged onto the existing shared
       // style, same rule reviseTailoredResume's own branch above follows.

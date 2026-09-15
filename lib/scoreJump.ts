@@ -3,6 +3,7 @@ import type { createInsforgeServer } from "@/lib/insforge-server";
 import type { ModelProvider, ModelTier } from "@/lib/models";
 import type { Job, Profile, ResumeGapAnalysisResult } from "@/types";
 import type { ResumeSection } from "@/types/resumeEditor";
+import { allSkills } from "@/lib/resumeLayout";
 
 type Insforge = Awaited<ReturnType<typeof createInsforgeServer>>;
 
@@ -24,7 +25,7 @@ export function buildGapProfileFromSections(profile: Profile, sections: ResumeSe
     experience_level: profile.experience_level,
     years_experience: profile.years_experience,
     industries: profile.industries,
-    skills: skillsSection && skillsSection.type === "skills" && skillsSection.visible ? skillsSection.items : (profile.skills ?? []),
+    skills: skillsSection && skillsSection.type === "skills" && skillsSection.visible ? allSkills(skillsSection) : (profile.skills ?? []),
     work_experience:
       workSection && workSection.type === "work_experience" && workSection.visible
         ? workSection.entries.map((w) => ({

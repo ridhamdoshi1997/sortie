@@ -109,6 +109,10 @@ export interface Education {
   field: string | null;
   institution: string | null;
   graduation_year: string | null;
+  /** Optional, résumé-level: "Windsor, ON". */
+  location?: string | null;
+  /** Optional, résumé-level: first year, printed as "2019 – 2020". */
+  start_year?: string | null;
 }
 
 export interface AgentRun {

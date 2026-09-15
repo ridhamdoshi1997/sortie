@@ -2,6 +2,7 @@ import { complete, getModel, type ModelProvider, type ModelTier } from "@/lib/mo
 import { isRateLimitError, rateLimitMessage } from "@/lib/errors";
 import type { Profile, ResumeAnalysis, ResumeIssueSeverity } from "@/types";
 import type { ResumeSection } from "@/types/resumeEditor";
+import { allSkills } from "@/lib/resumeLayout";
 
 // Builds the same shape of input text actions/resumes.ts's analyzeResume
 // builds from a résumé slot's extracted_data — but from a tailored résumé's
@@ -14,7 +15,7 @@ export function buildQualityAnalysisText(profile: Profile, sections: ResumeSecti
   const workSection = sections.find((s) => s.type === "work_experience");
   const eduSection = sections.find((s) => s.type === "education");
 
-  const skills = skillsSection?.type === "skills" ? skillsSection.items : (profile.skills ?? []);
+  const skills = skillsSection?.type === "skills" ? allSkills(skillsSection) : (profile.skills ?? []);
   const workEntries = workSection?.type === "work_experience" ? workSection.entries : [];
   const eduEntries = eduSection?.type === "education" ? eduSection.entries : (profile.education ?? []);
   const summary = summarySection?.type === "summary" ? summarySection.content : "";

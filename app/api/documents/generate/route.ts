@@ -5,6 +5,7 @@ import { renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 
 import { researchCompany } from "@/agent/research";
 import { generateCoverLetter, generateTailoredResume } from "@/agent/documents";
+import { stripLeadingGreeting } from "@/lib/coverLetterText";
 import { resolveModelForUser } from "@/lib/subscription";
 import { getCurrentUser } from "@/lib/auth";
 import { createInsforgeServer } from "@/lib/insforge-server";
@@ -212,7 +213,8 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
         .maybeSingle<{ resume_style: ResumeStyle | null; cover_letter_salutation: string | null }>();
       const coverLetterStyle = existingStyleRow?.resume_style ?? buildDefaultStyle(profile.preferred_resume_theme);
 
-      const letterBody = await generateCoverLetter({ job, profile, dossier, provider, tier });
+      // The salutation is its own field; never store a second one in the body.
+      const letterBody = stripLeadingGreeting(await generateCoverLetter({ job, profile, dossier, provider, tier }));
       generatedContentText = letterBody;
       pdfBuffer = await renderToBuffer(
         React.createElement(CoverLetterPDF, {

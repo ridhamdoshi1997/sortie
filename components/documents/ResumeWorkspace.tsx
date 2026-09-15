@@ -16,6 +16,7 @@ import { DocumentChatEditor } from "@/components/documents/DocumentChatEditor";
 import { DocumentChatProvider, useDocumentChatState, type ChatMessage } from "@/components/documents/useDocumentChat";
 import { DocumentVersionHistory } from "@/components/documents/DocumentVersionHistory";
 import { LimitReachedModal } from "@/components/shared/LimitReachedModal";
+import { orderSectionsForTemplate } from "@/lib/resumeTemplates";
 import { EditorTab, type FocusTarget } from "@/components/documents/EditorTab";
 import { EditorUsageMeter } from "@/components/documents/EditorUsageMeter";
 import { StyleTab } from "@/components/documents/StyleTab";
@@ -326,7 +327,16 @@ export function ResumeWorkspace({
                 onFocusHandled={() => setFocusTarget(null)}
               />
             )}
-            {tab === "style" && <StyleTab style={style} onChange={commitStyle} />}
+            {tab === "style" && (
+              <StyleTab
+                style={style}
+                onChange={commitStyle}
+                onApplySectionOrder={(template) => {
+                  const ordered = orderSectionsForTemplate(sections, template);
+                  if (ordered) commitSections(ordered);
+                }}
+              />
+            )}
           </div>
 
           {/* Pinned under every tab, outside the scroll area: the chat used

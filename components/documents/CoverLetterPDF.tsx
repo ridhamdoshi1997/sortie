@@ -2,7 +2,8 @@ import React from "react";
 import { Document, Page, Text, View, StyleSheet } from "@react-pdf/renderer";
 
 import { formatDate } from "@/lib/utils";
-import { mapRange, resolveTokens, SPACING_RANGES, type ThemeTokens } from "@/components/documents/ResumePDF";
+import { stripLeadingGreeting } from "@/lib/coverLetterText";
+import { resolveTokens, spacingPt, type ResolvedTokens } from "@/components/documents/ResumePDF";
 import type { Profile } from "@/types";
 import type { ResumeStyle } from "@/types/resumeEditor";
 
@@ -21,13 +22,13 @@ type Props = {
   salutation?: string | null;
 };
 
-function createStyles(t: ThemeTokens, style: ResumeStyle, headerAlign: "left" | "center" | "right") {
-  const margin = mapRange(style.spacing.margins, ...SPACING_RANGES.margins) + 18;
-  const lineHeight = mapRange(style.spacing.line, ...SPACING_RANGES.line);
+function createStyles(t: ResolvedTokens, style: ResumeStyle, headerAlign: "left" | "center" | "right") {
+  const margin = spacingPt(style, "margins") + 18;
+  const lineHeight = spacingPt(style, "line");
   return StyleSheet.create({
     page: {
       padding: margin,
-      fontFamily: t.fontFamily,
+      ...t.regular,
       fontSize: style.fontSizes.body,
       color: t.ink,
     },
@@ -36,7 +37,7 @@ function createStyles(t: ThemeTokens, style: ResumeStyle, headerAlign: "left" | 
     },
     name: {
       fontSize: style.fontSizes.name * 0.64,
-      fontFamily: t.fontFamilyBold,
+      ...t.bold,
       color: t.ink,
       letterSpacing: t.nameLetterSpacing,
       textAlign: headerAlign,
@@ -74,7 +75,7 @@ function createStyles(t: ThemeTokens, style: ResumeStyle, headerAlign: "left" | 
     },
     sidebarTitle: {
       fontSize: style.fontSizes.heading - 1,
-      fontFamily: t.fontFamilyBold,
+      ...t.bold,
       color: t.accentDark,
       letterSpacing: 1.2,
       textTransform: "uppercase",
@@ -82,7 +83,7 @@ function createStyles(t: ThemeTokens, style: ResumeStyle, headerAlign: "left" | 
     },
     sidebarTitleSecond: {
       fontSize: style.fontSizes.heading - 1,
-      fontFamily: t.fontFamilyBold,
+      ...t.bold,
       color: t.accentDark,
       letterSpacing: 1.2,
       textTransform: "uppercase",
@@ -133,10 +134,15 @@ export function CoverLetterPDF({ profile, company, letterBody, style, salutation
   const tokens = resolveTokens(style);
   // "centered"/"block" center the header, same as ResumePDF's own
   // alwaysCentered logic; everything else honors the shared headerAlignment.
-  const headerAlign = style.template === "centered" || style.template === "block" ? "center" : style.headerAlignment;
+  const headerAlign =
+    style.template === "centered" || style.template === "block" || style.template === "professional" || style.template === "early_career"
+      ? "center"
+      : style.headerAlignment;
   const styles = createStyles(tokens, style, headerAlign);
   const pageSize = style.pageSize === "a4" ? "A4" : "LETTER";
-  const paragraphs = letterBody
+  // The salutation is printed above from its own field; a greeting the body
+  // also opens with (every letter generated before 2026-09-15) is dropped.
+  const paragraphs = stripLeadingGreeting(letterBody)
     .split(/\n{2,}/)
     .map((paragraph) => paragraph.trim())
     .filter(Boolean);

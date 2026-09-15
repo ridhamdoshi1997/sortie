@@ -4,6 +4,29 @@
 
 Read this file first, before anything else — including the "Read Before Anything Else" list in `AGENTS.md`. It's the fast-orientation layer; those other docs are the full detail underneath it. Keep this current after any session that changes real state — a stale RESUME.md is worse than none.
 
+## Phase 56 (2026-09-15) — Phase 1 templates & typography. CODE WRITTEN + TYPE-CHECKED, NOT VISUALLY VERIFIED, NOT DEPLOYED.
+
+**Start next session here.** Session ended at the user's request before visual checks.
+
+Built (all in code, tsc clean, eslint clean on changed files):
+- **2 new templates** modeled on the user's two Word résumés: `professional` (company-first roles, grouped skills, rule under contact) and `early_career` (highlights strip, licenses first, bulleted 2-col skills). Presets + recommended section order in `lib/resumeTemplates.ts`. "executive" relabeled **Executive Sidebar** (stored value unchanged). Template picker shows ATS-safe / Higher risk labels.
+- **Font picker** (6: Calibri, Arial, Cambria, Georgia, Times New Roman, Garamond). `lib/resumeFonts.ts` + `components/documents/resumePdfFonts.ts`. OFL font files in `public/fonts` (Carlito/Caladea/Gelasio/EB Garamond, user approved the download). `next.config.ts` `outputFileTracingIncludes` ships them to PDF-rendering routes.
+- **Numbered font sizes with resizing** (−/+ buttons, typed pt value, slider) for name, headings, sub-headings, body, contact, dates.
+- **New content fields**: skill groups, job location, education location + start year, custom-entry details/link, Key highlights section, `**bold**` markup. Shared layout logic in `lib/resumeLayout.ts` used by PDF, DOCX, Markdown.
+- **Wider spacing ranges** via `spacingVersion: 2` (old styles unchanged).
+- **Page count badge** on the live preview.
+- **Doubled cover-letter greeting fixed** (prompts + `lib/coverLetterText.ts` strip at render/generate/revise).
+
+**Owed next session, in order:**
+1. Visually verify both templates in PDF and DOCX against the user's Word files (render test PDFs offline or signed-in preview); tune spacing values in `TEMPLATE_PRESETS`.
+2. Verify fonts load in the browser preview (`/fonts/*.woff`) and on a server download.
+3. Update ui-registry / progress-tracker for Phase 56, then commit anything left.
+4. Phase 2: humanizer score, cover-letter fields (date/recipient/closing), versions on AI edits.
+
+**Data note:** user worried old résumés were deleted — verified live they were not (2 tailored résumés, 5 versions). The RBC résumé belongs to the **ridhamkdoshi@gmail.com** account.
+
+---
+
 ## Phase 55 (2026-09-14) — résumé workspace: persistent chat, visible limits, live ATS skills, bigger layout. COMMITTED, NOT DEPLOYED.
 
 Migration `20260914150000_document-chat-messages.sql` is **applied live** (new table only — nothing the deployed code reads).

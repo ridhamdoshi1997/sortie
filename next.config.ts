@@ -10,7 +10,21 @@ import { withSentryConfig } from "@sentry/nextjs";
 // architecture. Add a new entry here (source/destination/permanent) and
 // redeploy whenever a route gets renamed or removed; don't build an admin
 // UI for this.
+// Résumé font files (public/fonts) must exist on disk inside every server
+// function that renders a PDF: react-pdf reads them from the filesystem there
+// (components/documents/resumePdfFonts.ts). Public files are served by the CDN
+// and are not otherwise traced into serverless bundles.
+const PDF_FONT_FILES = ["./public/fonts/**/*"];
+
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/documents/download": PDF_FONT_FILES,
+    "/api/documents/generate": PDF_FONT_FILES,
+    "/api/documents/chat": PDF_FONT_FILES,
+    "/api/resume/generate": PDF_FONT_FILES,
+    "/api/resumes/*": PDF_FONT_FILES,
+    "/api/career/brag-doc": PDF_FONT_FILES,
+  },
   async redirects() {
     return [
       // Renamed 2026-08-xx: "Pipeline" -> "Missions" (route + all
