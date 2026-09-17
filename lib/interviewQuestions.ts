@@ -211,7 +211,10 @@ export async function generateQuestionBank(
   // employer would plausibly ask ANY candidate — its values, its business,
   // how it works — rather than guessing at a role nobody named.
   const anyRole = roleFamily === ANY_ROLE;
-  const raw = await complete(await getModel("gemini", "smart"), {
+  // "fast" = the free GEMINI_API_KEY_FAST; "smart" is the billed key.
+  // These banks feed PUBLIC interview-questions SEO pages, so every
+  // anonymous visit that misses the cache was hitting the paid meter.
+  const raw = await complete(await getModel("gemini", "fast"), {
     systemPrompt: `You are helping a job candidate prepare for an interview by predicting likely interview questions. You have no access to real leaked or sourced interview questions from this specific company — you are generating REALISTIC, PLAUSIBLE questions based on the company's known industry, business model, tech stack reputation, and typical expectations${anyRole ? "" : " for this role and seniority level"}. Never imply these are real questions someone was actually asked. ${
       anyRole
         ? "NO SPECIFIC ROLE was given, so generate questions this company would plausibly ask ANY candidate: its values and culture, its business and product, how it works, and broadly-applicable behavioral questions. Do not invent a role or assume the candidate is technical — skip system_design entirely and keep any technical question generic to the company's domain."
@@ -285,7 +288,10 @@ export async function generateQuestionDetails(
   }
 }`;
 
-  const raw = await complete(await getModel("gemini", "smart"), {
+  // "fast" = the free GEMINI_API_KEY_FAST; "smart" is the billed key.
+  // These banks feed PUBLIC interview-questions SEO pages, so every
+  // anonymous visit that misses the cache was hitting the paid meter.
+  const raw = await complete(await getModel("gemini", "fast"), {
     systemPrompt: `You are an interview coach producing deep study material for ONE specific predicted interview question. You have no access to a real leaked answer key — everything you produce is a synthesized reference based on common industry patterns for this role, and must read that way, never as a claim of "verified" or "the real answer."
 
 ${
@@ -331,7 +337,10 @@ export async function generatePracticeKit(
   company: string,
   roleFamily: string,
 ): Promise<PracticeKit> {
-  const raw = await complete(await getModel("gemini", "smart"), {
+  // "fast" = the free GEMINI_API_KEY_FAST; "smart" is the billed key.
+  // These banks feed PUBLIC interview-questions SEO pages, so every
+  // anonymous visit that misses the cache was hitting the paid meter.
+  const raw = await complete(await getModel("gemini", "fast"), {
     systemPrompt: `You are building a runnable coding-practice exercise for ONE specific technical interview question. This will execute in a real, isolated client-side sandbox — the code must actually run correctly, not just look plausible.
 
 Pick the single best-fitting language from: javascript, typescript, python, ruby, sql. Default to javascript if several would fit equally well. Only pick sql if the question is genuinely about data/database/query design (schema design, joins, aggregation, query optimization) — never force an unrelated algorithm question into SQL just for variety.

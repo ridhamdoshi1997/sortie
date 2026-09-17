@@ -56,7 +56,7 @@ export default async function ResumeDetailPage({ params }: { params: Promise<{ i
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
+      <main className="mx-auto flex w-full flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
         <Link href="/resume" className="inline-flex w-fit items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary">
           <ArrowLeft className="h-3.5 w-3.5" /> Back to résumés
         </Link>

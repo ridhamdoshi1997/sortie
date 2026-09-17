@@ -66,10 +66,168 @@ export async function listResumes(): Promise<{
       return { success: false, error: "Failed to load résumés" };
     }
 
-    return { success: true, data: (data ?? []) as unknown as ResumeRow[] };
+    const resumes = (data ?? []) as unknown as ResumeRow[];
+
+    return { success: true, data: resumes };
   } catch (error) {
     console.error("[actions/resumes] listResumes", error);
     return { success: false, error: "Failed to load résumés" };
+  }
+}
+
+/**
+ * True when the account has a legacy single-résumé upload
+ * (profiles.resume_pdf_url, from before this multi-slot system existed)
+ * that hasn't been folded into a real `resumes` row yet. Used to decide
+ * whether to show the "add to your résumé slots" prompt.
+ */
+export async function hasUnmigratedBaseResume(): Promise<boolean> {
+  const user = await requireUser();
+  const insforge = await createInsforgeServer();
+
+  const { data: profileRow } = await insforge.database
+    .from("profiles")
+    .select("resume_pdf_url")
+    .eq("id", user.id)
+    .maybeSingle<Pick<Profile, "resume_pdf_url">>();
+
+  const legacyPath = profileRow?.resume_pdf_url;
+  if (!legacyPath) return false;
+
+  const { data: existing } = await insforge.database
+    .from("resumes")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("storage_path", legacyPath)
+    .maybeSingle();
+
+  return !existing;
+}
+
+// Explicit, user-triggered migration of the legacy profiles.resume_pdf_url
+// file into a first-class `resumes` row — mirrors uploadResumeSlot()'s
+// extract-then-analyze pipeline so the migrated slot isn't a degraded one.
+//
+// Deliberately NOT run automatically on every page load: an earlier version
+// did that (check-then-insert inside listResumes()) and it raced under
+// concurrent requests — no request saw another's not-yet-committed insert,
+// so every one of them passed the "not migrated yet" check and inserted its
+// own copy. That created 96 duplicate rows for one account before it was
+// caught. A single explicit button click can't race itself, and
+// migrations/20260915190000_resumes-unique-storage-path.sql now makes a
+// second insert of the same (user_id, storage_path) fail at the DB level
+// regardless — belt and suspenders.
+export async function migrateBaseResumeToSlot(): Promise<{ success: boolean; data?: ResumeRow; error?: string }> {
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const { data: profileRow } = await insforge.database
+      .from("profiles")
+      .select("resume_pdf_url,preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "resume_pdf_url" | "preferred_model">>();
+
+    const storagePath = profileRow?.resume_pdf_url;
+    if (!storagePath) {
+      return { success: false, error: "No résumé on file to add." };
+    }
+
+    const { data: existingResumes, error: countError } = await insforge.database
+      .from("resumes")
+      .select("id,storage_path")
+      .eq("user_id", user.id);
+
+    if (countError) {
+      console.error("[actions/resumes] migrateBaseResumeToSlot count", countError);
+      return { success: false, error: "Failed to check résumé slots" };
+    }
+
+    if (existingResumes?.some((r) => r.storage_path === storagePath)) {
+      return { success: false, error: "Already added to your résumé slots." };
+    }
+
+    const currentCount = existingResumes?.length ?? 0;
+    if (currentCount >= MAX_RESUME_SLOTS) {
+      return { success: false, error: `You've used all ${MAX_RESUME_SLOTS} résumé slots — delete one first.` };
+    }
+
+    const { data: blob, error: downloadError } = await insforge.storage.from("resumes").download(storagePath);
+    if (downloadError || !blob) {
+      console.error("[actions/resumes] migrateBaseResumeToSlot download", downloadError);
+      return { success: false, error: "Failed to read your existing résumé file." };
+    }
+
+    let extractedData: ExtractedProfile | null = null;
+    let status: ResumeRow["status"] = "uploaded";
+
+    if (isFeatureEnabled("resume_extract")) {
+      const rateLimit = await checkRateLimit(insforge, user.id, user.email, "resumes/upload");
+      const usage = rateLimit.allowed ? await checkAndConsumeUsage(insforge, user.id, user.email, "resume_extract") : null;
+
+      if (rateLimit.allowed && usage?.allowed) {
+        try {
+          const buffer = Buffer.from(await blob.arrayBuffer());
+          const extraction = await extractProfileFromBuffer(buffer, profileRow?.preferred_model ?? null, insforge, user.id, user.email ?? "");
+          if (extraction.success && extraction.data) {
+            extractedData = extraction.data;
+            status = "analysed";
+          }
+        } catch (extractError) {
+          console.error("[actions/resumes] migrateBaseResumeToSlot extraction", extractError);
+        }
+      }
+    }
+
+    const id = randomUUID();
+    const { data: inserted, error: insertError } = await insforge.database
+      .from("resumes")
+      .insert([
+        {
+          id,
+          user_id: user.id,
+          name: "Base resume",
+          persona: null,
+          target_job_title: null,
+          storage_path: storagePath,
+          is_primary: currentCount === 0,
+          status,
+          extracted_data: extractedData,
+        },
+      ])
+      .select(RESUME_COLUMNS)
+      .maybeSingle();
+
+    if (insertError || !inserted) {
+      // Unique-violation (23505) means another request won this exact race
+      // — treat it as success rather than an error, since the slot exists.
+      if ((insertError as { code?: string } | null)?.code === "23505") {
+        return { success: true };
+      }
+      console.error("[actions/resumes] migrateBaseResumeToSlot insert", insertError);
+      return { success: false, error: "Failed to add this résumé to your slots" };
+    }
+
+    let result = inserted as unknown as ResumeRow;
+
+    if (extractedData) {
+      try {
+        const analysisResult = await analyzeResume(id);
+        if (analysisResult.success && analysisResult.analysis) {
+          result = { ...result, analysis: analysisResult.analysis, analyzed_at: new Date().toISOString() };
+        }
+      } catch (analysisError) {
+        console.error("[actions/resumes] migrateBaseResumeToSlot auto-analyze", analysisError);
+      }
+    }
+
+    revalidatePath("/resume");
+    revalidatePath("/profile");
+    return { success: true, data: result };
+  } catch (error) {
+    console.error("[actions/resumes] migrateBaseResumeToSlot", error);
+    return { success: false, error: "Failed to add this résumé to your slots" };
   }
 }
 

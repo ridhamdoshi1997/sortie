@@ -27,7 +27,7 @@ type Props = {
   onClose: () => void;
 };
 
-type BulletRef = { key: string; company: string; text: string };
+type BulletRef = { key: string; company: string; title: string; text: string };
 
 function collectBullets(sections: ResumeSection[]): BulletRef[] {
   const out: BulletRef[] = [];
@@ -35,7 +35,8 @@ function collectBullets(sections: ResumeSection[]): BulletRef[] {
     if (!section.visible || section.type !== "work_experience") continue;
     for (const entry of section.entries) {
       (entry.bullets ?? []).forEach((b, i) => {
-        if (b?.trim()) out.push({ key: `${entry.company ?? ""}-${i}`, company: entry.company ?? "", text: b });
+        if (b?.trim())
+          out.push({ key: `${entry.company ?? ""}-${i}`, company: entry.company ?? "", title: entry.title ?? "", text: b });
       });
     }
   }
@@ -68,7 +69,14 @@ export function FrameworkRewritePanel({ sections, pending, onApply, onClose }: P
           <ArrowLeft className="h-3 w-3" />
           Pick a different bullet
         </button>
-        <FrameworkPicker bulletText={target.text} pending={pending} onApply={onApply} onClose={onClose} />
+        <FrameworkPicker
+          bulletText={target.text}
+          company={target.company}
+          title={target.title}
+          pending={pending}
+          onApply={onApply}
+          onClose={onClose}
+        />
       </div>
     );
   }

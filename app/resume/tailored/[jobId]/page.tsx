@@ -80,9 +80,9 @@ export default async function TailoredResumeEditorPage({
   return (
     <>
       <Navbar isAuthenticated />
-      {/* Navbar width (1400px), not max-w-6xl — the workspace was a narrow
+      {/* Full width, matching the Navbar — the workspace was a narrow
           column in the middle of a wide screen. */}
-      <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
+      <main className="mx-auto flex w-full flex-col gap-6 p-4 sm:p-6 lg:p-8" style={{ width: "100%" }}>
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="flex flex-col gap-1">
             <h1 className="fade-in-up text-2xl font-bold tracking-tight text-text-primary sm:text-3xl">

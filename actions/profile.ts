@@ -20,6 +20,7 @@ import { isRateLimitError, rateLimitMessage } from "@/lib/errors";
 import type { ResumeTheme } from "@/components/documents/ResumePDF";
 import { trackPostHogEvent } from "@/lib/posthog-server";
 import { calculateCompletion } from "@/lib/profile-utils";
+import type { ResumeFramework } from "@/lib/resumeFrameworks";
 import type { Education, Profile, WorkExperience } from "@/types";
 
 // tier is optional and full-access-only (direct follow-up request,
@@ -509,7 +510,12 @@ export async function extractProfileFromBuffer(
 }
 
 Resume text:
-${extractedText.slice(0, 6000)}`,
+${extractedText.slice(0, 16000)}`,
+    // 6000 was too small: Education sits after Experience and Projects on a
+    // real 2-page resume (confirmed live — a 4-job resume's Education header
+    // landed at char 7,900), so it never reached the model and silently
+    // extracted as an empty array. 16000 covers a resume several times that
+    // length; maxTokens below already handles the larger output fine.
     temperature: 0.3,
     // 800 was too small: a full resume's work_experience array routinely
     // exceeds it, the response truncates mid-JSON, and JSON.parse below
@@ -664,6 +670,83 @@ export async function rewriteBullet(
     console.error("[actions/profile] rewriteBullet", error);
     const rateLimitMessage = bulletRateLimitError(error);
     return { success: false, error: rateLimitMessage ?? "Failed to rewrite this bullet." };
+  }
+}
+
+// Powers "Auto-fill with AI" in FrameworkBar/FrameworkPicker. Direct user
+// report: the old design skipped straight to the full document-chat rewrite
+// with zero visible feedback — the panel reset mid-flight (read as a
+// flicker), then nothing appeared until the whole-résumé chat call finished,
+// landing quietly in the chat scrollback. This is a separate, fast,
+// single-bullet call (same cheap `bullet_rewrite` cost as rewriteBullet
+// above, not a `document_generation`) whose ONLY job is to fill the visible
+// S/T/A/R-style inputs so the user sees and can edit what the AI inferred
+// BEFORE clicking Apply — same trust model as answering them by hand.
+// Carries the same no-fabrication rule as buildFrameworkPrompt: a slot with
+// no real support in the bullet comes back empty, never guessed at.
+export async function inferFrameworkAnswers(
+  framework: Pick<ResumeFramework, "name" | "expansion" | "questions">,
+  bulletText: string,
+  context: BulletContext,
+): Promise<{ success: boolean; answers?: Record<string, string>; error?: string }> {
+  if (!isFeatureEnabled("bullet_rewrite")) {
+    return { success: false, error: featureDisabledMessage("bullet_rewrite") };
+  }
+
+  const user = await requireUser();
+
+  try {
+    const insforge = await createInsforgeServer();
+
+    const rateLimit = await checkRateLimit(insforge, user.id, user.email, "profile/rewrite-bullet");
+    if (!rateLimit.allowed) {
+      return { success: false, error: rateLimit.error };
+    }
+
+    const usage = await checkAndConsumeUsage(insforge, user.id, user.email, "bullet_rewrite");
+    if (!usage.allowed) {
+      return { success: false, error: usage.error };
+    }
+
+    const { data: profile } = await insforge.database
+      .from("profiles")
+      .select("preferred_model")
+      .eq("id", user.id)
+      .maybeSingle<Pick<Profile, "preferred_model">>();
+
+    const { provider, tier } = await resolveModelForUser(insforge, user.id, user.email, profile?.preferred_model);
+
+    const questionLines = framework.questions.map((q) => `- "${q.id}" (${q.slot}): ${q.label}`).join("\n");
+    const schemaFields = framework.questions.map((q) => `"${q.id}": string`).join(", ");
+
+    const raw = await complete(await getModel(provider, tier), {
+      systemPrompt:
+        "You extract structured facts from a résumé bullet — you never invent, embellish or estimate. For each requested slot, quote or closely paraphrase what the bullet already says. If a slot genuinely has no support in the bullet's own words, return an empty string for it. Return only valid JSON.",
+      userPrompt: `Role: ${context.title} at ${context.company}\nBullet: "${bulletText}"\n\nThe ${framework.name} framework (${framework.expansion}) asks for these slots:\n${questionLines}\n\nReturn JSON with this exact shape: { ${schemaFields} }`,
+      temperature: 0.2,
+      maxTokens: 400,
+      jsonResponse: true,
+    });
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(raw) as Record<string, unknown>;
+    } catch (parseError) {
+      console.error("[actions/profile] inferFrameworkAnswers JSON parse failed", parseError, raw.slice(0, 300));
+      return { success: false, error: "The AI response was incomplete. Please try again." };
+    }
+
+    const answers: Record<string, string> = {};
+    for (const q of framework.questions) {
+      const value = parsed[q.id];
+      if (typeof value === "string") answers[q.id] = value.trim();
+    }
+
+    return { success: true, answers };
+  } catch (error) {
+    console.error("[actions/profile] inferFrameworkAnswers", error);
+    const rateLimitMessage = bulletRateLimitError(error);
+    return { success: false, error: rateLimitMessage ?? "Failed to auto-fill this framework." };
   }
 }
 

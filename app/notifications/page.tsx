@@ -14,7 +14,7 @@ export default async function NotificationsPage() {
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full max-w-2xl flex-col gap-6 p-4 sm:p-6 lg:p-8">
+      <main className="mx-auto flex w-full flex-col gap-6 p-4 sm:p-6 lg:p-8">
         <div className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-secondary">
             <Bell className="h-5 w-5 text-text-secondary" />

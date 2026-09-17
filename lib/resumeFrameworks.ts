@@ -180,3 +180,14 @@ export function buildFrameworkPrompt(
     "- Return the rewritten bullet only, and tell me which of my answers you used where.",
   ].join("\n");
 }
+
+// "Auto-fill with AI" (FrameworkBar/FrameworkPicker) no longer builds a
+// prompt here — it calls inferFrameworkAnswers (actions/profile.ts), a real
+// single-bullet AI call that fills the visible S/T/A/R inputs so the user
+// sees and can edit what the AI inferred before applying. Direct user
+// report on the previous design (skip straight to buildFrameworkPrompt with
+// inferred values, apply immediately, no visible feedback until the
+// whole-résumé chat call finished): "no user ui showing... user will stop
+// using it immediately." Once the fields are filled, the existing Apply
+// button and buildFrameworkPrompt above take it from there — same path as
+// answering by hand.

@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Loader2, PenLine } from "lucide-react";
+import { ArrowLeft, Loader2, PenLine, Sparkles } from "lucide-react";
 
-import { RESUME_FRAMEWORKS, buildFrameworkPrompt, type ResumeFramework } from "@/lib/resumeFrameworks";
+import { inferFrameworkAnswers } from "@/actions/profile";
+import { RESUME_FRAMEWORKS, buildFrameworkPrompt, getFramework, type ResumeFramework } from "@/lib/resumeFrameworks";
 
 // Opt-in bullet frameworks (Phase 53).
 //
@@ -22,28 +23,63 @@ import { RESUME_FRAMEWORKS, buildFrameworkPrompt, type ResumeFramework } from "@
 // full of blanks. Collecting the inputs FIRST is what turns a framework from
 // a blank-generator into something usable.
 //
-// This component deliberately does NOT make its own AI call. It emits an
-// instruction string into the editor's existing per-bullet rewrite path, so
-// the result arrives in the same diff card with the same accept/reject the
-// user already knows — and it spends a cheap `bullet_rewrite` rather than a
-// whole-résumé `document_generation`. The instruction lands in the user
-// prompt, where USER_INSTRUCTION_PRECEDENCE already makes it outrank the
-// house style while the no-fabrication rule stays absolute.
+// Applying (manual or auto-filled) emits an instruction string into the
+// editor's existing per-bullet rewrite path, so the result arrives in the
+// same diff card with the same accept/reject the user already knows — and
+// it spends a cheap `bullet_rewrite` rather than a whole-résumé
+// `document_generation`. The instruction lands in the user prompt, where
+// USER_INSTRUCTION_PRECEDENCE already makes it outrank the house style
+// while the no-fabrication rule stays absolute.
+//
+// "Auto-fill with AI" DOES make its own call (inferFrameworkAnswers,
+// actions/profile.ts) — but only to fill the visible fields below, never to
+// apply anything. Direct user report on the earlier design (skip straight to
+// applying, no visible feedback until the whole-résumé chat call finished):
+// "no user ui showing... user will stop using it immediately."
 
 type Props = {
   bulletText: string;
+  company: string;
+  title: string;
   pending: boolean;
   onApply: (instruction: string) => void;
   onClose: () => void;
 };
 
-export function FrameworkPicker({ bulletText, pending, onApply, onClose }: Props) {
-  const [selected, setSelected] = useState<ResumeFramework | null>(null);
+export function FrameworkPicker({ bulletText, company, title, pending, onApply, onClose }: Props) {
+  // STAR pre-selected (direct user request) — jumps straight to its
+  // questions instead of making everyone choose from 5 every time. "All
+  // frameworks" below still reaches the other four.
+  const [selected, setSelected] = useState<ResumeFramework | null>(() => getFramework("star") ?? null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [autofilling, setAutofilling] = useState(false);
+  const [autofillError, setAutofillError] = useState<string | null>(null);
 
   // At least one answer is required. Applying a framework with nothing
   // supplied is precisely the situation that produced placeholders.
   const hasAnyAnswer = Object.values(answers).some((v) => v.trim().length > 0);
+
+  // Fills the visible fields below, in place — same fix as FrameworkBar's:
+  // the old design skipped straight to applying with no visible feedback
+  // until the whole-résumé chat call finished. This is a separate, fast,
+  // single-bullet call — the user sees and can edit what the AI inferred.
+  async function handleAutofill(): Promise<void> {
+    if (!selected) return;
+    setAutofillError(null);
+    setAutofilling(true);
+    try {
+      const result = await inferFrameworkAnswers(selected, bulletText, { title, company });
+      if (result.success && result.answers) {
+        setAnswers((prev) => ({ ...prev, ...result.answers }));
+      } else {
+        setAutofillError(result.error ?? "Auto-fill failed. Try answering manually instead.");
+      }
+    } catch {
+      setAutofillError("Auto-fill failed. Try answering manually instead.");
+    } finally {
+      setAutofilling(false);
+    }
+  }
 
   if (!selected) {
     return (
@@ -112,9 +148,22 @@ export function FrameworkPicker({ bulletText, pending, onApply, onClose }: Props
         <span className="text-text-secondary">Example:</span> {selected.example}
       </p>
 
-      <p className="mt-2.5 text-[11px] text-text-secondary">
-        Answer what you can — anything left blank is simply left out, never guessed at.
-      </p>
+      <div className="mt-2.5 flex items-center justify-between gap-2">
+        <p className="text-[11px] text-text-secondary">
+          Answer what you can — anything left blank is simply left out, never guessed at.
+        </p>
+        <button
+          type="button"
+          onClick={handleAutofill}
+          disabled={autofilling}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-agent/40 bg-agent-muted px-2 text-[10px] font-medium text-agent-dark transition-colors hover:bg-agent-light disabled:opacity-50"
+          title="Let AI infer these from the bullet itself, using nothing it doesn't already say"
+        >
+          {autofilling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+          {autofilling ? "Filling in…" : "Auto-fill with AI"}
+        </button>
+      </div>
+      {autofillError && <p className="mt-1 text-[10px] text-error">{autofillError}</p>}
 
       <div className="mt-2 flex flex-col gap-2">
         {selected.questions.map((q) => (

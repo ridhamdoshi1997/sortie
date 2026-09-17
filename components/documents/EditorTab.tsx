@@ -1137,6 +1137,8 @@ function WorkEntryEditor({
                 <div className="pl-0.5">
                   <FrameworkPicker
                     bulletText={bullet}
+                    company={entry.company}
+                    title={entry.title}
                     pending={rewritingIndex === j}
                     onApply={(instruction) => {
                       setFrameworkIndex(null);

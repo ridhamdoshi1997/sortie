@@ -77,11 +77,30 @@ Return ONLY valid JSON:
 }`;
 
 export async function checkPublicAtsScore(resumeText: string, jobDescriptionText: string | null): Promise<PublicAtsResult> {
-  const userPrompt = `RESUME TEXT:\n${resumeText.slice(0, 8000)}\n\n${
+  // 8000 silently truncated any résumé the route's own MAX_RESUME_LENGTH
+  // (20000, app/api/tools/ats-check/route.ts) had already accepted as
+  // valid — the same class of bug as actions/profile.ts's extraction
+  // truncation (found investigating that one): content past the cutoff
+  // never reaches the model, with nothing telling the visitor part of
+  // their résumé was never analyzed. Matches the route's own accepted max
+  // so nothing this route validates as valid can still be silently dropped.
+  const userPrompt = `RESUME TEXT:\n${resumeText.slice(0, 20000)}\n\n${
     jobDescriptionText ? `JOB DESCRIPTION TEXT:\n${jobDescriptionText.slice(0, 4000)}` : "No job description was provided — keywordCoverage must be null."
   }`;
 
-  const raw = await complete(await getModel("gemini", "smart"), {
+  // "fast" (the FREE Gemini key), not "smart" (the BILLED one).
+  //
+  // getModel routes tier -> key: "smart" uses GEMINI_API_KEY, which has
+  // Cloud Billing linked, while "fast" uses the separate still-free
+  // GEMINI_API_KEY_FAST. resolveModelForUser already sends free-plan users
+  // to "fast" for exactly this reason — but this call hardcodes the tier and
+  // bypasses that routing entirely.
+  //
+  // This is the PUBLIC, unauthenticated lead magnet. Every anonymous
+  // visitor was billing the paid meter, with no account and no ceiling
+  // beyond a 3/day-per-IP rate limit. It is structured extraction over
+  // pasted text, which is what the fast tier is for.
+  const raw = await complete(await getModel("gemini", "fast"), {
     systemPrompt: SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.3,

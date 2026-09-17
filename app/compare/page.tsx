@@ -73,7 +73,7 @@ export default async function ComparePage({ searchParams }: { searchParams: Prom
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+      <main className="mx-auto w-full px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-6 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-text-primary">Compare Jobs</h1>
           <Link href="/find-jobs" className="text-sm text-accent hover:underline">

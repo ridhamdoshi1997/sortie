@@ -71,7 +71,17 @@ export type PushDraft = { title: string; body: string };
 export async function generatePushDraft(brief: string): Promise<PushDraft> {
   const userPrompt = `What this notification should announce or say: ${brief.trim() || "(no brief given — draft something generic and useful)"}`;
 
-  const raw = await complete(await getModel("gemini", "smart"), {
+  // "fast" (the FREE Gemini key), not "smart" (the BILLED one).
+  //
+  // getModel routes tier -> key: "smart" uses GEMINI_API_KEY, which has
+  // Cloud Billing linked, while "fast" uses the separate still-free
+  // GEMINI_API_KEY_FAST. resolveModelForUser already sends free-plan users
+  // to "fast" for exactly this reason — but this call hardcodes the tier and
+  // bypasses that routing entirely.
+  //
+  // Short notification copy, generated in the background for every
+  // recipient. Low value per call and no reason to be on the paid meter.
+  const raw = await complete(await getModel("gemini", "fast"), {
     systemPrompt: PUSH_DRAFT_SYSTEM_PROMPT,
     userPrompt,
     temperature: 0.5,

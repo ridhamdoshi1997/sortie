@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, Layers } from "lucide-react";
+import { ArrowLeft, Layers, Loader2, Sparkles } from "lucide-react";
 
-import { RESUME_FRAMEWORKS, buildFrameworkPrompt, type ResumeFramework } from "@/lib/resumeFrameworks";
+import { inferFrameworkAnswers } from "@/actions/profile";
+import { RESUME_FRAMEWORKS, buildFrameworkPrompt, getFramework, type ResumeFramework } from "@/lib/resumeFrameworks";
 import type { ResumeSection } from "@/types/resumeEditor";
 
 // The visible, always-present way to choose a writing framework (Phase 53).
@@ -28,7 +29,7 @@ type Props = {
   onApply: (instruction: string) => void;
 };
 
-type BulletRef = { key: string; company: string; text: string };
+type BulletRef = { key: string; company: string; title: string; text: string };
 
 function collectBullets(sections: ResumeSection[]): BulletRef[] {
   const out: BulletRef[] = [];
@@ -36,7 +37,8 @@ function collectBullets(sections: ResumeSection[]): BulletRef[] {
     if (!section.visible || section.type !== "work_experience") continue;
     for (const entry of section.entries) {
       (entry.bullets ?? []).forEach((b, i) => {
-        if (b?.trim()) out.push({ key: `${entry.company ?? ""}-${i}`, company: entry.company ?? "", text: b });
+        if (b?.trim())
+          out.push({ key: `${entry.company ?? ""}-${i}`, company: entry.company ?? "", title: entry.title ?? "", text: b });
       });
     }
   }
@@ -44,9 +46,14 @@ function collectBullets(sections: ResumeSection[]): BulletRef[] {
 }
 
 export function FrameworkBar({ sections, pending, onApply }: Props) {
-  const [framework, setFramework] = useState<ResumeFramework | null>(null);
+  // STAR pre-selected (direct user request) — opens straight to picking a
+  // bullet instead of making everyone choose from 5 frameworks every time.
+  // The "All frameworks" button below still reaches the other four.
+  const [framework, setFramework] = useState<ResumeFramework | null>(() => getFramework("star") ?? null);
   const [bullet, setBullet] = useState<BulletRef | null>(null);
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [autofilling, setAutofilling] = useState(false);
+  const [autofillError, setAutofillError] = useState<string | null>(null);
 
   const bullets = collectBullets(sections);
   if (bullets.length === 0) return null;
@@ -55,6 +62,31 @@ export function FrameworkBar({ sections, pending, onApply }: Props) {
     setFramework(null);
     setBullet(null);
     setAnswers({});
+    setAutofillError(null);
+  }
+
+  // Fills the visible fields below, in place — direct user report on the old
+  // "skip straight to applying" design: it reset the panel immediately (read
+  // as a flicker) and gave zero feedback until the whole-résumé chat call
+  // finished minutes later. This is a separate, fast, single-bullet call —
+  // the user sees and can edit what the AI inferred, then clicks Apply
+  // themselves, same trust model as answering the fields by hand.
+  async function handleAutofill(): Promise<void> {
+    if (!framework || !bullet) return;
+    setAutofillError(null);
+    setAutofilling(true);
+    try {
+      const result = await inferFrameworkAnswers(framework, bullet.text, { title: bullet.title, company: bullet.company });
+      if (result.success && result.answers) {
+        setAnswers((prev) => ({ ...prev, ...result.answers }));
+      } else {
+        setAutofillError(result.error ?? "Auto-fill failed. Try answering manually instead.");
+      }
+    } catch {
+      setAutofillError("Auto-fill failed. Try answering manually instead.");
+    } finally {
+      setAutofilling(false);
+    }
   }
 
   const hasAnyAnswer = Object.values(answers).some((v) => v.trim().length > 0);
@@ -157,9 +189,23 @@ export function FrameworkBar({ sections, pending, onApply }: Props) {
             <span className="font-semibold text-text-primary">{framework.name}</span>{" "}
             <span className="font-mono text-[10px] text-accent">{framework.expansion}</span>
           </p>
-          <p className="mt-1 text-[10px] leading-relaxed text-text-muted">
-            Answer what you can — anything left blank is simply left out, never guessed at.
-          </p>
+
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            <p className="text-[10px] leading-relaxed text-text-muted">
+              Answer what you can — anything left blank is simply left out, never guessed at.
+            </p>
+            <button
+              type="button"
+              onClick={handleAutofill}
+              disabled={autofilling}
+              className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-agent/40 bg-agent-muted px-2 text-[10px] font-medium text-agent-dark transition-colors hover:bg-agent-light disabled:opacity-50"
+              title="Let AI infer these from the bullet itself, using nothing it doesn't already say"
+            >
+              {autofilling ? <Loader2 className="h-3 w-3 animate-spin" /> : <Sparkles className="h-3 w-3" />}
+              {autofilling ? "Filling in…" : "Auto-fill with AI"}
+            </button>
+          </div>
+          {autofillError && <p className="mt-1 text-[10px] text-error">{autofillError}</p>}
 
           <div className="mt-2 flex flex-col gap-2">
             {framework.questions.map((q) => (

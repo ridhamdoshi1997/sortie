@@ -17,7 +17,7 @@ export default async function SearchPage({
   return (
     <>
       <Navbar isAuthenticated />
-      <main className="mx-auto flex w-full max-w-7xl flex-col gap-6 p-8">
+      <main className="mx-auto flex w-full flex-col gap-6 p-8">
         <p className="fade-in-up font-mono text-[11px] font-semibold uppercase tracking-widest text-text-muted">
           Search your job history
         </p>
