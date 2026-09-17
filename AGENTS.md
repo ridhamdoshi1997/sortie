@@ -42,6 +42,36 @@ Read in this exact order before any implementation:
 - If the same problem persists after one corrective prompt —
   stop immediately and run /recover
 
+## Multi-agent / multi-machine protocol
+
+This repo is worked on from more than one machine and by more than one
+coding agent (Claude Code, Codex CLI) — sometimes not at the same time as
+whichever agent is reading this. Nothing here is agent-specific; follow it
+regardless of which tool you are.
+
+- **Before touching anything**: `git fetch` then check `git status -sb`.
+  If local is behind `origin`, `git pull` first — do not start work, and do
+  not trust `context/RESUME.md`'s account of "current state" as
+  necessarily still accurate, until you have. `node scripts/verify-setup.mjs`
+  does this check for you.
+- **Tracked git hooks are the actual enforcement layer, not just this
+  paragraph**: `.githooks/pre-push` blocks a push that doesn't typecheck or
+  lint clean; `.githooks/post-merge`/`post-checkout` flag dependency
+  drift. Activate them once per machine: `git config core.hooksPath
+  .githooks` (see `context/SETUP.md` Step 1.5). `.claude/`/`.agents/` are
+  gitignored per-machine config — anything meant to reach every agent on
+  every machine belongs in a plain tracked file (`AGENTS.md`, `.githooks/`,
+  `context/*.md`), not there.
+- **At a natural stopping point**: commit and push, even if the task isn't
+  fully done — an uncommitted pile of work is invisible to every other
+  agent/machine and is exactly what breaks handoff. Update
+  `context/RESUME.md` before stopping if you changed real product state,
+  same as any single-session rule already requires.
+- **Don't assume you're the only one working right now.** If you're about
+  to do something with a wide blast radius (a schema migration, a
+  site-wide refactor, force-pushing, rewriting history), check recent
+  commits (`git log --oneline -20`) for signs of concurrent work first.
+
 ## Available Skills
 
 - `/architect` — before any complex feature. Think before building.

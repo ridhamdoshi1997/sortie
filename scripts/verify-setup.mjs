@@ -106,6 +106,50 @@ try {
   check("git remote check", false, "not a git repository, or git isn't installed");
 }
 
+// --- tracked git hooks activated (multi-agent/multi-machine safety net) ---
+// .githooks/ is a real, tracked directory (unlike .claude/.agents, which
+// are gitignored per-machine config) — this is what makes it possible for
+// ANY agent (Claude Code, Codex, a human) on ANY machine to get the same
+// pre-push typecheck/lint gate and post-pull dependency-drift reminder,
+// automatically, right after a plain `git clone`. It still needs this one
+// `git config` pointer per machine (git has no way to auto-trust a
+// repo-tracked hooks directory without it — that would let a cloned repo
+// execute arbitrary code on checkout, which git deliberately disallows).
+try {
+  const hooksPath = execSync("git config --get core.hooksPath", { cwd: root, encoding: "utf8" }).trim();
+  check(
+    "git hooks activated (core.hooksPath)",
+    hooksPath === ".githooks",
+    hooksPath ? `currently points at "${hooksPath}", expected ".githooks"` : "",
+  );
+} catch {
+  check("git hooks activated (core.hooksPath)", false, "run: git config core.hooksPath .githooks");
+}
+
+// --- local git branch in sync with origin ---
+// Catches the exact failure mode a multi-agent/multi-PC setup invites: an
+// agent starting work from stale local state because nobody pulled first.
+// Read-only (a plain `git fetch` never changes tracked files), matching
+// this script's own contract.
+try {
+  execSync("git fetch --quiet", { cwd: root });
+  const branch = execSync("git rev-parse --abbrev-ref HEAD", { cwd: root, encoding: "utf8" }).trim();
+  const counts = execSync(`git rev-list --left-right --count origin/${branch}...HEAD`, { cwd: root, encoding: "utf8" }).trim();
+  const [behind, ahead] = counts.split(/\s+/).map(Number);
+  check(
+    `local branch "${branch}" in sync with origin`,
+    behind === 0,
+    behind > 0 ? `${behind} commit(s) behind origin/${branch} — run: git pull` : "",
+  );
+  if (ahead > 0) {
+    console.log(`  (ahead of origin/${branch} by ${ahead} commit(s) — push when ready)`);
+  }
+} catch {
+  // No upstream configured yet, or offline — not necessarily a problem
+  // (e.g. a brand-new branch that hasn't been pushed), so this doesn't
+  // register as a failed check, just silently skips.
+}
+
 // --- report ---
 console.log(`\n${ok.length} check(s) passed, ${problems.length} problem(s) found.\n`);
 if (problems.length > 0) {

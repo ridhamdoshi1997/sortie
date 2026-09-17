@@ -1,0 +1,7 @@
+# .githooks/* are shell scripts executed directly by git (via
+# core.hooksPath) on every machine, including non-Windows ones. Without
+# this, Windows' core.autocrlf normalization silently rewrites them to
+# CRLF on checkout, which breaks `sh` execution (a shebang line or `if`
+# condition ending in \r is not the same script anymore) — force LF
+# regardless of platform config.
+.githooks/* text eol=lf

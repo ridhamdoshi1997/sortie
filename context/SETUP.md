@@ -18,6 +18,26 @@ alone; each step needs a real action from whoever is running the session.
 npm install
 ```
 
+## Step 1.5 — Activate this repo's tracked git hooks (do this on every machine, for every agent)
+
+This repo is worked on from multiple machines and multiple coding agents
+(Claude Code, Codex CLI). `.githooks/` is a real, git-tracked hooks
+directory — unlike `.claude/`/`.agents/` (gitignored, per-machine
+convenience config), these hooks are the same for everyone and travel with
+a plain `git clone`. Git still requires one explicit opt-in per machine
+before it will run anything from a tracked directory as a hook (a security
+boundary, not an oversight):
+
+```bash
+git config core.hooksPath .githooks
+```
+
+This gives you: a `pre-push` hook that typechecks and lints before
+allowing a push (so a broken push can't hand the next machine/agent a
+broken build), and `post-merge`/`post-checkout` hooks that flag when
+`package.json`/the lockfile changed so you know to `npm install`.
+`node scripts/verify-setup.mjs` (next step) checks this is actually set.
+
 ## Step 2 — Run the bootstrap check
 
 ```bash
@@ -26,9 +46,22 @@ node scripts/verify-setup.mjs
 
 This reports exactly what's missing: `.env` (and which specific keys are
 empty or absent), `.insforge/project.json` (InsForge CLI link),
-`.vercel/project.json` (Vercel CLI link), and the git `origin` remote.
-Re-run it after fixing anything it flags — it's safe to run as many times
-as you want, read-only.
+`.vercel/project.json` (Vercel CLI link), the git `origin` remote, whether
+`core.hooksPath` is activated (Step 1.5), and whether your local branch is
+behind `origin` (a stale-context check that matters specifically because
+this repo is worked from multiple machines/agents — if it's behind, `git
+pull` before touching anything, don't trust local state or `RESUME.md`'s
+own account of "current" until you have). Re-run it after fixing anything
+it flags — it's safe to run as many times as you want, read-only.
+
+**Known gap, not yet fixed**: this env-key checklist and the rest of this
+file are still InsForge-centric from before the Supabase migration
+(`feature/supabase-migration`). The actual live backend now reads
+`SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`/`NEXT_PUBLIC_SUPABASE_URL`/
+`NEXT_PUBLIC_SUPABASE_ANON_KEY` (via Doppler, same mechanism as everything
+else in Step 3) — `context/RESUME.md` is the current source of truth on
+backend state; don't treat this file's InsForge framing as still accurate
+without cross-checking there first.
 
 ## Step 3 — Real credentials, via Doppler (the actual central store, added Phase 40)
 

@@ -1,0 +1,24 @@
+#!/bin/sh
+# Tracked git hook (see context/SETUP.md) — activated by `core.hooksPath`,
+# NOT copied into .git/hooks/, so this runs identically for every agent
+# (Claude Code, Codex, or a human) on every machine that has run the
+# one-time `git config core.hooksPath .githooks` setup step. This is the
+# actual enforcement layer behind the multi-agent/multi-machine protocol:
+# an agent that forgets to check its own work still can't push something
+# that doesn't typecheck or lint clean, which is what protects whichever
+# agent/machine pulls next.
+#
+# Deliberately NOT running tests or a full build here — this repo has no
+# test suite as of this writing, and a full `next build` is too slow for a
+# pre-push gate. Typecheck + lint catch the two most common "looked fine
+# in the editor, broke the next machine" failure modes cheaply.
+
+set -e
+
+echo "[pre-push] Typechecking..."
+npx tsc --noEmit
+
+echo "[pre-push] Linting..."
+npm run lint --silent
+
+echo "[pre-push] OK — pushing."

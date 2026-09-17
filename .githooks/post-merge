@@ -1,0 +1,16 @@
+#!/bin/sh
+# Tracked git hook (see context/SETUP.md) — fires after `git pull`/`git
+# merge`. If the incoming work touched package.json or the lockfile, the
+# working tree's node_modules is now stale relative to HEAD — this is the
+# single most common "works on the other machine/agent, broken here"
+# failure in a multi-agent/multi-PC setup, and it fails silently (stale
+# deps don't error, they just behave subtly wrong) unless flagged loudly.
+
+CHANGED=$(git diff --name-only HEAD@{1} HEAD 2>/dev/null | grep -E "^(package\.json|package-lock\.json)$" || true)
+
+if [ -n "$CHANGED" ]; then
+  echo ""
+  echo "  ⚠ package.json/package-lock.json changed in what you just pulled."
+  echo "    Run: npm install"
+  echo ""
+fi
