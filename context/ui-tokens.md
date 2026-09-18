@@ -2,7 +2,9 @@
 
 Design tokens for Sortie (formerly JobPilot). All colors, typography, spacing, and component values live in `app/globals.css`. Use these exact values throughout the codebase — never hardcode colors or use raw Tailwind color classes in components.
 
-**Rebrand note (2026-07-18):** the app was renamed from JobPilot to Sortie and the palette moved from a generic purple/white SaaS look to a deliberate "mission console" identity — dark ink chrome, warm amber signal accent, and a teal "agent" accent reserved exclusively for AI-generated content. The token *names* below are unchanged from v1 (`--color-accent`, `--color-success`, etc.) so existing components didn't need to be touched — only their values changed, plus one new semantic role (`--color-agent`) was added. See `context/RESUME.md` for current build status.
+**⚠️ Palette rebrand (2026-09-18, Phase 59) — READ THIS BEFORE TRUSTING ANY HEX VALUE BELOW.** Direct, explicit user instruction: full color copy of a reference app ("ResumeAI"/Redumecraft, a Base44-generated app — see `context/RESUME.md` Phase 59 for the full story). **`--color-accent` is no longer amber — it's emerald green (`#059669` light / `#34d399` dark).** **`--color-agent` is no longer teal — it's indigo (`#4f46e5` light / `#818cf8` dark).** **`--color-background` is no longer neutral gray — it's mint-white (`#f7fff6`).** Every paragraph below that says "amber"/"teal"/describes the "mission console" or "Signal" color identity is **historically accurate narrative, not current state** — the token *names* and their *roles* (accent = primary actions/brand, agent = exclusively AI-generated content, never anything else) are unchanged and everything below about *how to use* a token is still correct; only the literal hex *values* changed. The `@theme` code block immediately below and the Color Usage Guide/Dark Mode tables further down ARE kept current — trust those over any hex value quoted inline in older prose above them.
+
+**Rebrand note (2026-07-18, historical — see the palette rebrand note above for current values):** the app was renamed from JobPilot to Sortie and the palette moved from a generic purple/white SaaS look to a deliberate "mission console" identity — dark ink chrome, warm amber signal accent, and a teal "agent" accent reserved exclusively for AI-generated content. The token *names* below are unchanged from v1 (`--color-accent`, `--color-success`, etc.) so existing components didn't need to be touched — only their values changed, plus one new semantic role (`--color-agent`) was added. See `context/RESUME.md` for current build status.
 
 **Liquid Glass material (2026-07-24), retired from content cards (2026-07-27):** a translucent, Apple-inspired glass material was layered on every content card app-wide — job cards, qualification panels, dashboard widgets. Live computed-style research against Apple's own macOS Tahoe marketing page, Linear, Vercel, and Raycast showed all four reserve blur/glass for floating chrome only (sticky nav, headers) and use flat surfaces + hairline borders for ordinary content, with dark backgrounds much closer to near-black than this app's original dark-mode values. Content cards were reverted to plain flat `border border-border bg-surface shadow-card` utilities (no custom class needed); glass stays only on genuinely floating/sticky chrome (`Navbar`, `JobActionBar`, `FindJobsForm`'s console). See the "Liquid Glass" section below for the current, narrower scope and the Lightning CSS gotchas that still apply to the chrome classes that remain.
 
@@ -37,51 +39,60 @@ className="bg-purple-500 text-gray-600"
 
 ## globals.css — Complete Token Definition
 
+**This block is current as of Phase 59 (2026-09-18) — verified against the real `app/globals.css`, not reconstructed from memory.** Font, accent, agent, background, radius, and overlay all differ from what older prose elsewhere in this file describes; this code block wins.
+
 ```css
 @theme {
-  --font-sans: -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
+  --font-sans: var(--font-dm-sans), -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
-  --font-display: "Avenir Next", "Century Gothic", "Segoe UI Semibold", ui-sans-serif, sans-serif;
+  --font-display: var(--font-fraunces), "Avenir Next", "Century Gothic", ui-sans-serif, sans-serif;
 
-  /* Page and surface backgrounds — cool-neutral "paper", not warm cream */
-  --color-background: #f3f4f2;
+  /* Page background — the "ResumeAI" reference app's own literal
+     mint-white (Phase 59, replacing the prior neutral-gray "paper"). */
+  --color-background: #f7fff6;
   --color-surface: #ffffff;
-  --color-surface-secondary: #eaebe7;
-  --color-surface-tertiary: #f7f7f5;
-  --color-surface-muted: #eef0ec;
+  --color-surface-secondary: #eeeef0;
+  --color-surface-tertiary: #fbfbfc;
+  --color-surface-muted: #f2f2f4;
 
   /* Borders */
-  --color-border: #d8dbd6;
-  --color-border-light: #e4e6e2;
-  --color-border-muted: #dcded9;
+  --color-border: #e2e3e5;
+  --color-border-light: #ececee;
+  --color-border-muted: #e6e7e9;
 
   /* Text */
-  --color-text-primary: #15181d;
-  --color-text-secondary: #565c56;
-  --color-text-muted: #8a8f89;
-  --color-text-dark: #2c3129;
-  --color-text-darker: #1e211c;
-  --color-text-darkest: #15181d;
-  --color-text-black: #0d0f0c;
-  --color-text-slate: #2c3129;
-  --color-text-slate-medium: #565c56;
+  --color-text-primary: #17181a;
+  --color-text-secondary: #55585c;
+  --color-text-muted: #8a8d91;
+  --color-text-dark: #26282b;
+  --color-text-darker: #1c1e20;
+  --color-text-darkest: #17181a;
+  --color-text-black: #0a0a0b;
+  --color-text-slate: #26282b;
+  --color-text-slate-medium: #55585c;
+  --color-chart-axis: #8a8d91;
 
-  /* Signal — primary accent. Reserved for primary actions and the
-     wordmark. Never used for AI-generated content. */
-  --color-accent: #c9711f;
-  --color-accent-dark: #7a4713;
-  --color-accent-light: #f4e3d0;
-  --color-accent-muted: #faf1e6;
-  --color-accent-foreground: #1c1204;
+  /* Primary accent — Phase 59: emerald/green, copied from the "ResumeAI"
+     reference app's actual brand color (was amber before this phase).
+     Reserved for primary actions and the wordmark. Never used for
+     AI-generated content. */
+  --color-accent: #059669;
+  --color-accent-dark: #065f46;
+  --color-accent-light: #a7f3d0;
+  --color-accent-muted: #ecfdf5;
+  --color-accent-foreground: #ffffff;
 
-  /* Radar — reserved exclusively for content the AI agent generated
+  /* Agent/Radar — reserved exclusively for content the AI agent generated
      (match reasoning, research findings, generated drafts). Never used
-     for anything else, so its appearance is a reliable signal on its own. */
-  --color-agent: #2e7d82;
-  --color-agent-dark: #184a4d;
-  --color-agent-light: #dcecec;
-  --color-agent-muted: #eef6f6;
-  --color-agent-foreground: #0f3436;
+     for anything else, so its appearance is a reliable signal on its own.
+     Phase 59: indigo, drawn from the reference app's own palette (was
+     teal before this phase) — the role/invariant is unchanged, only the
+     hue moved. */
+  --color-agent: #4f46e5;
+  --color-agent-dark: #3730a3;
+  --color-agent-light: #e0e7ff;
+  --color-agent-muted: #eef2ff;
+  --color-agent-foreground: #ffffff;
 
   /* Success — green, also the "high match" score tier */
   --color-success: #3f7a4f;
@@ -101,9 +112,7 @@ className="bg-purple-500 text-gray-600"
   --color-info-foreground: #2b537e;
   --color-info-muted: #94a2c5;
 
-  /* Warning — muted red-orange, also the "low match" score tier.
-     Deliberately distinct from --color-accent (golden amber) so the two
-     never get confused despite both being warm hues. */
+  /* Warning — muted red-orange, also the "low match" score tier. */
   --color-warning: #b5502e;
   --color-warning-foreground: #ffffff;
 
@@ -121,20 +130,31 @@ className="bg-purple-500 text-gray-600"
   --color-indeed-light: #dbe4f3;
   --color-indeed-foreground: #ffffff;
 
-  /* Ink — dark chrome (nav frame, "mission console" hero backgrounds).
-     This chrome stays dark in BOTH light and dark app themes, so its
-     content color is a fixed token, not a themed one. */
-  --color-overlay: #15181d;
-  --color-overlay-dark: #0d0f12;
+  /* Ink — dark chrome (nav frame). Stays dark in BOTH light and dark app
+     themes, so its content color is a fixed token, not a themed one. */
+  --color-overlay: #111213;
+  --color-overlay-dark: #0a0b0c;
   --color-overlay-foreground: #ffffff;
 
-  /* Border radius */
+  /* Border radius (retuned 2026-07-27 to a smaller, more geometric scale) */
   --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 14px;
+  --radius-md: 6px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
   --radius-full: 9999px;
+
+  /* Card elevation — Phase 59: real, visible two-layer soft lift (direct
+     user reference: the "ResumeAI" app's cards have genuine elevation),
+     replacing the prior near-flat Linear/Raycast-style single-layer
+     shadow. */
+  --shadow-card: 0px 1px 2px rgb(0 0 0 / 0.04), 0px 8px 24px -4px rgb(0 0 0 / 0.08);
+
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
 }
+```
+
+`body.has-app-sidebar` (set by `components/layout/AppSidebar.tsx` on every authenticated page) additionally carries `padding-left: 16rem` at `lg:` and up (reserves the sidebar's width) and a very low-alpha `color-mix()`-based accent-tinted radial background wash — see that rule's own comment in `globals.css` for why it's split across two adjacent CSS rules (a real Lightning CSS gotcha, not an accident).
 ```
 
 Tailwind v4 generates utility classes automatically from every `--color-*` token above.
@@ -163,18 +183,18 @@ Tailwind v4 generates utility classes automatically from every `--color-*` token
 | Placeholder, muted     | `text-text-muted` (#8A8F89)     |
 | Dark labels            | `text-text-dark` (#2C3129)      |
 
-### Signal (Primary Accent — warm amber)
+### Signal (Primary Accent — emerald green, Phase 59; was warm amber before)
 
 Used for: primary buttons, active nav items, the wordmark mark, "tailored" badges, focus rings. Never for AI-generated content — that's the Radar/Agent role below.
 
 | Element                | Token                    |
 | ------------------------ | -------------------------- |
 | Button background      | `bg-accent`              |
-| Button text (dark-on-amber — verified ~5.2:1 contrast) | `text-accent-foreground` |
+| Button text (white-on-emerald, `--color-accent-foreground: #ffffff` — Phase 59; was dark-on-amber before) | `text-accent-foreground` |
 | Light badge background | `bg-accent-light`        |
 | Subtle background      | `bg-accent-muted`        |
 
-### Radar / Agent (AI-Generated Content Marker — teal)
+### Radar / Agent (AI-Generated Content Marker — indigo, Phase 59; was teal before)
 
 New role, added with the Sortie rebrand. Applied wherever the app is showing the user something the AI produced — match reasoning, research findings, generated document drafts, interview prep. The rule is strict: if it came from the agent, it gets this treatment; if it didn't, it never does. That consistency is what makes it legible as "the AI said this" without a label.
 
@@ -382,20 +402,22 @@ Text-based, not an image (the v1 `public/logo.png` PNG asset is retired). Matche
 
 Added 2026-07-18 via `next-themes` (`attribute="class"`, `defaultTheme="system"`) — `components/layout/ThemeToggle.tsx`, rendered in `Navbar.tsx`. Every `--color-*` token gets a dark-mode override in a `.dark { }` block in `app/globals.css`, sourced from the approved concept mockup's own dark palette where a token maps 1:1, derived elsewhere. This block **must stay unlayered plain CSS** — do not wrap it in `@layer`, for the same cascade-layer reason described in Invariants below.
 
+**Verified directly against `app/globals.css` on 2026-09-18 (Phase 59)** — the table below reflects what's actually in the file, not reconstructed from memory (this doc had drifted from reality even before Phase 59, e.g. `overlay` was documented as `#15181d` when the real value was already `#111213`).
+
 | Token | Light | Dark |
 |---|---|---|
-| background | `#f3f4f2` | `#0a0b0d` |
-| surface | `#ffffff` | `#101215` |
-| border | `#d8dbd6` | `#23262b` |
-| text-primary | `#15181d` | `#eceeec` |
-| text-secondary | `#565c56` | `#a3aaa3` |
-| accent (signal) | `#c9711f` | `#e0913f` |
-| agent (radar) | `#2e7d82` | `#4fa8ad` |
+| background | `#f7fff6` (Phase 59: mint-white, was `#f3f4f2`) | `#07080a` |
+| surface | `#ffffff` | `#101111` |
+| border | `#e2e3e5` | `#232526` |
+| text-primary | `#17181a` | `#f3f3f5` |
+| text-secondary | `#55585c` | `#c2c7ca` |
+| accent (signal) | `#059669` (Phase 59: emerald, was `#c9711f` amber) | `#34d399` |
+| agent (radar) | `#4f46e5` (Phase 59: indigo, was `#2e7d82` teal) | `#818cf8` |
 | success | `#3f7a4f` | `#6bb47c` |
 | info | `#4472a8` | `#6f96c9` |
 | warning | `#b5502e` | `#d97e56` |
 | error (danger) | `#a8402f` | `#d17263` |
-| overlay (ink chrome) | `#15181d` | `#0d0f12` |
+| overlay (ink chrome) | `#111213` | `#101111` |
 | overlay-foreground | `#ffffff` | `#ffffff` (fixed) |
 
 Full table (every surface/text/accent/agent/success/info tier) is in `app/globals.css`'s `.dark { }` block directly — treat that as the source of truth, this table is a quick-reference subset. The background/surface/border rows were retuned 2026-07-27 to a near-black ramp (see the Liquid Glass section below) — `--color-overlay`/`-overlay-dark` were already correctly near-black and were left unchanged; it was specifically the ordinary card/page tokens that were a step too light relative to that.
@@ -454,10 +476,10 @@ Confirmed **four separate times** now — a 4th hit 2026-08-18 building `.dashbo
 ## Invariants
 
 - Never use hex values directly in components — always use CSS variables via Tailwind tokens
-- Font is a system stack — `--font-sans` (body/UI), `--font-mono` (data), `--font-display` (wordmark/hero heading only) — matching the approved concept mockup; no `next/font/google` import
+- **Font (Phase 59, corrected):** `--font-sans` is DM Sans, self-hosted via `next/font/google` in `app/layout.tsx` (exposed as the `--font-dm-sans` CSS variable) — this superseded the original system-stack-only approach; `--font-mono` (data) is still a plain system-mono stack; `--font-display` (wordmark/hero heading only) is Fraunces, also via `next/font/google`. The system stack still applies as a real fallback if the webfont fails to load, so this isn't a hard network dependency.
 - Never use raw Tailwind color classes like `bg-purple-500` or `text-gray-600` — use project tokens only
-- `--accent` (#C9711F) is the signal color — reserved for primary actions and the wordmark, never for AI-generated content
-- `--agent` (#2E7D82) is reserved *exclusively* for AI-generated content — never use it for anything else, and never use another color for AI-generated content
+- `--accent` (`#059669`, emerald — Phase 59, was `#C9711F` amber) is the signal color — reserved for primary actions and the wordmark, never for AI-generated content
+- `--agent` (`#4F46E5`, indigo — Phase 59, was `#2E7D82` teal) is reserved *exclusively* for AI-generated content — never use it for anything else, and never use another color for AI-generated content
 - Match score bars always use color tokens based on score range — never hardcoded colors
 - LinkedIn badge always uses `--linkedin` (#0A66C2) — never generic blue
 - Indeed badge always uses `--indeed` (#003A9B, confirmed via research 2026-08-18 against current brand guidelines) — never generic blue, and never the same blue as LinkedIn's token

@@ -18,6 +18,24 @@ After building any component — update this file with the component name, file 
 
 ## Components
 
+### AppSidebar — authenticated app shell (Phase 59, 2026-09-18)
+
+Files: `components/layout/AppSidebar.tsx` (new), `components/layout/Navbar.tsx` (authenticated branch now just renders `<AppSidebar />` — public/marketing branch, the top pill nav, is unchanged).
+Route: every authenticated page (~35 of them), all still calling `<Navbar isAuthenticated />` unchanged at their own top — no page file needed editing.
+Replaces the old top pill nav for signed-in users with a persistent left sidebar, ported from the "ResumeAI"/Redumecraft reference app's own shadcn `Sidebar` composition (see `context/RESUME.md` Phase 59) but hand-built rather than importing the full generic shadcn Sidebar engine — this app has no Radix/Sheet/Tooltip primitives otherwise and didn't need the icon-rail-collapse/keyboard-shortcut/cookie-persistence machinery, just the same visual outcome.
+- Desktop (`lg:` and up): `fixed inset-y-0 left-0 z-40 hidden ... lg:block`, `w-64` (`bg-surface`, `border-r border-border`). Mobile: slim `sticky top-0` bar (logo + hamburger) + a `fixed inset-0` slide-out drawer reusing the same sidebar body markup.
+- Nav groups: "Workspace" (Dashboard/Jobs+subitems/Missions/Career/Resume/Interview/News) and "Account" (Notifications/Settings/Profile), each item `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium`, active state `bg-accent-light text-accent`, inactive `text-text-secondary hover:bg-surface-secondary hover:text-text-primary`. Jobs keeps its existing sub-item dropdown (Recommended/Search/Saved/External), now rendered inline indented under a border-l instead of a floating popover.
+- Footer: Upgrade pill (`bg-accent-muted text-accent`, unchanged pattern from the old top nav), a small utility row (command palette trigger, `SiteModelSelector`, `ThemeToggle`), then a user-identity row (Profile link + sign-out icon button).
+- **`document.body.classList.add("has-app-sidebar")`** (via a `useSidebarBodyClass()` hook, added/removed on mount/unmount) is what reserves the sidebar's width for page content — see `globals.css`'s matching `body.has-app-sidebar { padding-left: 16rem }` rule (`lg:` only) and its own comment. **If you ever see authenticated page content rendering underneath the sidebar, check this CSS rule still exists first** — it was accidentally dropped once already this same phase and caught live, not by inspection.
+
+### Dashboard card-header icon chip — /dashboard (Phase 59, 2026-09-18)
+
+Files: `app/globals.css` (`.icon-chip-neutral`, new — sits alongside the pre-existing `.signal-icon-chip`), applied in `components/dashboard/{AIActionCenter,PipelineFunnel,CareerRadar,RejectionRadar,UpcomingInterviews,RecentActivity,AnalyticsCharts,ActivityHeatmap}.tsx`.
+Every dashboard card's `<h2>` header now gets a 34px rounded icon badge immediately before the title (`flex items-center gap-3`), matching the "ResumeAI" reference app's real card pattern — this is the template for the same treatment on every other page still owed (see `context/RESUME.md` Phase 59's "Owed next session").
+- **`.signal-icon-chip`** (pre-existing, `--color-surface-secondary` ground + hardcoded agent-indigo glyph — Phase 59 recolored what this token means but not the class itself) — use ONLY on a card whose content is genuinely AI-generated (Career Radar, the Jobs Found heatmap), per the Agent-content invariant.
+- **`.icon-chip-neutral`** (new, same 34px rounded shape, `--color-surface-secondary` ground + `--color-text-secondary` glyph) — use on a deterministic/non-AI card (Action Center, Pipeline Funnel, Match Score Distribution, Recent Activity, Rejection Intelligence) that still wants the badge affordance. Introduced specifically so this pattern doesn't force every card into agent-coloring just to look consistent.
+- A genuine user-priority highlight (Interviewing) gets a one-off inline `bg-accent-light text-accent` badge instead of either shared class — not worth a third global primitive for one call site yet; promote it to a class if a second card needs the same amber-tinted treatment.
+
 ### Admin System Health — /admin/system (Phase 51, 2026-09-10)
 
 Files: `components/admin/SystemHealthPanel.tsx`, `app/admin/system/page.tsx`, `lib/systemHealth.ts`, `actions/adminSystem.ts`. Nav: `AdminSidebar.tsx` (second item, `Activity` icon).
