@@ -8,14 +8,57 @@ import { execSync } from "node:child_process";
 
 const root = path.resolve(import.meta.dirname, "..");
 const problems = [];
+const optional = [];
 const ok = [];
 
 function check(label, pass, detail) {
   (pass ? ok : problems).push({ label, detail });
 }
 
+// Same shape as check(), but for things that used to be load-bearing
+// (InsForge, pre-Supabase-migration) and no longer are for most of the
+// app. Reported separately so they never block a fresh setup, but still
+// visible for the one narrow feature (account deletion) that genuinely
+// still needs InsForge — see the real backend check below for what
+// actually gates "does the app run at all" now.
+function checkOptional(label, pass, detail) {
+  optional.push({ label, pass, detail });
+}
+
 // --- node_modules ---
 check("node_modules installed", fs.existsSync(path.join(root, "node_modules")), "run: npm install");
+
+// --- the real backend: Supabase, via Doppler (not .env — confirmed live,
+// 2026-09, that SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY/
+// NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_ANON_KEY are deliberately
+// NOT in the local .env file; they're injected at runtime by `doppler
+// run`, same as launch.json's dev script does). Checking .env for these
+// would always report them "missing" even on a correctly-configured
+// machine, so this queries Doppler directly instead — the only honest way
+// to check a secret that's never meant to touch disk as plain .env text.
+const SUPABASE_KEYS = ["SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_ANON_KEY"];
+try {
+  const raw = execSync("doppler secrets download --project sortie --config dev --no-file --format json", {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const secrets = JSON.parse(raw);
+  const missing = SUPABASE_KEYS.filter((k) => !secrets[k]);
+  check(
+    "Supabase backend reachable via Doppler (the real backend — nothing works without this)",
+    missing.length === 0,
+    missing.length > 0 ? `missing in Doppler's sortie/dev config: ${missing.join(", ")} — confirm with the project owner` : "",
+  );
+} catch (error) {
+  const stderr = error?.stderr?.toString?.() ?? "";
+  const hint = /not.?found|ENOENT/i.test(String(error?.message))
+    ? "Doppler CLI isn't installed — see context/SETUP.md Step 4"
+    : /login|not.?logged.?in|unauthorized/i.test(stderr)
+      ? "run: doppler login && doppler setup"
+      : `run: doppler login && doppler setup (${stderr.trim().split("\n")[0] || "doppler command failed"})`;
+  check("Supabase backend reachable via Doppler (the real backend — nothing works without this)", false, hint);
+}
 
 // --- .env presence + required keys ---
 const envPath = path.join(root, ".env");
@@ -26,13 +69,9 @@ check(".env file exists", envExists, "see context/SETUP.md Step 3 — .env is ne
 // what breaks if it's missing — kept in sync manually (a real .env key
 // added to the codebase should be added here too), not derived
 // automatically, so this stays a deliberate, reviewed list rather than a
-// silent moving target.
+// silent moving target. InsForge is deliberately NOT in this required
+// list anymore — see the optional check below for why.
 const REQUIRED_ENV_GROUPS = {
-  "InsForge backend (nothing works without this)": [
-    "NEXT_PUBLIC_INSFORGE_URL",
-    "NEXT_PUBLIC_INSFORGE_ANON_KEY",
-    "INSFORGE_API_KEY",
-  ],
   "AI providers (job evaluation, résumé/cover-letter generation)": [
     "GEMINI_API_KEY",
     "GEMINI_API_KEY_FAST",
@@ -78,20 +117,31 @@ if (envExists) {
   }
 }
 
-// --- InsForge CLI link ---
+// --- InsForge — legacy, kept as a deliberate revert path (see AGENTS.md /
+// RESUME.md). The app migrated to Supabase; every "insforge"-named client
+// in the codebase is now a shim wrapping real Supabase (lib/admin/client.ts)
+// EXCEPT lib/insforge-admin-sql.ts, which still calls the real InsForge
+// backend for exactly one thing: raw-SQL deletion of auth.users rows on
+// account deletion (InsForge's REST API has no delete-user endpoint the
+// migration replaced yet). Optional unless you're working on that flow —
+// never blocks a fresh setup.
 const insforgeLinked = fs.existsSync(path.join(root, ".insforge", "project.json"));
-check("InsForge CLI linked", insforgeLinked, "run: npx @insforge/cli login && npx @insforge/cli link");
+checkOptional(
+  "InsForge CLI linked (only needed for the account-deletion flow)",
+  insforgeLinked,
+  insforgeLinked ? "" : "run: npx @insforge/cli login && npx @insforge/cli link",
+);
 if (insforgeLinked) {
   try {
     const project = JSON.parse(fs.readFileSync(path.join(root, ".insforge", "project.json"), "utf8"));
     const appkey = project.appkey ?? project.appKey;
-    check(
+    checkOptional(
       "InsForge project matches expected appkey (umhshbx9)",
       appkey === "umhshbx9",
       appkey ? `linked to a DIFFERENT project: ${appkey} — confirm with the project owner before running anything destructive` : "appkey not found in project.json",
     );
   } catch {
-    check("InsForge project.json is valid JSON", false, "re-run: npx @insforge/cli link");
+    checkOptional("InsForge project.json is valid JSON", false, "re-run: npx @insforge/cli link");
   }
 }
 
@@ -161,4 +211,12 @@ if (problems.length > 0) {
   process.exitCode = 1;
 } else {
   console.log("Environment looks ready. See context/RESUME.md for the actual product state.");
+}
+
+const optionalMissing = optional.filter((o) => !o.pass);
+if (optionalMissing.length > 0) {
+  console.log("\nOptional / legacy (does not block anything above):");
+  for (const o of optionalMissing) {
+    console.log(`  ○ ${o.label}${o.detail ? ` — ${o.detail}` : ""}`);
+  }
 }

@@ -186,6 +186,56 @@ this project's one real backend. If a fresh `link` produces a different
 appkey, stop and confirm with whoever owns the InsForge account before
 running any migration or destructive command against it.
 
+## Step 7.5 — Recreate `.claude/launch.json` (dev server + Inngest Dev Server configs)
+
+`.claude/` is entirely gitignored (per-machine convenience config), so this
+file does NOT arrive via `git clone` — it has to be recreated once per
+machine. Without it, `preview_start`/"run the dev server" has nothing to
+launch, and — separately — background jobs (job evaluation, the crawl
+crons, everything in `lib/inngest/functions.ts`) simply won't fire at all
+locally, because that needs its own separate running process (the Inngest
+Dev Server, a local event router), not just the right env vars. The env
+vars (`INNGEST_EVENT_KEY`/`INNGEST_SIGNING_KEY`) are necessary but not
+sufficient — `verify-setup` checks those are present, but has no way to
+check whether this second process is actually running, since that's
+runtime state, not saved configuration.
+
+Create `.claude/launch.json`:
+
+```json
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "job_pilot_dev",
+      "runtimeExecutable": "doppler",
+      "runtimeArgs": ["run", "--project", "sortie", "--config", "dev", "--", "npm", "run", "dev"],
+      "port": 3001,
+      "autoPort": false
+    },
+    {
+      "name": "inngest_dev",
+      "runtimeExecutable": "npx",
+      "runtimeArgs": ["--yes", "inngest-cli@latest", "dev", "-u", "http://localhost:3001/api/inngest", "--no-discovery"],
+      "port": 8288,
+      "autoPort": false
+    }
+  ]
+}
+```
+
+`runtimeExecutable: "doppler"` assumes the Doppler CLI is on `PATH` (true
+after the standard install in Step 4) — don't hardcode a machine-specific
+absolute path here, that was a real bug found and fixed on the first
+machine (worked there, would have silently failed anywhere else this file
+was copied).
+
+Start both configs (or run `npx inngest-cli@latest dev -u
+http://localhost:3001/api/inngest --no-discovery` directly in a second
+terminal) if you need background jobs to actually run locally, not just
+the app to load — most UI work doesn't need this, but anything touching
+job evaluation, the crawl crons, or Inngest functions does.
+
 ## Step 8 — Once clean, go read `context/RESUME.md`
 
 That's the actual "what's the state of the product, what's next" doc. This
