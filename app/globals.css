@@ -17,15 +17,12 @@
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
   --font-display: var(--font-fraunces), "Avenir Next", "Century Gothic", ui-sans-serif, sans-serif;
 
-  /* Raycast-style neutral ramp (2026-07-27) — fully achromatic grays (0%
-     saturation), not the sage/green-tinted neutrals this app used before.
-     Raycast's own site has no light mode to source values from directly,
-     so these are derived using the same elevation logic as its real dark
-     tokens (bg/bg-100/bg-200 steps, hairline borders, tiered fg opacity),
-     just inverted for a light ground. Accent/agent/success/etc. below are
-     UNCHANGED — only the neutral chrome moved, per explicit direction to
-     keep this app's own accent, not Raycast's blue. */
-  --color-background: #f7f7f8;
+  /* Direct user reference (2026-09-18): full palette copy of the
+     Redumecraft/Base44 "ResumeAI" reference app — not just its shadow/
+     radius/type, the actual color values too. --color-background is that
+     app's own literal mint-white (Layout.jsx's --color-mint-white:
+     #F7FFF6), replacing the prior achromatic Raycast-derived gray. */
+  --color-background: #f7fff6;
   --color-surface: #ffffff;
   --color-surface-secondary: #eeeef0;
   --color-surface-tertiary: #fbfbfc;
@@ -46,31 +43,33 @@
   --color-text-slate-medium: #55585c;
   --color-chart-axis: #8a8d91;
 
-  /* Signal — primary accent. Reserved for primary actions and the
-     wordmark; never used for AI-generated content (see --color-agent).
-     Signal redesign (feature/signal-redesign, 2026-08-24): shifted to the
-     amber pair the Signal design direction actually settled on (light
-     mode gets the darker half of the pair for contrast on a light
-     ground, same real pattern this token already used before — dark mode
-     below gets the brighter half). Surrounding tint/shade values are
-     Tailwind's own amber-100/200/800/950 stops, not hand-picked, so they
-     stay accessible and internally consistent. */
-  --color-accent: #d97706;
-  --color-accent-dark: #92400e;
-  --color-accent-light: #fde68a;
-  --color-accent-muted: #fef3c7;
-  --color-accent-foreground: #451a03;
+  /* Signal — primary accent. Was amber (Sortie's own prior identity);
+     replaced with the reference app's actual brand green/emerald
+     (its primary CTAs/logo badge use a green-500→emerald-600 gradient —
+     this picks the emerald-600 solid as the flat token value, white
+     foreground text, tint/shade stops from Tailwind's own emerald scale
+     so they stay accessible and internally consistent, same approach the
+     prior amber tokens used). */
+  --color-accent: #059669;
+  --color-accent-dark: #065f46;
+  --color-accent-light: #a7f3d0;
+  --color-accent-muted: #ecfdf5;
+  --color-accent-foreground: #ffffff;
 
   /* Radar — reserved exclusively for content the AI agent generated
      (match reasoning, research findings, generated drafts). Never used
      for anything else, so its appearance is a reliable signal on its own.
-     Signal redesign — shifted to the teal pair Signal settled on; same
-     Tailwind-scale-derived tint/shade approach as accent above. */
-  --color-agent: #0f766e;
-  --color-agent-dark: #134e4a;
-  --color-agent-light: #ccfbf1;
-  --color-agent-muted: #f0fdfa;
-  --color-agent-foreground: #042f2e;
+     This functional distinction (AI content vs. user actions) is kept —
+     removing it would be a real usability regression, not just a style
+     choice — but recolored to indigo, drawn from the reference app's own
+     palette (its "Recent Evaluations" dashboard card uses an indigo icon
+     tint) rather than Sortie's prior teal, so this is still "from
+     ResumeAI," not a leftover Sortie decision. */
+  --color-agent: #4f46e5;
+  --color-agent-dark: #3730a3;
+  --color-agent-light: #e0e7ff;
+  --color-agent-muted: #eef2ff;
+  --color-agent-foreground: #ffffff;
 
   --color-success: #3f7a4f;
   --color-success-alt: #2f9e5c;
@@ -1495,22 +1494,21 @@ body {
   --color-text-slate-medium: #c2c7ca;
   --color-chart-axis: #5e6366;
 
-  /* Signal redesign — dark mode gets the brighter half of the amber/teal
-     pair (matches this token's existing light/dark contrast pattern:
-     brighter accent on a dark ground, darker accent on a light one).
-     Tint/shade neighbors are Tailwind's amber-300/950/900 and
-     teal-200/900 stops. */
-  --color-accent: #f59e0b;
-  --color-accent-dark: #fcd34d;
-  --color-accent-light: #451a03;
-  --color-accent-muted: #2c1a08;
-  --color-accent-foreground: #1c1204;
+  /* Dark-mode half of the emerald/indigo pair above — brighter accent on
+     a dark ground, darker accent on a light one, same contrast pattern
+     the tokens already used. Tint/shade neighbors are Tailwind's own
+     emerald-300/950/900 and indigo-300/950/900 stops. */
+  --color-accent: #34d399;
+  --color-accent-dark: #6ee7b7;
+  --color-accent-light: #022c22;
+  --color-accent-muted: #052e21;
+  --color-accent-foreground: #022c22;
 
-  --color-agent: #2dd4bf;
-  --color-agent-dark: #99f6e4;
-  --color-agent-light: #134e4a;
-  --color-agent-muted: #0c3733;
-  --color-agent-foreground: #ccfbf1;
+  --color-agent: #818cf8;
+  --color-agent-dark: #a5b4fc;
+  --color-agent-light: #1e1b4b;
+  --color-agent-muted: #1e1b4b;
+  --color-agent-foreground: #eef2ff;
 
   --color-success: #6bb47c;
   --color-success-alt: #4fcf82;
