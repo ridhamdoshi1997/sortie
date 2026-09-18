@@ -9,6 +9,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from "recharts";
+import { ChartColumn } from "lucide-react";
 
 type MatchBucket = { range: string; count: number };
 
@@ -33,9 +34,14 @@ function EmptyState({ message }: { message: string }) {
 export function MatchDistributionChart({ data }: { data: MatchBucket[] }) {
   return (
     <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
-      <h2 className="text-base font-semibold leading-6 text-text-primary">
-        Match Score Distribution
-      </h2>
+      <div className="flex items-center gap-3">
+        <span className="icon-chip-neutral">
+          <ChartColumn className="h-4 w-4" />
+        </span>
+        <h2 className="text-base font-semibold leading-6 text-text-primary">
+          Match Score Distribution
+        </h2>
+      </div>
       <div className="mt-6 h-55">
         {isEmpty(data) ? (
           <EmptyState message="No scored matches yet." />

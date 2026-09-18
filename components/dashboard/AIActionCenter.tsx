@@ -21,8 +21,10 @@ export function AIActionCenter({ insights }: { insights: DashboardInsight[] }) {
   return (
     <div className="dashboard-hero-card flex h-full flex-col rounded-2xl p-8">
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Sparkles className="h-4 w-4 text-accent" />
+        <div className="flex items-center gap-3">
+          <span className="icon-chip-neutral">
+            <Sparkles className="h-4 w-4" />
+          </span>
           <h2 className="text-base font-semibold leading-6 text-text-primary">Action Center</h2>
         </div>
         {insights.length > 0 && (

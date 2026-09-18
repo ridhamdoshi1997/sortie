@@ -149,11 +149,31 @@
    (per this file's own Invariants section below on cascade layers) so it
    reliably beats @theme's layered output; lg: only, matching the
    sidebar's own `hidden lg:block` breakpoint — below that it's a mobile
-   top bar + drawer, no reserved space needed. */
+   top bar + drawer, no reserved space needed. Also carries a soft, very
+   low-alpha accent-tinted wash behind the flat page background (direct
+   user reference: the Redumecraft/Base44 app tints its whole authenticated
+   shell, not just individual cards) — applied once here, cascades to
+   every authenticated page automatically instead of needing an edit per
+   page file. Colour-mix based, so it derives from --color-accent rather
+   than a second hardcoded hex — see the color-mix() Lightning CSS gotcha
+   documented further down this file before touching this rule; kept as
+   its own single-property-adjacent declaration for exactly that reason. */
 @media (min-width: 64rem) {
   body.has-app-sidebar {
     padding-left: 16rem;
   }
+}
+body.has-app-sidebar {
+  background-image: radial-gradient(circle at 15% 0%, color-mix(in oklch, var(--color-accent) 6%, transparent), transparent 45%);
+}
+/* Separate rule, deliberately — see this file's own documented gotcha
+   (further down, "Lightning CSS silently drops properties that share a
+   declaration block with a color-mix() value"): background-attachment
+   sharing a rule with the color-mix()-based background-image above would
+   silently vanish from the compiled output, confirmed pattern #2 in that
+   section. Verify via getComputedStyle if this rule is ever merged back. */
+body.has-app-sidebar {
+  background-attachment: fixed;
 }
 
 :root {
@@ -995,6 +1015,26 @@ body {
   border-radius: var(--radius-full);
   background: var(--color-surface-secondary);
   color: var(--color-agent);
+}
+
+/* Same shape as .signal-icon-chip, neutral glyph instead of teal — for a
+   card header icon that is NOT AI-generated content (a deterministic
+   widget like Action Center or Pipeline Funnel) but still wants the same
+   "icon in a soft round badge" card-header affordance (direct user
+   reference: the Redumecraft/Base44 app's dashboard cards all do this).
+   Using teal here would violate the Agent-content invariant this app
+   already enforces elsewhere — this class exists so that rule doesn't
+   have to be broken just to get the visual pattern. */
+.icon-chip-neutral {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: var(--radius-full);
+  background: var(--color-surface-secondary);
+  color: var(--color-text-secondary);
 }
 
 /* Settings nav — the mockup's inset amber edge marker, instead of

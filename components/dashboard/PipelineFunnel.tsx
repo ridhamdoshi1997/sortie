@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Filter } from "lucide-react";
 
 import { STATUS_LABELS, type ApplicationStatus } from "@/lib/applicationStatus";
 
@@ -19,7 +20,12 @@ export function PipelineFunnel({ counts }: { counts: Record<ApplicationStatus, n
 
   return (
     <div className="flex h-full flex-col border border-border bg-surface shadow-card rounded-2xl p-6">
-      <h2 className="text-base font-semibold leading-6 text-text-primary">Pipeline Funnel</h2>
+      <div className="flex items-center gap-3">
+        <span className="icon-chip-neutral">
+          <Filter className="h-4 w-4" />
+        </span>
+        <h2 className="text-base font-semibold leading-6 text-text-primary">Pipeline Funnel</h2>
+      </div>
       <div className="mt-4 flex flex-1 flex-col justify-center gap-2.5">
         {FUNNEL_STAGES.map((stage) => {
           const count = counts[stage] ?? 0;

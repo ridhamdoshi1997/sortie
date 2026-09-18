@@ -1,3 +1,5 @@
+import { History } from "lucide-react";
+
 type ActivityType = "job_found" | "researched";
 
 type ActivityItem = {
@@ -21,7 +23,12 @@ type Props = {
 export function RecentActivity({ items }: Props) {
   return (
     <div className="rounded-2xl border border-border bg-surface p-6 shadow-card">
-      <h2 className="text-base font-semibold leading-6 text-text-primary">Recent Activity</h2>
+      <div className="flex items-center gap-3">
+        <span className="icon-chip-neutral">
+          <History className="h-4 w-4" />
+        </span>
+        <h2 className="text-base font-semibold leading-6 text-text-primary">Recent Activity</h2>
+      </div>
       {items.length === 0 ? (
         <p className="mt-5 text-sm text-text-muted">
           No activity yet. Start by finding jobs on the Find Jobs page.

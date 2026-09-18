@@ -32,8 +32,10 @@ export function RejectionRadar({ jobs }: { jobs: RejectedJob[] }) {
     <div
       className={`border border-border bg-surface shadow-card rounded-2xl p-6 ${diagnosed.length > 0 ? "border-l-2 border-l-agent" : ""}`}
     >
-      <div className="flex items-center gap-2">
-        <Radar className="h-4 w-4 text-warning" />
+      <div className="flex items-center gap-3">
+        <span className="icon-chip-neutral">
+          <Radar className="h-4 w-4 text-warning" />
+        </span>
         <h2 className="text-base font-semibold leading-6 text-text-primary">Rejection Intelligence</h2>
       </div>
 

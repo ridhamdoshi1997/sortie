@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { CalendarDays } from "lucide-react";
 
 type DayCell = { date: string; count: number };
 
@@ -65,7 +66,12 @@ export function ActivityHeatmap({ countsByDate }: { countsByDate: Record<string,
   return (
     <div className="border border-border bg-surface shadow-card rounded-2xl p-6">
       <div className="flex items-center justify-between">
-        <h2 className="text-base font-semibold leading-6 text-text-primary">Jobs Found — Last 12 Weeks</h2>
+        <div className="flex items-center gap-3">
+          <span className="signal-icon-chip">
+            <CalendarDays className="h-4 w-4" />
+          </span>
+          <h2 className="text-base font-semibold leading-6 text-text-primary">Jobs Found — Last 12 Weeks</h2>
+        </div>
         <p className="font-mono text-xs text-text-muted">
           {hovered ? `${hovered.count} on ${hovered.date}` : `${totalCount} total`}
         </p>

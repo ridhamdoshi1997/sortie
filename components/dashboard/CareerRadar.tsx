@@ -14,8 +14,10 @@ export function CareerRadar({ items, isPersonalized }: { items: NewsItem[]; isPe
   return (
     <div className={`border border-border bg-surface shadow-card rounded-2xl p-6 ${items.length > 0 ? "border-l-2 border-l-agent" : ""}`}>
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <Satellite className="h-4 w-4 text-agent" />
+        <div className="flex items-center gap-3">
+          <span className="signal-icon-chip">
+            <Satellite className="h-4 w-4" />
+          </span>
           <h2 className="text-base font-semibold leading-6 text-text-primary">Career Radar</h2>
         </div>
         <Link href="/news" className="text-xs font-medium text-text-secondary hover:text-text-primary">
