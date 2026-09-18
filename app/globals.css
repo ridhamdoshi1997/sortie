@@ -5,14 +5,15 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme {
-  /* Signal redesign (feature/signal-redesign) — self-hosted via
-     next/font/google in app/layout.tsx, which exposes --font-inter/
-     --font-fraunces as CSS variables on <html>; the system stack still
-     follows as a real fallback if the webfont fails to load, so this
-     isn't a hard dependency on the network the way the original mockup's
-     runtime @import was. --font-display keeps its exact same narrow role
-     (wordmark + hero headings only) — only the face changed. */
-  --font-sans: var(--font-inter), -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
+  /* Self-hosted via next/font/google in app/layout.tsx, which exposes
+     --font-dm-sans/--font-fraunces as CSS variables on <html>; the system
+     stack still follows as a real fallback if the webfont fails to load.
+     DM Sans (swapped from Inter) — direct user reference request to match
+     the clean/modern reference app this pass targets; also what the
+     ui-ux-pro-max design-system search recommends for this product
+     category. --font-display keeps its exact same narrow role (wordmark
+     + hero headings only) — unchanged. */
+  --font-sans: var(--font-dm-sans), -apple-system, "Segoe UI", Roboto, ui-sans-serif, sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
   --font-display: var(--font-fraunces), "Avenir Next", "Century Gothic", ui-sans-serif, sans-serif;
 
@@ -127,7 +128,12 @@
   --radius-xl: 12px;
   --radius-full: 9999px;
 
-  --shadow-card: 0px 1px 3px rgb(0 0 0 / 0.1), 0px 1px 2px -1px rgb(0 0 0 / 0.1);
+  /* Softer, more visible two-layer lift (direct user reference: the
+     Redumecraft/Base44 app's cards have real, visible elevation, not the
+     near-flat Linear/Raycast-style shadow this token used before) — a
+     tight near-black layer for definition plus a broader, lower-opacity
+     layer for the actual soft "lift" feel. */
+  --shadow-card: 0px 1px 2px rgb(0 0 0 / 0.04), 0px 8px 24px -4px rgb(0 0 0 / 0.08);
 
   /* Signal redesign — real custom easing curves (animate/emil-design-eng
      skills: built-in CSS ease-out/ease-in-out are too weak to feel
@@ -135,6 +141,19 @@
      animation work in this app can reuse, not a one-off local value. */
   --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
   --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+}
+
+/* AppSidebar.tsx toggles this class on <body> for the authenticated app
+   shell (see its own header comment) — reserves the fixed left sidebar's
+   width so page content isn't rendered underneath it. Unlayered plain CSS
+   (per this file's own Invariants section below on cascade layers) so it
+   reliably beats @theme's layered output; lg: only, matching the
+   sidebar's own `hidden lg:block` breakpoint — below that it's a mobile
+   top bar + drawer, no reserved space needed. */
+@media (min-width: 64rem) {
+  body.has-app-sidebar {
+    padding-left: 16rem;
+  }
 }
 
 :root {

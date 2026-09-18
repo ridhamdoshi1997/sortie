@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Fraunces, Inter } from "next/font/google";
+import { DM_Sans, Fraunces } from "next/font/google";
 import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -16,13 +16,16 @@ import { ToastProvider } from "@/components/ui/ToastProvider";
 
 // Signal redesign (feature/signal-redesign) — self-hosted via next/font/google
 // rather than the mockup's runtime @import, avoiding FOUC/layout shift.
-// Inter replaces the system-sans stack for UI text; Fraunces is new and
-// stays scoped to --font-display's existing narrow role (wordmark + hero
-// headings only, per ui-tokens.md's own invariant — unchanged here, just a
-// different display face). Both expose a CSS variable consumed by
-// globals.css's --font-sans/--font-display instead of a raw font-family,
-// so the system-stack fallback still applies if the webfont fails to load.
-const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+// DM Sans replaces Inter for UI text (direct user reference request —
+// matches the clean/modern/premium mood of the reference app this pass
+// is matching; also the exact pairing the ui-ux-pro-max design-system
+// search recommended for this product category). Fraunces stays scoped
+// to --font-display's existing narrow role (wordmark + hero headings
+// only, per ui-tokens.md's own invariant — unchanged). Both expose a CSS
+// variable consumed by globals.css's --font-sans/--font-display instead
+// of a raw font-family, so the system-stack fallback still applies if the
+// webfont fails to load.
+const dmSans = DM_Sans({ subsets: ["latin"], variable: "--font-dm-sans", display: "swap" });
 const fraunces = Fraunces({
   subsets: ["latin"],
   weight: ["500", "600"],
@@ -76,7 +79,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full", "antialiased", "font-sans", inter.variable, fraunces.variable)}
+      className={cn("h-full", "antialiased", "font-sans", dmSans.variable, fraunces.variable)}
       suppressHydrationWarning
     >
       {/* overflow-x-hidden is a real, load-bearing safety net, not decorative —
